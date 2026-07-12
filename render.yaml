@@ -14,13 +14,7 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: VIDEO_PROVIDER
-        value: mux
-      - key: MUX_TOKEN_ID
-        sync: false
-      - key: MUX_TOKEN_SECRET
-        sync: false
-      - key: MUX_MAX_STORED_VIDEOS
-        value: "10"
+        value: local
       - key: CORS_ORIGINS
         value: https://manifold-aaryan126.onrender.com
 

@@ -1,6 +1,7 @@
 "use client";
 
 import MuxPlayer from "@mux/mux-player-react";
+import { clipPreviewUrl } from "./clipPreview";
 
 export type PlaybackInfo = {
   provider: "local" | "mux";
@@ -57,16 +58,16 @@ export function ProviderVideo({
     );
   }
 
-  const source = playback.playback_url.startsWith("http")
-    ? playback.playback_url
-    : `${pipelineBaseUrl}${playback.playback_url}`;
   return (
     <video
       aria-label={title}
       className="clipPreview"
       controls
       preload="metadata"
-      src={`${source}#t=${startSeconds},${endSeconds}`}
+      src={clipPreviewUrl(pipelineBaseUrl, videoId, {
+        start_seconds: startSeconds,
+        end_seconds: endSeconds,
+      })}
       onTimeUpdate={(event) => stopAtBoundary(event.currentTarget)}
     >
       <track default kind="captions" label="English" src={captions} srcLang="en" />
