@@ -1,0 +1,20 @@
+{
+  "name": "coursefoundry",
+  "private": true,
+  "workspaces": [
+    "web",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "docker compose up --build",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "npm run test:e2e --workspace @coursefoundry/web",
+    "test:health": "node scripts/check-health.mjs",
+    "ci": "npm run lint && npm run typecheck && npm run test"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

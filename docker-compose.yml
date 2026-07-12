@@ -1,0 +1,63 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-coursefoundry}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-coursefoundry}
+      POSTGRES_DB: ${POSTGRES_DB:-coursefoundry}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./pipeline/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  pipeline:
+    build:
+      context: ./pipeline
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://coursefoundry:coursefoundry@postgres:5432/coursefoundry}
+      ASR_PROVIDER: ${ASR_PROVIDER:-openai}
+      VIDEO_PROVIDER: ${VIDEO_PROVIDER:-local}
+      LOCAL_VIDEO_STORAGE_PATH: ${LOCAL_VIDEO_STORAGE_PATH:-/data/video}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      MUX_TOKEN_ID: ${MUX_TOKEN_ID:-}
+      MUX_TOKEN_SECRET: ${MUX_TOKEN_SECRET:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - local_video_data:/data/video
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    environment:
+      PIPELINE_BASE_URL: ${PIPELINE_BASE_URL:-http://pipeline:8000}
+      NEXT_PUBLIC_PIPELINE_BASE_URL: ${NEXT_PUBLIC_PIPELINE_BASE_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      pipeline:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
+  local_video_data:
