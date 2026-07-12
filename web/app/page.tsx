@@ -294,6 +294,7 @@ export default function HomePage() {
   const [isSegmenting, setIsSegmenting] = useState(false);
   const [bulkAction, setBulkAction] = useState<"clips" | "questions" | "accept-questions" | null>(null);
   const [generationAction, setGenerationAction] = useState<string | null>(null);
+  const [isAcceptingGraph, setIsAcceptingGraph] = useState(false);
   const [learnerAnswer, setLearnerAnswer] = useState("");
   const [learnerConfidence, setLearnerConfidence] = useState<number | null>(null);
   const [isGradingAnswer, setIsGradingAnswer] = useState(false);
@@ -970,7 +971,7 @@ export default function HomePage() {
 
   async function generateGraph() {
     if (!job?.course_id) return;
-    setMessage(null);
+    setMessage("Generating a fresh concept graph. This can take up to two minutes on the free deployment.");
     setGenerationAction("graph");
     try {
       const response = await fetch(`${pipelineBaseUrl}/courses/${job.course_id}/graph/generate`, {
@@ -988,6 +989,10 @@ export default function HomePage() {
   }
 
   async function graphRequest(endpoint: string, init: RequestInit) {
+    if (generationAction === "graph") {
+      setMessage("Wait for graph generation to finish before reviewing its concepts or edges.");
+      return null;
+    }
     setMessage(null);
     const response = await fetch(endpoint, init);
     if (!response.ok) {
@@ -1016,23 +1021,29 @@ export default function HomePage() {
   }
 
   async function acceptAllGraphProposals() {
-    if (!graph || !job?.course_id) return;
+    if (!graph || !job?.course_id || generationAction === "graph" || isAcceptingGraph) return;
     const proposedConcepts = graph.concepts.filter((concept) => concept.review_status === "proposed");
     const proposedEdges = graph.edges.filter((edge) => edge.review_status === "proposed");
-    setMessage(null);
-    const conceptResponses = await Promise.all(
-      proposedConcepts.map((concept) => fetch(`${pipelineBaseUrl}/courses/graph/concepts/${concept.id}/accept`, { method: "POST" })),
-    );
-    const edgeResponses = await Promise.all(
-      proposedEdges.map((edge) => fetch(`${pipelineBaseUrl}/courses/graph/edges/${edge.id}/accept`, { method: "POST" })),
-    );
-    const failed = [...conceptResponses, ...edgeResponses].find((response) => !response.ok);
-    if (failed) {
-      setMessage(`Accept all graph proposals failed with ${failed.status}.`);
-      return;
+    setIsAcceptingGraph(true);
+    setMessage("Accepting graph proposals.");
+    try {
+      const conceptResponses = await Promise.all(
+        proposedConcepts.map((concept) => fetch(`${pipelineBaseUrl}/courses/graph/concepts/${concept.id}/accept`, { method: "POST" })),
+      );
+      const edgeResponses = await Promise.all(
+        proposedEdges.map((edge) => fetch(`${pipelineBaseUrl}/courses/graph/edges/${edge.id}/accept`, { method: "POST" })),
+      );
+      const failed = [...conceptResponses, ...edgeResponses].find((response) => !response.ok);
+      if (failed) {
+        await loadGraph(job.course_id);
+        setMessage(`Accept all graph proposals failed with ${failed.status}. The graph was refreshed; try again.`);
+        return;
+      }
+      await loadGraph(job.course_id);
+      setMessage(`${proposedConcepts.length} concept(s) and ${proposedEdges.length} edge(s) accepted.`);
+    } finally {
+      setIsAcceptingGraph(false);
     }
-    await loadGraph(job.course_id);
-    setMessage(`${proposedConcepts.length} concept(s) and ${proposedEdges.length} edge(s) accepted.`);
   }
 
   async function updateConceptTopicLinks(conceptId: string) {
@@ -2013,14 +2024,15 @@ export default function HomePage() {
               >
                 <option value="all">All artifacts</option><option value="proposed">Proposed</option><option value="reviewed">Reviewed</option><option value="dismissed">Dismissed</option>
               </select>
-              <Button onClick={() => loadGraph(job.course_id!)} type="button" variant="outline"><RefreshCw data-icon="inline-start" /> Refresh</Button>
+              <Button disabled={generationAction === "graph" || isAcceptingGraph} onClick={() => loadGraph(job.course_id!)} type="button" variant="outline"><RefreshCw data-icon="inline-start" /> Refresh</Button>
               <Button
-                disabled={!graph || ![...graph.concepts, ...graph.edges].some((artifact) => artifact.review_status === "proposed")}
+                disabled={generationAction === "graph" || isAcceptingGraph || !graph || ![...graph.concepts, ...graph.edges].some((artifact) => artifact.review_status === "proposed")}
                 onClick={() => void acceptAllGraphProposals()}
                 type="button"
                 variant="outline"
               >
-                Accept all
+                {isAcceptingGraph ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : null}
+                {isAcceptingGraph ? "Accepting" : "Accept all"}
               </Button>
               <Button disabled={graphBlockReason !== null || generationAction !== null} onClick={generateGraph} type="button">
                 {generationAction === "graph" ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />}
@@ -2032,6 +2044,11 @@ export default function HomePage() {
           {graphBlockReason ? (
             <div className="border-b border-amber-200 bg-amber-50 px-8 py-3 text-sm text-amber-900" role="alert">
               <strong>Graph generation blocked.</strong> {graphBlockReason} Reviewed topics: {reviewedTopics} of {topics.length}.
+            </div>
+          ) : null}
+          {generationAction === "graph" ? (
+            <div aria-live="polite" className="border-b border-primary/20 bg-primary/5 px-8 py-3 text-sm" role="status">
+              <strong>Generating a fresh graph.</strong> Review actions are paused until the replacement is complete. This can take up to two minutes on the free deployment.
             </div>
           ) : null}
           {graph?.warnings.length ? (

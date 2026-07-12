@@ -43,10 +43,7 @@ class ConceptGraphService:
             raise ConceptGraphValidationError("No accepted or edited topics found for this course.")
         proposal = await self._agent.propose_graph(context)
         graph = await self._repository.replace_ai_graph(course_id, proposal)
-        for concept in graph.concepts:
-            await self._audit_concept(concept, None, concept, "propose", "ai")
-        for edge in graph.edges:
-            await self._audit_edge(course_id, edge, None, edge, "propose", "ai")
+        await self._audit_graph_proposal(course_id, graph)
         return graph
 
     async def get_graph(self, course_id: UUID) -> ConceptGraph:
@@ -188,6 +185,39 @@ class ConceptGraphService:
                 instructor_note=instructor_note_from_state(new_state),
             ),
         )
+
+    async def _audit_graph_proposal(self, course_id: UUID, graph: ConceptGraph) -> None:
+        if self._audit_service is None:
+            return
+        events = tuple(
+            [
+                AuditEventCreate(
+                    course_id=course_id,
+                    artifact_type="concept",
+                    artifact_id=concept.id,
+                    action="propose",
+                    source="ai",
+                    previous_state=None,
+                    new_state=snapshot(concept),
+                    ai_rationale=rationale_from_state(snapshot(concept)),
+                )
+                for concept in graph.concepts
+            ]
+            + [
+                AuditEventCreate(
+                    course_id=course_id,
+                    artifact_type="concept_edge",
+                    artifact_id=edge.id,
+                    action="propose",
+                    source="ai",
+                    previous_state=None,
+                    new_state=snapshot(edge),
+                    ai_rationale=rationale_from_state(snapshot(edge)),
+                )
+                for edge in graph.edges
+            ],
+        )
+        await self._audit_service.record_many(events)
 
     async def _audit_edge_from_edge(
         self,

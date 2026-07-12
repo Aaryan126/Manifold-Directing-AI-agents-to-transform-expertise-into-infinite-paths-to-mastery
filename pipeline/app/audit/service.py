@@ -13,6 +13,12 @@ class AuditService:
     async def record(self, event: AuditEventCreate) -> AuditEvent:
         return await self._repository.record_event(event)
 
+    async def record_many(
+        self,
+        events: tuple[AuditEventCreate, ...],
+    ) -> tuple[AuditEvent, ...]:
+        return await self._repository.record_events(events)
+
     async def list_for_artifact(
         self,
         artifact_type: str,

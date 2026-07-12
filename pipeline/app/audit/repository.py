@@ -9,6 +9,12 @@ class AuditRepository(ABC):
     async def record_event(self, event: AuditEventCreate) -> AuditEvent:
         raise NotImplementedError
 
+    async def record_events(
+        self,
+        events: tuple[AuditEventCreate, ...],
+    ) -> tuple[AuditEvent, ...]:
+        return tuple([await self.record_event(event) for event in events])
+
     @abstractmethod
     async def list_for_artifact(
         self,

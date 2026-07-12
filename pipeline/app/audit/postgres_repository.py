@@ -18,41 +18,17 @@ class PostgresAuditRepository(AuditRepository):
             self._database_url,
             row_factory=dict_row,
         ) as conn:
-            row = await (
-                await conn.execute(
-                    """
-                    insert into audit_events (
-                      course_id, actor_type, actor_id, artifact_type, artifact_id,
-                      action, source, previous_state, new_state, ai_rationale,
-                      instructor_note, dashboard_signal_id, scope
-                    )
-                    values (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb,
-                            %s, %s, %s, %s)
-                    returning id, course_id, actor_type, actor_id, artifact_type,
-                              artifact_id, action, source, previous_state, new_state,
-                              ai_rationale, instructor_note, dashboard_signal_id,
-                              scope, created_at::text
-                    """,
-                    (
-                        event.course_id,
-                        event.actor_type,
-                        event.actor_id,
-                        event.artifact_type,
-                        event.artifact_id,
-                        event.action,
-                        event.source,
-                        Jsonb(event.previous_state) if event.previous_state is not None else None,
-                        Jsonb(event.new_state) if event.new_state is not None else None,
-                        event.ai_rationale,
-                        event.instructor_note,
-                        event.dashboard_signal_id,
-                        event.scope,
-                    ),
-                )
-            ).fetchone()
-            if row is None:
-                raise RuntimeError("Failed to record audit event.")
-            return _event_from_row(row)
+            return await _record_event(conn, event)
+
+    async def record_events(
+        self,
+        events: tuple[AuditEventCreate, ...],
+    ) -> tuple[AuditEvent, ...]:
+        async with await psycopg.AsyncConnection.connect(
+            self._database_url,
+            row_factory=dict_row,
+        ) as conn:
+            return tuple([await _record_event(conn, event) for event in events])
 
     async def list_for_artifact(
         self,
@@ -99,6 +75,47 @@ class PostgresAuditRepository(AuditRepository):
                 )
             ).fetchall()
             return tuple(_event_from_row(row) for row in rows)
+
+
+async def _record_event(
+    conn: psycopg.AsyncConnection[Any],
+    event: AuditEventCreate,
+) -> AuditEvent:
+    row = await (
+        await conn.execute(
+            """
+            insert into audit_events (
+              course_id, actor_type, actor_id, artifact_type, artifact_id,
+              action, source, previous_state, new_state, ai_rationale,
+              instructor_note, dashboard_signal_id, scope
+            )
+            values (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb,
+                    %s, %s, %s, %s)
+            returning id, course_id, actor_type, actor_id, artifact_type,
+                      artifact_id, action, source, previous_state, new_state,
+                      ai_rationale, instructor_note, dashboard_signal_id,
+                      scope, created_at::text
+            """,
+            (
+                event.course_id,
+                event.actor_type,
+                event.actor_id,
+                event.artifact_type,
+                event.artifact_id,
+                event.action,
+                event.source,
+                Jsonb(event.previous_state) if event.previous_state is not None else None,
+                Jsonb(event.new_state) if event.new_state is not None else None,
+                event.ai_rationale,
+                event.instructor_note,
+                event.dashboard_signal_id,
+                event.scope,
+            ),
+        )
+    ).fetchone()
+    if row is None:
+        raise RuntimeError("Failed to record audit event.")
+    return _event_from_row(row)
 
 
 def _event_from_row(row: dict[str, Any]) -> AuditEvent:
