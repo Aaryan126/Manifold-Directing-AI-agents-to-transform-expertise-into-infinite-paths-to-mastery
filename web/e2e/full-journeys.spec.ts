@@ -67,6 +67,21 @@ export async function routeReviewedCourse(
       }),
     }),
   );
+  await page.route(`${pipeline}/videos/demo`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "40000000-0000-4000-8000-000000000001",
+        video_id: videoId,
+        course_id: courseId,
+        source_kind: "upload",
+        source_uri: "/app/demo/test_video.mp4",
+        status: "complete",
+        progress: 100,
+        error_message: null,
+      }),
+    }),
+  );
   await page.route(`${pipeline}/videos/jobs/*`, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -238,6 +253,17 @@ test("publishing checklist refreshes after reviewed artifacts load", async ({ pa
   await expect(page.getByText("At least one reviewed topic is required.")).toBeHidden();
 });
 
+test("one-click demo loads the cached source and enters topic review", async ({ page }) => {
+  await routeDevelopmentContext(page);
+  await routeReviewedCourse(page);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Use demo" }).click();
+
+  await expect(page.getByText("View processed transcript")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Topic outline" })).toBeVisible();
+});
+
 test("instructor publishes, learner enrolls, and dashboard correction closes the loop", async ({
   page,
 }) => {
@@ -260,7 +286,7 @@ test("instructor publishes, learner enrolls, and dashboard correction closes the
   await dashboard.getByRole("button", { name: "Accept AI suggestion" }).click();
   await expect(page.getByText(/Applied dashboard signal/)).toBeVisible();
 
-  await page.getByLabel("Development identity").selectOption(learnerId);
+  await page.getByRole("button", { name: "learner", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Topic Outline" })).toBeHidden();
   await page.getByRole("button", { name: "Enroll and start" }).click();
   await expect(page.getByText("Enrolled in the published course.")).toBeVisible();
@@ -281,7 +307,7 @@ test("instructor and learner surfaces have no WCAG 2.2 A/AA axe violations", asy
     .analyze();
   expect(results.violations).toEqual([]);
 
-  await page.getByLabel("Development identity").selectOption(learnerId);
+  await page.getByRole("button", { name: "learner", exact: true }).click();
   results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
     .analyze();
@@ -341,7 +367,7 @@ test("laptop and learner workspaces do not overflow", async ({ page }) => {
     expect(await workspace.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   }
 
-  await page.getByLabel("Development identity").selectOption(learnerId);
+  await page.getByRole("button", { name: "learner", exact: true }).click();
   const learner = page.locator("#learner-preview");
   await expect(learner).toBeVisible();
   await expect(learner).toHaveScreenshot("learner-laptop.png", {

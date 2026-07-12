@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir -e .
 COPY app ./app
 COPY migrations ./migrations
 COPY scripts ./scripts
+COPY demo ./demo
 
 EXPOSE 8000
 CMD ["sh", "-c", "python -m app.db.apply_migrations && uvicorn app.main:app --host 0.0.0.0 --port 8000"]

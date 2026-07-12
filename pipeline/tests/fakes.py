@@ -86,6 +86,40 @@ class MemoryIngestionRepository(IngestionRepository):
         )
         return job
 
+    async def get_or_create_demo_job(
+        self,
+        source_uri: str,
+        transcript: dict[str, object],
+        duration_seconds: float,
+    ) -> IngestionJob:
+        del duration_seconds
+        existing = next(
+            (job for job in self.jobs.values() if job.source_uri == source_uri),
+            None,
+        )
+        if existing is not None:
+            return existing
+        video_id = uuid4()
+        job = IngestionJob(
+            id=uuid4(),
+            video_id=video_id,
+            course_id=uuid4(),
+            source_kind=SourceKind.UPLOAD,
+            source_uri=source_uri,
+            status=IngestionJobStatus.COMPLETE,
+            progress=100,
+            error_message=None,
+        )
+        self.jobs[job.id] = job
+        self.transcripts[video_id] = transcript
+        self.media[video_id] = VideoMedia(
+            source_kind=SourceKind.UPLOAD,
+            source_uri=source_uri,
+            content_type="video/mp4",
+            playback_provider="local",
+        )
+        return job
+
     async def mark_processing(self, job_id: UUID) -> None:
         job = self.jobs[job_id]
         self.jobs[job_id] = _replace_job(

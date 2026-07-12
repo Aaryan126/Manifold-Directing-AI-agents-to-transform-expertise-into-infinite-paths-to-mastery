@@ -4,11 +4,11 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import {
   BarChart3Icon,
   BookOpenCheckIcon,
-  ChevronDownIcon,
   ClipboardCheckIcon,
   EyeIcon,
   FilmIcon,
   GraduationCapIcon,
+  GitBranchIcon,
   LayoutDashboardIcon,
   ListTreeIcon,
   NetworkIcon,
@@ -20,13 +20,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
-import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
@@ -111,12 +106,12 @@ export function CourseFoundryShell({
               <SidebarMenuButton
                 className="h-10 font-semibold tracking-[-0.01em]"
                 onClick={() => navigateTo(isLearner ? "learner-preview" : "course-overview", navigation[0].label)}
-                tooltip="CourseFoundry"
+                tooltip="Manifold"
               >
-                <span className="flex size-6 items-center justify-center rounded-md bg-primary text-xs font-semibold text-primary-foreground">
-                  CF
+                <span className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                  <GitBranchIcon aria-hidden="true" className="size-4" />
                 </span>
-                <span>CourseFoundry</span>
+                <span>Manifold</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -144,34 +139,6 @@ export function CourseFoundryShell({
           </SidebarGroup>
         </SidebarContent>
 
-        <SidebarFooter className="border-t border-sidebar-border/70 p-3">
-          <label
-            className="px-2 text-[0.68rem] font-medium uppercase tracking-[0.08em] text-muted-foreground group-data-[collapsible=icon]:hidden"
-            htmlFor="development-identity"
-          >
-            Development identity
-          </label>
-          <NativeSelect
-            className="w-full group-data-[collapsible=icon]:hidden"
-            id="development-identity"
-            value={selectedIdentityId}
-            onChange={(event) => onIdentityChange(event.target.value)}
-          >
-            {identities.map((identity) => (
-              <NativeSelectOption key={identity.id} value={identity.id}>
-                {identity.display_name} ({identity.role})
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-          <SidebarMenu className="hidden group-data-[collapsible=icon]:flex">
-            <SidebarMenuItem>
-              <SidebarMenuButton tooltip="Change development identity">
-                <ChevronDownIcon />
-                <span>Identity</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
         <SidebarRail />
       </Sidebar>
 
@@ -193,8 +160,24 @@ export function CourseFoundryShell({
               {isLearner ? "Adaptive learning workspace" : "Course production workspace"}
             </p>
           </div>
-          {!isLearner ? (
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            <div aria-label="Workspace view" className="flex items-center rounded-lg border border-border bg-muted/40 p-0.5" role="group">
+              {identities.map((identity) => (
+                <Button
+                  aria-pressed={identity.id === selectedIdentityId}
+                  className="h-8 px-3 capitalize"
+                  key={identity.id}
+                  onClick={() => onIdentityChange(identity.id)}
+                  size="sm"
+                  type="button"
+                  variant={identity.id === selectedIdentityId ? "secondary" : "ghost"}
+                >
+                  {identity.role}
+                </Button>
+              ))}
+            </div>
+            {!isLearner ? (
+              <>
               <Button variant="outline" onClick={() => navigateTo("learner-preview")}>
                 <EyeIcon data-icon="inline-start" />
                 Preview course
@@ -202,8 +185,9 @@ export function CourseFoundryShell({
               <Button disabled={publishDisabled} onClick={onPublish}>
                 {courseStatus === "published" ? "Published" : "Publish course"}
               </Button>
-            </div>
-          ) : null}
+              </>
+            ) : null}
+          </div>
         </header>
         <div className="cf-workspace">{children}</div>
       </SidebarInset>

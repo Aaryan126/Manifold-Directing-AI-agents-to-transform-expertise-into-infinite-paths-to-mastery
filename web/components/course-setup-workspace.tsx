@@ -8,6 +8,7 @@ import {
   Database,
   Link2,
   LoaderCircle,
+  PlayCircle,
   Upload,
 } from "lucide-react";
 
@@ -45,6 +46,7 @@ type CourseSetupWorkspaceProps = {
   } | null;
   message: string | null;
   onFileChange: (file: File | null) => void;
+  onLoadDemo: () => void;
   onSubmitFile: (event: FormEvent<HTMLFormElement>) => void;
   onSubmitUrl: (event: FormEvent<HTMLFormElement>) => void;
   publishBlockers: string[];
@@ -97,6 +99,7 @@ export function CourseSetupWorkspace({
   job,
   message,
   onFileChange,
+  onLoadDemo,
   onSubmitFile,
   onSubmitUrl,
   publishBlockers,
@@ -217,10 +220,16 @@ export function CourseSetupWorkspace({
                     </label>
                     <FieldDescription>Choose a locally stored source recording.</FieldDescription>
                   </Field>
-                  <Button className="mt-4 h-10" disabled={isSubmitting} type="submit">
-                    <Upload data-icon="inline-start" />
-                    Upload
-                  </Button>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <Button className="h-10" disabled={isSubmitting} type="submit">
+                      <Upload data-icon="inline-start" />
+                      Upload
+                    </Button>
+                    <Button className="h-10" disabled={isSubmitting} onClick={onLoadDemo} type="button" variant="outline">
+                      <PlayCircle data-icon="inline-start" />
+                      Use demo
+                    </Button>
+                  </div>
                 </form>
 
                 <form className="rounded-lg border border-border p-4" onSubmit={onSubmitUrl}>

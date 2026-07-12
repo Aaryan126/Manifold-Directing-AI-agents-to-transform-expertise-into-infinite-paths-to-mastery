@@ -55,6 +55,8 @@ def build_ingestion_service(settings: Settings) -> IngestionService:
             settings.direct_url_download_timeout_seconds,
         ),
         video_delivery_provider=build_video_delivery_provider(settings),
+        demo_video_path=settings.demo_video_path,
+        demo_transcript_path=settings.demo_transcript_path,
     )
 
 

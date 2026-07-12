@@ -18,6 +18,15 @@ class IngestionRepository(ABC):
         """Create a video record and queued ingestion job."""
 
     @abstractmethod
+    async def get_or_create_demo_job(
+        self,
+        source_uri: str,
+        transcript: dict[str, object],
+        duration_seconds: float,
+    ) -> IngestionJob:
+        """Return the reusable completed demo ingestion job."""
+
+    @abstractmethod
     async def mark_processing(self, job_id: UUID) -> None:
         """Mark a queued job as processing."""
 

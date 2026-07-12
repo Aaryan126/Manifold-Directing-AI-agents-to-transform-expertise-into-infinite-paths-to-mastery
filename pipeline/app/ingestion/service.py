@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from uuid import UUID
 
@@ -24,12 +25,16 @@ class IngestionService:
         upload_storage: LocalUploadStorage,
         url_fetcher: DirectUrlFetcher,
         video_delivery_provider: VideoDeliveryProvider | None = None,
+        demo_video_path: str = "../test_video.mp4",
+        demo_transcript_path: str = "demo/transcript.json",
     ) -> None:
         self._repository = repository
         self._asr_provider = asr_provider
         self._upload_storage = upload_storage
         self._url_fetcher = url_fetcher
         self._video_delivery_provider = video_delivery_provider
+        self._demo_video_path = Path(demo_video_path)
+        self._demo_transcript_path = Path(demo_transcript_path)
 
     async def store_upload(self, upload: UploadFile) -> StoredUpload:
         return await self._upload_storage.store(upload)
@@ -55,6 +60,32 @@ class IngestionService:
             source_uri=url,
             course_id=course_id,
             content_type=None,
+        )
+
+    async def get_or_create_demo_job(self) -> IngestionJob:
+        if not self._demo_video_path.is_file():
+            raise FileNotFoundError("The bundled Manifold demo video is unavailable.")
+        if not self._demo_transcript_path.is_file():
+            raise FileNotFoundError("The bundled Manifold demo transcript is unavailable.")
+        try:
+            transcript = json.loads(self._demo_transcript_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError("The bundled Manifold demo transcript is invalid.") from exc
+        if not isinstance(transcript, dict) or not isinstance(transcript.get("text"), str):
+            raise ValueError("The bundled Manifold demo transcript is invalid.")
+        words = transcript.get("words")
+        if not isinstance(words, list) or not words:
+            raise ValueError("The bundled Manifold demo transcript has no timestamps.")
+        final_word = words[-1]
+        duration_seconds = (
+            float(final_word.get("end_seconds", 0))
+            if isinstance(final_word, dict)
+            else 0.0
+        )
+        return await self._repository.get_or_create_demo_job(
+            str(self._demo_video_path.resolve()),
+            transcript,
+            duration_seconds,
         )
 
     async def process_job(self, job_id: UUID) -> None:

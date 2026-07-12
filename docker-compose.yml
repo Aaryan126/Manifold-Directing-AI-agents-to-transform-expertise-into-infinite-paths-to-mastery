@@ -29,10 +29,13 @@ services:
       MUX_MAX_STORED_VIDEOS: ${MUX_MAX_STORED_VIDEOS:-10}
       MUX_POLL_INTERVAL_SECONDS: ${MUX_POLL_INTERVAL_SECONDS:-2}
       MUX_POLL_TIMEOUT_SECONDS: ${MUX_POLL_TIMEOUT_SECONDS:-600}
+      DEMO_VIDEO_PATH: /app/demo/test_video.mp4
+      DEMO_TRANSCRIPT_PATH: /app/demo/transcript.json
     ports:
       - "8000:8000"
     volumes:
       - local_video_data:/data/video
+      - ./test_video.mp4:/app/demo/test_video.mp4:ro
     depends_on:
       postgres:
         condition: service_healthy

@@ -541,6 +541,30 @@ export default function HomePage() {
     });
   }
 
+  async function loadDemo() {
+    setIsSubmitting(true);
+    setMessage("Loading the pre-processed Manifold demo.");
+    setSelectedFile(null);
+    setUrl("");
+    setTranscript(null);
+    setTopics([]);
+    setGraph(null);
+    setClips([]);
+    setQuestions([]);
+    setRoutingPolicies([]);
+    setDemoLearnerId(null);
+    setRouteDecision(null);
+    setLearnerProgress([]);
+    setDashboardSummary(null);
+    setActiveLearnerTopicId(null);
+    setPlayback(null);
+    setCourse(null);
+    setPublishReadiness(null);
+    setIsEnrolled(false);
+    hydratedJobs.current.clear();
+    await createJob(`${pipelineBaseUrl}/videos/demo`, { method: "POST" });
+  }
+
   async function createJob(endpoint: string, init: RequestInit) {
     try {
       const response = await fetch(endpoint, init);
@@ -1707,6 +1731,7 @@ export default function HomePage() {
         job={job}
         message={isLearnerContext ? null : message}
         onFileChange={setSelectedFile}
+        onLoadDemo={() => void loadDemo()}
         onSubmitFile={uploadFile}
         onSubmitUrl={submitUrl}
         onUrlChange={setUrl}

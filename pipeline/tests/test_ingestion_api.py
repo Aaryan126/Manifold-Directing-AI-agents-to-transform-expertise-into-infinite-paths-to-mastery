@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -40,6 +41,39 @@ def test_upload_endpoint_processes_fixture_video_and_persists_transcript(tmp_pat
         transcript_response = client.get(f"/videos/{completed['video_id']}/transcript")
         assert transcript_response.status_code == 200
         assert transcript_response.json()["text"] == "Hello adaptive learning."
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_demo_endpoint_reuses_cached_transcript_without_asr(tmp_path: Path) -> None:
+    media_path = tmp_path / "test_video.mp4"
+    media_path.write_bytes(b"demo media")
+    transcript_path = tmp_path / "transcript.json"
+    transcript_path.write_text(json.dumps({
+        "text": "Cached demo transcript.",
+        "words": [{"text": "Cached", "start_seconds": 0, "end_seconds": 1.5}],
+    }))
+    repository = MemoryIngestionRepository()
+    service = IngestionService(
+        repository=repository,
+        asr_provider=StaticASRProvider(),
+        upload_storage=MemoryUploadStorage(media_path),
+        url_fetcher=NoopUrlFetcher(media_path),
+        demo_video_path=str(media_path),
+        demo_transcript_path=str(transcript_path),
+    )
+    app.dependency_overrides[get_ingestion_service] = lambda: service
+    client = TestClient(app)
+
+    try:
+        first = client.post("/videos/demo")
+        second = client.post("/videos/demo")
+
+        assert first.status_code == 200
+        assert first.json()["status"] == "complete"
+        assert second.json()["id"] == first.json()["id"]
+        transcript = client.get(f"/videos/{first.json()['video_id']}/transcript")
+        assert transcript.json()["text"] == "Cached demo transcript."
     finally:
         app.dependency_overrides.clear()
 

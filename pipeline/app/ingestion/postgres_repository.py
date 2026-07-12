@@ -64,6 +64,86 @@ class PostgresIngestionRepository(IngestionRepository):
                 raise RuntimeError("Failed to create ingestion job.")
             return _job_from_row(job_row)
 
+    async def get_or_create_demo_job(
+        self,
+        source_uri: str,
+        transcript: dict[str, object],
+        duration_seconds: float,
+    ) -> IngestionJob:
+        async with await psycopg.AsyncConnection.connect(
+            self._database_url,
+            row_factory=dict_row,
+        ) as conn:
+            course_id = await self._ensure_demo_course(conn)
+            existing = await (
+                await conn.execute(
+                    """
+                    select j.*
+                    from ingestion_jobs j
+                    join videos v on v.id = j.video_id
+                    where v.source_metadata ->> 'demo_fixture' = 'manifold-default'
+                      and j.status = 'complete'
+                    order by j.created_at
+                    limit 1
+                    """
+                )
+            ).fetchone()
+            if existing is not None:
+                await conn.execute(
+                    "update videos set source_uri = %s, course_id = %s where id = %s",
+                    (source_uri, course_id, existing["video_id"]),
+                )
+                await conn.execute(
+                    "update ingestion_jobs set source_uri = %s, course_id = %s where id = %s",
+                    (source_uri, course_id, existing["id"]),
+                )
+                return _job_from_row({
+                    **existing,
+                    "source_uri": source_uri,
+                    "course_id": course_id,
+                })
+
+            video_row = await (
+                await conn.execute(
+                    """
+                    insert into videos (
+                        course_id, source_kind, source_uri, playback_provider,
+                        duration_seconds, transcript, source_metadata
+                    )
+                    values (%s, 'upload', %s, 'local', %s, %s::jsonb, %s::jsonb)
+                    returning id
+                    """,
+                    (
+                        course_id,
+                        source_uri,
+                        duration_seconds,
+                        Jsonb(transcript),
+                        Jsonb({
+                            "content_type": "video/mp4",
+                            "demo_fixture": "manifold-default",
+                        }),
+                    ),
+                )
+            ).fetchone()
+            if video_row is None:
+                raise RuntimeError("Failed to create demo video record.")
+            job_row = await (
+                await conn.execute(
+                    """
+                    insert into ingestion_jobs (
+                        video_id, course_id, source_kind, source_uri, status,
+                        progress, completed_at
+                    )
+                    values (%s, %s, 'upload', %s, 'complete', 100, now())
+                    returning *
+                    """,
+                    (video_row["id"], course_id, source_uri),
+                )
+            ).fetchone()
+            if job_row is None:
+                raise RuntimeError("Failed to create demo ingestion job.")
+            return _job_from_row(job_row)
+
     async def mark_processing(self, job_id: UUID) -> None:
         await self._execute_status_update(
             """
@@ -214,6 +294,46 @@ class PostgresIngestionRepository(IngestionRepository):
         ).fetchone()
         if course_row is None:
             raise RuntimeError("Failed to create dev course.")
+        return UUID(str(course_row["id"]))
+
+    async def _ensure_demo_course(self, conn: psycopg.AsyncConnection[dict[str, Any]]) -> UUID:
+        user_row = await (
+            await conn.execute(
+                """
+                insert into users (email, role, display_name)
+                values ('dev-instructor@coursefoundry.local', 'instructor', 'Dev Instructor')
+                on conflict (email) do update set display_name = excluded.display_name
+                returning id
+                """
+            )
+        ).fetchone()
+        if user_row is None:
+            raise RuntimeError("Failed to create demo instructor.")
+        existing = await (
+            await conn.execute(
+                """
+                select id from courses
+                where instructor_id = %s and title = 'Learn Anything in 20 Hours'
+                order by created_at
+                limit 1
+                """,
+                (user_row["id"],),
+            )
+        ).fetchone()
+        if existing is not None:
+            return UUID(str(existing["id"]))
+        course_row = await (
+            await conn.execute(
+                """
+                insert into courses (instructor_id, title, description)
+                values (%s, 'Learn Anything in 20 Hours', 'Reusable Manifold demonstration course.')
+                returning id
+                """,
+                (user_row["id"],),
+            )
+        ).fetchone()
+        if course_row is None:
+            raise RuntimeError("Failed to create demo course.")
         return UUID(str(course_row["id"]))
 
     async def _execute_status_update(self, sql: str, params: tuple[object, ...]) -> None:

@@ -95,6 +95,15 @@ async def ingest_url(
     return _job_response(job)
 
 
+@router.post("/demo", response_model=IngestionJobResponse)
+async def load_demo_video(service: IngestionServiceDependency) -> IngestionJobResponse:
+    try:
+        job = await service.get_or_create_demo_job()
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return _job_response(job)
+
+
 @router.get("/jobs/{job_id}", response_model=IngestionJobResponse)
 async def get_job(
     job_id: UUID,

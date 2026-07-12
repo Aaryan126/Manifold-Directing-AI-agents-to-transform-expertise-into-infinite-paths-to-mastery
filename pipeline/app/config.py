@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     mux_max_stored_videos: int = 10
     mux_poll_interval_seconds: float = 2.0
     mux_poll_timeout_seconds: float = 600.0
+    demo_video_path: str = "../test_video.mp4"
+    demo_transcript_path: str = "demo/transcript.json"
 
 
 @lru_cache

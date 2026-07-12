@@ -7,8 +7,8 @@ import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 export const metadata: Metadata = {
-  title: "CourseFoundry",
-  description: "Video-native adaptive learning platform",
+  title: "Manifold",
+  description: "Transform expertise into adaptive paths to mastery",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
