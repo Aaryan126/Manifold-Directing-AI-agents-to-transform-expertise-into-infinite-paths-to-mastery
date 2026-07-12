@@ -2,6 +2,19 @@ from pathlib import Path
 
 import psycopg
 
+_LEGACY_MIGRATION_MARKERS: dict[str, tuple[tuple[str, str | None], ...]] = {
+    "001_initial_schema.sql": (("users", None), ("videos", None)),
+    "002_ingestion_jobs.sql": (("ingestion_jobs", None),),
+    "003_topic_review_status.sql": (("topics", "review_status"),),
+    "004_graph_review_status.sql": (
+        ("concepts", "review_status"),
+        ("concept_edges", "review_status"),
+    ),
+    "005_clip_review_status.sql": (("clips", "status"),),
+    "006_question_review_status.sql": (("questions", "review_status"),),
+    "007_audit_events.sql": (("audit_events", None),),
+}
+
 
 async def run_migrations(database_url: str, migrations_dir: Path) -> None:
     async with await psycopg.AsyncConnection.connect(database_url) as conn:
@@ -33,26 +46,44 @@ async def _baseline_existing_schema(
     conn: psycopg.AsyncConnection[tuple[object, ...]],
     migrations_dir: Path,
 ) -> None:
-    existing = await (
-        await conn.execute("select to_regclass('public.users'), to_regclass('public.videos')")
-    ).fetchone()
-    has_initial_schema = (
-        existing is not None
-        and existing[0] is not None
-        and existing[1] is not None
-    )
-    initial_migration = migrations_dir / "001_initial_schema.sql"
-    if not has_initial_schema or not initial_migration.exists():
-        return
+    for version, markers in _LEGACY_MIGRATION_MARKERS.items():
+        if not (migrations_dir / version).exists():
+            continue
+        marker_results = [
+            await _schema_marker_exists(conn, table_name, column_name)
+            for table_name, column_name in markers
+        ]
+        if not all(marker_results):
+            continue
+        await conn.execute(
+            "insert into schema_migrations (version) values (%s) on conflict do nothing",
+            (version,),
+        )
 
-    applied = await (
+
+async def _schema_marker_exists(
+    conn: psycopg.AsyncConnection[tuple[object, ...]],
+    table_name: str,
+    column_name: str | None,
+) -> bool:
+    if column_name is None:
+        row = await (
+            await conn.execute("select to_regclass(%s)", (f"public.{table_name}",))
+        ).fetchone()
+        return row is not None and row[0] is not None
+
+    row = await (
         await conn.execute(
-            "select 1 from schema_migrations where version = %s",
-            (initial_migration.name,),
+            """
+            select exists (
+              select 1
+              from information_schema.columns
+              where table_schema = 'public'
+                and table_name = %s
+                and column_name = %s
+            )
+            """,
+            (table_name, column_name),
         )
     ).fetchone()
-    if applied is None:
-        await conn.execute(
-            "insert into schema_migrations (version) values (%s)",
-            (initial_migration.name,),
-        )
+    return row is not None and row[0] is True

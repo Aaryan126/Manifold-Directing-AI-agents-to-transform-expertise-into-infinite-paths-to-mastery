@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from app.db.migrations import _LEGACY_MIGRATION_MARKERS
+
 
 def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     migration = Path("migrations/001_initial_schema.sql").read_text(encoding="utf-8")
@@ -57,3 +59,15 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     assert "audit_events_artifact_idx" in audit_migration
     assert "dashboard_signal_id" in audit_migration
     assert "scope text not null" in audit_migration
+
+
+def test_legacy_schema_baseline_covers_every_migration() -> None:
+    migration_names = {path.name for path in Path("migrations").glob("*.sql")}
+
+    assert set(_LEGACY_MIGRATION_MARKERS) == migration_names
+
+
+def test_compose_leaves_migration_ownership_to_pipeline() -> None:
+    compose = Path("../docker-compose.yml").read_text(encoding="utf-8")
+
+    assert "/docker-entrypoint-initdb.d" not in compose

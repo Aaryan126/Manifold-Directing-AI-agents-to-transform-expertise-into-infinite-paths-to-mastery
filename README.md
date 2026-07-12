@@ -2,42 +2,40 @@
 
 Video-native adaptive learning platform.
 
-## Local Setup
+## Docker Setup
 
-1. Copy environment defaults:
+1. Copy environment defaults (first run only):
 
    ```bash
    cp .env.example .env
    ```
 
-2. Install JavaScript dependencies:
+2. Add your `OPENAI_API_KEY` to `.env`.
 
-   ```bash
-   npm install
-   ```
-
-3. Install Python pipeline dependencies:
-
-   ```bash
-   cd pipeline
-   uv sync --extra dev --python 3.12
-   cd ..
-   ```
-
-4. Start the full local stack:
+3. Start the full local stack:
 
    ```bash
    docker compose up --build
    ```
 
-5. Verify service health:
+Open the app at `http://localhost:3000`. The pipeline health endpoint is
+`http://localhost:8000/health`.
 
-   ```bash
-   npm run test:health
-   ```
+JavaScript and Python dependency installation is only required for running tests or
+development tools directly on the host:
 
-The web service exposes `http://localhost:3000/api/health`.
-The pipeline service exposes `http://localhost:8000/health`.
+```bash
+npm install
+cd pipeline
+uv sync --extra dev --python 3.12
+cd ..
+```
+
+Verify service health after installing the host dependencies:
+
+```bash
+npm run test:health
+```
 
 ## Architecture Decisions
 
