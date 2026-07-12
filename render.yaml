@@ -10,9 +10,7 @@ services:
     autoDeployTrigger: commit
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: manifold-db-aaryan126
-          property: connectionString
+        sync: false
       - key: OPENAI_API_KEY
         sync: false
       - key: VIDEO_PROVIDER
@@ -38,10 +36,3 @@ services:
     envVars:
       - key: NEXT_PUBLIC_PIPELINE_BASE_URL
         value: https://manifold-pipeline-aaryan126.onrender.com
-
-databases:
-  - name: manifold-db-aaryan126
-    plan: free
-    region: singapore
-    databaseName: manifold
-    user: manifold
