@@ -53,6 +53,10 @@ class ConceptEditRequest(BaseModel):
     description: str = ""
 
 
+class ConceptTopicsRequest(BaseModel):
+    topic_ids: list[UUID]
+
+
 class EdgeEditRequest(BaseModel):
     from_concept_id: UUID
     to_concept_id: UUID
@@ -99,6 +103,21 @@ async def edit_concept(
 @router.post("/graph/concepts/{concept_id}/accept", response_model=ConceptResponse)
 async def accept_concept(concept_id: UUID, service: GraphServiceDependency) -> ConceptResponse:
     concept = await service.accept_concept(concept_id)
+    if concept is None:
+        raise HTTPException(status_code=404, detail="Concept not found.")
+    return _concept_response(concept)
+
+
+@router.put("/graph/concepts/{concept_id}/topics", response_model=ConceptResponse)
+async def set_concept_topics(
+    concept_id: UUID,
+    request: ConceptTopicsRequest,
+    service: GraphServiceDependency,
+) -> ConceptResponse:
+    try:
+        concept = await service.set_concept_topics(concept_id, tuple(request.topic_ids))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if concept is None:
         raise HTTPException(status_code=404, detail="Concept not found.")
     return _concept_response(concept)

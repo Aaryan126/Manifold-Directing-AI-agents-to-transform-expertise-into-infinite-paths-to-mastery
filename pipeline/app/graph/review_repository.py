@@ -34,6 +34,14 @@ class ConceptGraphRepository(ABC):
         """Persist an instructor concept revision."""
 
     @abstractmethod
+    async def set_concept_topics(
+        self,
+        concept_id: UUID,
+        topic_ids: tuple[UUID, ...],
+    ) -> Concept | None:
+        """Replace a concept's reviewed topic links."""
+
+    @abstractmethod
     async def accept_concept(self, concept_id: UUID) -> Concept | None:
         """Accept a concept proposal."""
 

@@ -313,6 +313,28 @@ class MemoryConceptGraphRepository(ConceptGraphRepository):
         self.concepts[concept_id] = updated
         return updated
 
+    async def set_concept_topics(
+        self,
+        concept_id: UUID,
+        topic_ids: tuple[UUID, ...],
+    ) -> Concept | None:
+        concept = self.concepts.get(concept_id)
+        if concept is None:
+            return None
+        updated = _replace_concept(
+            concept,
+            review_status=GraphReviewStatus.EDITED,
+            instructor_revision={
+                **(concept.instructor_revision or {}),
+                "action": "edit_topic_links",
+                "topic_ids": [str(topic_id) for topic_id in topic_ids],
+            },
+            approved_at="now",
+            dismissed_at=None,
+        )
+        self.concepts[concept_id] = updated
+        return updated
+
     async def dismiss_concept(self, concept_id: UUID) -> Concept | None:
         concept = self.concepts.get(concept_id)
         if concept is None:

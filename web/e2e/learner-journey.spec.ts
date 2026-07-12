@@ -225,7 +225,7 @@ test("learner journey covers remediation and advancement branches", async ({ pag
   await page.goto("/");
   await page.getByLabel("Direct audio/video URL").fill("https://example.com/lecture.mp4");
   await page.getByRole("button", { name: "Ingest URL" }).click();
-  await page.getByRole("button", { name: "Refresh" }).first().click();
+  await expect(page.getByRole("heading", { name: "Learner Experience" })).toBeVisible();
 
   await page.getByRole("button", { name: "Start course" }).click();
   const learnerPanel = page.getByLabel("Learner Experience");

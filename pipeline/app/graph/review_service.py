@@ -67,6 +67,23 @@ class ConceptGraphService:
             await self._audit_concept(concept, previous, concept, "accept", "instructor")
         return concept
 
+    async def set_concept_topics(
+        self,
+        concept_id: UUID,
+        topic_ids: tuple[UUID, ...],
+    ) -> Concept | None:
+        previous = await self._find_concept(concept_id)
+        concept = await self._repository.set_concept_topics(concept_id, topic_ids)
+        if concept is not None:
+            await self._audit_concept(
+                concept,
+                previous,
+                concept,
+                "edit_topic_links",
+                "instructor",
+            )
+        return concept
+
     async def dismiss_concept(self, concept_id: UUID) -> Concept | None:
         previous = await self._find_concept(concept_id)
         concept = await self._repository.dismiss_concept(concept_id)

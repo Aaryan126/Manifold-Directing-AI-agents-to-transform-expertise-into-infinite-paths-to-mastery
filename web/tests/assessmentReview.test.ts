@@ -42,4 +42,15 @@ describe("assessmentReview", () => {
       learnerAccessBlockedReason("topic-1", [{ topic_id: "topic-1", review_status: "edited" }]),
     ).toBeNull();
   });
+
+  it("uses instructor-repaired concept links for assessment readiness", () => {
+    const concepts = [{
+      review_status: "edited",
+      ai_proposal: { topic_ids: ["topic-1"] },
+      instructor_revision: { topic_ids: ["topic-2"] },
+    }];
+
+    expect(reviewedConceptCountForAssessment("topic-1", concepts)).toBe(0);
+    expect(reviewedConceptCountForAssessment("topic-2", concepts)).toBe(1);
+  });
 });

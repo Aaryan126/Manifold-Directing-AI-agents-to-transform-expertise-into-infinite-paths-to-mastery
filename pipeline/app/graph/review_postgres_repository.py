@@ -201,6 +201,61 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
             row = await self._get_concept_row(conn, concept_id)
             return _concept_from_row(row) if row else None
 
+    async def set_concept_topics(
+        self,
+        concept_id: UUID,
+        topic_ids: tuple[UUID, ...],
+    ) -> Concept | None:
+        async with await psycopg.AsyncConnection.connect(
+            self._database_url,
+            row_factory=dict_row,
+        ) as conn:
+            concept = await self._get_concept_row(conn, concept_id)
+            if concept is None:
+                return None
+            await conn.execute("delete from topic_concepts where concept_id = %s", (concept_id,))
+            for topic_id in dict.fromkeys(topic_ids):
+                linked = await (
+                    await conn.execute(
+                        """
+                        insert into topic_concepts (topic_id, concept_id)
+                        select t.id, %s
+                        from topics t
+                        where t.id = %s and t.course_id = %s
+                        on conflict do nothing
+                        returning topic_id
+                        """,
+                        (concept_id, topic_id, concept["course_id"]),
+                    )
+                ).fetchone()
+                if linked is None:
+                    raise ValueError("Concept topic links must belong to the same course.")
+            row = await (
+                await conn.execute(
+                    """
+                    update concepts
+                    set instructor_revision = coalesce(instructor_revision, '{}'::jsonb)
+                          || %s::jsonb,
+                        review_status = 'edited',
+                        approved_at = now(),
+                        dismissed_at = null,
+                        updated_at = now()
+                    where id = %s
+                    returning *
+                    """,
+                    (
+                        Jsonb(
+                            {
+                                "action": "edit_topic_links",
+                                "topic_ids": [str(topic_id) for topic_id in topic_ids],
+                            }
+                        ),
+                        concept_id,
+                    ),
+                )
+            ).fetchone()
+            return _concept_from_row(row) if row else None
+
     async def accept_concept(self, concept_id: UUID) -> Concept | None:
         return await self._update_concept_status(concept_id, GraphReviewStatus.ACCEPTED)
 

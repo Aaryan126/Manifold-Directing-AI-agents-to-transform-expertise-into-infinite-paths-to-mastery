@@ -67,6 +67,26 @@ async def test_concept_edit_and_accept_preserve_traceability() -> None:
 
 
 @pytest.mark.anyio
+async def test_instructor_can_repair_concept_topic_links() -> None:
+    course_id = uuid4()
+    topic_id = uuid4()
+    second_topic_id = uuid4()
+    repository = MemoryConceptGraphRepository(_context(course_id, topic_id))
+    service = ConceptGraphService(repository, StaticConceptGraphAgent(_proposal(topic_id)))
+    graph = await service.propose_graph(course_id)
+
+    edited = await service.set_concept_topics(
+        graph.concepts[0].id,
+        (topic_id, second_topic_id),
+    )
+
+    assert edited is not None
+    assert edited.review_status == GraphReviewStatus.EDITED
+    assert edited.instructor_revision is not None
+    assert edited.instructor_revision["topic_ids"] == [str(topic_id), str(second_topic_id)]
+
+
+@pytest.mark.anyio
 async def test_dismissing_concept_keeps_it_visible_and_dismisses_orphaned_edges() -> None:
     course_id = uuid4()
     topic_id = uuid4()

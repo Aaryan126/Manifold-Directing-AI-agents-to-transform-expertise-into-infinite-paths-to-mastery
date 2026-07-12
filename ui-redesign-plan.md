@@ -1,7 +1,7 @@
-# CourseFoundry UI/UX Redesign Plan
+# Manifold UI/UX Redesign Plan
 
 **Status:** Automated tests passing; awaiting human confirmation
-**Current stage:** Stage 8 - Human validation pending
+**Current stage:** Stage 8 - Human retest pending
 **Last updated:** 2026-07-12
 **Scope:** Desktop and laptop web only. Tablet, mobile, and native-app layouts are not part of this redesign.
 
@@ -13,7 +13,7 @@ The redesign changes information architecture, presentation, component structure
 
 ## Visual Thesis
 
-CourseFoundry is a calm instructional operating system: precise and information-dense for instructors, focused and confidence-building for learners, with course structure and mastery always visible.
+Manifold is a calm instructional operating system: precise and information-dense for instructors, focused and confidence-building for learners, with course structure and mastery always visible.
 
 ### Visual system direction
 
@@ -50,7 +50,7 @@ The learner experience prioritizes the current lesson, the next recommended acti
 | 5. Graph and routing workspace | Automated paired gate passed; final visual regression Stage 8 | Full-canvas graph, review filters, concept/edge inspector, routing tools, simulator | Graph/routing implementation compiles; Stage 4+5 Playwright/WCAG gate passes after fixing learner status visibility |
 | 6. Instructor insights | Automated paired gate passed; final visual regression Stage 8 | Summary, signal queue, problem inspector, dashboard actions, learner override | Dashboard correction journey and WCAG scan pass in the Stage 6+7 paired gate |
 | 7. Learner experience | Automated paired gate passed; final visual regression Stage 8 | Focused player, comprehension flow, route explanation, course path, mastery map | Production build and learner remediation/advancement plus role-switch Playwright journeys pass |
-| 8. Desktop/laptop hardening and rollout | Automated tests passing; awaiting human confirmation | WCAG 2.2 AA, desktop/laptop responsive constraints, loading/error/empty states, visual regression, performance | Automated suite passes; user must complete the Phase 10 human checklist before this stage or phase is marked complete |
+| 8. Desktop/laptop hardening and rollout | Automated tests passing; awaiting human confirmation | WCAG 2.2 AA, desktop/laptop responsive constraints, loading/error/empty states, visual regression, performance | Human-test findings are remediated and automated verification passes; user retest and Phase 10 checklist confirmation remain |
 
 ## Stage 1 - Design Concepts and System
 
@@ -143,6 +143,9 @@ The learner experience prioritizes the current lesson, the next recommended acti
 - 2026-07-12: Stage 6 instructor insights implemented with a compact real-data summary band, signal queue, focused diagnosis/action editor, related-entity and traceability inspector, and existing manual learner override. No new metrics or synthetic charts were added. Lint, typecheck, and 26 unit tests pass; dashboard correction E2E is paired with Stage 7.
 - 2026-07-12: Stage 7 learner experience implemented with a focused player, adjacent route rationale, comprehension flow, compact course-outline rail, and professional concept mastery path. Enrollment, watch tracking, answer outcomes, remediation/advancement, and topic navigation are unchanged. The Stage 6+7 gate passes the production build and 4 local Playwright journey/WCAG tests with 1 credential-dependent Mux test skipped. One obsolete dashboard `.panel` test hook was updated to the stable `#insights` workspace ID; behavior assertions were unchanged.
 - 2026-07-12: Stage 8 automated hardening completed and is awaiting human confirmation. Five populated-state visual baselines now cover course setup, outline, concept graph, insights, and learner laptop views; explicit 1280px overflow checks cover all major workspaces. Baseline review found and fixed legacy black-button/full-size-checkbox leakage and a React Flow node-dimension defect that left graph nodes hidden. Final results: frontend/shared lint, typecheck, 27 unit tests, production build, 75 backend tests, Ruff, MyPy, 6 local Playwright journey/WCAG/visual tests passed, 1 credential-dependent Mux test skipped, and all Docker services plus health endpoints are healthy. Phase 10 remains incomplete pending the user's human checklist confirmation.
+- 2026-07-12: Human testing reopened Stage 8 for targeted remediation: ingestion control alignment and automatic status, transcript disclosure, bulk review actions, graph control visibility, repairable concept-topic coverage, learner confidence/attempt controls, mastery flow visualization, and real-data insights charts. Actual stored clip materialization was explicitly excluded pending a separate feasibility decision.
+- 2026-07-12: Human-test remediation implemented: aligned custom file picker; automatic job polling and indeterminate progress; collapsed transcript; Accept all for topic/graph proposals; Apply all policies for routing; repaired React Flow controls; persisted instructor concept-topic links; uncropped confidence controls; enrolled learner attempt identity; read-only mastery prerequisite flow; and real dashboard signal/attempt visualizations. Automated reverification is in progress.
+- 2026-07-12: Remediation verification passes: 28 frontend + 1 shared unit tests, 76 backend tests, lint/type checks, production build, five journey/readiness/WCAG browser tests, two final visual/overflow tests, Docker health, and API health. Stage 8 remains incomplete pending user retest and checklist confirmation.
 
 ## Completion Rule
 

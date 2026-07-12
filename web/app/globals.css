@@ -494,12 +494,33 @@ dd {
   border-left-color: #8a2d18;
 }
 
-fieldset {
+.legacyWorkspace fieldset:not([data-slot]) {
   border: 1px solid #d8d8d2;
   display: grid;
   gap: 0.75rem;
   margin: 0;
   padding: 0.85rem;
+}
+
+#concept-graph .react-flow__controls-button {
+  background: var(--background);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--foreground);
+  min-height: 32px;
+  padding: 7px;
+  width: 32px;
+}
+
+#concept-graph .react-flow__controls-button:hover {
+  background: var(--muted);
+}
+
+#concept-graph .react-flow__controls-button svg {
+  fill: currentColor;
+  max-height: 16px;
+  max-width: 16px;
 }
 
 .progressList {

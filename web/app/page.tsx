@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   Background,
   Controls,
@@ -23,6 +23,7 @@ import {
 } from "./assessmentReview";
 import {
   clipSpotCheckActionsDisabled,
+  conceptTopicIds,
   reviewedConceptCountForTopic,
   isTopicReviewedForClipGeneration,
   topicClipGenerationBlockReason,
@@ -267,6 +268,7 @@ export default function HomePage() {
   const [overrideAction, setOverrideAction] = useState<"skip_ahead" | "send_back">("send_back");
   const [activeLearnerTopicId, setActiveLearnerTopicId] = useState<string | null>(null);
   const [conceptDrafts, setConceptDrafts] = useState<Record<string, ConceptDraft>>({});
+  const [conceptTopicDrafts, setConceptTopicDrafts] = useState<Record<string, string[]>>({});
   const [mergeSourceId, setMergeSourceId] = useState("");
   const [mergeTargetId, setMergeTargetId] = useState("");
   const [newEdge, setNewEdge] = useState<EdgeDraft>({
@@ -284,6 +286,9 @@ export default function HomePage() {
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSegmenting, setIsSegmenting] = useState(false);
+  const hydratedJobs = useRef(new Set<string>());
+  const refreshJobRef = useRef<() => Promise<void>>(async () => undefined);
+  const hydrateCompletedJobRef = useRef<(nextJob: Job) => Promise<void>>(async () => undefined);
   const selectedIdentity =
     identities.find((identity) => identity.id === selectedIdentityId) ?? null;
   const isLearnerContext = selectedIdentity?.role === "learner";
@@ -295,6 +300,11 @@ export default function HomePage() {
       : [];
   const graphBlockReason = graphGenerationBlockedReason(topics);
   const reviewedTopics = reviewedTopicCount(topics);
+  const topicsWithoutReviewedConcepts = topics.filter(
+    (topic) =>
+      (topic.review_status === "accepted" || topic.review_status === "edited") &&
+      reviewedConceptCountForTopic(topic.id, graph?.concepts ?? []) === 0,
+  );
   const graphStatusMatches = (status: Concept["review_status"]) =>
     graphReviewFilter === "all" ||
     status === graphReviewFilter ||
@@ -347,6 +357,63 @@ export default function HomePage() {
     routeDecision,
     activeLearnerTopic?.id ?? null,
   );
+  const learnerCanAttempt = isLearnerContext ? isEnrolled : Boolean(demoLearnerId);
+  const masteryByConcept = new Map(
+    learnerProgress.map((item) => [item.concept_id, item]),
+  );
+  const masteryConcepts = graph?.concepts.filter(
+    (concept) => concept.review_status === "accepted" || concept.review_status === "edited",
+  ) ?? [];
+  const masteryConceptIds = new Set(masteryConcepts.map((concept) => concept.id));
+  const masteryFlowNodes: FlowNode[] = graphNodeModels(masteryConcepts).map((node) => {
+    const progress = masteryByConcept.get(node.id);
+    const state = progress?.state ?? "not_started";
+    const borderColor = state === "mastered"
+      ? "#059669"
+      : state === "struggling"
+        ? "#dc2626"
+        : state === "practiced"
+          ? "#d97706"
+          : "var(--border)";
+    return {
+      id: node.id,
+      position: { x: node.x, y: node.y },
+      data: { label: `${node.label}\n${state.replaceAll("_", " ")}` },
+      width: 190,
+      height: 76,
+      style: {
+        width: 190,
+        minHeight: 76,
+        borderColor,
+        borderRadius: 6,
+        padding: 12,
+        background: "var(--background)",
+        color: "var(--foreground)",
+      },
+    };
+  });
+  const masteryFlowEdges: FlowEdge[] = graph
+    ? graphEdgeModels(
+        graph.edges.filter(
+          (edge) =>
+            (edge.review_status === "accepted" || edge.review_status === "edited") &&
+            masteryConceptIds.has(edge.from_concept_id) &&
+            masteryConceptIds.has(edge.to_concept_id),
+        ),
+      ).map((edge) => ({
+        id: `mastery-${edge.id}`,
+        source: edge.source,
+        target: edge.target,
+        animated: false,
+        style: { stroke: "var(--muted-foreground)", strokeWidth: 1.5 },
+      }))
+    : [];
+  const signalChartData = [
+    ["Stuck cohorts", dashboardSummary?.signals.filter((signal) => signal.type === "stuck_cohort").length ?? 0],
+    ["Content", dashboardSummary?.signals.filter((signal) => signal.type === "underperforming_content").length ?? 0],
+    ["Graph drift", dashboardSummary?.signals.filter((signal) => signal.type === "graph_drift").length ?? 0],
+  ] as const;
+  const largestSignalCount = Math.max(1, ...signalChartData.map(([, count]) => count));
   const publishReadinessRevision = [
     ...topics.map((topic) => `topic:${topic.id}:${topic.review_status}`),
     ...(graph?.concepts.map(
@@ -493,6 +560,14 @@ export default function HomePage() {
     const nextJob = (await response.json()) as Job;
     setJob(nextJob);
     if (nextJob.status === "complete" && nextJob.video_id) {
+      await hydrateCompletedJob(nextJob);
+    }
+  }
+
+  async function hydrateCompletedJob(nextJob: Job) {
+    if (!nextJob.video_id || hydratedJobs.current.has(nextJob.id)) return;
+    hydratedJobs.current.add(nextJob.id);
+    try {
       const transcriptResponse = await fetch(
         `${pipelineBaseUrl}/videos/${nextJob.video_id}/transcript`,
       );
@@ -510,8 +585,24 @@ export default function HomePage() {
         await loadPlayback(nextJob.video_id);
         await loadDeliveryCapacity();
       }
+    } catch (error) {
+      hydratedJobs.current.delete(nextJob.id);
+      setMessage(error instanceof Error ? error.message : "Completed course data failed to load.");
     }
   }
+
+  refreshJobRef.current = refreshJob;
+  hydrateCompletedJobRef.current = hydrateCompletedJob;
+
+  useEffect(() => {
+    if (!job || job.status === "failed") return;
+    if (job.status === "complete") {
+      void hydrateCompletedJobRef.current(job);
+      return;
+    }
+    const timer = window.setInterval(() => void refreshJobRef.current(), 2000);
+    return () => window.clearInterval(timer);
+  }, [job]);
 
   async function loadDeliveryCapacity() {
     const response = await fetch(`${pipelineBaseUrl}/videos/delivery/capacity`);
@@ -575,6 +666,7 @@ export default function HomePage() {
     if (response.ok) {
       const body = (await response.json()) as { enrolled: boolean };
       setIsEnrolled(body.enrolled);
+      setDemoLearnerId(body.enrolled ? learnerId : null);
     }
   }
 
@@ -703,6 +795,22 @@ export default function HomePage() {
       method: "POST",
     });
     if (topic) upsertTopic(topic);
+  }
+
+  async function acceptAllTopics() {
+    const proposed = topics.filter((topic) => topic.review_status === "proposed");
+    if (!proposed.length || !job?.video_id) return;
+    setMessage(null);
+    const responses = await Promise.all(
+      proposed.map((topic) => fetch(`${pipelineBaseUrl}/videos/topics/${topic.id}/accept`, { method: "POST" })),
+    );
+    const failed = responses.find((response) => !response.ok);
+    if (failed) {
+      setMessage(`Accept all topics failed with ${failed.status}.`);
+      return;
+    }
+    await loadTopics(job.video_id);
+    setMessage(`${proposed.length} topic proposal(s) accepted.`);
   }
 
   async function dismissTopic(topicId: string) {
@@ -854,6 +962,41 @@ export default function HomePage() {
     if (concept) upsertConcept(concept);
   }
 
+  async function acceptAllGraphProposals() {
+    if (!graph || !job?.course_id) return;
+    const proposedConcepts = graph.concepts.filter((concept) => concept.review_status === "proposed");
+    const proposedEdges = graph.edges.filter((edge) => edge.review_status === "proposed");
+    setMessage(null);
+    const conceptResponses = await Promise.all(
+      proposedConcepts.map((concept) => fetch(`${pipelineBaseUrl}/courses/graph/concepts/${concept.id}/accept`, { method: "POST" })),
+    );
+    const edgeResponses = await Promise.all(
+      proposedEdges.map((edge) => fetch(`${pipelineBaseUrl}/courses/graph/edges/${edge.id}/accept`, { method: "POST" })),
+    );
+    const failed = [...conceptResponses, ...edgeResponses].find((response) => !response.ok);
+    if (failed) {
+      setMessage(`Accept all graph proposals failed with ${failed.status}.`);
+      return;
+    }
+    await loadGraph(job.course_id);
+    setMessage(`${proposedConcepts.length} concept(s) and ${proposedEdges.length} edge(s) accepted.`);
+  }
+
+  async function updateConceptTopicLinks(conceptId: string) {
+    const concept = (await graphRequest(
+      `${pipelineBaseUrl}/courses/graph/concepts/${conceptId}/topics`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic_ids: conceptTopicDrafts[conceptId] ?? [] }),
+      },
+    )) as Concept | null;
+    if (concept) {
+      upsertConcept(concept);
+      setMessage("Concept topic links updated. Clip and assessment readiness recalculated.");
+    }
+  }
+
   async function dismissConcept(conceptId: string) {
     const concept = (await graphRequest(
       `${pipelineBaseUrl}/courses/graph/concepts/${conceptId}/dismiss`,
@@ -913,6 +1056,11 @@ export default function HomePage() {
         ]),
       ),
     );
+    setConceptTopicDrafts(
+      Object.fromEntries(
+        nextGraph.concepts.map((concept) => [concept.id, conceptTopicIds(concept)]),
+      ),
+    );
     setMergeSourceId(nextGraph.concepts[0]?.id ?? "");
     setMergeTargetId(nextGraph.concepts[1]?.id ?? "");
     setOverrideConceptId(
@@ -939,6 +1087,10 @@ export default function HomePage() {
     setConceptDrafts((current) => ({
       ...current,
       [concept.id]: { name: concept.name, description: concept.description ?? "" },
+    }));
+    setConceptTopicDrafts((current) => ({
+      ...current,
+      [concept.id]: conceptTopicIds(concept),
     }));
   }
 
@@ -1178,6 +1330,28 @@ export default function HomePage() {
     upsertRoutingPolicy((await response.json()) as RoutingPolicy);
   }
 
+  async function applyAllRoutingPolicies() {
+    if (!job?.course_id || !routingConcepts.length) return;
+    setMessage(null);
+    const responses = await Promise.all(
+      routingConcepts.map((concept) => {
+        const draft = policyDrafts[concept.id] ?? defaultRoutingPolicyDraft();
+        return fetch(`${pipelineBaseUrl}/courses/${job.course_id}/routing/policies/${concept.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(draft),
+        });
+      }),
+    );
+    const failed = responses.find((response) => !response.ok);
+    if (failed) {
+      setMessage(`Apply all routing policies failed with ${failed.status}.`);
+      return;
+    }
+    await loadRoutingPolicies(job.course_id);
+    setMessage(`Routing policies applied to ${routingConcepts.length} concept(s).`);
+  }
+
   async function createDemoLearner() {
     if (!job?.course_id) return;
     setMessage(null);
@@ -1204,13 +1378,18 @@ export default function HomePage() {
     confidence: number,
     wrongAnswerPattern: string | null = null,
   ) {
-    if (!demoLearnerId) {
-      setRoutingError("Create a demo learner before submitting attempts.");
+    const learnerId = isLearnerContext ? selectedIdentity?.id ?? null : demoLearnerId;
+    if (!learnerId || (isLearnerContext && !isEnrolled)) {
+      setRoutingError(
+        isLearnerContext
+          ? "Enroll and start the published course before submitting answers."
+          : "Create a demo learner before submitting attempts.",
+      );
       return;
     }
     setRoutingError(null);
     const response = await fetch(
-      `${pipelineBaseUrl}/learners/${demoLearnerId}/questions/${questionId}/attempt`,
+      `${pipelineBaseUrl}/learners/${learnerId}/questions/${questionId}/attempt`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1228,7 +1407,7 @@ export default function HomePage() {
       return;
     }
     setRouteDecision((await response.json()) as RouteDecision);
-    await loadLearnerProgress(demoLearnerId);
+    await loadLearnerProgress(learnerId);
     if (job?.course_id) await loadDashboard(job.course_id);
   }
 
@@ -1403,7 +1582,6 @@ export default function HomePage() {
         job={job}
         message={isLearnerContext ? null : message}
         onFileChange={setSelectedFile}
-        onRefresh={() => void refreshJob()}
         onSubmitFile={uploadFile}
         onSubmitUrl={submitUrl}
         onUrlChange={setUrl}
@@ -1413,6 +1591,7 @@ export default function HomePage() {
         reviewedQuestionCount={questions.filter((question) => question.review_status !== "proposed").length}
         reviewedTopicCount={topics.filter((topic) => topic.review_status !== "proposed").length}
         routingPolicyCount={routingPolicies.length}
+        selectedFileName={selectedFile?.name ?? null}
         totalClipCount={clips.length}
         totalConceptCount={graph?.concepts.length ?? 0}
         totalQuestionCount={questions.length}
@@ -1426,11 +1605,10 @@ export default function HomePage() {
       ) : null}
 
       {transcript ? (
-        <section className="panel instructorOnly">
-          <h2>Transcript</h2>
-          <p>{transcript.text}</p>
-          <p>{transcript.words.length} timestamped words stored.</p>
-        </section>
+        <details className="instructorOnly border-b border-border bg-background px-6 py-4 xl:px-8">
+          <summary className="cursor-pointer text-sm font-medium">View processed transcript <span className="ml-2 text-xs font-normal text-muted-foreground">{transcript.words.length} timestamped words</span></summary>
+          <p className="mt-4 max-w-4xl whitespace-pre-wrap text-sm leading-7 text-muted-foreground">{transcript.text}</p>
+        </details>
       ) : null}
 
       {transcript && job?.video_id ? (
@@ -1443,6 +1621,14 @@ export default function HomePage() {
               <>
                 <Button onClick={() => loadTopics(job.video_id!)} type="button" variant="outline">
                   <RefreshCw data-icon="inline-start" /> Refresh
+                </Button>
+                <Button
+                  disabled={!topics.some((topic) => topic.review_status === "proposed")}
+                  onClick={() => void acceptAllTopics()}
+                  type="button"
+                  variant="outline"
+                >
+                  Accept all
                 </Button>
                 <Button disabled={isSegmenting} onClick={segmentTranscript} type="button">
                   <Sparkles data-icon="inline-start" />
@@ -1592,22 +1778,31 @@ export default function HomePage() {
 
       {job?.course_id ? (
         <section className="instructorOnly border-b border-border bg-background" id="concept-graph">
-          <header className="flex min-h-24 items-center justify-between gap-6 border-b border-border px-6 py-5 xl:px-8">
+          <header className="flex min-h-24 flex-wrap items-center justify-between gap-4 border-b border-border px-6 py-5 xl:px-8">
             <div>
               <p className="text-xs font-semibold uppercase text-muted-foreground">Knowledge structure</p>
               <h2 className="mt-1 text-xl font-semibold">Concept graph</h2>
               <p className="mt-1 text-sm text-muted-foreground">Review prerequisite structure and inspect each AI-proposed relationship.</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <select
                 aria-label="Graph review filter"
                 className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm"
+                data-slot="graph-filter"
                 onChange={(event) => setGraphReviewFilter(event.target.value as typeof graphReviewFilter)}
                 value={graphReviewFilter}
               >
                 <option value="all">All artifacts</option><option value="proposed">Proposed</option><option value="reviewed">Reviewed</option><option value="dismissed">Dismissed</option>
               </select>
               <Button onClick={() => loadGraph(job.course_id!)} type="button" variant="outline"><RefreshCw data-icon="inline-start" /> Refresh</Button>
+              <Button
+                disabled={!graph || ![...graph.concepts, ...graph.edges].some((artifact) => artifact.review_status === "proposed")}
+                onClick={() => void acceptAllGraphProposals()}
+                type="button"
+                variant="outline"
+              >
+                Accept all
+              </Button>
               <Button disabled={graphBlockReason !== null} onClick={generateGraph} type="button"><Sparkles data-icon="inline-start" /> Generate Graph</Button>
             </div>
           </header>
@@ -1620,6 +1815,12 @@ export default function HomePage() {
           {graph?.warnings.length ? (
             <div className="border-b border-amber-200 bg-amber-50 px-8 py-3 text-sm text-amber-900" role="alert">
               <strong>Review warnings:</strong> {graph.warnings.join(" ")}
+            </div>
+          ) : null}
+          {graph && topicsWithoutReviewedConcepts.length ? (
+            <div className="border-b border-amber-200 bg-amber-50 px-8 py-3 text-sm text-amber-900" role="alert">
+              <strong>{topicsWithoutReviewedConcepts.length} reviewed topic(s) have no reviewed concept link.</strong>{" "}
+              Select a concept, check its relevant topics under Linked topics, and save the links before generating clips.
             </div>
           ) : null}
 
@@ -1670,6 +1871,36 @@ export default function HomePage() {
                       <div className="mt-5 space-y-4">
                         <label className="grid gap-2 text-sm font-medium">Name<Input aria-label={`Concept name ${concept.name}`} value={draft.name} onChange={(event) => setConceptDrafts((current) => ({ ...current, [concept.id]: { ...draft, name: event.target.value } }))} /></label>
                         <label className="grid gap-2 text-sm font-medium">Description<Textarea aria-label={`Concept description ${concept.name}`} className="min-h-28" value={draft.description} onChange={(event) => setConceptDrafts((current) => ({ ...current, [concept.id]: { ...draft, description: event.target.value } }))} /></label>
+                        <fieldset className="grid gap-2 border-0 p-0" data-slot="concept-topic-links">
+                          <legend className="text-sm font-medium">Linked topics</legend>
+                          <p className="text-xs leading-5 text-muted-foreground">Every topic needs at least one reviewed concept link before clips can be generated.</p>
+                          <div className="max-h-44 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
+                            {topics.map((topic) => {
+                              const checked = (conceptTopicDrafts[concept.id] ?? []).includes(topic.id);
+                              return (
+                                <label className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-xs hover:bg-muted" key={topic.id}>
+                                  <input
+                                    checked={checked}
+                                    className="mt-0.5 size-3.5 accent-primary"
+                                    data-slot="concept-topic-checkbox"
+                                    onChange={(event) => setConceptTopicDrafts((current) => {
+                                      const existing = current[concept.id] ?? [];
+                                      return {
+                                        ...current,
+                                        [concept.id]: event.target.checked
+                                          ? [...existing, topic.id]
+                                          : existing.filter((topicId) => topicId !== topic.id),
+                                      };
+                                    })}
+                                    type="checkbox"
+                                  />
+                                  <span className="leading-5">{topic.title}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                          <Button onClick={() => void updateConceptTopicLinks(concept.id)} size="sm" type="button" variant="outline">Save topic links</Button>
+                        </fieldset>
                       </div>
                       <div className="mt-5 flex flex-wrap gap-2 border-b border-border pb-5">
                         <Button disabled={acceptButtonDisabled(concept.review_status)} onClick={() => acceptConcept(concept.id)} size="sm" type="button">{acceptButtonLabel(concept.review_status)}</Button>
@@ -1691,16 +1922,16 @@ export default function HomePage() {
                 <details className="border-b border-border py-4">
                   <summary className="cursor-pointer text-xs font-semibold uppercase text-muted-foreground">Merge duplicate concepts</summary>
                   <form className="mt-3 grid gap-2" onSubmit={mergeConcepts}>
-                    <select className="h-9 rounded-lg border border-input bg-background px-2 text-sm" value={mergeSourceId} onChange={(event) => setMergeSourceId(event.target.value)}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
-                    <select className="h-9 rounded-lg border border-input bg-background px-2 text-sm" value={mergeTargetId} onChange={(event) => setMergeTargetId(event.target.value)}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
+                    <select className="h-9 rounded-lg border border-input bg-background px-2 text-sm" data-slot="merge-concept-source" value={mergeSourceId} onChange={(event) => setMergeSourceId(event.target.value)}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
+                    <select className="h-9 rounded-lg border border-input bg-background px-2 text-sm" data-slot="merge-concept-target" value={mergeTargetId} onChange={(event) => setMergeTargetId(event.target.value)}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
                     <Button disabled={!mergeSourceId || !mergeTargetId} size="sm" type="submit">Merge duplicate</Button>
                   </form>
                 </details>
                 <details className="py-4">
                   <summary className="cursor-pointer text-xs font-semibold uppercase text-muted-foreground">Add prerequisite edge</summary>
                   <form className="mt-3 grid gap-2" onSubmit={(event) => { event.preventDefault(); addGraphEdge(newEdge); }}>
-                    <select className="h-9 rounded-lg border border-input bg-background px-2 text-sm" value={newEdge.from_concept_id} onChange={(event) => setNewEdge((current) => ({ ...current, from_concept_id: event.target.value }))}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
-                    <select className="h-9 rounded-lg border border-input bg-background px-2 text-sm" value={newEdge.to_concept_id} onChange={(event) => setNewEdge((current) => ({ ...current, to_concept_id: event.target.value }))}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
+                    <select className="h-9 rounded-lg border border-input bg-background px-2 text-sm" data-slot="edge-source" value={newEdge.from_concept_id} onChange={(event) => setNewEdge((current) => ({ ...current, from_concept_id: event.target.value }))}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
+                    <select className="h-9 rounded-lg border border-input bg-background px-2 text-sm" data-slot="edge-target" value={newEdge.to_concept_id} onChange={(event) => setNewEdge((current) => ({ ...current, to_concept_id: event.target.value }))}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
                     <Input aria-label="Edge rationale" placeholder="Rationale" value={newEdge.rationale} onChange={(event) => setNewEdge((current) => ({ ...current, rationale: event.target.value }))} />
                     <Button size="sm" type="submit">Add edge</Button>
                   </form>
@@ -1873,7 +2104,7 @@ export default function HomePage() {
                         <Textarea className="min-h-28" id={`question-body-${question.id}`} value={draft.body} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, body: event.target.value } }))} />
                       </label>
                       <label className="grid gap-2 text-sm font-medium" htmlFor={`question-type-${question.id}`}>Type
-                        <select className="h-10 rounded-lg border border-input bg-background px-3 text-sm" id={`question-type-${question.id}`} value={draft.type} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, type: event.target.value as Question["type"] } }))}>
+                        <select className="h-10 rounded-lg border border-input bg-background px-3 text-sm" data-slot="question-type" id={`question-type-${question.id}`} value={draft.type} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, type: event.target.value as Question["type"] } }))}>
                           <option value="mcq">Multiple choice</option><option value="short_answer">Short answer</option><option value="worked_problem">Worked problem</option>
                         </select>
                       </label>
@@ -1943,7 +2174,7 @@ export default function HomePage() {
             description="Tune mastery and remediation thresholds for each reviewed concept."
             eyebrow="Adaptive learning"
             title="Routing policy"
-            toolbar={<Button onClick={() => loadRoutingPolicies(job.course_id!)} type="button" variant="outline"><RefreshCw data-icon="inline-start" /> Refresh</Button>}
+            toolbar={<><Button onClick={() => loadRoutingPolicies(job.course_id!)} type="button" variant="outline"><RefreshCw data-icon="inline-start" /> Refresh</Button><Button disabled={!routingConcepts.length} onClick={() => void applyAllRoutingPolicies()} type="button" variant="outline">Apply all policies</Button></>}
           >
             <ReviewWorkspaceGrid
               queue={(
@@ -1973,7 +2204,7 @@ export default function HomePage() {
                       <label className="grid gap-2 text-sm font-medium">Correct attempts for mastery<Input min="1" step="1" type="number" value={draft.correct_attempts_for_mastery} onChange={(event) => setPolicyDrafts((current) => ({ ...current, [concept.id]: { ...draft, correct_attempts_for_mastery: Number(event.target.value) } }))} /></label>
                       <label className="grid gap-2 text-sm font-medium">Max remediation attempts<Input min="0" step="1" type="number" value={draft.max_remediation_attempts} onChange={(event) => setPolicyDrafts((current) => ({ ...current, [concept.id]: { ...draft, max_remediation_attempts: Number(event.target.value) } }))} /></label>
                       <label className="grid gap-2 text-sm font-medium">Advancement mode
-                        <select className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm" value={draft.advancement_mode} onChange={(event) => setPolicyDrafts((current) => ({ ...current, [concept.id]: { ...draft, advancement_mode: event.target.value as RoutingPolicyDraft["advancement_mode"] } }))}>
+                        <select className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm" data-slot="advancement-mode" value={draft.advancement_mode} onChange={(event) => setPolicyDrafts((current) => ({ ...current, [concept.id]: { ...draft, advancement_mode: event.target.value as RoutingPolicyDraft["advancement_mode"] } }))}>
                           <option value="require_mastery">Require mastery</option><option value="allow_partial_understanding">Allow partial understanding</option>
                         </select>
                       </label>
@@ -2067,7 +2298,7 @@ export default function HomePage() {
                     startSeconds={activeLearnerClip.start_seconds}
                     title={`Current learning clip for ${activeLearnerTopic?.title ?? "this topic"}`}
                     videoId={job.video_id}
-                    viewerId={demoLearnerId}
+                    viewerId={isLearnerContext ? selectedIdentity?.id : demoLearnerId}
                     onClipComplete={(watchedSeconds) => void recordWatchEvent(activeLearnerClip, watchedSeconds)}
                   />
                 ) : <div className="flex aspect-video items-center justify-center bg-black text-sm text-white/70">No active learner clip is available for this topic.</div>}
@@ -2095,18 +2326,19 @@ export default function HomePage() {
                 >
                   <p className="text-xs font-semibold uppercase text-muted-foreground">Comprehension check</p>
                   <h3 className="mt-2 font-serif text-xl font-semibold leading-8">{activeLearnerQuestion.body}</h3>
-                  <fieldset className="mt-5 border-0 p-0">
+                  <fieldset className="mt-5 border-0 p-0" data-slot="learner-confidence">
                     <legend className="text-sm text-muted-foreground">{activeLearnerQuestion.confidence_prompt}</legend>
+                    {isLearnerContext && !isEnrolled ? <p className="mt-2 text-sm text-amber-700">Enroll and start the published course to submit an answer.</p> : null}
                     <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Answer outcomes">
                       <Button
-                        disabled={!demoLearnerId}
+                        disabled={!learnerCanAttempt}
                         type="button"
                         onClick={() => submitLearnerAttempt(activeLearnerQuestion.id, true, 4)}
                       >
                         I got it and feel confident
                       </Button>
                       <Button
-                        disabled={!demoLearnerId}
+                        disabled={!learnerCanAttempt}
                         type="button"
                         onClick={() => submitLearnerAttempt(activeLearnerQuestion.id, true, 2)}
                         variant="outline"
@@ -2114,7 +2346,7 @@ export default function HomePage() {
                         I got it but feel unsure
                       </Button>
                       <Button
-                        disabled={!demoLearnerId}
+                        disabled={!learnerCanAttempt}
                         type="button"
                         onClick={() =>
                           submitLearnerAttempt(
@@ -2159,19 +2391,24 @@ export default function HomePage() {
           <section className="border-t border-border bg-muted/10 px-6 py-8 xl:px-8" id="mastery-map" aria-labelledby="mastery-map-title">
             <div className="mx-auto max-w-5xl">
               <div className="flex items-end justify-between gap-6"><div><p className="text-xs font-semibold uppercase text-muted-foreground">Course path</p><h3 className="mt-1 font-serif text-2xl font-semibold" id="mastery-map-title">Mastery Map</h3></div><p className="text-sm text-muted-foreground">{masterySummary(learnerProgress)}</p></div>
-              {learnerProgress.length ? (
-                <div className="mt-7 grid grid-cols-4 gap-x-4 gap-y-7">
-                  {learnerProgress.map((item, index) => (
-                    <button
-                      className={`relative min-h-28 rounded-lg border bg-background p-4 text-left transition-colors hover:border-primary ${item.state === "mastered" ? "border-emerald-500" : item.state === "struggling" ? "border-destructive" : item.state === "practiced" ? "border-amber-400" : "border-border"}`}
-                      data-slot="mastery-concept"
-                      key={item.concept_id}
-                      type="button"
-                      onClick={() => setActiveLearnerTopicId(item.topic_id)}
-                    >
-                      <span className="text-xs font-medium text-muted-foreground">Concept {index + 1}</span><span className="mt-2 block text-sm font-semibold leading-5">{item.name}</span><Badge className="mt-3 capitalize" variant="outline">{item.state.replaceAll("_", " ")}</Badge>
-                    </button>
-                  ))}
+              {masteryFlowNodes.length ? (
+                <div className="mt-7 h-[440px] overflow-hidden rounded-lg border border-border bg-background" aria-label="Concept mastery prerequisite flowchart">
+                  <ReactFlow
+                    edges={masteryFlowEdges}
+                    elementsSelectable
+                    fitView
+                    nodes={masteryFlowNodes}
+                    nodesConnectable={false}
+                    nodesDraggable={false}
+                    onNodeClick={(_, node) => {
+                      const topicId = masteryByConcept.get(node.id)?.topic_id;
+                      if (topicId) setActiveLearnerTopicId(topicId);
+                    }}
+                    panOnDrag
+                    zoomOnScroll={false}
+                  >
+                    <Background gap={24} size={1} />
+                  </ReactFlow>
                 </div>
               ) : (
                 <div className="mt-6 border border-dashed border-border px-6 py-10 text-center"><p className="text-sm font-medium">Mastery begins after your first check-in</p><p className="mt-1 text-sm text-muted-foreground">Concept progress and routing status will appear here.</p></div>
@@ -2194,6 +2431,24 @@ export default function HomePage() {
                 <div className="border-r border-border px-6 py-4"><p className="text-xs font-medium uppercase text-muted-foreground">Learners</p><p className="mt-1 text-2xl font-semibold tabular-nums">{dashboardSummary.learner_count}</p></div>
                 <div className="border-r border-border px-6 py-4"><p className="text-xs font-medium uppercase text-muted-foreground">Attempts</p><p className="mt-1 text-2xl font-semibold tabular-nums">{dashboardSummary.attempt_count}</p></div>
                 <div className="px-6 py-4"><p className="text-xs font-medium uppercase text-muted-foreground">Open signals</p><p className="mt-1 text-2xl font-semibold tabular-nums">{dashboardSummary.signals.length}</p></div>
+              </div>
+              <div className="grid grid-cols-[minmax(0,1fr)_260px] border-b border-border">
+                <section className="border-r border-border px-6 py-5" aria-labelledby="signal-mix-title">
+                  <div className="flex items-center justify-between gap-4"><div><p className="text-xs font-semibold uppercase text-muted-foreground" id="signal-mix-title">Open signal mix</p><p className="mt-1 text-sm text-muted-foreground">Current intervention pressure by diagnosis type</p></div><span className="text-xs text-muted-foreground">{dashboardSummary.signals.length} total</span></div>
+                  <div className="mt-4 grid grid-cols-3 gap-4">
+                    {signalChartData.map(([label, count], index) => (
+                      <div key={label}>
+                        <div className="flex items-center justify-between text-xs"><span>{label}</span><strong className="tabular-nums">{count}</strong></div>
+                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted"><div className={index === 0 ? "h-full bg-amber-500" : index === 1 ? "h-full bg-emerald-600" : "h-full bg-primary"} style={{ width: `${(count / largestSignalCount) * 100}%` }} /></div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+                <section className="px-6 py-5" aria-labelledby="attempt-density-title">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground" id="attempt-density-title">Attempt density</p>
+                  <p className="mt-2 text-2xl font-semibold tabular-nums">{dashboardSummary.learner_count ? (dashboardSummary.attempt_count / dashboardSummary.learner_count).toFixed(1) : "0.0"}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Attempts per learner</p>
+                </section>
               </div>
               {dashboardColdStartMessage(dashboardSummary) ? <div className="border-b border-amber-200 bg-amber-50 px-8 py-3 text-sm text-amber-900" role="status"><strong>Not enough data yet.</strong> {dashboardColdStartMessage(dashboardSummary)}</div> : null}
 
@@ -2230,8 +2485,8 @@ export default function HomePage() {
                     <InspectorSection title="Manual learner override">
                       <form className="grid gap-3" onSubmit={submitLearnerOverride}>
                         <label className="grid gap-1.5 text-xs font-medium">Learner id<Input onChange={(event) => setOverrideLearnerId(event.target.value)} placeholder="Paste learner UUID" value={overrideLearnerId} /></label>
-                        <label className="grid gap-1.5 text-xs font-medium">Concept<select className="h-8 rounded-lg border border-input bg-background px-2 text-sm" onChange={(event) => setOverrideConceptId(event.target.value)} value={overrideConceptId}>{graph.concepts.filter((concept) => concept.review_status === "accepted" || concept.review_status === "edited").map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select></label>
-                        <label className="grid gap-1.5 text-xs font-medium">Override action<select className="h-8 rounded-lg border border-input bg-background px-2 text-sm" onChange={(event) => setOverrideAction(event.target.value as "skip_ahead" | "send_back")} value={overrideAction}><option value="send_back">Send back for remediation</option><option value="skip_ahead">Skip ahead / mark mastered</option></select></label>
+                        <label className="grid gap-1.5 text-xs font-medium">Concept<select className="h-8 rounded-lg border border-input bg-background px-2 text-sm" data-slot="override-concept" onChange={(event) => setOverrideConceptId(event.target.value)} value={overrideConceptId}>{graph.concepts.filter((concept) => concept.review_status === "accepted" || concept.review_status === "edited").map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select></label>
+                        <label className="grid gap-1.5 text-xs font-medium">Override action<select className="h-8 rounded-lg border border-input bg-background px-2 text-sm" data-slot="override-action" onChange={(event) => setOverrideAction(event.target.value as "skip_ahead" | "send_back")} value={overrideAction}><option value="send_back">Send back for remediation</option><option value="skip_ahead">Skip ahead / mark mastered</option></select></label>
                         <Button className="mt-1" size="sm" type="submit">Apply learner override</Button>
                       </form>
                     </InspectorSection>

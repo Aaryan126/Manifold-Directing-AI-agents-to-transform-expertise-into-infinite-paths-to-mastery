@@ -10,6 +10,7 @@ export type ClipReviewClip = {
 export type ClipReviewConcept = {
   review_status: string;
   ai_proposal: Record<string, unknown> | null;
+  instructor_revision?: Record<string, unknown> | null;
 };
 
 export function isTopicReviewedForClipGeneration(topic: ClipReviewTopic): boolean {
@@ -45,8 +46,11 @@ export function clipSpotCheckActionsDisabled(clip: ClipReviewClip): boolean {
   return clip.status === "superseded";
 }
 
-function conceptTopicIds(concept: ClipReviewConcept): string[] {
-  const topicIds = concept.ai_proposal?.topic_ids;
+export function conceptTopicIds(concept: ClipReviewConcept): string[] {
+  const revisedTopicIds = concept.instructor_revision?.topic_ids;
+  const topicIds = Array.isArray(revisedTopicIds)
+    ? revisedTopicIds
+    : concept.ai_proposal?.topic_ids;
   return Array.isArray(topicIds)
     ? topicIds.filter((topicId): topicId is string => typeof topicId === "string")
     : [];

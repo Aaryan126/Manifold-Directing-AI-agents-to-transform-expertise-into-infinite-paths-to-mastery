@@ -86,6 +86,16 @@ def test_graph_review_api_supports_generate_edit_accept_dismiss_and_merge() -> N
         assert edit_response.json()["review_status"] == "edited"
         assert edit_response.json()["ai_proposal"]["name"] == "Vectors"
 
+        topic_link_response = client.put(
+            f"/courses/graph/concepts/{first_concept_id}/topics",
+            json={"topic_ids": [str(topic_id)]},
+        )
+        assert topic_link_response.status_code == 200
+        assert topic_link_response.json()["review_status"] == "edited"
+        assert topic_link_response.json()["instructor_revision"]["topic_ids"] == [
+            str(topic_id)
+        ]
+
         accept_edge = client.post(f"/courses/graph/edges/{edge_id}/accept")
         assert accept_edge.status_code == 200
         assert accept_edge.json()["review_status"] == "accepted"

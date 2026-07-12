@@ -34,4 +34,15 @@ describe("clipReview", () => {
     expect(clipSpotCheckActionsDisabled({ status: "flagged" })).toBe(false);
     expect(clipSpotCheckActionsDisabled({ status: "superseded" })).toBe(true);
   });
+
+  it("uses instructor-repaired topic links over the original AI links", () => {
+    const concepts = [{
+      review_status: "edited",
+      ai_proposal: { topic_ids: ["topic-1"] },
+      instructor_revision: { topic_ids: ["topic-2"] },
+    }];
+
+    expect(reviewedConceptCountForTopic("topic-1", concepts)).toBe(0);
+    expect(reviewedConceptCountForTopic("topic-2", concepts)).toBe(1);
+  });
 });

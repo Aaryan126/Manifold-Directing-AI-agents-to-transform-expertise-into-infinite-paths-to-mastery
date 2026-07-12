@@ -8,6 +8,7 @@ export type AssessmentReviewTopic = {
 export type AssessmentReviewConcept = {
   review_status: AssessmentReviewStatus;
   ai_proposal: Record<string, unknown> | null;
+  instructor_revision?: Record<string, unknown> | null;
 };
 
 export type AssessmentReviewClip = {
@@ -72,7 +73,10 @@ function isReviewed(status: AssessmentReviewStatus) {
 }
 
 function conceptTopicIds(concept: AssessmentReviewConcept): string[] {
-  const topicIds = concept.ai_proposal?.topic_ids;
+  const revisedTopicIds = concept.instructor_revision?.topic_ids;
+  const topicIds = Array.isArray(revisedTopicIds)
+    ? revisedTopicIds
+    : concept.ai_proposal?.topic_ids;
   return Array.isArray(topicIds)
     ? topicIds.filter((topicId): topicId is string => typeof topicId === "string")
     : [];

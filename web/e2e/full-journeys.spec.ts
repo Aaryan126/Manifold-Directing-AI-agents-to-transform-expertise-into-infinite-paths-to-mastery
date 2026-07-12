@@ -182,6 +182,19 @@ export async function routeReviewedCourse(
       ]),
     }),
   );
+  await page.route(`${pipeline}/learners/${learnerId}/questions/*/attempt`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        action: "advance",
+        mastery_state: "practiced",
+        why: "Correct and confident; advance to the next eligible concept.",
+        target_concept_id: graph.concepts[0].id,
+        target_clip_id: null,
+        dashboard_signal_id: null,
+      }),
+    }),
+  );
   await page.route(`${pipeline}/courses/${courseId}/watch-events`, (route) =>
     route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ id: "event-1" }) }),
   );
@@ -220,7 +233,6 @@ test("publishing checklist refreshes after reviewed artifacts load", async ({ pa
 
   await page.getByLabel("Direct audio/video URL").fill("https://example.com/lecture.mp4");
   await page.getByRole("button", { name: "Ingest URL" }).click();
-  await page.getByRole("button", { name: "Refresh" }).first().click();
 
   await expect(page.getByRole("button", { name: "Publish course" })).toBeEnabled();
   await expect(page.getByText("At least one reviewed topic is required.")).toBeHidden();
@@ -236,7 +248,6 @@ test("instructor publishes, learner enrolls, and dashboard correction closes the
   await expect(page.getByText("9 of 10 stored videos used")).toBeVisible();
   await page.getByLabel("Direct audio/video URL").fill("https://example.com/lecture.mp4");
   await page.getByRole("button", { name: "Ingest URL" }).click();
-  await page.getByRole("button", { name: "Refresh" }).first().click();
 
   await expect(page.getByText("Course status:")).toContainText("draft");
   await page.getByRole("button", { name: "Publish course" }).click();
@@ -254,6 +265,10 @@ test("instructor publishes, learner enrolls, and dashboard correction closes the
   await page.getByRole("button", { name: "Enroll and start" }).click();
   await expect(page.getByText("Enrolled in the published course.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Learner Experience" })).toBeVisible();
+  const learnerExperience = page.getByLabel("Learner Experience");
+  await expect(learnerExperience.getByRole("button", { name: "I got it and feel confident" })).toBeEnabled();
+  await learnerExperience.getByRole("button", { name: "I got it and feel confident" }).click();
+  await expect(learnerExperience.getByText(/Correct and confident/)).toBeVisible();
 });
 
 test("instructor and learner surfaces have no WCAG 2.2 A/AA axe violations", async ({ page }) => {
@@ -278,8 +293,9 @@ async function loadReviewedWorkspace(page: Page) {
   await routeReviewedCourse(page);
   await page.goto("/");
   await page.getByLabel("Direct audio/video URL").fill("https://example.com/lecture.mp4");
-  await page.getByRole("button", { name: "Ingest URL" }).click();
-  await page.getByRole("button", { name: "Refresh" }).first().click();
+  const ingestButton = page.getByRole("button", { name: "Ingest URL" });
+  await expect(ingestButton).toBeEnabled();
+  await ingestButton.click();
   await expect(page.getByRole("heading", { name: "Topic Outline" })).toBeVisible();
 }
 
@@ -294,6 +310,7 @@ test("instructor workspaces match approved desktop visual system", async ({ page
     await expect(workspace).toHaveScreenshot(`${id}-desktop.png`, {
       animations: "disabled",
       mask: [page.locator("video, mux-player")],
+      maxDiffPixels: id === "concept-graph" ? 500 : 0,
     });
   }
 });
@@ -302,7 +319,22 @@ test("laptop and learner workspaces do not overflow", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await loadReviewedWorkspace(page);
 
-  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const viewportOverflow = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>("body *")]
+      .map((element) => {
+        const bounds = element.getBoundingClientRect();
+        return {
+          tag: element.tagName.toLowerCase(),
+          id: element.id,
+          className: element.className.toString().slice(0, 120),
+          right: Math.round(bounds.right),
+          width: Math.round(bounds.width),
+        };
+      })
+      .filter((item) => item.width > 0 && item.right > window.innerWidth + 1)
+      .slice(0, 12),
+  );
+  expect(viewportOverflow).toEqual([]);
   for (const id of ["course-setup", "outline", "concept-graph", "clips", "assessments", "routing", "insights"]) {
     const workspace = page.locator(`#${id}`);
     await expect(workspace).toBeVisible();

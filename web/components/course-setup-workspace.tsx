@@ -8,7 +8,6 @@ import {
   Database,
   Link2,
   LoaderCircle,
-  RefreshCw,
   Upload,
 } from "lucide-react";
 
@@ -46,7 +45,6 @@ type CourseSetupWorkspaceProps = {
   } | null;
   message: string | null;
   onFileChange: (file: File | null) => void;
-  onRefresh: () => void;
   onSubmitFile: (event: FormEvent<HTMLFormElement>) => void;
   onSubmitUrl: (event: FormEvent<HTMLFormElement>) => void;
   publishBlockers: string[];
@@ -55,6 +53,7 @@ type CourseSetupWorkspaceProps = {
   reviewedQuestionCount: number;
   reviewedTopicCount: number;
   routingPolicyCount: number;
+  selectedFileName: string | null;
   totalClipCount: number;
   totalConceptCount: number;
   totalQuestionCount: number;
@@ -98,7 +97,6 @@ export function CourseSetupWorkspace({
   job,
   message,
   onFileChange,
-  onRefresh,
   onSubmitFile,
   onSubmitUrl,
   publishBlockers,
@@ -107,6 +105,7 @@ export function CourseSetupWorkspace({
   reviewedQuestionCount,
   reviewedTopicCount,
   routingPolicyCount,
+  selectedFileName,
   totalClipCount,
   totalConceptCount,
   totalQuestionCount,
@@ -199,13 +198,23 @@ export function CourseSetupWorkspace({
                       <Upload aria-hidden="true" className="size-4 text-muted-foreground" />
                       Video or audio file
                     </FieldLabel>
-                    <Input
+                    <input
                       accept="audio/*,video/*"
-                      className="h-11 file:mr-2"
+                      className="sr-only"
+                      data-slot="source-file-input"
                       id="video-file"
                       onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
                       type="file"
                     />
+                    <label
+                      className="flex h-11 cursor-pointer items-center gap-2 rounded-lg border border-input bg-background px-3 text-sm transition-colors hover:bg-muted focus-within:ring-3 focus-within:ring-ring/50"
+                      htmlFor="video-file"
+                    >
+                      <Upload aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                      <span className={cn("truncate", !selectedFileName && "text-muted-foreground")}>
+                        {selectedFileName ?? "Choose a file"}
+                      </span>
+                    </label>
                     <FieldDescription>Choose a locally stored source recording.</FieldDescription>
                   </Field>
                   <Button className="mt-4 h-10" disabled={isSubmitting} type="submit">
@@ -245,15 +254,18 @@ export function CourseSetupWorkspace({
                     <h2 className="text-base font-semibold">Processing status</h2>
                     <p className="mt-1 font-mono text-xs text-muted-foreground">Job {job.id}</p>
                   </div>
-                  <Button className="h-9" onClick={onRefresh} type="button" variant="outline">
-                    <RefreshCw data-icon="inline-start" />
-                    Refresh
-                  </Button>
                 </div>
-                <Progress value={job.progress}>
-                  <ProgressLabel className="capitalize">{job.status}</ProgressLabel>
-                  <span className="ml-auto text-sm tabular-nums text-muted-foreground">{job.progress}%</span>
-                </Progress>
+                {job.status === "complete" || job.status === "failed" ? (
+                  <Progress value={job.status === "complete" ? 100 : job.progress}>
+                    <ProgressLabel className="capitalize">{job.status}</ProgressLabel>
+                    <span className="ml-auto text-sm tabular-nums text-muted-foreground">{job.status === "complete" ? "100%" : `${job.progress}%`}</span>
+                  </Progress>
+                ) : (
+                  <div role="progressbar" aria-label="Processing source" aria-valuetext="Processing">
+                    <div className="mb-2 flex items-center justify-between text-sm"><span className="font-medium">Processing source</span><span className="text-muted-foreground">Working</span></div>
+                    <div className="h-1 overflow-hidden rounded-full bg-muted"><div className="h-full w-2/5 animate-pulse rounded-full bg-primary" /></div>
+                  </div>
+                )}
                 {job.status === "processing" || job.status === "queued" ? (
                   <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
                     <LoaderCircle aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" />
