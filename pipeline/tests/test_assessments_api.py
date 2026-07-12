@@ -57,6 +57,14 @@ async def test_assessment_api_review_flow_and_learner_gate() -> None:
             assert allowed.status_code == 200
             assert allowed.json()["learner_accessible"] is True
 
+            graded = await client.post(
+                f"/questions/{regenerated_question['id']}/grade",
+                json={"answer": "It creates simpler equivalent systems."},
+            )
+            assert graded.status_code == 200
+            assert graded.json()["is_correct"] is True
+            assert graded.json()["wrong_answer_pattern"] is None
+
             edited = await client.patch(
                 f"/questions/{regenerated_question['id']}",
                 json={

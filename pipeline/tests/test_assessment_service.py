@@ -51,6 +51,12 @@ async def test_generate_accept_and_learner_gate_flow() -> None:
     assert accepted.review_status == QuestionReviewStatus.ACCEPTED
     assert await service.topic_is_learner_ready(context.topic.id)
 
+    grade = await service.grade_answer(question.id, "It creates simpler equivalent systems.")
+
+    assert grade is not None
+    assert grade.is_correct is True
+    assert grade.wrong_answer_pattern is None
+
 
 @pytest.mark.anyio
 async def test_regenerate_produces_distinct_variant() -> None:

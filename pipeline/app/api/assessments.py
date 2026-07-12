@@ -58,6 +58,16 @@ class LearnerGateResponse(BaseModel):
     reason: str | None
 
 
+class AnswerGradeRequest(BaseModel):
+    answer: str = Field(min_length=1)
+
+
+class AnswerGradeResponse(BaseModel):
+    is_correct: bool
+    feedback: str
+    wrong_answer_pattern: str | None
+
+
 @router.post("/topics/{topic_id}/questions/generate", response_model=QuestionResponse)
 async def generate_question(
     topic_id: UUID,
@@ -140,6 +150,25 @@ async def topic_learner_gate(
         topic_id=topic_id,
         learner_accessible=learner_ready,
         reason=None if learner_ready else "Topic has no approved assessment question.",
+    )
+
+
+@router.post("/questions/{question_id}/grade", response_model=AnswerGradeResponse)
+async def grade_answer(
+    question_id: UUID,
+    request: AnswerGradeRequest,
+    service: AssessmentServiceDependency,
+) -> AnswerGradeResponse:
+    try:
+        grade = await service.grade_answer(question_id, request.answer)
+    except AssessmentValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if grade is None:
+        raise HTTPException(status_code=404, detail="Question not found.")
+    return AnswerGradeResponse(
+        is_correct=grade.is_correct,
+        feedback=grade.feedback,
+        wrong_answer_pattern=grade.wrong_answer_pattern,
     )
 
 

@@ -2,6 +2,7 @@ from uuid import UUID
 
 from app.assessments.agent import AssessmentAgent
 from app.assessments.models import (
+    AnswerGrade,
     AssessmentContext,
     Question,
     QuestionEdit,
@@ -111,6 +112,14 @@ class AssessmentService:
 
     async def topic_is_learner_ready(self, topic_id: UUID) -> bool:
         return await self._repository.topic_has_approved_question(topic_id)
+
+    async def grade_answer(self, question_id: UUID, learner_answer: str) -> AnswerGrade | None:
+        question = await self._repository.get_question(question_id)
+        if question is None:
+            return None
+        if question.review_status.value not in {"accepted", "edited"}:
+            raise AssessmentValidationError("Only reviewed questions can be answered by learners.")
+        return await self._agent.grade_answer(question, learner_answer)
 
     async def _context(self, topic_id: UUID) -> AssessmentContext:
         context = await self._repository.get_context_for_topic(topic_id)

@@ -210,6 +210,12 @@ export async function routeReviewedCourse(
       }),
     }),
   );
+  await page.route(`${pipeline}/questions/*/grade`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ is_correct: true, feedback: "Correct.", wrong_answer_pattern: null }),
+    }),
+  );
   await page.route(`${pipeline}/courses/${courseId}/watch-events`, (route) =>
     route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ id: "event-1" }) }),
   );
@@ -292,8 +298,10 @@ test("instructor publishes, learner enrolls, and dashboard correction closes the
   await expect(page.getByText("Enrolled in the published course.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Learner Experience" })).toBeVisible();
   const learnerExperience = page.getByLabel("Learner Experience");
-  await expect(learnerExperience.getByRole("button", { name: "I got it and feel confident" })).toBeEnabled();
-  await learnerExperience.getByRole("button", { name: "I got it and feel confident" }).click();
+  await learnerExperience.getByPlaceholder("Write your answer").fill("Magnitude and direction");
+  await learnerExperience.getByRole("button", { name: "Confident" }).click();
+  await expect(learnerExperience.getByRole("button", { name: "Submit answer" })).toBeEnabled();
+  await learnerExperience.getByRole("button", { name: "Submit answer" }).click();
   await expect(learnerExperience.getByText(/Correct and confident/)).toBeVisible();
 });
 

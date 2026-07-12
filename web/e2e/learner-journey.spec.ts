@@ -221,6 +221,18 @@ test("learner journey covers remediation and advancement branches", async ({ pag
       ),
     });
   });
+  await page.route(`${pipeline}/questions/question-1/grade`, async (route) => {
+    const body = JSON.parse(route.request().postData() ?? "{}") as { answer: string };
+    const isCorrect = body.answer === "A quantity with direction.";
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        is_correct: isCorrect,
+        feedback: isCorrect ? "Correct." : "Review the definition and try again.",
+        wrong_answer_pattern: isCorrect ? null : "incorrect",
+      }),
+    });
+  });
 
   await page.goto("/");
   await page.getByLabel("Direct audio/video URL").fill("https://example.com/lecture.mp4");
@@ -232,13 +244,17 @@ test("learner journey covers remediation and advancement branches", async ({ pag
   await expect(page.getByRole("heading", { name: "Learner Experience" })).toBeVisible();
   await expect(learnerPanel.getByText("0 of 1 concept(s) mastered")).toBeVisible();
 
-  await learnerPanel.getByRole("button", { name: "I missed this" }).click();
+  await learnerPanel.getByPlaceholder("Write your answer").fill("A scalar");
+  await learnerPanel.getByRole("button", { name: "Unsure" }).click();
+  await learnerPanel.getByRole("button", { name: "Submit answer" }).click();
   await expect(
     learnerPanel.getByText("Incorrect answer matched a reviewed remediation rule."),
   ).toBeVisible();
   await expect(learnerPanel.getByText("struggling")).toBeVisible();
 
-  await learnerPanel.getByRole("button", { name: "I got it and feel confident" }).click();
+  await learnerPanel.getByPlaceholder("Write your answer").fill("A quantity with direction.");
+  await learnerPanel.getByRole("button", { name: "Confident" }).click();
+  await learnerPanel.getByRole("button", { name: "Submit answer" }).click();
   await expect(learnerPanel.getByText("Correct and confident; advancing")).toBeVisible();
   await expect(learnerPanel.getByText("1 of 1 concept(s) mastered")).toBeVisible();
 });

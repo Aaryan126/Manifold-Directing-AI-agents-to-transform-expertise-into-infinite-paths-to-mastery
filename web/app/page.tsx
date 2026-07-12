@@ -76,7 +76,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { LoaderCircle, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 
 type Job = {
   id: string;
@@ -293,6 +293,11 @@ export default function HomePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSegmenting, setIsSegmenting] = useState(false);
   const [bulkAction, setBulkAction] = useState<"clips" | "questions" | "accept-questions" | null>(null);
+  const [generationAction, setGenerationAction] = useState<string | null>(null);
+  const [learnerAnswer, setLearnerAnswer] = useState("");
+  const [learnerConfidence, setLearnerConfidence] = useState<number | null>(null);
+  const [isGradingAnswer, setIsGradingAnswer] = useState(false);
+  const [gradingFeedback, setGradingFeedback] = useState<string | null>(null);
   const hydratedJobs = useRef(new Set<string>());
   const refreshJobRef = useRef<() => Promise<void>>(async () => undefined);
   const hydrateCompletedJobRef = useRef<(nextJob: Job) => Promise<void>>(async () => undefined);
@@ -431,6 +436,12 @@ export default function HomePage() {
   ]
     .sort()
     .join("|");
+
+  useEffect(() => {
+    setLearnerAnswer("");
+    setLearnerConfidence(null);
+    setGradingFeedback(null);
+  }, [activeLearnerQuestion?.id]);
 
   useEffect(() => {
     async function initializeDevelopmentContext() {
@@ -960,15 +971,20 @@ export default function HomePage() {
   async function generateGraph() {
     if (!job?.course_id) return;
     setMessage(null);
-    const response = await fetch(`${pipelineBaseUrl}/courses/${job.course_id}/graph/generate`, {
-      method: "POST",
-    });
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      setMessage(body?.detail ?? `Graph generation failed with ${response.status}.`);
-      return;
+    setGenerationAction("graph");
+    try {
+      const response = await fetch(`${pipelineBaseUrl}/courses/${job.course_id}/graph/generate`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        setMessage(body?.detail ?? `Graph generation failed with ${response.status}.`);
+        return;
+      }
+      setGraphState((await response.json()) as GraphResponse);
+    } finally {
+      setGenerationAction(null);
     }
-    setGraphState((await response.json()) as GraphResponse);
   }
 
   async function graphRequest(endpoint: string, init: RequestInit) {
@@ -1165,15 +1181,20 @@ export default function HomePage() {
 
   async function generateClipsForTopic(topicId: string) {
     setMessage(null);
-    const response = await fetch(`${pipelineBaseUrl}/topics/${topicId}/clips/generate`, {
-      method: "POST",
-    });
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      setMessage(body?.detail ?? `Clip generation failed with ${response.status}.`);
-      return;
+    setGenerationAction(`clips:${topicId}`);
+    try {
+      const response = await fetch(`${pipelineBaseUrl}/topics/${topicId}/clips/generate`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        setMessage(body?.detail ?? `Clip generation failed with ${response.status}.`);
+        return;
+      }
+      if (job?.video_id) await loadClips(job.video_id);
+    } finally {
+      setGenerationAction(null);
     }
-    if (job?.video_id) await loadClips(job.video_id);
   }
 
   async function generateAllMissingClips() {
@@ -1262,11 +1283,16 @@ export default function HomePage() {
   }
 
   async function generateQuestionForTopic(topicId: string) {
-    const question = await questionRequest(
-      `${pipelineBaseUrl}/topics/${topicId}/questions/generate`,
-      { method: "POST" },
-    );
-    if (question) upsertQuestion(question);
+    setGenerationAction(`question:${topicId}`);
+    try {
+      const question = await questionRequest(
+        `${pipelineBaseUrl}/topics/${topicId}/questions/generate`,
+        { method: "POST" },
+      );
+      if (question) upsertQuestion(question);
+    } finally {
+      setGenerationAction(null);
+    }
   }
 
   async function generateAllMissingQuestions() {
@@ -1328,11 +1354,16 @@ export default function HomePage() {
   }
 
   async function regenerateQuestion(questionId: string) {
-    const question = await questionRequest(
-      `${pipelineBaseUrl}/questions/${questionId}/regenerate`,
-      { method: "POST" },
-    );
-    if (question) upsertQuestion(question);
+    setGenerationAction(`regenerate:${questionId}`);
+    try {
+      const question = await questionRequest(
+        `${pipelineBaseUrl}/questions/${questionId}/regenerate`,
+        { method: "POST" },
+      );
+      if (question) upsertQuestion(question);
+    } finally {
+      setGenerationAction(null);
+    }
   }
 
   async function editQuestion(questionId: string) {
@@ -1526,6 +1557,7 @@ export default function HomePage() {
     correctness: boolean,
     confidence: number,
     wrongAnswerPattern: string | null = null,
+    answer = correctness ? "demo-correct" : "demo-incorrect",
   ) {
     const learnerId = isLearnerContext ? selectedIdentity?.id ?? null : demoLearnerId;
     if (!learnerId || (isLearnerContext && !isEnrolled)) {
@@ -1543,7 +1575,7 @@ export default function HomePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          answer: { answer: correctness ? "demo-correct" : "demo-incorrect" },
+          answer: { answer },
           correctness,
           confidence,
           wrong_answer_pattern: wrongAnswerPattern,
@@ -1558,6 +1590,43 @@ export default function HomePage() {
     setRouteDecision((await response.json()) as RouteDecision);
     await loadLearnerProgress(learnerId);
     if (job?.course_id) await loadDashboard(job.course_id);
+  }
+
+  async function gradeAndSubmitLearnerAnswer(question: Question) {
+    if (!learnerAnswer.trim() || learnerConfidence === null) {
+      setRoutingError("Choose or enter an answer and select your confidence before submitting.");
+      return;
+    }
+    setIsGradingAnswer(true);
+    setGradingFeedback(null);
+    setRoutingError(null);
+    try {
+      const response = await fetch(`${pipelineBaseUrl}/questions/${question.id}/grade`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answer: learnerAnswer.trim() }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        setRoutingError(body?.detail ?? `Answer grading failed with ${response.status}.`);
+        return;
+      }
+      const grade = (await response.json()) as {
+        is_correct: boolean;
+        feedback: string;
+        wrong_answer_pattern: string | null;
+      };
+      setGradingFeedback(grade.feedback);
+      await submitLearnerAttempt(
+        question.id,
+        grade.is_correct,
+        learnerConfidence,
+        grade.wrong_answer_pattern,
+        learnerAnswer.trim(),
+      );
+    } finally {
+      setIsGradingAnswer(false);
+    }
   }
 
   async function loadLearnerProgress(learnerId: string) {
@@ -1953,7 +2022,10 @@ export default function HomePage() {
               >
                 Accept all
               </Button>
-              <Button disabled={graphBlockReason !== null} onClick={generateGraph} type="button"><Sparkles data-icon="inline-start" /> Generate Graph</Button>
+              <Button disabled={graphBlockReason !== null || generationAction !== null} onClick={generateGraph} type="button">
+                {generationAction === "graph" ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />}
+                {generationAction === "graph" ? "Generating graph" : "Generate graph"}
+              </Button>
             </div>
           </header>
 
@@ -2105,8 +2177,8 @@ export default function HomePage() {
                 <Button onClick={() => loadClips(job.video_id!)} type="button" variant="outline">
                   <RefreshCw data-icon="inline-start" /> Refresh
                 </Button>
-                <Button disabled={bulkAction !== null} onClick={() => void generateAllMissingClips()} type="button">
-                  <Sparkles data-icon="inline-start" /> {bulkAction === "clips" ? "Generating clips" : "Generate all missing clips"}
+                <Button disabled={bulkAction !== null || generationAction !== null} onClick={() => void generateAllMissingClips()} type="button">
+                  {bulkAction === "clips" ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />} {bulkAction === "clips" ? "Generating clips" : "Generate all missing clips"}
                 </Button>
               </>
             )}
@@ -2187,7 +2259,10 @@ export default function HomePage() {
                             <p className="truncate text-sm font-medium">{topic.title}</p>
                             <p className="mt-1 text-xs text-muted-foreground">{reviewedConceptCountForTopic(topic.id, concepts)} reviewed concepts</p>
                             {blockReason ? <p className="mt-1 text-xs leading-5 text-amber-700">{blockReason}</p> : null}
-                            <Button className="mt-2" disabled={blockReason !== null} onClick={() => generateClipsForTopic(topic.id)} size="sm" type="button" variant="outline">Generate clips</Button>
+                            <Button className="mt-2" disabled={blockReason !== null || generationAction !== null || bulkAction !== null} onClick={() => generateClipsForTopic(topic.id)} size="sm" type="button" variant="outline">
+                              {generationAction === `clips:${topic.id}` ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : null}
+                              {generationAction === `clips:${topic.id}` ? "Generating clips" : "Generate clips"}
+                            </Button>
                           </div>
                         );
                       })}
@@ -2218,14 +2293,15 @@ export default function HomePage() {
                 <Button onClick={() => loadQuestions(job.video_id!)} type="button" variant="outline">
                   <RefreshCw data-icon="inline-start" /> Refresh
                 </Button>
-                <Button disabled={bulkAction !== null} onClick={() => void generateAllMissingQuestions()} type="button" variant="outline">
-                  <Sparkles data-icon="inline-start" /> {bulkAction === "questions" ? "Generating questions" : "Generate all missing"}
+                <Button disabled={bulkAction !== null || generationAction !== null} onClick={() => void generateAllMissingQuestions()} type="button" variant="outline">
+                  {bulkAction === "questions" ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />} {bulkAction === "questions" ? "Generating questions" : "Generate all missing"}
                 </Button>
                 <Button
-                  disabled={bulkAction !== null || !questions.some((question) => question.review_status === "proposed")}
+                  disabled={bulkAction !== null || generationAction !== null || !questions.some((question) => question.review_status === "proposed")}
                   onClick={() => void acceptAllQuestions()}
                   type="button"
                 >
+                  {bulkAction === "accept-questions" ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : null}
                   {bulkAction === "accept-questions" ? "Accepting proposals" : "Accept all proposals"}
                 </Button>
               </>
@@ -2307,7 +2383,10 @@ export default function HomePage() {
                     <div className="mt-7 flex flex-wrap gap-2 border-t border-border pt-5">
                       <Button disabled={acceptButtonDisabled(question.review_status)} onClick={() => acceptQuestion(question.id)} type="button">{acceptButtonLabel(question.review_status)}</Button>
                       <Button onClick={() => editQuestion(question.id)} type="button" variant="outline">Edit manually</Button>
-                      <Button onClick={() => regenerateQuestion(question.id)} type="button" variant="outline">Regenerate</Button>
+                      <Button disabled={generationAction !== null} onClick={() => regenerateQuestion(question.id)} type="button" variant="outline">
+                        {generationAction === `regenerate:${question.id}` ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : null}
+                        {generationAction === `regenerate:${question.id}` ? "Regenerating" : "Regenerate"}
+                      </Button>
                       <Button onClick={() => dismissQuestion(question.id)} type="button" variant="destructive">Dismiss</Button>
                     </div>
                   </div>
@@ -2333,7 +2412,10 @@ export default function HomePage() {
                             </div>
                             <p className="mt-1 text-xs text-muted-foreground">{reviewedConceptCountForAssessment(topic.id, concepts)} concepts · {usableClipCountForAssessment(topic.id, clips)} clips</p>
                             {blockReason ? <p className="mt-1 text-xs leading-5 text-amber-700">{blockReason}</p> : null}
-                            <Button className="mt-2" disabled={blockReason !== null} onClick={() => generateQuestionForTopic(topic.id)} size="sm" type="button" variant="outline">Generate question</Button>
+                            <Button className="mt-2" disabled={blockReason !== null || generationAction !== null || bulkAction !== null} onClick={() => generateQuestionForTopic(topic.id)} size="sm" type="button" variant="outline">
+                              {generationAction === `question:${topic.id}` ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : null}
+                              {generationAction === `question:${topic.id}` ? "Generating question" : "Generate question"}
+                            </Button>
                           </div>
                         );
                       })}
@@ -2508,47 +2590,41 @@ export default function HomePage() {
               {activeLearnerQuestion ? (
                 <form
                   className="mt-7 border-t border-border pt-6"
-                  onSubmit={(event) => event.preventDefault()}
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void gradeAndSubmitLearnerAnswer(activeLearnerQuestion);
+                  }}
                 >
                   <p className="text-xs font-semibold uppercase text-muted-foreground">Comprehension check</p>
                   <h3 className="mt-2 font-serif text-xl font-semibold leading-8">{activeLearnerQuestion.body}</h3>
+                  <fieldset className="mt-5 border-0 p-0">
+                    <legend className="text-sm font-medium">Your answer</legend>
+                    {questionChoices(activeLearnerQuestion).length ? (
+                      <div className="mt-3 grid gap-2">
+                        {questionChoices(activeLearnerQuestion).map((choice) => (
+                          <label className={`flex cursor-pointer items-start gap-3 border px-4 py-3 text-sm transition-colors ${learnerAnswer === choice ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"}`} key={choice}>
+                            <input checked={learnerAnswer === choice} className="mt-0.5 size-4 accent-primary" disabled={!learnerCanAttempt || isGradingAnswer} name="learner-answer" onChange={() => setLearnerAnswer(choice)} type="radio" value={choice} />
+                            <span className="leading-6">{choice}</span>
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <Textarea className="mt-3 min-h-24" disabled={!learnerCanAttempt || isGradingAnswer} onChange={(event) => setLearnerAnswer(event.target.value)} placeholder="Write your answer" value={learnerAnswer} />
+                    )}
+                  </fieldset>
                   <fieldset className="mt-5 border-0 p-0" data-slot="learner-confidence">
                     <legend className="text-sm text-muted-foreground">{activeLearnerQuestion.confidence_prompt}</legend>
                     {isLearnerContext && !isEnrolled ? <p className="mt-2 text-sm text-amber-700">Enroll and start the published course to submit an answer.</p> : null}
-                    <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Answer outcomes">
-                      <Button
-                        disabled={!learnerCanAttempt}
-                        type="button"
-                        onClick={() => submitLearnerAttempt(activeLearnerQuestion.id, true, 4)}
-                      >
-                        I got it and feel confident
-                      </Button>
-                      <Button
-                        disabled={!learnerCanAttempt}
-                        type="button"
-                        onClick={() => submitLearnerAttempt(activeLearnerQuestion.id, true, 2)}
-                        variant="outline"
-                      >
-                        I got it but feel unsure
-                      </Button>
-                      <Button
-                        disabled={!learnerCanAttempt}
-                        type="button"
-                        onClick={() =>
-                          submitLearnerAttempt(
-                            activeLearnerQuestion.id,
-                            false,
-                            1,
-                            activeLearnerQuestion.remediation_rules[0]?.wrong_answer_pattern ??
-                              "incorrect",
-                            )
-                          }
-                        variant="destructive"
-                      >
-                        I missed this
-                      </Button>
+                    <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Answer confidence">
+                      <Button disabled={!learnerCanAttempt || isGradingAnswer} onClick={() => setLearnerConfidence(4)} type="button" variant={learnerConfidence === 4 ? "default" : "outline"}>Confident</Button>
+                      <Button disabled={!learnerCanAttempt || isGradingAnswer} onClick={() => setLearnerConfidence(2)} type="button" variant={learnerConfidence === 2 ? "default" : "outline"}>Unsure</Button>
                     </div>
                   </fieldset>
+                  <Button className="mt-5" disabled={!learnerCanAttempt || !learnerAnswer.trim() || learnerConfidence === null || isGradingAnswer} type="submit">
+                    {isGradingAnswer ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : null}
+                    {isGradingAnswer ? "Checking answer" : "Submit answer"}
+                  </Button>
+                  {gradingFeedback ? <p aria-live="polite" className="mt-3 text-sm font-medium" role="status">{gradingFeedback}</p> : null}
                 </form>
               ) : null}
               </section>
@@ -2719,6 +2795,13 @@ function topicToDraft(topic: Topic): TopicDraft {
 
 function questionToDraft(question: Question): QuestionDraft {
   return questionToAssessmentDraft(question);
+}
+
+function questionChoices(question: Question): string[] {
+  const choices = question.correct_answer.choices;
+  return Array.isArray(choices)
+    ? choices.filter((choice): choice is string => typeof choice === "string" && choice.trim().length > 0)
+    : [];
 }
 
 function policyToDraft(policy: RoutingPolicy): RoutingPolicyDraft {

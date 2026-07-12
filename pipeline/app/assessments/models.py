@@ -94,6 +94,13 @@ class Question:
 
 
 @dataclass(frozen=True)
+class AnswerGrade:
+    is_correct: bool
+    feedback: str
+    wrong_answer_pattern: str | None
+
+
+@dataclass(frozen=True)
 class QuestionEdit:
     body: str
     type: QuestionType

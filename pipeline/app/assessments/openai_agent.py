@@ -5,7 +5,9 @@ from openai import AsyncOpenAI
 
 from app.assessments.agent import AssessmentAgent
 from app.assessments.models import (
+    AnswerGrade,
     AssessmentContext,
+    Question,
     QuestionProposal,
     QuestionType,
     RemediationProposal,
@@ -27,6 +29,55 @@ class OpenAIAssessmentAgent(AssessmentAgent):
             input=_prompt(context, previous_question),
         )
         return _parse_response(response.output_text)
+
+    async def grade_answer(self, question: Question, learner_answer: str) -> AnswerGrade:
+        response = await self._client.responses.create(
+            model=self._model,
+            input=_grading_prompt(question, learner_answer),
+        )
+        payload = json.loads(response.output_text)
+        is_correct = bool(payload["is_correct"])
+        fallback_feedback = "Correct." if is_correct else "Review this concept and try again."
+        wrong_answer_pattern = payload.get("wrong_answer_pattern") or _default_wrong_pattern(
+            question,
+        )
+        return AnswerGrade(
+            is_correct=is_correct,
+            feedback=str(payload.get("feedback", fallback_feedback)),
+            wrong_answer_pattern=(
+                None if is_correct else str(wrong_answer_pattern)
+            ),
+        )
+
+
+def _grading_prompt(question: Question, learner_answer: str) -> str:
+    return f"""
+Grade a learner's answer against an instructor-reviewed comprehension question.
+Judge semantic correctness, not exact wording. Do not introduce facts beyond the reviewed answer.
+
+Return JSON only:
+{{
+  "is_correct": true,
+  "feedback": "One concise learner-facing sentence.",
+  "wrong_answer_pattern": "A concise misconception label, or null when correct."
+}}
+
+Question: {question.body}
+Question type: {question.type.value}
+Reviewed answer: {json.dumps(question.correct_answer)}
+Learner answer: {learner_answer}
+Known remediation patterns: {json.dumps(_wrong_patterns(question))}
+""".strip()
+
+
+def _default_wrong_pattern(question: Question) -> str:
+    if question.remediation_rules:
+        return question.remediation_rules[0].wrong_answer_pattern
+    return "incorrect"
+
+
+def _wrong_patterns(question: Question) -> list[str]:
+    return [rule.wrong_answer_pattern for rule in question.remediation_rules]
 
 
 def _prompt(context: AssessmentContext, previous_question: str | None) -> str:
