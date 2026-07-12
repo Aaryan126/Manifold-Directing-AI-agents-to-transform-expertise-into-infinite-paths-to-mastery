@@ -1,7 +1,7 @@
 # CourseFoundry UI/UX Redesign Plan
 
 **Status:** Active
-**Current stage:** Stage 3 - Instructor onboarding and course builder
+**Current stage:** Stage 4 - Instructor review workspaces
 **Last updated:** 2026-07-12
 **Scope:** Desktop and laptop web only. Tablet, mobile, and native-app layouts are not part of this redesign.
 
@@ -45,8 +45,8 @@ The learner experience prioritizes the current lesson, the next recommended acti
 |---|---|---|---|
 | 1. Design concepts and system | Complete | Complete desktop concepts, tokens, typography, density, states, and interaction thesis | User approved continuing with the generated instructor concepts and textual learner specification on 2026-07-12 |
 | 2. Shared foundation and application shell | Complete | Tailwind/shadcn foundation, tokens, app shell, component extraction, workspace navigation | Production build, 26 unit tests, 4 local E2E/WCAG tests, and 1600x1000 plus 1280x800 visual review passed on 2026-07-12 |
-| 3. Instructor onboarding and course builder | In progress | Source ingestion, processing, readiness, publishing, and course-production stepper | Existing ingestion-to-publish flow passes E2E and visual review |
-| 4. Instructor review workspaces | Not started | Outline, clip, and assessment review queues with contextual inspectors | All Accept/Edit/Dismiss paths retain behavior and traceability |
+| 3. Instructor onboarding and course builder | Implementation complete; E2E batched for Stage 8 | Source ingestion, processing, readiness, publishing, and course-production stepper | Fast checks and desktop/laptop visual review pass; full ingestion-to-publish E2E is deferred to the final batched verification |
+| 4. Instructor review workspaces | In progress | Outline, clip, and assessment review queues with contextual inspectors | All Accept/Edit/Dismiss paths retain behavior and traceability |
 | 5. Graph and routing workspace | Not started | Full-canvas graph, review filters, concept/edge inspector, routing tools, simulator | Graph editing and routing branches pass E2E and visual review |
 | 6. Instructor insights | Not started | Summary, signal queue, problem inspector, dashboard actions, learner override | Dashboard correction loop passes without invented data |
 | 7. Learner experience | Not started | Focused player, comprehension flow, route explanation, course path, mastery map | Learner remediation/advancement journey passes E2E and visual review |
@@ -118,8 +118,8 @@ The learner experience prioritizes the current lesson, the next recommended acti
 - Preserve draft/publish and learner-enrollment gates.
 - Preserve Mux capacity warnings and local provider fallback.
 - Preserve keyboard operation, focus visibility, semantic labels, reduced motion, and WCAG 2.2 AA.
-- Run existing unit, build, Playwright, and axe checks after every implementation stage.
-- Add desktop visual-regression screenshots for every major workspace and important empty/error/reviewed state.
+- Run lint, typecheck, focused unit tests, and production build checks during implementation stages.
+- Batch the full Playwright journey, axe, and visual-regression suite in Stage 8; use targeted desktop/laptop visual checks during each earlier stage to catch layout regressions quickly.
 
 ## Tooling
 
@@ -137,6 +137,7 @@ The learner experience prioritizes the current lesson, the next recommended acti
 - 2026-07-12: Product functionality and backend contracts are frozen during the redesign unless the user separately approves a functional change.
 - 2026-07-12: User approved continuing from the four completed instructor concepts and requested no further image generation because of latency. Learner screens will follow the textual specification in this document.
 - 2026-07-12: Stage 2 shared foundation/application shell completed. Tailwind v4, shadcn Nova, Lucide, self-hosted fonts, semantic tokens, and the role-aware app shell are implemented; existing unit/E2E/WCAG behavior remains green at desktop/laptop viewports.
+- 2026-07-12: Stage 3 course builder implemented with unified source ingestion, processing progress/error state, seven-step production readiness rail, publishing blockers, Mux capacity state, and development-identity disclosure. Lint, typecheck, 26 unit tests, production build, and targeted 1600x1000/1280x800 visual checks pass without horizontal overflow. At user request, the full ingestion-to-publish Playwright gate is batched into Stage 8 rather than repeated after every redesign stage.
 
 ## Completion Rule
 

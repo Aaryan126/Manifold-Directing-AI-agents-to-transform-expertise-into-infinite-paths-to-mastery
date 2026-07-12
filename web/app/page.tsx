@@ -57,6 +57,7 @@ import {
   type TraceableArtifact,
 } from "./traceability";
 import { CourseFoundryShell } from "@/components/coursefoundry-shell";
+import { CourseSetupWorkspace } from "@/components/course-setup-workspace";
 
 type Job = {
   id: string;
@@ -1328,116 +1329,29 @@ export default function HomePage() {
           isLearnerContext ? "learnerContext" : "instructorContext"
         }`}
       >
-      <section className="panel" id="course-setup">
-        <div className="workspaceHeading">
-          <div>
-            <p className="workspaceEyebrow">Course production</p>
-            <h1>Course setup</h1>
-          </div>
-          <p>Bring in source material and monitor processing before review begins.</p>
-        </div>
-        <p className="devIdentityNotice" role="note">
-          Development identity only. Credentials and secure sessions are not implemented.
-        </p>
-
-        <div className="forms instructorOnly">
-          <form onSubmit={uploadFile}>
-            <label htmlFor="video-file">Video or audio file</label>
-            <input
-              id="video-file"
-              type="file"
-              accept="audio/*,video/*"
-              onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
-            />
-            <button disabled={isSubmitting} type="submit">
-              Upload
-            </button>
-          </form>
-
-          <form onSubmit={submitUrl}>
-            <label htmlFor="video-url">Direct audio/video URL</label>
-            <input
-              id="video-url"
-              type="url"
-              value={url}
-              onChange={(event) => setUrl(event.target.value)}
-              placeholder="https://example.com/lecture.mp4"
-            />
-            <button disabled={isSubmitting || !url} type="submit">
-              Ingest URL
-            </button>
-          </form>
-        </div>
-
-        {deliveryCapacity?.provider === "mux" ? (
-          <div
-            className={deliveryCapacity.can_upload ? "capacityNotice" : "coverageWarning"}
-            role={deliveryCapacity.can_upload ? "status" : "alert"}
-          >
-            <strong>Mux storage</strong>
-            <p>
-              {deliveryCapacity.stored_count} of {deliveryCapacity.max_stored} stored videos used.
-              {deliveryCapacity.can_upload
-                ? ` ${deliveryCapacity.remaining} slot(s) remain.`
-                : " New ingestion is blocked; no existing asset will be overwritten."}
-            </p>
-          </div>
-        ) : null}
-
-        {message ? <p className="message" role="status">{message}</p> : null}
-      </section>
-
-      {job ? (
-        <section className="panel instructorOnly">
-          <div className="jobHeader">
-            <h2>Ingestion Status</h2>
-            <button type="button" onClick={refreshJob}>
-              Refresh
-            </button>
-          </div>
-          <dl>
-            <div>
-              <dt>Job</dt>
-              <dd>{job.id}</dd>
-            </div>
-            <div>
-              <dt>Status</dt>
-              <dd>{job.status}</dd>
-            </div>
-            <div>
-              <dt>Progress</dt>
-              <dd>{job.progress}%</dd>
-            </div>
-            {job.error_message ? (
-              <div>
-                <dt>Error</dt>
-                <dd>{job.error_message}</dd>
-              </div>
-            ) : null}
-          </dl>
-
-          {course ? (
-            <div className="publishBar">
-              <div>
-                <strong>{course.title}</strong>
-                <p>
-                  Course status: <span className={`statusBadge ${course.status}`}>{course.status}</span>
-                </p>
-              </div>
-            </div>
-          ) : null}
-          {course?.status === "draft" && publishReadiness?.blockers.length ? (
-            <div className="coverageWarning" role="status">
-              <strong>Publishing checklist</strong>
-              <ul>
-                {publishReadiness.blockers.map((blocker) => (
-                  <li key={blocker}>{blocker}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </section>
-      ) : null}
+      <CourseSetupWorkspace
+        course={course}
+        deliveryCapacity={deliveryCapacity}
+        isSubmitting={isSubmitting}
+        job={job}
+        message={message}
+        onFileChange={setSelectedFile}
+        onRefresh={() => void refreshJob()}
+        onSubmitFile={uploadFile}
+        onSubmitUrl={submitUrl}
+        onUrlChange={setUrl}
+        publishBlockers={publishReadiness?.blockers ?? []}
+        publishReady={publishReadiness?.ready ?? false}
+        reviewedConceptCount={graph?.concepts.filter((concept) => concept.review_status !== "proposed").length ?? 0}
+        reviewedQuestionCount={questions.filter((question) => question.review_status !== "proposed").length}
+        reviewedTopicCount={topics.filter((topic) => topic.review_status !== "proposed").length}
+        routingPolicyCount={routingPolicies.length}
+        totalClipCount={clips.length}
+        totalConceptCount={graph?.concepts.length ?? 0}
+        totalQuestionCount={questions.length}
+        totalTopicCount={topics.length}
+        url={url}
+      />
 
       {transcript ? (
         <section className="panel instructorOnly">
