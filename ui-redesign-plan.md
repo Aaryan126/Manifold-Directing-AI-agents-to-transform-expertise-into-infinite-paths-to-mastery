@@ -1,7 +1,7 @@
 # CourseFoundry UI/UX Redesign Plan
 
 **Status:** Active
-**Current stage:** Stage 6 - Instructor insights
+**Current stage:** Stage 7 - Learner experience
 **Last updated:** 2026-07-12
 **Scope:** Desktop and laptop web only. Tablet, mobile, and native-app layouts are not part of this redesign.
 
@@ -48,8 +48,8 @@ The learner experience prioritizes the current lesson, the next recommended acti
 | 3. Instructor onboarding and course builder | Implementation complete; paired E2E pending | Source ingestion, processing, readiness, publishing, and course-production stepper | Fast checks and desktop/laptop visual review pass; workflow E2E will run with the Stage 4+5 paired gate |
 | 4. Instructor review workspaces | Automated paired gate passed; final visual regression Stage 8 | Outline, clip, and assessment review queues with contextual inspectors | Lint, typecheck, 26 unit tests, production build, and the Stage 4+5 Playwright/WCAG gate pass |
 | 5. Graph and routing workspace | Automated paired gate passed; final visual regression Stage 8 | Full-canvas graph, review filters, concept/edge inspector, routing tools, simulator | Graph/routing implementation compiles; Stage 4+5 Playwright/WCAG gate passes after fixing learner status visibility |
-| 6. Instructor insights | In progress | Summary, signal queue, problem inspector, dashboard actions, learner override | Dashboard correction loop passes without invented data |
-| 7. Learner experience | Not started | Focused player, comprehension flow, route explanation, course path, mastery map | Learner remediation/advancement journey passes E2E and visual review |
+| 6. Instructor insights | Implementation complete; paired E2E pending | Summary, signal queue, problem inspector, dashboard actions, learner override | Lint, typecheck, and 26 unit tests pass; dashboard correction E2E runs with Stage 7 |
+| 7. Learner experience | In progress | Focused player, comprehension flow, route explanation, course path, mastery map | Learner remediation/advancement journey passes the Stage 6+7 paired E2E and visual review |
 | 8. Desktop/laptop hardening and rollout | Not started | WCAG 2.2 AA, desktop/laptop responsive constraints, loading/error/empty states, visual regression, performance | Automated suite passes and user completes Phase 10 human checklist |
 
 ## Stage 1 - Design Concepts and System
@@ -140,6 +140,7 @@ The learner experience prioritizes the current lesson, the next recommended acti
 - 2026-07-12: Stage 3 course builder implemented with unified source ingestion, processing progress/error state, seven-step production readiness rail, publishing blockers, Mux capacity state, and development-identity disclosure. Lint, typecheck, 26 unit tests, production build, and targeted 1600x1000/1280x800 visual checks pass without horizontal overflow. At user request, full Playwright runs use paired gates after Stages 4+5 and 6+7 rather than running after every stage.
 - 2026-07-12: Stage 4 instructor review workspaces implemented. Outline, clip, and assessment surfaces now use a shared three-pane queue/focused-editor/evidence-inspector pattern; existing topic boundary, generation prerequisite, media preview, JSON editing, traceability, and Accept/Edit/Dismiss/Regenerate/flag/re-cut actions are preserved. Lint, typecheck, all 26 unit tests, and production build pass. Populated-state visual and behavior verification is intentionally paired with Stage 5.
 - 2026-07-12: Stage 5 graph/routing workspace implemented. The concept graph is now a 700px primary canvas with status filters, node/edge selection, artifact inspector, review controls, traceability, duplicate merge, and edge creation. Routing uses a concept queue, focused policy editor, safeguards inspector, and a three-pane learner simulator. The Stage 4+5 gate passes 4 local Playwright journey/WCAG tests with 1 credential-dependent Mux test skipped. The gate found and fixed learner enrollment feedback hidden inside the instructor-only setup surface. Final visual-regression capture remains in Stage 8.
+- 2026-07-12: Stage 6 instructor insights implemented with a compact real-data summary band, signal queue, focused diagnosis/action editor, related-entity and traceability inspector, and existing manual learner override. No new metrics or synthetic charts were added. Lint, typecheck, and 26 unit tests pass; dashboard correction E2E is paired with Stage 7.
 
 ## Completion Rule
 

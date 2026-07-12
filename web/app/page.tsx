@@ -247,6 +247,7 @@ export default function HomePage() {
   const [graphReviewFilter, setGraphReviewFilter] = useState<"all" | "proposed" | "reviewed" | "dismissed">("all");
   const [selectedRoutingConceptId, setSelectedRoutingConceptId] = useState("");
   const [selectedSimulatorQuestionId, setSelectedSimulatorQuestionId] = useState("");
+  const [selectedDashboardSignalId, setSelectedDashboardSignalId] = useState("");
   const [graph, setGraph] = useState<GraphResponse | null>(null);
   const [clips, setClips] = useState<Clip[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -1361,6 +1362,8 @@ export default function HomePage() {
   );
   const selectedSimulatorQuestion =
     simulatorQuestions.find((question) => question.id === selectedSimulatorQuestionId) ?? simulatorQuestions[0] ?? null;
+  const selectedDashboardSignal =
+    dashboardSummary?.signals.find((signal) => signal.id === selectedDashboardSignalId) ?? dashboardSummary?.signals[0] ?? null;
 
   return (
     <CourseFoundryShell
@@ -2167,176 +2170,64 @@ export default function HomePage() {
       ) : null}
 
       {job?.course_id ? (
-        <section className="panel instructorOnly" id="insights">
-          <div className="jobHeader">
-            <h2>Instructor Dashboard</h2>
-            <button type="button" onClick={() => loadDashboard(job.course_id!)}>
-              Refresh signals
-            </button>
-          </div>
+        <section className="instructorOnly border-b border-border bg-background" id="insights">
+          <header className="flex min-h-24 items-center justify-between gap-6 border-b border-border px-6 py-5 xl:px-8">
+            <div><p className="text-xs font-semibold uppercase text-muted-foreground">Learning operations</p><h2 className="mt-1 text-xl font-semibold">Instructor dashboard</h2><p className="mt-1 text-sm text-muted-foreground">Review evidence-backed signals and correct the underlying learning system.</p></div>
+            <Button onClick={() => loadDashboard(job.course_id!)} type="button"><RefreshCw data-icon="inline-start" /> Refresh signals</Button>
+          </header>
 
           {dashboardSummary ? (
             <>
-              <div className="dashboardMetrics">
-                <article>
-                  <strong>{dashboardSummary.learner_count}</strong>
-                  <span>Learners</span>
-                </article>
-                <article>
-                  <strong>{dashboardSummary.attempt_count}</strong>
-                  <span>Attempts</span>
-                </article>
-                <article>
-                  <strong>{dashboardSummary.signals.length}</strong>
-                  <span>Open signals</span>
-                </article>
+              <div className="grid grid-cols-3 border-b border-border bg-muted/15">
+                <div className="border-r border-border px-6 py-4"><p className="text-xs font-medium uppercase text-muted-foreground">Learners</p><p className="mt-1 text-2xl font-semibold tabular-nums">{dashboardSummary.learner_count}</p></div>
+                <div className="border-r border-border px-6 py-4"><p className="text-xs font-medium uppercase text-muted-foreground">Attempts</p><p className="mt-1 text-2xl font-semibold tabular-nums">{dashboardSummary.attempt_count}</p></div>
+                <div className="px-6 py-4"><p className="text-xs font-medium uppercase text-muted-foreground">Open signals</p><p className="mt-1 text-2xl font-semibold tabular-nums">{dashboardSummary.signals.length}</p></div>
               </div>
+              {dashboardColdStartMessage(dashboardSummary) ? <div className="border-b border-amber-200 bg-amber-50 px-8 py-3 text-sm text-amber-900" role="status"><strong>Not enough data yet.</strong> {dashboardColdStartMessage(dashboardSummary)}</div> : null}
 
-              {dashboardColdStartMessage(dashboardSummary) ? (
-                <div className="coverageWarning" role="status">
-                  <strong>Not enough data yet</strong>
-                  <p>{dashboardColdStartMessage(dashboardSummary)}</p>
+              <div className="grid min-h-[560px] grid-cols-[280px_minmax(0,1fr)_300px]">
+                <aside className="border-r border-border bg-muted/20" aria-label="Dashboard signal queue">
+                  <div className="border-b border-border px-4 py-4"><div className="flex items-center justify-between"><p className="text-xs font-semibold uppercase text-muted-foreground">Signal queue</p><Badge variant="outline">{dashboardSummary.signals.length}</Badge></div></div>
+                  {dashboardSummary.signals.length ? dashboardSummary.signals.map((signal) => (
+                    <button className={`w-full border-b border-border px-4 py-3 text-left hover:bg-muted ${signal.id === selectedDashboardSignal?.id ? "bg-background shadow-[inset_3px_0_0_var(--primary)]" : ""}`} key={signal.id} onClick={() => setSelectedDashboardSignalId(signal.id)} type="button">
+                      <span className="block text-sm font-medium">{dashboardSignalTitle(signal)}</span><span className="mt-1 block text-xs capitalize text-muted-foreground">{signal.type.replaceAll("_", " ")}</span>
+                    </button>
+                  )) : <p className="px-4 py-6 text-sm text-muted-foreground">No open dashboard problems. Refresh after more learner activity.</p>}
+                </aside>
+
+                <div className="min-w-0 px-8 py-7">
+                  {selectedDashboardSignal ? (() => {
+                    const signal = selectedDashboardSignal;
+                    const retroactive = Boolean(dashboardRetroactive[signal.id]);
+                    return (
+                      <div className="mx-auto max-w-2xl">
+                        <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-medium uppercase text-muted-foreground">{signal.type.replaceAll("_", " ")}</p><h3 className="mt-2 text-xl font-semibold">{dashboardSignalTitle(signal)}</h3></div><Badge className="capitalize" variant="outline">{signal.status}</Badge></div>
+                        <p className="mt-5 text-sm leading-7">{dashboardSignalSummary(signal)}</p>
+                        <div className="mt-5 border-l-2 border-primary bg-primary/5 px-4 py-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Recommended action</p><p className="mt-1 text-sm leading-6">{dashboardSignalRecommendedAction(signal)}</p></div>
+                        <label className="mt-5 grid gap-2 text-sm font-medium">Instructor note<Textarea className="min-h-28" onChange={(event) => setDashboardNotes((current) => ({ ...current, [signal.id]: event.target.value }))} placeholder="Optional edit, rationale, or implementation note" value={dashboardNotes[signal.id] ?? ""} /></label>
+                        <label className="mt-4 flex items-start gap-2 text-sm"><input checked={retroactive} className="mt-1 size-4 accent-primary" onChange={(event) => setDashboardRetroactive((current) => ({ ...current, [signal.id]: event.target.checked }))} type="checkbox" /><span>{dashboardActionScopeLabel(retroactive)}</span></label>
+                        <div className="mt-6 flex flex-wrap gap-2 border-t border-border pt-5"><Button onClick={() => resolveDashboardSignal(signal.id, "accept")} type="button">Accept AI suggestion</Button><Button onClick={() => resolveDashboardSignal(signal.id, "edit")} type="button" variant="outline">Edit manually</Button><Button onClick={() => resolveDashboardSignal(signal.id, "dismiss")} type="button" variant="destructive">Dismiss</Button></div>
+                      </div>
+                    );
+                  })() : <div className="flex min-h-96 items-center justify-center text-sm text-muted-foreground">No open signal selected.</div>}
                 </div>
-              ) : null}
 
-              <div className="topicList">
-                {!dashboardSummary.not_enough_data && dashboardSummary.signals.length === 0 ? (
-                  <p className="emptyState">
-                    No open dashboard problems. Refresh after more learner activity.
-                  </p>
-                ) : null}
-                {dashboardSummary.signals.map((signal) => {
-                  const retroactive = Boolean(dashboardRetroactive[signal.id]);
-                  return (
-                    <article className="topicCard" key={signal.id}>
-                      <div className="topicHeader">
-                        <strong>{dashboardSignalTitle(signal)}</strong>
-                        <span>{signal.type.replaceAll("_", " ")}</span>
-                      </div>
-                      <p>{dashboardSignalSummary(signal)}</p>
-                      <p className="evidence">
-                        Recommended: {dashboardSignalRecommendedAction(signal)}
-                      </p>
-                      <TraceabilityBlock
-                        artifact={{
-                          status: signal.status,
-                          ai_proposal: {
-                            rationale: dashboardSignalSummary(signal),
-                          },
-                          instructor_revision: signal.instructor_action,
-                        }}
-                      />
-                      <dl>
-                        <div>
-                          <dt>Related entity</dt>
-                          <dd>
-                            {signal.related_entity_type}: {signal.related_entity_id}
-                          </dd>
-                        </div>
-                      </dl>
-                      <label>
-                        Instructor note
-                        <textarea
-                          value={dashboardNotes[signal.id] ?? ""}
-                          onChange={(event) =>
-                            setDashboardNotes((current) => ({
-                              ...current,
-                              [signal.id]: event.target.value,
-                            }))
-                          }
-                          placeholder="Optional edit, rationale, or implementation note"
-                        />
-                      </label>
-                      <label className="inlineChoice">
-                        <input
-                          checked={retroactive}
-                          type="checkbox"
-                          onChange={(event) =>
-                            setDashboardRetroactive((current) => ({
-                              ...current,
-                              [signal.id]: event.target.checked,
-                            }))
-                          }
-                        />
-                        {dashboardActionScopeLabel(retroactive)}
-                      </label>
-                      <div className="actions">
-                        <button
-                          type="button"
-                          onClick={() => resolveDashboardSignal(signal.id, "accept")}
-                        >
-                          Accept AI suggestion
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => resolveDashboardSignal(signal.id, "edit")}
-                        >
-                          Edit manually
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => resolveDashboardSignal(signal.id, "dismiss")}
-                        >
-                          Dismiss
-                        </button>
-                      </div>
-                    </article>
-                  );
-                })}
+                <aside className="border-l border-border bg-muted/20 px-5 py-6">
+                  {selectedDashboardSignal ? <><InspectorSection title="Related entity"><p className="break-all text-sm">{selectedDashboardSignal.related_entity_type}: {selectedDashboardSignal.related_entity_id}</p></InspectorSection><InspectorSection title="Traceability"><TraceabilityBlock artifact={{ status: selectedDashboardSignal.status, ai_proposal: { rationale: dashboardSignalSummary(selectedDashboardSignal) }, instructor_revision: selectedDashboardSignal.instructor_action }} /></InspectorSection></> : null}
+                  {graph ? (
+                    <InspectorSection title="Manual learner override">
+                      <form className="grid gap-3" onSubmit={submitLearnerOverride}>
+                        <label className="grid gap-1.5 text-xs font-medium">Learner id<Input onChange={(event) => setOverrideLearnerId(event.target.value)} placeholder="Paste learner UUID" value={overrideLearnerId} /></label>
+                        <label className="grid gap-1.5 text-xs font-medium">Concept<select className="h-8 rounded-lg border border-input bg-background px-2 text-sm" onChange={(event) => setOverrideConceptId(event.target.value)} value={overrideConceptId}>{graph.concepts.filter((concept) => concept.review_status === "accepted" || concept.review_status === "edited").map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select></label>
+                        <label className="grid gap-1.5 text-xs font-medium">Override action<select className="h-8 rounded-lg border border-input bg-background px-2 text-sm" onChange={(event) => setOverrideAction(event.target.value as "skip_ahead" | "send_back")} value={overrideAction}><option value="send_back">Send back for remediation</option><option value="skip_ahead">Skip ahead / mark mastered</option></select></label>
+                        <Button className="mt-1" size="sm" type="submit">Apply learner override</Button>
+                      </form>
+                    </InspectorSection>
+                  ) : null}
+                </aside>
               </div>
             </>
-          ) : (
-            <p className="evidence">
-              Refresh signals to compute cohort, content, graph-drift, and stuck-loop
-              dashboard problems from current learner data.
-            </p>
-          )}
-
-          {graph ? (
-            <form className="manualTopic" onSubmit={submitLearnerOverride}>
-              <h3>Manual Learner Override</h3>
-              <label>
-                Learner id
-                <input
-                  value={overrideLearnerId}
-                  onChange={(event) => setOverrideLearnerId(event.target.value)}
-                  placeholder="Paste learner UUID"
-                />
-              </label>
-              <label>
-                Concept
-                <select
-                  value={overrideConceptId}
-                  onChange={(event) => setOverrideConceptId(event.target.value)}
-                >
-                  {graph.concepts
-                    .filter(
-                      (concept) =>
-                        concept.review_status === "accepted" ||
-                        concept.review_status === "edited",
-                    )
-                    .map((concept) => (
-                      <option key={concept.id} value={concept.id}>
-                        {concept.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <label>
-                Override action
-                <select
-                  value={overrideAction}
-                  onChange={(event) =>
-                    setOverrideAction(event.target.value as "skip_ahead" | "send_back")
-                  }
-                >
-                  <option value="send_back">Send back for remediation</option>
-                  <option value="skip_ahead">Skip ahead / mark mastered</option>
-                </select>
-              </label>
-              <button type="submit">Apply learner override</button>
-            </form>
-          ) : null}
+          ) : <div className="px-8 py-16 text-center"><p className="text-sm font-medium">Insights have not been refreshed</p><p className="mt-1 text-sm text-muted-foreground">Refresh signals to compute problems from current learner data.</p></div>}
         </section>
       ) : null}
       </main>
