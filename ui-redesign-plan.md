@@ -1,7 +1,7 @@
 # CourseFoundry UI/UX Redesign Plan
 
 **Status:** Active
-**Current stage:** Stage 2 - Shared foundation and application shell
+**Current stage:** Stage 3 - Instructor onboarding and course builder
 **Last updated:** 2026-07-12
 **Scope:** Desktop and laptop web only. Tablet, mobile, and native-app layouts are not part of this redesign.
 
@@ -44,8 +44,8 @@ The learner experience prioritizes the current lesson, the next recommended acti
 | Stage | Status | Deliverable | Approval gate |
 |---|---|---|---|
 | 1. Design concepts and system | Complete | Complete desktop concepts, tokens, typography, density, states, and interaction thesis | User approved continuing with the generated instructor concepts and textual learner specification on 2026-07-12 |
-| 2. Shared foundation and application shell | In progress | Tailwind/shadcn foundation, tokens, app shell, component extraction, workspace navigation | Instructor and learner shells render correctly with existing data |
-| 3. Instructor onboarding and course builder | Not started | Source ingestion, processing, readiness, publishing, and course-production stepper | Existing ingestion-to-publish flow passes E2E and visual review |
+| 2. Shared foundation and application shell | Complete | Tailwind/shadcn foundation, tokens, app shell, component extraction, workspace navigation | Production build, 26 unit tests, 4 local E2E/WCAG tests, and 1600x1000 plus 1280x800 visual review passed on 2026-07-12 |
+| 3. Instructor onboarding and course builder | In progress | Source ingestion, processing, readiness, publishing, and course-production stepper | Existing ingestion-to-publish flow passes E2E and visual review |
 | 4. Instructor review workspaces | Not started | Outline, clip, and assessment review queues with contextual inspectors | All Accept/Edit/Dismiss paths retain behavior and traceability |
 | 5. Graph and routing workspace | Not started | Full-canvas graph, review filters, concept/edge inspector, routing tools, simulator | Graph editing and routing branches pass E2E and visual review |
 | 6. Instructor insights | Not started | Summary, signal queue, problem inspector, dashboard actions, learner override | Dashboard correction loop passes without invented data |
@@ -101,6 +101,15 @@ The learner experience prioritizes the current lesson, the next recommended acti
 - Keep the selectable development identity, but move it into a compact development-only account control.
 - Use current dashboard data only. Richer charts require a separately approved backend/product scope change.
 
+## Stage 2 Implementation Record
+
+- Tailwind CSS v4 and shadcn/ui Nova were initialized in the existing Next.js workspace.
+- Self-hosted Instrument Sans Variable and Source Serif 4 Variable replace browser-default typography without build-time font downloads.
+- Shared semantic OKLCH tokens define warm-neutral surfaces, cobalt product actions, subdued navigation, borders, focus, and status roles.
+- `CourseFoundryShell` provides persistent role-aware navigation, compact course status/header actions, collapsible desktop sidebar, and the existing selectable development identity.
+- Existing workspaces remain inside a scoped legacy container while Stages 3-7 replace them incrementally; domain requests and state transitions were not rewritten.
+- Existing identity selection remains a styled native select to preserve keyboard/browser behavior and the tested `selectOption` interaction.
+
 ## Non-Regression Rules
 
 - Preserve every existing API call and persisted state transition unless a separately approved defect requires a change.
@@ -127,6 +136,7 @@ The learner experience prioritizes the current lesson, the next recommended acti
 - 2026-07-12: Linear is the primary reference for hierarchy, navigation, review queues, and dashboard restraint; Miro informs the graph canvas; Coursera informs learner orientation; Duolingo informs path sequencing only, without playful character styling.
 - 2026-07-12: Product functionality and backend contracts are frozen during the redesign unless the user separately approves a functional change.
 - 2026-07-12: User approved continuing from the four completed instructor concepts and requested no further image generation because of latency. Learner screens will follow the textual specification in this document.
+- 2026-07-12: Stage 2 shared foundation/application shell completed. Tailwind v4, shadcn Nova, Lucide, self-hosted fonts, semantic tokens, and the role-aware app shell are implemented; existing unit/E2E/WCAG behavior remains green at desktop/laptop viewports.
 
 ## Completion Rule
 

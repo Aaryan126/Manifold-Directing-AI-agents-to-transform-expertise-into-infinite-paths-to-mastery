@@ -56,6 +56,7 @@ import {
   traceabilityStatus,
   type TraceableArtifact,
 } from "./traceability";
+import { CourseFoundryShell } from "@/components/coursefoundry-shell";
 
 type Job = {
   id: string;
@@ -1306,27 +1307,34 @@ export default function HomePage() {
   }
 
   return (
-    <main className={`shell ${isLearnerContext ? "learnerContext" : "instructorContext"}`}>
-      <section className="panel">
-        <div className="productHeader">
+    <CourseFoundryShell
+      courseStatus={course?.status}
+      courseTitle={course?.title ?? "Course workspace"}
+      identities={identities}
+      isLearner={isLearnerContext}
+      onIdentityChange={(identityId) => void changeIdentity(identityId)}
+      onPublish={() => void publishCourse()}
+      publishDisabled={
+        selectedIdentity?.role !== "instructor" ||
+        !course ||
+        course.status === "published" ||
+        publishReadiness?.ready !== true
+      }
+      selectedIdentityId={selectedIdentityId}
+    >
+      <main
+        id="course-overview"
+        className={`shell legacyWorkspace ${
+          isLearnerContext ? "learnerContext" : "instructorContext"
+        }`}
+      >
+      <section className="panel" id="course-setup">
+        <div className="workspaceHeading">
           <div>
-            <h1>CourseFoundry</h1>
-            <p>Turn reviewed lecture material into an adaptive course.</p>
+            <p className="workspaceEyebrow">Course production</p>
+            <h1>Course setup</h1>
           </div>
-          <label className="identityPicker" htmlFor="development-identity">
-            Development identity
-            <select
-              id="development-identity"
-              value={selectedIdentityId}
-              onChange={(event) => void changeIdentity(event.target.value)}
-            >
-              {identities.map((identity) => (
-                <option key={identity.id} value={identity.id}>
-                  {identity.display_name} ({identity.role})
-                </option>
-              ))}
-            </select>
-          </label>
+          <p>Bring in source material and monitor processing before review begins.</p>
         </div>
         <p className="devIdentityNotice" role="note">
           Development identity only. Credentials and secure sessions are not implemented.
@@ -1416,17 +1424,6 @@ export default function HomePage() {
                   Course status: <span className={`statusBadge ${course.status}`}>{course.status}</span>
                 </p>
               </div>
-              <button
-                disabled={
-                  selectedIdentity?.role !== "instructor" ||
-                  course.status === "published" ||
-                  publishReadiness?.ready !== true
-                }
-                type="button"
-                onClick={publishCourse}
-              >
-                {course.status === "published" ? "Published" : "Publish course"}
-              </button>
             </div>
           ) : null}
           {course?.status === "draft" && publishReadiness?.blockers.length ? (
@@ -1451,7 +1448,7 @@ export default function HomePage() {
       ) : null}
 
       {transcript && job?.video_id ? (
-        <section className="panel instructorOnly">
+        <section className="panel instructorOnly" id="outline">
           <div className="jobHeader">
             <h2>Topic Outline</h2>
             <div className="actions">
@@ -1666,7 +1663,7 @@ export default function HomePage() {
       ) : null}
 
       {job?.course_id ? (
-        <section className="panel instructorOnly">
+        <section className="panel instructorOnly" id="concept-graph">
           <div className="jobHeader">
             <h2>Concept Graph</h2>
             <div className="actions">
@@ -1907,7 +1904,7 @@ export default function HomePage() {
       ) : null}
 
       {job?.video_id && topics.length > 0 ? (
-        <section className="panel instructorOnly">
+        <section className="panel instructorOnly" id="clips">
           <div className="jobHeader">
             <h2>Clip Spot Check</h2>
             <div className="actions">
@@ -2012,7 +2009,7 @@ export default function HomePage() {
       ) : null}
 
       {job?.video_id && topics.length > 0 ? (
-        <section className="panel instructorOnly">
+        <section className="panel instructorOnly" id="assessments">
           <div className="jobHeader">
             <h2>Assessment Review</h2>
             <div className="actions">
@@ -2188,7 +2185,7 @@ export default function HomePage() {
       ) : null}
 
       {job?.course_id && graph ? (
-        <section className="panel instructorOnly">
+        <section className="panel instructorOnly" id="routing">
           <div className="jobHeader">
             <h2>Routing Policy</h2>
             <div className="actions">
@@ -2303,7 +2300,7 @@ export default function HomePage() {
       ) : null}
 
       {questions.some((question) => question.review_status === "accepted" || question.review_status === "edited") ? (
-        <section className="panel instructorOnly">
+        <section className="panel instructorOnly" id="routing-simulator">
           <div className="jobHeader">
             <h2>Learner Routing Simulator</h2>
             <button type="button" onClick={createDemoLearner}>
@@ -2386,6 +2383,7 @@ export default function HomePage() {
       {learnerQuestions.length > 0 ? (
         <section
           className="panel learnerExperience learnerOnly"
+          id="learner-preview"
           aria-labelledby="learner-experience-title"
         >
           <div className="jobHeader">
@@ -2494,7 +2492,7 @@ export default function HomePage() {
               ) : null}
             </section>
 
-            <aside aria-labelledby="mastery-map-title" className="masteryMap">
+            <aside aria-labelledby="mastery-map-title" className="masteryMap" id="mastery-map">
               <h3 id="mastery-map-title">Mastery Map</h3>
               <p>{masterySummary(learnerProgress)}</p>
               <div className="progressList">
@@ -2511,8 +2509,8 @@ export default function HomePage() {
                 ))}
               </div>
 
-              <h3>Topics</h3>
-              <div className="progressList" role="list" aria-label="Learner topic navigation">
+              <h3 id="learner-topics">Topics</h3>
+              <div className="progressList" role="list" aria-labelledby="learner-topics">
                 {topics
                   .filter((topic) => topic.review_status === "accepted" || topic.review_status === "edited")
                   .map((topic) => (
@@ -2536,7 +2534,7 @@ export default function HomePage() {
       ) : null}
 
       {job?.course_id ? (
-        <section className="panel instructorOnly">
+        <section className="panel instructorOnly" id="insights">
           <div className="jobHeader">
             <h2>Instructor Dashboard</h2>
             <button type="button" onClick={() => loadDashboard(job.course_id!)}>
@@ -2708,7 +2706,8 @@ export default function HomePage() {
           ) : null}
         </section>
       ) : null}
-    </main>
+      </main>
+    </CourseFoundryShell>
   );
 }
 

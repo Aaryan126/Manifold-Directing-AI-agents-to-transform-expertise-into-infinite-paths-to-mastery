@@ -13,6 +13,12 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    },
     "plugins": [
       {
         "name": "next"
