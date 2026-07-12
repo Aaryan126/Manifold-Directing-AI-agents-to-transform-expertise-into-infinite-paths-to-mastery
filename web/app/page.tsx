@@ -242,6 +242,11 @@ export default function HomePage() {
   const [selectedTopicReviewId, setSelectedTopicReviewId] = useState("");
   const [selectedClipReviewId, setSelectedClipReviewId] = useState("");
   const [selectedQuestionReviewId, setSelectedQuestionReviewId] = useState("");
+  const [selectedGraphConceptId, setSelectedGraphConceptId] = useState("");
+  const [selectedGraphEdgeId, setSelectedGraphEdgeId] = useState("");
+  const [graphReviewFilter, setGraphReviewFilter] = useState<"all" | "proposed" | "reviewed" | "dismissed">("all");
+  const [selectedRoutingConceptId, setSelectedRoutingConceptId] = useState("");
+  const [selectedSimulatorQuestionId, setSelectedSimulatorQuestionId] = useState("");
   const [graph, setGraph] = useState<GraphResponse | null>(null);
   const [clips, setClips] = useState<Clip[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -289,8 +294,15 @@ export default function HomePage() {
       : [];
   const graphBlockReason = graphGenerationBlockedReason(topics);
   const reviewedTopics = reviewedTopicCount(topics);
+  const graphStatusMatches = (status: Concept["review_status"]) =>
+    graphReviewFilter === "all" ||
+    status === graphReviewFilter ||
+    (graphReviewFilter === "reviewed" && (status === "accepted" || status === "edited"));
+  const visibleGraphConceptIds = new Set(
+    graph?.concepts.filter((concept) => graphStatusMatches(concept.review_status)).map((concept) => concept.id) ?? [],
+  );
   const flowNodes: FlowNode[] = graph
-    ? graphNodeModels(graph.concepts).map((node) => ({
+    ? graphNodeModels(graph.concepts.filter((concept) => visibleGraphConceptIds.has(concept.id))).map((node) => ({
         id: node.id,
         position: { x: node.x, y: node.y },
         data: { label: `${node.label}\n${node.status}` },
@@ -298,7 +310,11 @@ export default function HomePage() {
       }))
     : [];
   const flowEdges: FlowEdge[] = graph
-    ? graphEdgeModels(graph.edges).map((edge) => ({
+    ? graphEdgeModels(graph.edges.filter((edge) =>
+        visibleGraphConceptIds.has(edge.from_concept_id) &&
+        visibleGraphConceptIds.has(edge.to_concept_id) &&
+        graphStatusMatches(edge.review_status),
+      )).map((edge) => ({
         id: edge.id,
         source: edge.source,
         target: edge.target,
@@ -1331,6 +1347,20 @@ export default function HomePage() {
     clips.find((clip) => clip.id === selectedClipReviewId) ?? clips[0] ?? null;
   const selectedQuestionReview =
     questions.find((question) => question.id === selectedQuestionReviewId) ?? questions[0] ?? null;
+  const selectedGraphConcept =
+    graph?.concepts.find((concept) => concept.id === selectedGraphConceptId) ?? graph?.concepts[0] ?? null;
+  const selectedGraphEdge =
+    graph?.edges.find((edge) => edge.id === selectedGraphEdgeId) ?? null;
+  const routingConcepts = graph?.concepts.filter(
+    (concept) => concept.review_status === "accepted" || concept.review_status === "edited",
+  ) ?? [];
+  const selectedRoutingConcept =
+    routingConcepts.find((concept) => concept.id === selectedRoutingConceptId) ?? routingConcepts[0] ?? null;
+  const simulatorQuestions = questions.filter(
+    (question) => question.review_status === "accepted" || question.review_status === "edited",
+  );
+  const selectedSimulatorQuestion =
+    simulatorQuestions.find((question) => question.id === selectedSimulatorQuestionId) ?? simulatorQuestions[0] ?? null;
 
   return (
     <CourseFoundryShell
@@ -1359,7 +1389,7 @@ export default function HomePage() {
         deliveryCapacity={deliveryCapacity}
         isSubmitting={isSubmitting}
         job={job}
-        message={message}
+        message={isLearnerContext ? null : message}
         onFileChange={setSelectedFile}
         onRefresh={() => void refreshJob()}
         onSubmitFile={uploadFile}
@@ -1377,6 +1407,11 @@ export default function HomePage() {
         totalTopicCount={topics.length}
         url={url}
       />
+      {isLearnerContext && message ? (
+        <div className="border-b border-border bg-primary/5 px-8 py-3 text-sm text-foreground" role="status">
+          {message}
+        </div>
+      ) : null}
 
       {transcript ? (
         <section className="panel instructorOnly">
@@ -1544,243 +1579,125 @@ export default function HomePage() {
       ) : null}
 
       {job?.course_id ? (
-        <section className="panel instructorOnly" id="concept-graph">
-          <div className="jobHeader">
-            <h2>Concept Graph</h2>
-            <div className="actions">
-              <button type="button" onClick={() => loadGraph(job.course_id!)}>
-                Refresh
-              </button>
-              <button disabled={graphBlockReason !== null} type="button" onClick={generateGraph}>
-                Generate Graph
-              </button>
+        <section className="instructorOnly border-b border-border bg-background" id="concept-graph">
+          <header className="flex min-h-24 items-center justify-between gap-6 border-b border-border px-6 py-5 xl:px-8">
+            <div>
+              <p className="text-xs font-semibold uppercase text-muted-foreground">Knowledge structure</p>
+              <h2 className="mt-1 text-xl font-semibold">Concept graph</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Review prerequisite structure and inspect each AI-proposed relationship.</p>
             </div>
-          </div>
+            <div className="flex items-center gap-2">
+              <select
+                aria-label="Graph review filter"
+                className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm"
+                onChange={(event) => setGraphReviewFilter(event.target.value as typeof graphReviewFilter)}
+                value={graphReviewFilter}
+              >
+                <option value="all">All artifacts</option><option value="proposed">Proposed</option><option value="reviewed">Reviewed</option><option value="dismissed">Dismissed</option>
+              </select>
+              <Button onClick={() => loadGraph(job.course_id!)} type="button" variant="outline"><RefreshCw data-icon="inline-start" /> Refresh</Button>
+              <Button disabled={graphBlockReason !== null} onClick={generateGraph} type="button"><Sparkles data-icon="inline-start" /> Generate Graph</Button>
+            </div>
+          </header>
 
           {graphBlockReason ? (
-            <div className="coverageWarning" role="alert">
-              <strong>Graph generation blocked</strong>
-              <p>{graphBlockReason}</p>
-              {topics.length > 0 ? (
-                <p>
-                  Reviewed topics: {reviewedTopics} of {topics.length}. Use Accept AI
-                  suggestion or Edit manually in the topic outline first.
-                </p>
-              ) : null}
+            <div className="border-b border-amber-200 bg-amber-50 px-8 py-3 text-sm text-amber-900" role="alert">
+              <strong>Graph generation blocked.</strong> {graphBlockReason} Reviewed topics: {reviewedTopics} of {topics.length}.
             </div>
           ) : null}
-
           {graph?.warnings.length ? (
-            <div className="coverageWarning" role="alert">
-              <strong>Graph review warnings</strong>
-              <ul>
-                {graph.warnings.map((warning) => (
-                  <li key={warning}>{warning}</li>
-                ))}
-              </ul>
+            <div className="border-b border-amber-200 bg-amber-50 px-8 py-3 text-sm text-amber-900" role="alert">
+              <strong>Review warnings:</strong> {graph.warnings.join(" ")}
             </div>
           ) : null}
 
           {graph ? (
-            <div className="graphEditor">
-              <div className="graphCanvas">
-                <ReactFlow
-                  nodes={flowNodes}
-                  edges={flowEdges}
-                  fitView
-                  onConnect={handleConnect}
-                >
-                  <Background />
-                  <Controls />
-                </ReactFlow>
+            <div className="grid grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
+              <div className="relative min-w-0 bg-muted/15">
+                <div className="absolute left-5 top-5 z-10 flex gap-2 rounded-lg border border-border bg-background p-2 shadow-sm">
+                  <Badge variant="outline">{flowNodes.length} concepts</Badge>
+                  <Badge variant="outline">{flowEdges.length} edges</Badge>
+                </div>
+                <div className="h-[700px] min-w-0">
+                  <ReactFlow
+                    edges={flowEdges}
+                    fitView
+                    nodes={flowNodes}
+                    onConnect={handleConnect}
+                    onEdgeClick={(_, edge) => { setSelectedGraphEdgeId(edge.id); setSelectedGraphConceptId(""); }}
+                    onNodeClick={(_, node) => { setSelectedGraphConceptId(node.id); setSelectedGraphEdgeId(""); }}
+                  >
+                    <Background gap={24} size={1} />
+                    <Controls />
+                  </ReactFlow>
+                </div>
               </div>
 
-              <div className="graphPanels">
-                <section>
-                  <h3>Concepts</h3>
-                  {graph.concepts.length === 0 ? (
-                    <p className="emptyState">No concepts have been generated yet.</p>
-                  ) : null}
-                  <div className="graphList">
-                    {graph.concepts.map((concept) => {
-                      const draft = conceptDrafts[concept.id] ?? {
-                        name: concept.name,
-                        description: concept.description ?? "",
-                      };
-                      return (
-                        <article
-                          className={
-                            concept.review_status === "dismissed"
-                              ? "graphReviewItem muted"
-                              : "graphReviewItem"
-                          }
-                          key={concept.id}
-                        >
-                          <strong>{concept.review_status}</strong>
-                          <input
-                            aria-label={`Concept name ${concept.name}`}
-                            value={draft.name}
-                            onChange={(event) =>
-                              setConceptDrafts((current) => ({
-                                ...current,
-                                [concept.id]: { ...draft, name: event.target.value },
-                              }))
-                            }
-                          />
-                          <textarea
-                            aria-label={`Concept description ${concept.name}`}
-                            value={draft.description}
-                            onChange={(event) =>
-                              setConceptDrafts((current) => ({
-                                ...current,
-                                [concept.id]: {
-                                  ...draft,
-                                  description: event.target.value,
-                                },
-                              }))
-                            }
-                          />
-                          <TraceabilityBlock artifact={concept} />
-                          <div className="actions">
-                            <button
-                              disabled={acceptButtonDisabled(concept.review_status)}
-                              type="button"
-                              onClick={() => acceptConcept(concept.id)}
-                            >
-                              {acceptButtonLabel(concept.review_status)}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateConcept(concept.id, draft)}
-                            >
-                              Edit manually
-                            </button>
-                            <button type="button" onClick={() => dismissConcept(concept.id)}>
-                              Dismiss
-                            </button>
-                          </div>
-                        </article>
-                      );
-                    })}
+              <aside className="max-h-[700px] overflow-y-auto border-l border-border bg-background px-5 py-6" aria-label="Graph inspector">
+                {selectedGraphEdge ? (
+                  <>
+                    <div className="flex items-start justify-between gap-3">
+                      <div><p className="text-xs font-semibold uppercase text-muted-foreground">Prerequisite edge</p><h3 className="mt-2 text-base font-semibold">{conceptName(graph, selectedGraphEdge.from_concept_id)} → {conceptName(graph, selectedGraphEdge.to_concept_id)}</h3></div>
+                      <Badge className="capitalize" variant="outline">{selectedGraphEdge.review_status}</Badge>
+                    </div>
+                    <div className="mt-5 flex gap-2 border-b border-border pb-5">
+                      <Button disabled={acceptButtonDisabled(selectedGraphEdge.review_status)} onClick={() => acceptEdge(selectedGraphEdge.id)} size="sm" type="button">{acceptButtonLabel(selectedGraphEdge.review_status)}</Button>
+                      <Button onClick={() => dismissEdge(selectedGraphEdge.id)} size="sm" type="button" variant="destructive">Dismiss</Button>
+                    </div>
+                    <InspectorSection title="Traceability"><TraceabilityBlock artifact={selectedGraphEdge} /></InspectorSection>
+                  </>
+                ) : selectedGraphConcept ? (() => {
+                  const concept = selectedGraphConcept;
+                  const draft = conceptDrafts[concept.id] ?? { name: concept.name, description: concept.description ?? "" };
+                  return (
+                    <>
+                      <div className="flex items-start justify-between gap-3">
+                        <div><p className="text-xs font-semibold uppercase text-muted-foreground">Concept</p><h3 className="mt-2 text-base font-semibold">{concept.name}</h3></div>
+                        <Badge className="capitalize" variant="outline">{concept.review_status}</Badge>
+                      </div>
+                      <div className="mt-5 space-y-4">
+                        <label className="grid gap-2 text-sm font-medium">Name<Input aria-label={`Concept name ${concept.name}`} value={draft.name} onChange={(event) => setConceptDrafts((current) => ({ ...current, [concept.id]: { ...draft, name: event.target.value } }))} /></label>
+                        <label className="grid gap-2 text-sm font-medium">Description<Textarea aria-label={`Concept description ${concept.name}`} className="min-h-28" value={draft.description} onChange={(event) => setConceptDrafts((current) => ({ ...current, [concept.id]: { ...draft, description: event.target.value } }))} /></label>
+                      </div>
+                      <div className="mt-5 flex flex-wrap gap-2 border-b border-border pb-5">
+                        <Button disabled={acceptButtonDisabled(concept.review_status)} onClick={() => acceptConcept(concept.id)} size="sm" type="button">{acceptButtonLabel(concept.review_status)}</Button>
+                        <Button onClick={() => updateConcept(concept.id, draft)} size="sm" type="button" variant="outline">Edit manually</Button>
+                        <Button onClick={() => dismissConcept(concept.id)} size="sm" type="button" variant="destructive">Dismiss</Button>
+                      </div>
+                      <InspectorSection title="Traceability"><TraceabilityBlock artifact={concept} /></InspectorSection>
+                    </>
+                  );
+                })() : <p className="text-sm text-muted-foreground">Select a concept or edge to inspect it.</p>}
+
+                <InspectorSection title="Browse artifacts">
+                  <div className="max-h-44 space-y-1 overflow-y-auto">
+                    {graph.concepts.map((concept) => <button className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted" key={concept.id} onClick={() => { setSelectedGraphConceptId(concept.id); setSelectedGraphEdgeId(""); }} type="button"><span className="truncate">{concept.name}</span><span className="text-xs capitalize text-muted-foreground">{concept.review_status}</span></button>)}
+                    {graph.edges.map((edge) => <button className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted" key={edge.id} onClick={() => { setSelectedGraphEdgeId(edge.id); setSelectedGraphConceptId(""); }} type="button"><span className="truncate">{conceptName(graph, edge.from_concept_id)} → {conceptName(graph, edge.to_concept_id)}</span><span className="text-xs capitalize text-muted-foreground">{edge.review_status}</span></button>)}
                   </div>
-                </section>
+                </InspectorSection>
 
-                <section>
-                  <h3>Edges</h3>
-                  <div className="graphList">
-                    {graph.edges.map((edge) => (
-                      <article
-                        className={
-                          edge.review_status === "dismissed"
-                            ? "graphReviewItem muted"
-                            : "graphReviewItem"
-                        }
-                        key={edge.id}
-                      >
-                        <strong>{edge.review_status}</strong>
-                        <p>
-                          {conceptName(graph, edge.from_concept_id)} &rarr;{" "}
-                          {conceptName(graph, edge.to_concept_id)}
-                        </p>
-                        <TraceabilityBlock artifact={edge} />
-                        <div className="actions">
-                          <button
-                            disabled={acceptButtonDisabled(edge.review_status)}
-                            type="button"
-                            onClick={() => acceptEdge(edge.id)}
-                          >
-                            {acceptButtonLabel(edge.review_status)}
-                          </button>
-                          <button type="button" onClick={() => dismissEdge(edge.id)}>
-                            Dismiss
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-
-                <form className="manualTopic" onSubmit={mergeConcepts}>
-                  <h3>Merge Concepts</h3>
-                  <select
-                    value={mergeSourceId}
-                    onChange={(event) => setMergeSourceId(event.target.value)}
-                  >
-                    {graph.concepts.map((concept) => (
-                      <option key={concept.id} value={concept.id}>
-                        {concept.name}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={mergeTargetId}
-                    onChange={(event) => setMergeTargetId(event.target.value)}
-                  >
-                    {graph.concepts.map((concept) => (
-                      <option key={concept.id} value={concept.id}>
-                        {concept.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button disabled={!mergeSourceId || !mergeTargetId} type="submit">
-                    Merge duplicate
-                  </button>
-                </form>
-
-                <form
-                  className="manualTopic"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    addGraphEdge(newEdge);
-                  }}
-                >
-                  <h3>Add Edge</h3>
-                  <select
-                    value={newEdge.from_concept_id}
-                    onChange={(event) =>
-                      setNewEdge((current) => ({
-                        ...current,
-                        from_concept_id: event.target.value,
-                      }))
-                    }
-                  >
-                    {graph.concepts.map((concept) => (
-                      <option key={concept.id} value={concept.id}>
-                        {concept.name}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={newEdge.to_concept_id}
-                    onChange={(event) =>
-                      setNewEdge((current) => ({
-                        ...current,
-                        to_concept_id: event.target.value,
-                      }))
-                    }
-                  >
-                    {graph.concepts.map((concept) => (
-                      <option key={concept.id} value={concept.id}>
-                        {concept.name}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    aria-label="Edge rationale"
-                    placeholder="Rationale"
-                    value={newEdge.rationale}
-                    onChange={(event) =>
-                      setNewEdge((current) => ({
-                        ...current,
-                        rationale: event.target.value,
-                      }))
-                    }
-                  />
-                  <button type="submit">Add edge</button>
-                </form>
-              </div>
+                <details className="border-b border-border py-4">
+                  <summary className="cursor-pointer text-xs font-semibold uppercase text-muted-foreground">Merge duplicate concepts</summary>
+                  <form className="mt-3 grid gap-2" onSubmit={mergeConcepts}>
+                    <select className="h-9 rounded-lg border border-input bg-background px-2 text-sm" value={mergeSourceId} onChange={(event) => setMergeSourceId(event.target.value)}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
+                    <select className="h-9 rounded-lg border border-input bg-background px-2 text-sm" value={mergeTargetId} onChange={(event) => setMergeTargetId(event.target.value)}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
+                    <Button disabled={!mergeSourceId || !mergeTargetId} size="sm" type="submit">Merge duplicate</Button>
+                  </form>
+                </details>
+                <details className="py-4">
+                  <summary className="cursor-pointer text-xs font-semibold uppercase text-muted-foreground">Add prerequisite edge</summary>
+                  <form className="mt-3 grid gap-2" onSubmit={(event) => { event.preventDefault(); addGraphEdge(newEdge); }}>
+                    <select className="h-9 rounded-lg border border-input bg-background px-2 text-sm" value={newEdge.from_concept_id} onChange={(event) => setNewEdge((current) => ({ ...current, from_concept_id: event.target.value }))}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
+                    <select className="h-9 rounded-lg border border-input bg-background px-2 text-sm" value={newEdge.to_concept_id} onChange={(event) => setNewEdge((current) => ({ ...current, to_concept_id: event.target.value }))}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
+                    <Input aria-label="Edge rationale" placeholder="Rationale" value={newEdge.rationale} onChange={(event) => setNewEdge((current) => ({ ...current, rationale: event.target.value }))} />
+                    <Button size="sm" type="submit">Add edge</Button>
+                  </form>
+                </details>
+              </aside>
             </div>
-          ) : null}
+          ) : (
+            <div className="px-8 py-16 text-center"><p className="text-sm font-medium">No graph generated</p><p className="mt-1 text-sm text-muted-foreground">Review at least one topic, then generate the concept graph.</p></div>
+          )}
         </section>
       ) : null}
 
@@ -2009,197 +1926,89 @@ export default function HomePage() {
       ) : null}
 
       {job?.course_id && graph ? (
-        <section className="panel instructorOnly" id="routing">
-          <div className="jobHeader">
-            <h2>Routing Policy</h2>
-            <div className="actions">
-              <button type="button" onClick={() => loadRoutingPolicies(job.course_id!)}>
-                Refresh
-              </button>
-            </div>
-          </div>
-
-          <div className="topicList">
-            {graph.concepts
-              .filter(
-                (concept) =>
-                  concept.review_status === "accepted" || concept.review_status === "edited",
-              )
-              .map((concept) => {
+        <div id="routing">
+          <ReviewWorkspace
+            description="Tune mastery and remediation thresholds for each reviewed concept."
+            eyebrow="Adaptive learning"
+            title="Routing policy"
+            toolbar={<Button onClick={() => loadRoutingPolicies(job.course_id!)} type="button" variant="outline"><RefreshCw data-icon="inline-start" /> Refresh</Button>}
+          >
+            <ReviewWorkspaceGrid
+              queue={(
+                <>
+                  <ReviewQueueHeader reviewed={routingPolicies.length} total={routingConcepts.length} />
+                  <nav aria-label="Routing concepts">
+                    {routingConcepts.map((concept) => {
+                      const saved = routingPolicies.some((policy) => policy.concept_id === concept.id);
+                      return <ReviewQueueItem active={concept.id === selectedRoutingConcept?.id} detail={saved ? "custom policy" : "default policy"} key={concept.id} label={concept.name} onClick={() => setSelectedRoutingConceptId(concept.id)} status={concept.review_status} />;
+                    })}
+                  </nav>
+                </>
+              )}
+              editor={selectedRoutingConcept ? (() => {
+                const concept = selectedRoutingConcept;
                 const draft = policyDrafts[concept.id] ?? defaultRoutingPolicyDraft();
-                const saved =
-                  routingPolicies.find((policy) => policy.concept_id === concept.id) ?? null;
+                const saved = routingPolicies.find((policy) => policy.concept_id === concept.id) ?? null;
                 return (
-                  <article className="topicCard" key={concept.id}>
-                    <div className="topicHeader">
-                      <strong>{concept.name}</strong>
-                      <span>{saved ? "custom" : "default"}</span>
+                  <div className="mx-auto max-w-2xl">
+                    <div className="flex items-start justify-between gap-4">
+                      <div><p className="text-xs font-medium text-muted-foreground">Concept policy</p><h3 className="mt-1 text-lg font-semibold">{concept.name}</h3></div>
+                      <Badge variant={saved ? "secondary" : "outline"}>{saved ? "custom" : "default"}</Badge>
                     </div>
-                    <p>{policyLabel(draft)}</p>
-                    <div className="timeGrid">
-                      <label>
-                        Confidence threshold
-                        <input
-                          min="1"
-                          max="4"
-                          step="1"
-                          type="number"
-                          value={draft.confidence_threshold}
-                          onChange={(event) =>
-                            setPolicyDrafts((current) => ({
-                              ...current,
-                              [concept.id]: {
-                                ...draft,
-                                confidence_threshold: Number(event.target.value),
-                              },
-                            }))
-                          }
-                        />
-                      </label>
-                      <label>
-                        Correct attempts
-                        <input
-                          min="1"
-                          step="1"
-                          type="number"
-                          value={draft.correct_attempts_for_mastery}
-                          onChange={(event) =>
-                            setPolicyDrafts((current) => ({
-                              ...current,
-                              [concept.id]: {
-                                ...draft,
-                                correct_attempts_for_mastery: Number(event.target.value),
-                              },
-                            }))
-                          }
-                        />
-                      </label>
-                      <label>
-                        Max remediation attempts
-                        <input
-                          min="0"
-                          step="1"
-                          type="number"
-                          value={draft.max_remediation_attempts}
-                          onChange={(event) =>
-                            setPolicyDrafts((current) => ({
-                              ...current,
-                              [concept.id]: {
-                                ...draft,
-                                max_remediation_attempts: Number(event.target.value),
-                              },
-                            }))
-                          }
-                        />
+                    <p className="mt-4 border-l-2 border-primary bg-primary/5 px-4 py-3 text-sm leading-6">{policyLabel(draft)}</p>
+                    <div className="mt-6 grid grid-cols-2 gap-5">
+                      <label className="grid gap-2 text-sm font-medium">Confidence threshold<Input max="4" min="1" step="1" type="number" value={draft.confidence_threshold} onChange={(event) => setPolicyDrafts((current) => ({ ...current, [concept.id]: { ...draft, confidence_threshold: Number(event.target.value) } }))} /></label>
+                      <label className="grid gap-2 text-sm font-medium">Correct attempts for mastery<Input min="1" step="1" type="number" value={draft.correct_attempts_for_mastery} onChange={(event) => setPolicyDrafts((current) => ({ ...current, [concept.id]: { ...draft, correct_attempts_for_mastery: Number(event.target.value) } }))} /></label>
+                      <label className="grid gap-2 text-sm font-medium">Max remediation attempts<Input min="0" step="1" type="number" value={draft.max_remediation_attempts} onChange={(event) => setPolicyDrafts((current) => ({ ...current, [concept.id]: { ...draft, max_remediation_attempts: Number(event.target.value) } }))} /></label>
+                      <label className="grid gap-2 text-sm font-medium">Advancement mode
+                        <select className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm" value={draft.advancement_mode} onChange={(event) => setPolicyDrafts((current) => ({ ...current, [concept.id]: { ...draft, advancement_mode: event.target.value as RoutingPolicyDraft["advancement_mode"] } }))}>
+                          <option value="require_mastery">Require mastery</option><option value="allow_partial_understanding">Allow partial understanding</option>
+                        </select>
                       </label>
                     </div>
-                    <label>
-                      Advancement mode
-                      <select
-                        value={draft.advancement_mode}
-                        onChange={(event) =>
-                          setPolicyDrafts((current) => ({
-                            ...current,
-                            [concept.id]: {
-                              ...draft,
-                              advancement_mode: event.target.value as RoutingPolicyDraft["advancement_mode"],
-                            },
-                          }))
-                        }
-                      >
-                        <option value="require_mastery">Require mastery</option>
-                        <option value="allow_partial_understanding">
-                          Allow partial understanding
-                        </option>
-                      </select>
-                    </label>
-                    <button type="button" onClick={() => saveRoutingPolicy(concept.id)}>
-                      Save policy
-                    </button>
-                  </article>
+                    <div className="mt-7 border-t border-border pt-5"><Button onClick={() => saveRoutingPolicy(concept.id)} type="button">Save policy</Button></div>
+                  </div>
                 );
-              })}
-          </div>
-        </section>
+              })() : <div className="flex min-h-96 items-center justify-center text-sm text-muted-foreground">Review concepts before configuring routing.</div>}
+              inspector={(
+                <>
+                  <InspectorSection title="Policy effect"><p className="text-sm leading-6">Confidence and correctness determine whether the learner advances, reinforces this concept, or receives targeted remediation.</p></InspectorSection>
+                  <InspectorSection title="Safeguard"><p className="text-sm leading-6">When remediation attempts reach the configured limit, routing flags the instructor instead of repeating the same loop.</p></InspectorSection>
+                  <InspectorSection title="Coverage"><p className="text-sm"><strong>{routingPolicies.length}</strong> custom policies across <strong>{routingConcepts.length}</strong> reviewed concepts.</p></InspectorSection>
+                </>
+              )}
+            />
+          </ReviewWorkspace>
+        </div>
       ) : null}
 
       {questions.some((question) => question.review_status === "accepted" || question.review_status === "edited") ? (
-        <section className="panel instructorOnly" id="routing-simulator">
-          <div className="jobHeader">
-            <h2>Learner Routing Simulator</h2>
-            <button type="button" onClick={createDemoLearner}>
+        <section className="instructorOnly border-b border-border bg-background" id="routing-simulator">
+          <header className="flex items-center justify-between gap-6 border-b border-border px-6 py-5 xl:px-8">
+            <div><p className="text-xs font-semibold uppercase text-muted-foreground">Policy validation</p><h2 className="mt-1 text-xl font-semibold">Learner routing simulator</h2><p className="mt-1 text-sm text-muted-foreground">Test deterministic outcomes before publishing.</p></div>
+            <Button onClick={createDemoLearner} type="button">
               {demoLearnerId ? "Create new learner" : "Create demo learner"}
-            </button>
-          </div>
-
-          {demoLearnerId ? <p>Demo learner: {demoLearnerId}</p> : null}
-          {routingError ? (
-            <p className="message" role="alert">
-              {routingError}
-            </p>
-          ) : null}
-          {routeDecision ? (
-            <div className="coverageWarning" role="status">
-              <strong>{routeDecision.action.replaceAll("_", " ")}</strong>
-              <p>{routeDecision.why}</p>
-              <p>Mastery state: {routeDecision.mastery_state}</p>
-              {routeDecision.target_concept_id ? (
-                <p>Target concept: {routeDecision.target_concept_id}</p>
-              ) : null}
-              {routeDecision.target_clip_id ? (
-                <p>Target clip: {routeDecision.target_clip_id}</p>
-              ) : null}
-              {routeDecision.dashboard_signal_id ? (
-                <p>Instructor signal: {routeDecision.dashboard_signal_id}</p>
-              ) : null}
+            </Button>
+          </header>
+          <div className="grid grid-cols-[240px_minmax(0,1fr)_300px]">
+            <aside className="border-r border-border bg-muted/20">
+              <div className="border-b border-border px-4 py-4"><p className="text-xs font-semibold uppercase text-muted-foreground">Test questions</p></div>
+              {simulatorQuestions.map((question) => <button className={`w-full border-b border-border px-4 py-3 text-left text-sm hover:bg-muted ${question.id === selectedSimulatorQuestion?.id ? "bg-background shadow-[inset_3px_0_0_var(--primary)]" : ""}`} key={question.id} onClick={() => setSelectedSimulatorQuestionId(question.id)} type="button"><span className="block truncate font-medium">{topics.find((topic) => topic.id === question.topic_id)?.title ?? "Untitled topic"}</span><span className="mt-1 block text-xs capitalize text-muted-foreground">{question.type.replaceAll("_", " ")}</span></button>)}
+            </aside>
+            <div className="min-w-0 px-8 py-7">
+              {selectedSimulatorQuestion ? (() => {
+                const question = selectedSimulatorQuestion;
+                const firstPattern = question.remediation_rules[0]?.wrong_answer_pattern ?? "incorrect";
+                return <div className="mx-auto max-w-2xl"><Badge variant="outline">{question.type.replaceAll("_", " ")}</Badge><h3 className="mt-4 text-lg font-semibold leading-7">{question.body}</h3><div className="mt-6 flex flex-wrap gap-2"><Button disabled={!demoLearnerId} onClick={() => submitLearnerAttempt(question.id, true, 4)} type="button">Correct + confident</Button><Button disabled={!demoLearnerId} onClick={() => submitLearnerAttempt(question.id, true, 2)} type="button" variant="outline">Correct + unsure</Button><Button disabled={!demoLearnerId} onClick={() => submitLearnerAttempt(question.id, false, 1, firstPattern)} type="button" variant="destructive">Incorrect</Button></div></div>;
+              })() : null}
+              {routingError ? <p className="mt-5 text-sm text-destructive" role="alert">{routingError}</p> : null}
             </div>
-          ) : null}
-
-          <div className="topicList">
-            {questions
-              .filter(
-                (question) =>
-                  question.review_status === "accepted" || question.review_status === "edited",
-              )
-              .map((question) => {
-                const topic = topics.find((item) => item.id === question.topic_id);
-                const firstPattern =
-                  question.remediation_rules[0]?.wrong_answer_pattern ?? "incorrect";
-                return (
-                  <article className="topicCard" key={question.id}>
-                    <div className="topicHeader">
-                      <strong>{topic?.title ?? "Untitled topic"}</strong>
-                      <span>{question.type.replaceAll("_", " ")}</span>
-                    </div>
-                    <p>{question.body}</p>
-                    <div className="actions">
-                      <button
-                        disabled={!demoLearnerId}
-                        type="button"
-                        onClick={() => submitLearnerAttempt(question.id, true, 4)}
-                      >
-                        Correct + confident
-                      </button>
-                      <button
-                        disabled={!demoLearnerId}
-                        type="button"
-                        onClick={() => submitLearnerAttempt(question.id, true, 2)}
-                      >
-                        Correct + unsure
-                      </button>
-                      <button
-                        disabled={!demoLearnerId}
-                        type="button"
-                        onClick={() =>
-                          submitLearnerAttempt(question.id, false, 1, firstPattern)
-                        }
-                      >
-                        Incorrect
-                      </button>
-                    </div>
-                  </article>
-                );
-              })}
+            <aside className="border-l border-border bg-muted/20 px-5 py-6">
+              <InspectorSection title="Simulator identity"><p className="break-all text-xs leading-5 text-muted-foreground">{demoLearnerId ? `Demo learner: ${demoLearnerId}` : "Create a demo learner to enable outcomes."}</p></InspectorSection>
+              <InspectorSection title="Latest decision">
+                {routeDecision ? <div role="status"><Badge className="capitalize" variant="secondary">{routeDecision.action.replaceAll("_", " ")}</Badge><p className="mt-3 text-sm leading-6">{routeDecision.why}</p><dl className="mt-3 space-y-2 text-xs text-muted-foreground"><div><dt className="font-medium text-foreground">Mastery state</dt><dd>{routeDecision.mastery_state}</dd></div>{routeDecision.target_concept_id ? <div><dt className="font-medium text-foreground">Target concept</dt><dd className="break-all">{routeDecision.target_concept_id}</dd></div> : null}{routeDecision.target_clip_id ? <div><dt className="font-medium text-foreground">Target clip</dt><dd className="break-all">{routeDecision.target_clip_id}</dd></div> : null}{routeDecision.dashboard_signal_id ? <div><dt className="font-medium text-foreground">Instructor signal</dt><dd className="break-all">{routeDecision.dashboard_signal_id}</dd></div> : null}</dl></div> : <p className="text-sm text-muted-foreground">No outcome recorded yet.</p>}
+              </InspectorSection>
+            </aside>
           </div>
         </section>
       ) : null}

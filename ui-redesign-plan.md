@@ -1,7 +1,7 @@
 # CourseFoundry UI/UX Redesign Plan
 
 **Status:** Active
-**Current stage:** Stage 5 - Graph and routing workspace
+**Current stage:** Stage 6 - Instructor insights
 **Last updated:** 2026-07-12
 **Scope:** Desktop and laptop web only. Tablet, mobile, and native-app layouts are not part of this redesign.
 
@@ -46,9 +46,9 @@ The learner experience prioritizes the current lesson, the next recommended acti
 | 1. Design concepts and system | Complete | Complete desktop concepts, tokens, typography, density, states, and interaction thesis | User approved continuing with the generated instructor concepts and textual learner specification on 2026-07-12 |
 | 2. Shared foundation and application shell | Complete | Tailwind/shadcn foundation, tokens, app shell, component extraction, workspace navigation | Production build, 26 unit tests, 4 local E2E/WCAG tests, and 1600x1000 plus 1280x800 visual review passed on 2026-07-12 |
 | 3. Instructor onboarding and course builder | Implementation complete; paired E2E pending | Source ingestion, processing, readiness, publishing, and course-production stepper | Fast checks and desktop/laptop visual review pass; workflow E2E will run with the Stage 4+5 paired gate |
-| 4. Instructor review workspaces | Implementation complete; paired E2E pending | Outline, clip, and assessment review queues with contextual inspectors | Lint, typecheck, 26 unit tests, and production build pass; behavior/visual verification runs with Stage 5 |
-| 5. Graph and routing workspace | In progress | Full-canvas graph, review filters, concept/edge inspector, routing tools, simulator | Graph editing and routing branches pass the Stage 4+5 paired E2E and visual review |
-| 6. Instructor insights | Not started | Summary, signal queue, problem inspector, dashboard actions, learner override | Dashboard correction loop passes without invented data |
+| 4. Instructor review workspaces | Automated paired gate passed; final visual regression Stage 8 | Outline, clip, and assessment review queues with contextual inspectors | Lint, typecheck, 26 unit tests, production build, and the Stage 4+5 Playwright/WCAG gate pass |
+| 5. Graph and routing workspace | Automated paired gate passed; final visual regression Stage 8 | Full-canvas graph, review filters, concept/edge inspector, routing tools, simulator | Graph/routing implementation compiles; Stage 4+5 Playwright/WCAG gate passes after fixing learner status visibility |
+| 6. Instructor insights | In progress | Summary, signal queue, problem inspector, dashboard actions, learner override | Dashboard correction loop passes without invented data |
 | 7. Learner experience | Not started | Focused player, comprehension flow, route explanation, course path, mastery map | Learner remediation/advancement journey passes E2E and visual review |
 | 8. Desktop/laptop hardening and rollout | Not started | WCAG 2.2 AA, desktop/laptop responsive constraints, loading/error/empty states, visual regression, performance | Automated suite passes and user completes Phase 10 human checklist |
 
@@ -139,6 +139,7 @@ The learner experience prioritizes the current lesson, the next recommended acti
 - 2026-07-12: Stage 2 shared foundation/application shell completed. Tailwind v4, shadcn Nova, Lucide, self-hosted fonts, semantic tokens, and the role-aware app shell are implemented; existing unit/E2E/WCAG behavior remains green at desktop/laptop viewports.
 - 2026-07-12: Stage 3 course builder implemented with unified source ingestion, processing progress/error state, seven-step production readiness rail, publishing blockers, Mux capacity state, and development-identity disclosure. Lint, typecheck, 26 unit tests, production build, and targeted 1600x1000/1280x800 visual checks pass without horizontal overflow. At user request, full Playwright runs use paired gates after Stages 4+5 and 6+7 rather than running after every stage.
 - 2026-07-12: Stage 4 instructor review workspaces implemented. Outline, clip, and assessment surfaces now use a shared three-pane queue/focused-editor/evidence-inspector pattern; existing topic boundary, generation prerequisite, media preview, JSON editing, traceability, and Accept/Edit/Dismiss/Regenerate/flag/re-cut actions are preserved. Lint, typecheck, all 26 unit tests, and production build pass. Populated-state visual and behavior verification is intentionally paired with Stage 5.
+- 2026-07-12: Stage 5 graph/routing workspace implemented. The concept graph is now a 700px primary canvas with status filters, node/edge selection, artifact inspector, review controls, traceability, duplicate merge, and edge creation. Routing uses a concept queue, focused policy editor, safeguards inspector, and a three-pane learner simulator. The Stage 4+5 gate passes 4 local Playwright journey/WCAG tests with 1 credential-dependent Mux test skipped. The gate found and fixed learner enrollment feedback hidden inside the instructor-only setup surface. Final visual-regression capture remains in Stage 8.
 
 ## Completion Rule
 
