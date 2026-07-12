@@ -108,97 +108,77 @@ the live status rather than relying on this summary for phase completion.
 
 ```mermaid
 flowchart TB
-    Instructor[Instructor] --> InstructorUI[Instructor workspaces]
-    Learner[Learner] --> LearnerUI[Learner player and mastery view]
+    Instructor([Instructor]) --> Studio[Next.js instructor studio]
 
-    subgraph Web[Next.js 15 web application]
-        InstructorUI
-        LearnerUI
-        ReviewUI[Accept / Edit / Dismiss reviews]
-        GraphUI[Concept graph editor]
-        DashboardUI[Insights and correction workspace]
-        InstructorUI --> ReviewUI
-        InstructorUI --> GraphUI
-        InstructorUI --> DashboardUI
+    subgraph Produce[1. Build a course from source video]
+        direction LR
+        Upload[Upload or media URL] --> Ingest[Async ingestion job]
+        Ingest --> ASR[OpenAI ASR<br/>word timestamps]
+        ASR --> Transcript[(Timestamped transcript)]
     end
 
-    subgraph API[FastAPI application and orchestration layer]
-        Ingestion[Async ingestion jobs]
-        Validation[Schema and domain validation]
-        Review[Review-state and publish gates]
-        Audit[Immutable audit trail]
-        Routing[Deterministic adaptive routing engine]
-        Analytics[Analytics and signal rules]
+    Studio --> Upload
+
+    subgraph Structure[2. Structure knowledge]
+        direction LR
+        Segment[Segmentation agent<br/>topics, ranges, summaries] --> TopicReview{Review topics<br/>Accept / Edit / Dismiss}
+        TopicReview --> Graph[Concept-graph agent<br/>concepts and prerequisites]
+        Graph --> GraphCheck[DAG and schema validation]
+        GraphCheck --> GraphReview{Review graph<br/>Accept / Edit / Dismiss}
     end
 
-    subgraph AIPipeline[AI-assisted course production]
-        ASR[Transcription provider<br/>word-level timestamps]
-        Segment[Segmentation agent<br/>topics, ranges, summaries, evidence]
-        Concept[Concept-graph agent<br/>concepts, prerequisites, rationale]
-        Clip[Clip agent<br/>reusable spans, types, concept tags]
-        Assess[Assessment agent<br/>questions and remediation mappings]
-        Grade[Answer-grading agent<br/>correctness, feedback, misconception]
+    Transcript --> Segment
 
-        ASR -->|timestamped transcript| Segment
+    subgraph Compose[3. Compose learning material]
+        direction LR
+        Clips[Clip agent<br/>spans, types and concept tags] --> ClipCheck[Timestamp snapping<br/>and boundary validation]
+        ClipCheck --> ClipReview{Review clips<br/>Accept / Edit / Dismiss}
+        ClipReview --> Questions[Assessment agent<br/>questions and remediation]
+        Questions --> QuestionReview{Review assessments<br/>Accept / Edit / Dismiss}
     end
 
-    subgraph Providers[Replaceable providers]
-        OpenAIASR[OpenAI ASR]
-        GPT[OpenAI GPT-5.4]
-        LocalAI[Deterministic local agents<br/>development and tests]
-        Video[Mux or local video delivery]
+    GraphReview --> Clips
+    QuestionReview --> Publish[Publish gate<br/>reviewed artifacts only]
+
+    subgraph Learn[4. Adaptive learner loop]
+        direction LR
+        Player[Video and clip player] --> Answer[Learner answer<br/>plus confidence]
+        Answer --> Grade[Answer-grading agent<br/>correctness and misconception]
+        Grade --> Route[Deterministic routing<br/>policy plus prerequisites]
+        Route --> Decision[Advance, reinforce<br/>or remediate]
     end
 
-    subgraph Data[PostgreSQL system of record]
-        Content[(Videos, transcripts, topics,<br/>concepts, edges, clips, questions)]
-        Learning[(Enrollments, attempts,<br/>mastery and routing policies)]
-        Governance[(Review states, rationales,<br/>dashboard signals and audit events)]
-        GraphStore[(Adjacency tables<br/>DAG checks and recursive CTEs)]
+    Learner([Learner]) --> Player
+    Publish --> Player
+    Decision --> Player
+
+    subgraph Improve[5. Evidence and instructor correction]
+        direction LR
+        Mastery[(Attempts, watch time<br/>and concept mastery)] --> Signals[Analytics rules<br/>cohort, content and graph signals]
+        Signals --> SignalReview{Review correction<br/>Accept / Edit / Dismiss}
+        SignalReview --> Changes[Reviewed content,<br/>graph or policy change]
     end
 
-    InstructorUI -->|uploads and generation commands| Ingestion
-    ReviewUI <-->|proposal review and edits| Review
-    GraphUI <-->|graph review and editing| Review
-    DashboardUI <-->|accept, edit or dismiss actions| Analytics
-    LearnerUI -->|answer plus confidence| Grade
-    Grade -->|graded attempt| Routing
-    Routing -->|advance, reinforce or remediate| LearnerUI
+    Route --> Mastery
+    Route -->|stuck-loop escalation| Signals
+    Changes --> Route
+    SignalReview --> Studio
 
-    Ingestion -->|source media| ASR
-    Ingestion --> Video
-    Segment --> Validation
-    Concept --> Validation
-    Clip --> Validation
-    Assess --> Validation
-    Validation -->|validated proposals| Review
-    Review -->|accepted or edited topics| Concept
-    Review -->|reviewed topics, concepts and edges| Clip
-    Review -->|reviewed topics, concepts and usable clips| Assess
-    Review -->|approved learner-facing artifacts| Content
-    Review --> Audit
+    subgraph Platform[Shared platform services]
+        direction LR
+        API[FastAPI orchestration<br/>and domain services]
+        Models[GPT-5.4 agents<br/>local deterministic test providers]
+        Video[Mux or local<br/>video delivery]
+        DB[(PostgreSQL<br/>content, graph, learning and governance)]
+        Audit[Immutable audit trail<br/>rationale, actor and scope]
+    end
 
-    ASR -. provider interface .-> OpenAIASR
-    Segment -. agent interface .-> GPT
-    Concept -. agent interface .-> GPT
-    Clip -. agent interface .-> GPT
-    Assess -. agent interface .-> GPT
-    Grade -. agent interface .-> GPT
-    LocalAI -. offline alternative .-> Segment
-    LocalAI -. offline alternative .-> Concept
-    LocalAI -. offline alternative .-> Clip
-    LocalAI -. offline alternative .-> Assess
-    LocalAI -. offline alternative .-> Grade
-
-    Routing <-->|reviewed graph, policy and mastery| Learning
-    Routing -->|stuck-loop escalation| Analytics
-    Analytics <-->|aggregate real learner outcomes| Learning
-    Analytics -->|reviewable signals| Governance
-    Audit --> Governance
-    Review <--> GraphStore
-    GraphStore -->|eligible next concepts| Routing
-    Content --> LearnerUI
-    Content -->|reviewed question and answer key| Grade
-    Video --> LearnerUI
+    API -. coordinates .-> Segment
+    Models -. provider interfaces .-> Questions
+    Video -. playback .-> Player
+    Publish --> DB
+    Mastery --> DB
+    SignalReview --> Audit
 ```
 
 The AI pipeline is deliberately not a single autonomous course generator. Each
