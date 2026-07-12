@@ -5,7 +5,7 @@ from app.video.mux_provider import MuxVideoDeliveryProvider
 
 
 def build_video_delivery_provider(settings: Settings) -> VideoDeliveryProvider:
-    if settings.video_provider == "local":
+    if settings.force_local_video_delivery or settings.video_provider == "local":
         return LocalVideoDeliveryProvider(settings.local_video_storage_path)
     if settings.video_provider == "mux":
         return MuxVideoDeliveryProvider(

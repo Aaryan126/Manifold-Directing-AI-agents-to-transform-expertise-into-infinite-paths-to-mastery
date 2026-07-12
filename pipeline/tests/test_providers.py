@@ -22,3 +22,11 @@ def test_video_provider_factory_can_return_mux_adapter() -> None:
     provider = build_video_delivery_provider(Settings(video_provider="mux"))
 
     assert isinstance(provider, MuxVideoDeliveryProvider)
+
+
+def test_deployment_override_forces_local_delivery() -> None:
+    provider = build_video_delivery_provider(
+        Settings(video_provider="mux", force_local_video_delivery=True),
+    )
+
+    assert isinstance(provider, LocalVideoDeliveryProvider)

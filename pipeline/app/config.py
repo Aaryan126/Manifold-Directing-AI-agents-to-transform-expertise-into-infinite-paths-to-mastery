@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     assessment_agent_provider: str = "openai"
     llm_model: str = "gpt-5.4"
     video_provider: str = "local"
+    force_local_video_delivery: bool = False
     local_video_storage_path: str = "/data/video"
     direct_url_download_timeout_seconds: float = 30.0
     openai_api_key: str | None = Field(default=None)

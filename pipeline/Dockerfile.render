@@ -17,6 +17,7 @@ COPY test_video.mp4 ./demo/test_video.mp4
 
 ENV DEMO_VIDEO_PATH=/app/demo/test_video.mp4
 ENV DEMO_TRANSCRIPT_PATH=/app/demo/transcript.json
+ENV FORCE_LOCAL_VIDEO_DELIVERY=true
 
 EXPOSE 10000
 CMD ["sh", "-c", "python -m app.db.apply_migrations && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]
