@@ -49,6 +49,8 @@ services:
     build:
       context: .
       dockerfile: web/Dockerfile
+      args:
+        NEXT_PUBLIC_PIPELINE_BASE_URL: ${NEXT_PUBLIC_PIPELINE_BASE_URL:-http://localhost:8000}
     environment:
       PIPELINE_BASE_URL: ${PIPELINE_BASE_URL:-http://pipeline:8000}
       NEXT_PUBLIC_PIPELINE_BASE_URL: ${NEXT_PUBLIC_PIPELINE_BASE_URL:-http://localhost:8000}
