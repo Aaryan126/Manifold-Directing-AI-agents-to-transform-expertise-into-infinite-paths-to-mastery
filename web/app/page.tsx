@@ -58,6 +58,18 @@ import {
 } from "./traceability";
 import { CourseFoundryShell } from "@/components/coursefoundry-shell";
 import { CourseSetupWorkspace } from "@/components/course-setup-workspace";
+import {
+  InspectorSection,
+  ReviewQueueHeader,
+  ReviewQueueItem,
+  ReviewWorkspace,
+  ReviewWorkspaceGrid,
+} from "@/components/review-workspace";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { RefreshCw, Sparkles } from "lucide-react";
 
 type Job = {
   id: string;
@@ -227,6 +239,9 @@ export default function HomePage() {
   const [job, setJob] = useState<Job | null>(null);
   const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [selectedTopicReviewId, setSelectedTopicReviewId] = useState("");
+  const [selectedClipReviewId, setSelectedClipReviewId] = useState("");
+  const [selectedQuestionReviewId, setSelectedQuestionReviewId] = useState("");
   const [graph, setGraph] = useState<GraphResponse | null>(null);
   const [clips, setClips] = useState<Clip[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -1307,6 +1322,16 @@ export default function HomePage() {
     }
   }
 
+  const selectedTopicReview =
+    topics.find((topic) => topic.id === selectedTopicReviewId) ?? topics[0] ?? null;
+  const selectedTopicReviewIndex = selectedTopicReview
+    ? topics.findIndex((topic) => topic.id === selectedTopicReview.id)
+    : -1;
+  const selectedClipReview =
+    clips.find((clip) => clip.id === selectedClipReviewId) ?? clips[0] ?? null;
+  const selectedQuestionReview =
+    questions.find((question) => question.id === selectedQuestionReviewId) ?? questions[0] ?? null;
+
   return (
     <CourseFoundryShell
       courseStatus={course?.status}
@@ -1362,218 +1387,160 @@ export default function HomePage() {
       ) : null}
 
       {transcript && job?.video_id ? (
-        <section className="panel instructorOnly" id="outline">
-          <div className="jobHeader">
-            <h2>Topic Outline</h2>
-            <div className="actions">
-              <button type="button" onClick={() => loadTopics(job.video_id!)}>
-                Refresh
-              </button>
-              <button disabled={isSegmenting} type="button" onClick={segmentTranscript}>
-                {isSegmenting ? "Segmenting" : "Generate Outline"}
-              </button>
-            </div>
-          </div>
-
-          {coverageGaps.length > 0 ? (
-            <div className="coverageWarning" role="alert">
-              <strong>Unassigned source video ranges</strong>
-              <ul>
-                {coverageGaps.map((gap) => (
-                  <li key={`${gap.start_seconds}-${gap.end_seconds}`}>
-                    {formatDuration(gap.duration_seconds)} of source video not currently assigned
-                    to any active topic ({formatTime(gap.start_seconds)} -{" "}
-                    {formatTime(gap.end_seconds)}).
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          <div className="topicList">
+        <div id="outline">
+          <ReviewWorkspace
+            description="Confirm topic boundaries, titles, and summaries before graph generation."
+            eyebrow="Content review"
+            title="Topic outline"
+            toolbar={(
+              <>
+                <Button onClick={() => loadTopics(job.video_id!)} type="button" variant="outline">
+                  <RefreshCw data-icon="inline-start" /> Refresh
+                </Button>
+                <Button disabled={isSegmenting} onClick={segmentTranscript} type="button">
+                  <Sparkles data-icon="inline-start" />
+                  {isSegmenting ? "Segmenting" : "Generate Outline"}
+                </Button>
+              </>
+            )}
+          >
             {topics.length === 0 ? (
-              <p className="emptyState">
-                No topics yet. Generate an outline to begin instructor review.
-              </p>
-            ) : null}
-            {topics.map((topic, index) => {
+              <div className="px-8 py-16 text-center">
+                <p className="text-sm font-medium">No topics yet</p>
+                <p className="mt-1 text-sm text-muted-foreground">Generate an outline to begin instructor review.</p>
+              </div>
+            ) : selectedTopicReview ? (() => {
+              const topic = selectedTopicReview;
+              const index = selectedTopicReviewIndex;
               const draft = topicDrafts[topic.id] ?? topicToDraft(topic);
               const nextTopic = topics[index + 1];
               return (
-                <article className="topicCard" key={topic.id}>
-                  <div className="topicHeader">
-                    <strong>{formatTime(topic.start_seconds)} - {formatTime(topic.end_seconds)}</strong>
-                    <span>{topic.review_status}</span>
-                  </div>
-                  <label htmlFor={`title-${topic.id}`}>Title</label>
-                  <input
-                    id={`title-${topic.id}`}
-                    value={draft.title}
-                    onChange={(event) =>
-                      setTopicDrafts((current) => ({
-                        ...current,
-                        [topic.id]: { ...draft, title: event.target.value },
-                      }))
-                    }
-                  />
-                  <label htmlFor={`summary-${topic.id}`}>Summary</label>
-                  <textarea
-                    id={`summary-${topic.id}`}
-                    value={draft.summary}
-                    onChange={(event) =>
-                      setTopicDrafts((current) => ({
-                        ...current,
-                        [topic.id]: { ...draft, summary: event.target.value },
-                      }))
-                    }
-                  />
-                  <div className="timeGrid">
-                    <label>
-                      Start
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={draft.start_seconds}
-                        onChange={(event) =>
-                          setTopicDrafts((current) => ({
-                            ...current,
-                            [topic.id]: {
-                              ...draft,
-                              start_seconds: Number(event.target.value),
-                            },
-                          }))
-                        }
-                      />
-                    </label>
-                    <label>
-                      End
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={draft.end_seconds}
-                        onChange={(event) =>
-                          setTopicDrafts((current) => ({
-                            ...current,
-                            [topic.id]: {
-                              ...draft,
-                              end_seconds: Number(event.target.value),
-                            },
-                          }))
-                        }
-                      />
-                    </label>
-                  </div>
-                  <TraceabilityBlock artifact={topic} />
-                  <div className="actions">
-                    <button
-                      disabled={acceptButtonDisabled(topic.review_status)}
-                      type="button"
-                      onClick={() => acceptTopic(topic.id)}
-                    >
-                      {acceptButtonLabel(topic.review_status)}
-                    </button>
-                    <button type="button" onClick={() => updateTopic(topic.id, draft)}>
-                      Edit manually
-                    </button>
-                    <button type="button" onClick={() => dismissTopic(topic.id)}>
-                      Dismiss
-                    </button>
-                    <button type="button" onClick={() => splitTopic(topic)}>
-                      Split
-                    </button>
-                    <button
-                      disabled={!nextTopic}
-                      type="button"
-                      onClick={() => mergeTopicWithNext(index)}
-                    >
-                      Merge next
-                    </button>
-                  </div>
-                  {nextTopic ? (
-                    <label className="boundary">
-                      Boundary
-                      <input
-                        type="range"
-                        min={Math.ceil(topic.start_seconds + 30)}
-                        max={Math.floor(nextTopic.end_seconds - 30)}
-                        step="1"
-                        value={Math.round(draft.end_seconds)}
-                        onChange={(event) =>
-                          setTopicDrafts((current) => ({
-                            ...current,
-                            [topic.id]: {
-                              ...draft,
-                              end_seconds: Number(event.target.value),
-                            },
-                            [nextTopic.id]: {
-                              ...(current[nextTopic.id] ?? topicToDraft(nextTopic)),
-                              start_seconds: Number(event.target.value),
-                            },
-                          }))
-                        }
-                        onMouseUp={(event) => retimeBoundary(index, Number(event.currentTarget.value))}
-                        onTouchEnd={(event) => retimeBoundary(index, Number(event.currentTarget.value))}
-                      />
-                    </label>
-                  ) : null}
-                </article>
+                <ReviewWorkspaceGrid
+                  queue={(
+                    <>
+                      <ReviewQueueHeader reviewed={reviewedTopics} total={topics.length} />
+                      <nav aria-label="Topics">
+                        {topics.map((item) => (
+                          <ReviewQueueItem
+                            active={item.id === topic.id}
+                            detail={`${formatTime(item.start_seconds)}–${formatTime(item.end_seconds)} · ${item.review_status}`}
+                            key={item.id}
+                            label={item.title}
+                            onClick={() => setSelectedTopicReviewId(item.id)}
+                            status={item.review_status}
+                          />
+                        ))}
+                      </nav>
+                    </>
+                  )}
+                  editor={(
+                    <div className="mx-auto max-w-2xl">
+                      <div className="mb-6 flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-xs font-medium text-muted-foreground">Topic {index + 1} of {topics.length}</p>
+                          <h3 className="mt-1 text-lg font-semibold">Review topic</h3>
+                        </div>
+                        <Badge className="capitalize" variant="outline">{topic.review_status}</Badge>
+                      </div>
+                      <div className="space-y-5">
+                        <label className="grid gap-2 text-sm font-medium" htmlFor={`title-${topic.id}`}>
+                          Title
+                          <Input
+                            className="h-10"
+                            id={`title-${topic.id}`}
+                            value={draft.title}
+                            onChange={(event) => setTopicDrafts((current) => ({
+                              ...current, [topic.id]: { ...draft, title: event.target.value },
+                            }))}
+                          />
+                        </label>
+                        <label className="grid gap-2 text-sm font-medium" htmlFor={`summary-${topic.id}`}>
+                          Summary
+                          <Textarea
+                            className="min-h-36"
+                            id={`summary-${topic.id}`}
+                            value={draft.summary}
+                            onChange={(event) => setTopicDrafts((current) => ({
+                              ...current, [topic.id]: { ...draft, summary: event.target.value },
+                            }))}
+                          />
+                        </label>
+                        <div className="grid grid-cols-2 gap-4">
+                          <label className="grid gap-2 text-sm font-medium">Start
+                            <Input min="0" step="1" type="number" value={draft.start_seconds} onChange={(event) =>
+                              setTopicDrafts((current) => ({ ...current, [topic.id]: { ...draft, start_seconds: Number(event.target.value) } }))
+                            } />
+                          </label>
+                          <label className="grid gap-2 text-sm font-medium">End
+                            <Input min="0" step="1" type="number" value={draft.end_seconds} onChange={(event) =>
+                              setTopicDrafts((current) => ({ ...current, [topic.id]: { ...draft, end_seconds: Number(event.target.value) } }))
+                            } />
+                          </label>
+                        </div>
+                      </div>
+                      <div className="mt-8 flex flex-wrap items-center gap-2 border-t border-border pt-5">
+                        <Button disabled={acceptButtonDisabled(topic.review_status)} onClick={() => acceptTopic(topic.id)} type="button">
+                          {acceptButtonLabel(topic.review_status)}
+                        </Button>
+                        <Button onClick={() => updateTopic(topic.id, draft)} type="button" variant="outline">Edit manually</Button>
+                        <Button onClick={() => dismissTopic(topic.id)} type="button" variant="destructive">Dismiss</Button>
+                        <Button onClick={() => splitTopic(topic)} type="button" variant="ghost">Split</Button>
+                        <Button disabled={!nextTopic} onClick={() => mergeTopicWithNext(index)} type="button" variant="ghost">Merge next</Button>
+                      </div>
+                      <details className="mt-8 border-t border-border pt-5">
+                        <summary className="cursor-pointer text-sm font-medium">Add a topic manually</summary>
+                        <form className="mt-4 grid gap-3" onSubmit={addManualTopic}>
+                          <Input aria-label="Manual topic title" placeholder="Title" value={manualTopic.title} onChange={(event) => setManualTopic((current) => ({ ...current, title: event.target.value }))} />
+                          <Textarea aria-label="Manual topic summary" placeholder="Summary" value={manualTopic.summary} onChange={(event) => setManualTopic((current) => ({ ...current, summary: event.target.value }))} />
+                          <div className="grid grid-cols-2 gap-3">
+                            <Input aria-label="Manual topic start" min="0" step="1" type="number" value={manualTopic.start_seconds} onChange={(event) => setManualTopic((current) => ({ ...current, start_seconds: Number(event.target.value) }))} />
+                            <Input aria-label="Manual topic end" min="0" step="1" type="number" value={manualTopic.end_seconds} onChange={(event) => setManualTopic((current) => ({ ...current, end_seconds: Number(event.target.value) }))} />
+                          </div>
+                          <Button className="w-fit" disabled={!manualTopic.title} type="submit">Add topic</Button>
+                        </form>
+                      </details>
+                    </div>
+                  )}
+                  inspector={(
+                    <>
+                      <InspectorSection title="Source range">
+                        <p className="text-sm font-medium">{formatTime(draft.start_seconds)}–{formatTime(draft.end_seconds)}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{formatDuration(draft.end_seconds - draft.start_seconds)} duration</p>
+                        {nextTopic ? (
+                          <label className="mt-4 grid gap-2 text-xs font-medium">Boundary with next topic
+                            <input
+                              className="accent-primary"
+                              max={Math.floor(nextTopic.end_seconds - 30)}
+                              min={Math.ceil(topic.start_seconds + 30)}
+                              onChange={(event) => setTopicDrafts((current) => ({
+                                ...current,
+                                [topic.id]: { ...draft, end_seconds: Number(event.target.value) },
+                                [nextTopic.id]: { ...(current[nextTopic.id] ?? topicToDraft(nextTopic)), start_seconds: Number(event.target.value) },
+                              }))}
+                              onMouseUp={(event) => retimeBoundary(index, Number(event.currentTarget.value))}
+                              onTouchEnd={(event) => retimeBoundary(index, Number(event.currentTarget.value))}
+                              step="1"
+                              type="range"
+                              value={Math.round(draft.end_seconds)}
+                            />
+                          </label>
+                        ) : null}
+                      </InspectorSection>
+                      {coverageGaps.length ? (
+                        <InspectorSection title="Coverage warnings">
+                          <ul className="space-y-2 text-xs leading-5 text-amber-800">
+                            {coverageGaps.map((gap) => <li key={`${gap.start_seconds}-${gap.end_seconds}`}>{formatDuration(gap.duration_seconds)} unassigned at {formatTime(gap.start_seconds)}–{formatTime(gap.end_seconds)}</li>)}
+                          </ul>
+                        </InspectorSection>
+                      ) : null}
+                      <InspectorSection title="Traceability"><TraceabilityBlock artifact={topic} /></InspectorSection>
+                    </>
+                  )}
+                />
               );
-            })}
-          </div>
-
-          <form className="manualTopic" onSubmit={addManualTopic}>
-            <h3>Add Topic</h3>
-            <input
-              aria-label="Manual topic title"
-              placeholder="Title"
-              value={manualTopic.title}
-              onChange={(event) =>
-                setManualTopic((current) => ({ ...current, title: event.target.value }))
-              }
-            />
-            <textarea
-              aria-label="Manual topic summary"
-              placeholder="Summary"
-              value={manualTopic.summary}
-              onChange={(event) =>
-                setManualTopic((current) => ({ ...current, summary: event.target.value }))
-              }
-            />
-            <div className="timeGrid">
-              <input
-                aria-label="Manual topic start"
-                min="0"
-                step="1"
-                type="number"
-                value={manualTopic.start_seconds}
-                onChange={(event) =>
-                  setManualTopic((current) => ({
-                    ...current,
-                    start_seconds: Number(event.target.value),
-                  }))
-                }
-              />
-              <input
-                aria-label="Manual topic end"
-                min="0"
-                step="1"
-                type="number"
-                value={manualTopic.end_seconds}
-                onChange={(event) =>
-                  setManualTopic((current) => ({
-                    ...current,
-                    end_seconds: Number(event.target.value),
-                  }))
-                }
-              />
-            </div>
-            <button disabled={!manualTopic.title} type="submit">
-              Add
-            </button>
-          </form>
-        </section>
+            })() : null}
+          </ReviewWorkspace>
+        </div>
       ) : null}
 
       {job?.course_id ? (
@@ -1818,284 +1785,227 @@ export default function HomePage() {
       ) : null}
 
       {job?.video_id && topics.length > 0 ? (
-        <section className="panel instructorOnly" id="clips">
-          <div className="jobHeader">
-            <h2>Clip Spot Check</h2>
-            <div className="actions">
-              <button type="button" onClick={() => loadClips(job.video_id!)}>
-                Refresh
-              </button>
-            </div>
-          </div>
-
-          <div className="topicList">
-            {topics
-              .filter(isTopicReviewedForClipGeneration)
-              .map((topic) => {
-                const concepts = graph?.concepts ?? [];
-                const blockReason = topicClipGenerationBlockReason(topic, concepts);
-                const reviewedConcepts = reviewedConceptCountForTopic(topic.id, concepts);
-                return (
-                  <article className="topicCard" key={topic.id}>
-                    <div className="topicHeader">
-                      <strong>{topic.title}</strong>
-                      <span>
-                        {formatTime(topic.start_seconds)} - {formatTime(topic.end_seconds)}
-                      </span>
+        <div id="clips">
+          <ReviewWorkspace
+            description="Preview source boundaries and flag only clips that need a corrected cut."
+            eyebrow="Media review"
+            title="Clip spot check"
+            toolbar={(
+              <Button onClick={() => loadClips(job.video_id!)} type="button" variant="outline">
+                <RefreshCw data-icon="inline-start" /> Refresh
+              </Button>
+            )}
+          >
+            <ReviewWorkspaceGrid
+              queue={(
+                <>
+                  <ReviewQueueHeader reviewed={clips.filter((clip) => clip.status !== "active").length} total={clips.length} />
+                  {clips.length ? (
+                    <nav aria-label="Clips">
+                      {clips.map((clip, index) => (
+                        <ReviewQueueItem
+                          active={clip.id === selectedClipReview?.id}
+                          detail={`${formatTime(clip.start_seconds)}–${formatTime(clip.end_seconds)} · ${clip.status}`}
+                          key={clip.id}
+                          label={`Clip ${index + 1}: ${clip.type.replaceAll("_", " ")}`}
+                          onClick={() => setSelectedClipReviewId(clip.id)}
+                          status={clip.status}
+                        />
+                      ))}
+                    </nav>
+                  ) : <p className="px-4 py-6 text-sm text-muted-foreground">No clips generated yet.</p>}
+                </>
+              )}
+              editor={selectedClipReview ? (
+                <div className="mx-auto max-w-3xl">
+                  <div className="mb-5 flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-medium uppercase text-muted-foreground">{selectedClipReview.type.replaceAll("_", " ")}</p>
+                      <h3 className="mt-1 text-lg font-semibold">{formatTime(selectedClipReview.start_seconds)}–{formatTime(selectedClipReview.end_seconds)}</h3>
                     </div>
-                    <p>{reviewedConcepts} reviewed linked concept(s)</p>
-                    {blockReason ? <p className="message">{blockReason}</p> : null}
-                    <button
-                      disabled={blockReason !== null}
-                      type="button"
-                      onClick={() => generateClipsForTopic(topic.id)}
-                    >
-                      Generate clips for topic
-                    </button>
-                  </article>
-                );
-              })}
-          </div>
-
-          <div className="clipList">
-            {clips.length === 0 ? (
-              <p className="emptyState">
-                No clips yet. Generate clips from a reviewed topic with linked concepts.
-              </p>
-            ) : null}
-            {clips.map((clip) => (
-              <article
-                className={clip.status === "superseded" ? "clipCard muted" : "clipCard"}
-                key={clip.id}
-              >
-                <div className="topicHeader">
-                  <strong>{formatTime(clip.start_seconds)} - {formatTime(clip.end_seconds)}</strong>
-                  <span>{clip.status}</span>
+                    <Badge className="capitalize" variant="outline">{selectedClipReview.status}</Badge>
+                  </div>
+                  {job.video_id && playback ? (
+                    <ProviderVideo
+                      endSeconds={selectedClipReview.end_seconds}
+                      pipelineBaseUrl={pipelineBaseUrl}
+                      playback={playback}
+                      startSeconds={selectedClipReview.start_seconds}
+                      title={`Instructor preview: ${selectedClipReview.type.replaceAll("_", " ")}`}
+                      videoId={job.video_id}
+                    />
+                  ) : <div className="flex aspect-video items-center justify-center bg-black text-sm text-white/70">Preview unavailable</div>}
+                  <div className="mt-5 grid grid-cols-3 gap-4 border-b border-border pb-5 text-sm">
+                    <div><p className="text-xs text-muted-foreground">Duration</p><p className="mt-1 font-medium">{formatDuration(selectedClipReview.end_seconds - selectedClipReview.start_seconds)}</p></div>
+                    <div><p className="text-xs text-muted-foreground">Difficulty</p><p className="mt-1 font-medium capitalize">{selectedClipReview.difficulty ?? "Not set"}</p></div>
+                    <div><p className="text-xs text-muted-foreground">Concept tags</p><p className="mt-1 font-medium">{selectedClipReview.concept_ids.length}</p></div>
+                  </div>
+                  <label className="mt-5 grid gap-2 text-sm font-medium">
+                    Review note
+                    <Textarea
+                      aria-label={`Flag note for clip ${selectedClipReview.id}`}
+                      className="min-h-24"
+                      placeholder="Describe the boundary issue or re-cut instruction"
+                      value={clipNotes[selectedClipReview.id] ?? ""}
+                      onChange={(event) => setClipNotes((current) => ({ ...current, [selectedClipReview.id]: event.target.value }))}
+                    />
+                  </label>
+                  <div className="mt-5 flex gap-2">
+                    <Button disabled={clipSpotCheckActionsDisabled(selectedClipReview)} onClick={() => flagClip(selectedClipReview.id)} type="button" variant="destructive">Flag clip</Button>
+                    <Button disabled={clipSpotCheckActionsDisabled(selectedClipReview)} onClick={() => recutClip(selectedClipReview.id)} type="button" variant="outline">Re-cut with note</Button>
+                  </div>
                 </div>
-                <p>
-                  {clip.type.replaceAll("_", " ")}
-                  {clip.difficulty ? ` · ${clip.difficulty}` : ""}
-                </p>
-                <p>{clip.concept_ids.length} concept tag(s)</p>
-                <TraceabilityBlock artifact={clip} />
-                {clip.flag_note ? <p className="evidence">Flag: {clip.flag_note}</p> : null}
-                {clip.source_clip_id ? (
-                  <p className="evidence">Re-cut from clip {clip.source_clip_id}</p>
-                ) : null}
-                {job.video_id && playback ? (
-                  <ProviderVideo
-                    endSeconds={clip.end_seconds}
-                    pipelineBaseUrl={pipelineBaseUrl}
-                    playback={playback}
-                    startSeconds={clip.start_seconds}
-                    title={`Instructor preview: ${clip.type.replaceAll("_", " ")}`}
-                    videoId={job.video_id}
-                  />
-                ) : null}
-                <textarea
-                  aria-label={`Flag note for clip ${clip.id}`}
-                  placeholder="Flag note or re-cut instruction"
-                  value={clipNotes[clip.id] ?? ""}
-                  onChange={(event) =>
-                    setClipNotes((current) => ({ ...current, [clip.id]: event.target.value }))
-                  }
-                />
-                <div className="actions">
-                  <button
-                    disabled={clipSpotCheckActionsDisabled(clip)}
-                    type="button"
-                    onClick={() => flagClip(clip.id)}
-                  >
-                    Flag clip
-                  </button>
-                  <button
-                    disabled={clipSpotCheckActionsDisabled(clip)}
-                    type="button"
-                    onClick={() => recutClip(clip.id)}
-                  >
-                    Re-cut with note
-                  </button>
+              ) : (
+                <div className="flex min-h-96 items-center justify-center text-center">
+                  <div><p className="text-sm font-medium">No clip selected</p><p className="mt-1 text-sm text-muted-foreground">Generate clips from a reviewed topic to begin spot checks.</p></div>
                 </div>
-              </article>
-            ))}
-          </div>
-        </section>
+              )}
+              inspector={(
+                <>
+                  <InspectorSection title="Generate by topic">
+                    <div className="space-y-3">
+                      {topics.filter(isTopicReviewedForClipGeneration).map((topic) => {
+                        const concepts = graph?.concepts ?? [];
+                        const blockReason = topicClipGenerationBlockReason(topic, concepts);
+                        return (
+                          <div className="border-b border-border pb-3 last:border-0" key={topic.id}>
+                            <p className="truncate text-sm font-medium">{topic.title}</p>
+                            <p className="mt-1 text-xs text-muted-foreground">{reviewedConceptCountForTopic(topic.id, concepts)} reviewed concepts</p>
+                            {blockReason ? <p className="mt-1 text-xs leading-5 text-amber-700">{blockReason}</p> : null}
+                            <Button className="mt-2" disabled={blockReason !== null} onClick={() => generateClipsForTopic(topic.id)} size="sm" type="button" variant="outline">Generate clips</Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </InspectorSection>
+                  {selectedClipReview ? (
+                    <>
+                      {selectedClipReview.flag_note ? <InspectorSection title="Existing flag"><p className="text-sm leading-6">{selectedClipReview.flag_note}</p></InspectorSection> : null}
+                      {selectedClipReview.source_clip_id ? <InspectorSection title="Source"><p className="break-all text-xs text-muted-foreground">Re-cut from {selectedClipReview.source_clip_id}</p></InspectorSection> : null}
+                      <InspectorSection title="Traceability"><TraceabilityBlock artifact={selectedClipReview} /></InspectorSection>
+                    </>
+                  ) : null}
+                </>
+              )}
+            />
+          </ReviewWorkspace>
+        </div>
       ) : null}
 
       {job?.video_id && topics.length > 0 ? (
-        <section className="panel instructorOnly" id="assessments">
-          <div className="jobHeader">
-            <h2>Assessment Review</h2>
-            <div className="actions">
-              <button type="button" onClick={() => loadQuestions(job.video_id!)}>
-                Refresh
-              </button>
-            </div>
-          </div>
-
-          <div className="topicList">
-            {questions.length === 0 ? (
-              <p className="emptyState">
-                No assessment proposals yet. Generate one after clips are available.
-              </p>
-            ) : null}
-            {topics
-              .filter((topic) => topic.review_status === "accepted" || topic.review_status === "edited")
-              .map((topic) => {
-                const concepts = graph?.concepts ?? [];
-                const blockReason = assessmentGenerationBlockReason(topic, concepts, clips);
-                const accessBlockReason = learnerAccessBlockedReason(topic.id, questions);
-                const topicQuestions = questions.filter(
-                  (question) => question.topic_id === topic.id,
-                );
+        <div id="assessments">
+          <ReviewWorkspace
+            description="Approve learner-facing checks and verify that remediation maps to reviewed content."
+            eyebrow="Assessment review"
+            title="Comprehension checks"
+            toolbar={(
+              <Button onClick={() => loadQuestions(job.video_id!)} type="button" variant="outline">
+                <RefreshCw data-icon="inline-start" /> Refresh
+              </Button>
+            )}
+          >
+            <ReviewWorkspaceGrid
+              queue={(
+                <>
+                  <ReviewQueueHeader
+                    reviewed={questions.filter((question) => question.review_status !== "proposed").length}
+                    total={questions.length}
+                  />
+                  {questions.length ? (
+                    <nav aria-label="Assessment questions">
+                      {questions.map((question) => (
+                        <ReviewQueueItem
+                          active={question.id === selectedQuestionReview?.id}
+                          detail={`${question.type.replaceAll("_", " ")} · ${question.review_status}`}
+                          key={question.id}
+                          label={topics.find((topic) => topic.id === question.topic_id)?.title ?? question.body}
+                          onClick={() => setSelectedQuestionReviewId(question.id)}
+                          status={question.review_status}
+                        />
+                      ))}
+                    </nav>
+                  ) : <p className="px-4 py-6 text-sm text-muted-foreground">No assessment proposals yet.</p>}
+                </>
+              )}
+              editor={selectedQuestionReview ? (() => {
+                const question = selectedQuestionReview;
+                const draft = questionDrafts[question.id] ?? questionToDraft(question);
                 return (
-                  <article className="topicCard" key={topic.id}>
-                    <div className="topicHeader">
-                      <strong>{topic.title}</strong>
-                      <span>{accessBlockReason ? "blocked" : "learner ready"}</span>
-                    </div>
-                    <p>
-                      {reviewedConceptCountForAssessment(topic.id, concepts)} reviewed linked
-                      concept(s) · {usableClipCountForAssessment(topic.id, clips)} usable clip(s)
-                    </p>
-                    {accessBlockReason ? (
-                      <p className="message">{accessBlockReason}</p>
-                    ) : null}
-                    {blockReason ? <p className="message">{blockReason}</p> : null}
-                    <button
-                      disabled={blockReason !== null}
-                      type="button"
-                      onClick={() => generateQuestionForTopic(topic.id)}
-                    >
-                      Generate question
-                    </button>
-
-                    {topicQuestions.length > 0 ? (
-                      <div className="questionList">
-                        {topicQuestions.map((question) => {
-                          const draft = questionDrafts[question.id] ?? questionToDraft(question);
-                          return (
-                            <article
-                              className={
-                                question.review_status === "dismissed"
-                                  ? "questionReviewItem muted"
-                                  : "questionReviewItem"
-                              }
-                              key={question.id}
-                            >
-                              <div className="topicHeader">
-                                <strong>{question.review_status}</strong>
-                                <span>{question.type.replaceAll("_", " ")}</span>
-                              </div>
-                              <label htmlFor={`question-body-${question.id}`}>Question</label>
-                              <textarea
-                                id={`question-body-${question.id}`}
-                                value={draft.body}
-                                onChange={(event) =>
-                                  setQuestionDrafts((current) => ({
-                                    ...current,
-                                    [question.id]: { ...draft, body: event.target.value },
-                                  }))
-                                }
-                              />
-                              <label htmlFor={`question-type-${question.id}`}>Type</label>
-                              <select
-                                id={`question-type-${question.id}`}
-                                value={draft.type}
-                                onChange={(event) =>
-                                  setQuestionDrafts((current) => ({
-                                    ...current,
-                                    [question.id]: {
-                                      ...draft,
-                                      type: event.target.value as Question["type"],
-                                    },
-                                  }))
-                                }
-                              >
-                                <option value="mcq">Multiple choice</option>
-                                <option value="short_answer">Short answer</option>
-                                <option value="worked_problem">Worked problem</option>
-                              </select>
-                              <label htmlFor={`question-answer-${question.id}`}>
-                                Correct answer JSON
-                              </label>
-                              <textarea
-                                id={`question-answer-${question.id}`}
-                                value={draft.correct_answer_json}
-                                onChange={(event) =>
-                                  setQuestionDrafts((current) => ({
-                                    ...current,
-                                    [question.id]: {
-                                      ...draft,
-                                      correct_answer_json: event.target.value,
-                                    },
-                                  }))
-                                }
-                              />
-                              <label htmlFor={`question-confidence-${question.id}`}>
-                                Confidence prompt
-                              </label>
-                              <input
-                                id={`question-confidence-${question.id}`}
-                                value={draft.confidence_prompt}
-                                onChange={(event) =>
-                                  setQuestionDrafts((current) => ({
-                                    ...current,
-                                    [question.id]: {
-                                      ...draft,
-                                      confidence_prompt: event.target.value,
-                                    },
-                                  }))
-                                }
-                              />
-                              <label htmlFor={`question-remediation-${question.id}`}>
-                                Remediation rules JSON
-                              </label>
-                              <textarea
-                                id={`question-remediation-${question.id}`}
-                                value={draft.remediation_rules_json}
-                                onChange={(event) =>
-                                  setQuestionDrafts((current) => ({
-                                    ...current,
-                                    [question.id]: {
-                                      ...draft,
-                                      remediation_rules_json: event.target.value,
-                                    },
-                                  }))
-                                }
-                              />
-                              <TraceabilityBlock artifact={question} />
-                              <div className="actions">
-                                <button
-                                  disabled={acceptButtonDisabled(question.review_status)}
-                                  type="button"
-                                  onClick={() => acceptQuestion(question.id)}
-                                >
-                                  {acceptButtonLabel(question.review_status)}
-                                </button>
-                                <button type="button" onClick={() => editQuestion(question.id)}>
-                                  Edit manually
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => regenerateQuestion(question.id)}
-                                >
-                                  Regenerate
-                                </button>
-                                <button type="button" onClick={() => dismissQuestion(question.id)}>
-                                  Dismiss
-                                </button>
-                              </div>
-                            </article>
-                          );
-                        })}
+                  <div className="mx-auto max-w-2xl">
+                    <div className="mb-6 flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">{topics.find((topic) => topic.id === question.topic_id)?.title ?? "Untitled topic"}</p>
+                        <h3 className="mt-1 text-lg font-semibold">Review question</h3>
                       </div>
-                    ) : null}
-                  </article>
+                      <Badge className="capitalize" variant="outline">{question.review_status}</Badge>
+                    </div>
+                    <div className="space-y-4">
+                      <label className="grid gap-2 text-sm font-medium" htmlFor={`question-body-${question.id}`}>Question
+                        <Textarea className="min-h-28" id={`question-body-${question.id}`} value={draft.body} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, body: event.target.value } }))} />
+                      </label>
+                      <label className="grid gap-2 text-sm font-medium" htmlFor={`question-type-${question.id}`}>Type
+                        <select className="h-10 rounded-lg border border-input bg-background px-3 text-sm" id={`question-type-${question.id}`} value={draft.type} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, type: event.target.value as Question["type"] } }))}>
+                          <option value="mcq">Multiple choice</option><option value="short_answer">Short answer</option><option value="worked_problem">Worked problem</option>
+                        </select>
+                      </label>
+                      <label className="grid gap-2 text-sm font-medium" htmlFor={`question-answer-${question.id}`}>Correct answer JSON
+                        <Textarea className="min-h-24 font-mono text-xs" id={`question-answer-${question.id}`} value={draft.correct_answer_json} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, correct_answer_json: event.target.value } }))} />
+                      </label>
+                      <label className="grid gap-2 text-sm font-medium" htmlFor={`question-confidence-${question.id}`}>Confidence prompt
+                        <Input id={`question-confidence-${question.id}`} value={draft.confidence_prompt} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, confidence_prompt: event.target.value } }))} />
+                      </label>
+                      <label className="grid gap-2 text-sm font-medium" htmlFor={`question-remediation-${question.id}`}>Remediation rules JSON
+                        <Textarea className="min-h-28 font-mono text-xs" id={`question-remediation-${question.id}`} value={draft.remediation_rules_json} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, remediation_rules_json: event.target.value } }))} />
+                      </label>
+                    </div>
+                    <div className="mt-7 flex flex-wrap gap-2 border-t border-border pt-5">
+                      <Button disabled={acceptButtonDisabled(question.review_status)} onClick={() => acceptQuestion(question.id)} type="button">{acceptButtonLabel(question.review_status)}</Button>
+                      <Button onClick={() => editQuestion(question.id)} type="button" variant="outline">Edit manually</Button>
+                      <Button onClick={() => regenerateQuestion(question.id)} type="button" variant="outline">Regenerate</Button>
+                      <Button onClick={() => dismissQuestion(question.id)} type="button" variant="destructive">Dismiss</Button>
+                    </div>
+                  </div>
                 );
-              })}
-          </div>
-        </section>
+              })() : (
+                <div className="flex min-h-96 items-center justify-center text-center">
+                  <div><p className="text-sm font-medium">No question selected</p><p className="mt-1 text-sm text-muted-foreground">Generate a question after reviewed concepts and clips are available.</p></div>
+                </div>
+              )}
+              inspector={(
+                <>
+                  <InspectorSection title="Generate by topic">
+                    <div className="space-y-3">
+                      {topics.filter((topic) => topic.review_status === "accepted" || topic.review_status === "edited").map((topic) => {
+                        const concepts = graph?.concepts ?? [];
+                        const blockReason = assessmentGenerationBlockReason(topic, concepts, clips);
+                        const accessBlockReason = learnerAccessBlockedReason(topic.id, questions);
+                        return (
+                          <div className="border-b border-border pb-3 last:border-0" key={topic.id}>
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="truncate text-sm font-medium">{topic.title}</p>
+                              <Badge variant={accessBlockReason ? "outline" : "secondary"}>{accessBlockReason ? "blocked" : "ready"}</Badge>
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">{reviewedConceptCountForAssessment(topic.id, concepts)} concepts · {usableClipCountForAssessment(topic.id, clips)} clips</p>
+                            {blockReason ? <p className="mt-1 text-xs leading-5 text-amber-700">{blockReason}</p> : null}
+                            <Button className="mt-2" disabled={blockReason !== null} onClick={() => generateQuestionForTopic(topic.id)} size="sm" type="button" variant="outline">Generate question</Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </InspectorSection>
+                  {selectedQuestionReview ? (
+                    <>
+                      <InspectorSection title="Learner gate">
+                        <p className="text-sm leading-6">{learnerAccessBlockedReason(selectedQuestionReview.topic_id, questions) ?? "Topic is ready for learner access."}</p>
+                      </InspectorSection>
+                      <InspectorSection title="Traceability"><TraceabilityBlock artifact={selectedQuestionReview} /></InspectorSection>
+                    </>
+                  ) : null}
+                </>
+              )}
+            />
+          </ReviewWorkspace>
+        </div>
       ) : null}
 
       {job?.course_id && graph ? (
