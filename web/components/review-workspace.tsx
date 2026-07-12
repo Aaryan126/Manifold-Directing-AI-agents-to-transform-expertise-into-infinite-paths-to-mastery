@@ -29,7 +29,7 @@ export function ReviewWorkspace({
           <h2 className="mt-1 text-xl font-semibold">{title}</h2>
           <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         </div>
-        {toolbar ? <div className="flex shrink-0 items-center gap-2">{toolbar}</div> : null}
+        {toolbar ? <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">{toolbar}</div> : null}
       </header>
       {children}
     </section>
@@ -47,9 +47,9 @@ export function ReviewWorkspaceGrid({
 }) {
   return (
     <div className="grid min-h-[620px] grid-cols-[220px_minmax(0,1fr)_260px] xl:grid-cols-[240px_minmax(0,1fr)_300px]">
-      <aside className="border-r border-border bg-muted/20" aria-label="Review queue">{queue}</aside>
+      <aside className="min-w-0 border-r border-border bg-muted/20" aria-label="Review queue">{queue}</aside>
       <div className="min-w-0 px-6 py-6">{editor}</div>
-      <aside className="border-l border-border bg-muted/20 px-5 py-6" aria-label="Review evidence">{inspector}</aside>
+      <aside className="min-w-0 border-l border-border bg-muted/20 px-5 py-6" aria-label="Review evidence">{inspector}</aside>
     </div>
   );
 }

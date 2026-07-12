@@ -22,6 +22,12 @@ import {
   usableClipCountForAssessment,
 } from "./assessmentReview";
 import {
+  correctAnswerPayload,
+  questionToAssessmentDraft,
+  remediationPayload,
+  type AssessmentEditorDraft,
+} from "./assessmentEditor";
+import {
   clipSpotCheckActionsDisabled,
   conceptTopicIds,
   reviewedConceptCountForTopic,
@@ -70,7 +76,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, Sparkles } from "lucide-react";
+import { Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 
 type Job = {
   id: string;
@@ -286,6 +292,7 @@ export default function HomePage() {
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSegmenting, setIsSegmenting] = useState(false);
+  const [bulkAction, setBulkAction] = useState<"clips" | "questions" | "accept-questions" | null>(null);
   const hydratedJobs = useRef(new Set<string>());
   const refreshJobRef = useRef<() => Promise<void>>(async () => undefined);
   const hydrateCompletedJobRef = useRef<(nextJob: Job) => Promise<void>>(async () => undefined);
@@ -573,7 +580,11 @@ export default function HomePage() {
       );
       if (transcriptResponse.ok) {
         setTranscript((await transcriptResponse.json()) as Transcript);
-        await loadTopics(nextJob.video_id);
+        const nextTopics = await loadTopics(nextJob.video_id);
+        if (nextTopics.length === 0) {
+          setMessage("Transcript ready. Generating the first topic outline now.");
+          await segmentTranscript(nextJob.video_id, true);
+        }
         await loadClips(nextJob.video_id);
         await loadQuestions(nextJob.video_id);
         if (nextJob.course_id) {
@@ -724,11 +735,11 @@ export default function HomePage() {
     }
   }
 
-  async function loadTopics(videoId: string) {
+  async function loadTopics(videoId: string): Promise<Topic[]> {
     const response = await fetch(`${pipelineBaseUrl}/videos/${videoId}/topics`);
     if (!response.ok) {
       setMessage(`Topic refresh failed with ${response.status}.`);
-      return;
+      return [];
     }
     const nextTopics = (await response.json()) as Topic[];
     setTopics(nextTopics);
@@ -745,14 +756,15 @@ export default function HomePage() {
         ]),
       ),
     );
+    return nextTopics;
   }
 
-  async function segmentTranscript() {
-    if (!job?.video_id) return;
+  async function segmentTranscript(videoId = job?.video_id ?? "", automatic = false) {
+    if (!videoId) return;
     setIsSegmenting(true);
     setMessage(null);
     try {
-      const response = await fetch(`${pipelineBaseUrl}/videos/${job.video_id}/segment`, {
+      const response = await fetch(`${pipelineBaseUrl}/videos/${videoId}/segment`, {
         method: "POST",
       });
       if (!response.ok) {
@@ -774,6 +786,7 @@ export default function HomePage() {
           ]),
         ),
       );
+      if (automatic) setMessage("Transcript processed and topic outline generated for review.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Segmentation failed.");
     } finally {
@@ -1139,6 +1152,32 @@ export default function HomePage() {
     if (job?.video_id) await loadClips(job.video_id);
   }
 
+  async function generateAllMissingClips() {
+    if (!job?.video_id || !graph) return;
+    const eligible = topics.filter(
+      (topic) =>
+        isTopicReviewedForClipGeneration(topic) &&
+        topicClipGenerationBlockReason(topic, graph.concepts) === null &&
+        !clips.some((clip) => clip.topic_id === topic.id && clip.status !== "superseded"),
+    );
+    if (!eligible.length) {
+      setMessage("Every eligible topic already has clips, or still needs reviewed concept links.");
+      return;
+    }
+    setBulkAction("clips");
+    setMessage(`Generating clips for ${eligible.length} eligible topic(s).`);
+    const failures: string[] = [];
+    for (const topic of eligible) {
+      const response = await fetch(`${pipelineBaseUrl}/topics/${topic.id}/clips/generate`, { method: "POST" });
+      if (!response.ok) failures.push(topic.title);
+    }
+    await loadClips(job.video_id);
+    setBulkAction(null);
+    setMessage(failures.length
+      ? `Clip generation failed for: ${failures.join(", ")}.`
+      : `Generated clips for ${eligible.length} topic(s).`);
+  }
+
   async function flagClip(clipId: string) {
     const note = clipNotes[clipId]?.trim();
     if (!note) {
@@ -1206,6 +1245,50 @@ export default function HomePage() {
     if (question) upsertQuestion(question);
   }
 
+  async function generateAllMissingQuestions() {
+    if (!job?.video_id || !graph) return;
+    const eligible = topics.filter(
+      (topic) =>
+        (topic.review_status === "accepted" || topic.review_status === "edited") &&
+        assessmentGenerationBlockReason(topic, graph.concepts, clips) === null &&
+        !questions.some(
+          (question) => question.topic_id === topic.id && question.review_status !== "dismissed",
+        ),
+    );
+    if (!eligible.length) {
+      setMessage("Every eligible topic already has a question, or still needs reviewed concepts and clips.");
+      return;
+    }
+    setBulkAction("questions");
+    setMessage(`Generating questions for ${eligible.length} eligible topic(s).`);
+    const failures: string[] = [];
+    for (const topic of eligible) {
+      const response = await fetch(`${pipelineBaseUrl}/topics/${topic.id}/questions/generate`, { method: "POST" });
+      if (!response.ok) failures.push(topic.title);
+    }
+    await loadQuestions(job.video_id);
+    setBulkAction(null);
+    setMessage(failures.length
+      ? `Question generation failed for: ${failures.join(", ")}.`
+      : `Generated questions for ${eligible.length} topic(s).`);
+  }
+
+  async function acceptAllQuestions() {
+    if (!job?.video_id) return;
+    const proposed = questions.filter((question) => question.review_status === "proposed");
+    if (!proposed.length) return;
+    setBulkAction("accept-questions");
+    const responses = await Promise.all(
+      proposed.map((question) => fetch(`${pipelineBaseUrl}/questions/${question.id}/accept`, { method: "POST" })),
+    );
+    const failures = responses.filter((response) => !response.ok).length;
+    await loadQuestions(job.video_id);
+    setBulkAction(null);
+    setMessage(failures
+      ? `${failures} question proposal(s) could not be accepted.`
+      : `${proposed.length} question proposal(s) accepted.`);
+  }
+
   async function acceptQuestion(questionId: string) {
     const question = await questionRequest(`${pipelineBaseUrl}/questions/${questionId}/accept`, {
       method: "POST",
@@ -1230,29 +1313,28 @@ export default function HomePage() {
 
   async function editQuestion(questionId: string) {
     const draft = questionDrafts[questionId];
-    if (!draft) return;
-    const correctAnswer = parseJsonField(draft.correct_answer_json, "correct answer");
-    const remediationRules = parseJsonField(
-      draft.remediation_rules_json,
-      "remediation rules",
-    );
-    if (!correctAnswer || !remediationRules) return;
-    if (!Array.isArray(remediationRules)) {
-      setMessage("Question remediation rules must be a JSON array.");
+    const originalQuestion = questions.find((item) => item.id === questionId);
+    if (!draft || !originalQuestion) return;
+    if (!draft.body.trim() || !draft.correct_answer.trim() || !draft.confidence_prompt.trim()) {
+      setMessage("Question, correct answer, and confidence prompt are required.");
       return;
     }
-    const question = await questionRequest(`${pipelineBaseUrl}/questions/${questionId}`, {
+    if (draft.remediation_rules.some((rule) => !rule.wrong_answer_pattern.trim())) {
+      setMessage("Each remediation rule needs a wrong-answer pattern.");
+      return;
+    }
+    const updatedQuestion = await questionRequest(`${pipelineBaseUrl}/questions/${questionId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         body: draft.body,
         type: draft.type,
-        correct_answer: correctAnswer,
+        correct_answer: correctAnswerPayload(originalQuestion.correct_answer, draft),
         confidence_prompt: draft.confidence_prompt,
-        remediation_rules: remediationRules,
+        remediation_rules: remediationPayload(draft),
       }),
     });
-    if (question) upsertQuestion(question);
+    if (updatedQuestion) upsertQuestion(updatedQuestion);
   }
 
   async function questionRequest(endpoint: string, init: RequestInit) {
@@ -1287,13 +1369,56 @@ export default function HomePage() {
     }));
   }
 
-  function parseJsonField(value: string, label: string) {
-    try {
-      return JSON.parse(value) as unknown;
-    } catch {
-      setMessage(`Question ${label} must be valid JSON.`);
-      return null;
-    }
+  function updateRemediationRule(
+    questionId: string,
+    ruleIndex: number,
+    field: keyof QuestionDraft["remediation_rules"][number],
+    value: string,
+  ) {
+    setQuestionDrafts((current) => {
+      const draft = current[questionId];
+      if (!draft) return current;
+      return {
+        ...current,
+        [questionId]: {
+          ...draft,
+          remediation_rules: draft.remediation_rules.map((rule, index) =>
+            index === ruleIndex ? { ...rule, [field]: value } : rule,
+          ),
+        },
+      };
+    });
+  }
+
+  function addRemediationRule(questionId: string) {
+    setQuestionDrafts((current) => {
+      const draft = current[questionId];
+      if (!draft) return current;
+      return {
+        ...current,
+        [questionId]: {
+          ...draft,
+          remediation_rules: [
+            ...draft.remediation_rules,
+            { wrong_answer_pattern: "", target_clip_id: "", target_concept_id: "", rationale: "" },
+          ],
+        },
+      };
+    });
+  }
+
+  function removeRemediationRule(questionId: string, ruleIndex: number) {
+    setQuestionDrafts((current) => {
+      const draft = current[questionId];
+      if (!draft) return current;
+      return {
+        ...current,
+        [questionId]: {
+          ...draft,
+          remediation_rules: draft.remediation_rules.filter((_, index) => index !== ruleIndex),
+        },
+      };
+    });
   }
 
   async function loadRoutingPolicies(courseId: string) {
@@ -1630,7 +1755,7 @@ export default function HomePage() {
                 >
                   Accept all
                 </Button>
-                <Button disabled={isSegmenting} onClick={segmentTranscript} type="button">
+                <Button disabled={isSegmenting} onClick={() => void segmentTranscript()} type="button">
                   <Sparkles data-icon="inline-start" />
                   {isSegmenting ? "Segmenting" : "Generate Outline"}
                 </Button>
@@ -1638,9 +1763,9 @@ export default function HomePage() {
             )}
           >
             {topics.length === 0 ? (
-              <div className="px-8 py-16 text-center">
-                <p className="text-sm font-medium">No topics yet</p>
-                <p className="mt-1 text-sm text-muted-foreground">Generate an outline to begin instructor review.</p>
+              <div className="px-8 py-16 text-center" role={isSegmenting ? "status" : undefined}>
+                <p className="text-sm font-medium">{isSegmenting ? "Generating topic outline" : "No topics yet"}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{isSegmenting ? "The transcript is ready. AI is identifying topic boundaries and summaries." : "Generate an outline to begin instructor review."}</p>
               </div>
             ) : selectedTopicReview ? (() => {
               const topic = selectedTopicReview;
@@ -1951,9 +2076,14 @@ export default function HomePage() {
             eyebrow="Media review"
             title="Clip spot check"
             toolbar={(
-              <Button onClick={() => loadClips(job.video_id!)} type="button" variant="outline">
-                <RefreshCw data-icon="inline-start" /> Refresh
-              </Button>
+              <>
+                <Button onClick={() => loadClips(job.video_id!)} type="button" variant="outline">
+                  <RefreshCw data-icon="inline-start" /> Refresh
+                </Button>
+                <Button disabled={bulkAction !== null} onClick={() => void generateAllMissingClips()} type="button">
+                  <Sparkles data-icon="inline-start" /> {bulkAction === "clips" ? "Generating clips" : "Generate all missing clips"}
+                </Button>
+              </>
             )}
           >
             <ReviewWorkspaceGrid
@@ -2059,9 +2189,21 @@ export default function HomePage() {
             eyebrow="Assessment review"
             title="Comprehension checks"
             toolbar={(
-              <Button onClick={() => loadQuestions(job.video_id!)} type="button" variant="outline">
-                <RefreshCw data-icon="inline-start" /> Refresh
-              </Button>
+              <>
+                <Button onClick={() => loadQuestions(job.video_id!)} type="button" variant="outline">
+                  <RefreshCw data-icon="inline-start" /> Refresh
+                </Button>
+                <Button disabled={bulkAction !== null} onClick={() => void generateAllMissingQuestions()} type="button" variant="outline">
+                  <Sparkles data-icon="inline-start" /> {bulkAction === "questions" ? "Generating questions" : "Generate all missing"}
+                </Button>
+                <Button
+                  disabled={bulkAction !== null || !questions.some((question) => question.review_status === "proposed")}
+                  onClick={() => void acceptAllQuestions()}
+                  type="button"
+                >
+                  {bulkAction === "accept-questions" ? "Accepting proposals" : "Accept all proposals"}
+                </Button>
+              </>
             )}
           >
             <ReviewWorkspaceGrid
@@ -2108,15 +2250,34 @@ export default function HomePage() {
                           <option value="mcq">Multiple choice</option><option value="short_answer">Short answer</option><option value="worked_problem">Worked problem</option>
                         </select>
                       </label>
-                      <label className="grid gap-2 text-sm font-medium" htmlFor={`question-answer-${question.id}`}>Correct answer JSON
-                        <Textarea className="min-h-24 font-mono text-xs" id={`question-answer-${question.id}`} value={draft.correct_answer_json} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, correct_answer_json: event.target.value } }))} />
+                      <label className="grid gap-2 text-sm font-medium" htmlFor={`question-answer-${question.id}`}>Correct answer
+                        <Textarea className="min-h-20" id={`question-answer-${question.id}`} value={draft.correct_answer} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, correct_answer: event.target.value } }))} />
                       </label>
+                      {draft.type === "mcq" ? (
+                        <label className="grid gap-2 text-sm font-medium" htmlFor={`question-choices-${question.id}`}>Answer choices <span className="font-normal text-muted-foreground">One choice per line</span>
+                          <Textarea className="min-h-28" id={`question-choices-${question.id}`} value={draft.answer_choices} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, answer_choices: event.target.value } }))} />
+                        </label>
+                      ) : null}
                       <label className="grid gap-2 text-sm font-medium" htmlFor={`question-confidence-${question.id}`}>Confidence prompt
                         <Input id={`question-confidence-${question.id}`} value={draft.confidence_prompt} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, confidence_prompt: event.target.value } }))} />
                       </label>
-                      <label className="grid gap-2 text-sm font-medium" htmlFor={`question-remediation-${question.id}`}>Remediation rules JSON
-                        <Textarea className="min-h-28 font-mono text-xs" id={`question-remediation-${question.id}`} value={draft.remediation_rules_json} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, remediation_rules_json: event.target.value } }))} />
-                      </label>
+                      <fieldset className="space-y-3 border-t border-border pt-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <legend className="text-sm font-medium">Remediation rules</legend>
+                          <Button onClick={() => addRemediationRule(question.id)} size="sm" type="button" variant="outline"><Plus data-icon="inline-start" /> Add rule</Button>
+                        </div>
+                        {draft.remediation_rules.length ? draft.remediation_rules.map((rule, ruleIndex) => (
+                          <div className="space-y-3 border border-border bg-muted/20 p-4" key={`${question.id}-rule-${ruleIndex}`}>
+                            <div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Rule {ruleIndex + 1}</p><Button aria-label={`Remove remediation rule ${ruleIndex + 1}`} onClick={() => removeRemediationRule(question.id, ruleIndex)} size="icon-sm" type="button" variant="ghost"><Trash2 /></Button></div>
+                            <label className="grid gap-1.5 text-xs font-medium">When the learner answers like this<Input value={rule.wrong_answer_pattern} onChange={(event) => updateRemediationRule(question.id, ruleIndex, "wrong_answer_pattern", event.target.value)} /></label>
+                            <div className="grid grid-cols-2 gap-3">
+                              <label className="grid min-w-0 gap-1.5 text-xs font-medium">Send to clip<select className="h-10 min-w-0 rounded-lg border border-input bg-background px-3 text-sm" value={rule.target_clip_id} onChange={(event) => updateRemediationRule(question.id, ruleIndex, "target_clip_id", event.target.value)}><option value="">No specific clip</option>{clips.filter((clip) => clip.status !== "superseded").map((clip, index) => <option key={clip.id} value={clip.id}>Clip {index + 1}: {clip.type.replaceAll("_", " ")}</option>)}</select></label>
+                              <label className="grid min-w-0 gap-1.5 text-xs font-medium">Reinforce concept<select className="h-10 min-w-0 rounded-lg border border-input bg-background px-3 text-sm" value={rule.target_concept_id} onChange={(event) => updateRemediationRule(question.id, ruleIndex, "target_concept_id", event.target.value)}><option value="">No specific concept</option>{graph?.concepts.filter((concept) => concept.review_status === "accepted" || concept.review_status === "edited").map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select></label>
+                            </div>
+                            <label className="grid gap-1.5 text-xs font-medium">Why this remediation helps<Textarea className="min-h-20" value={rule.rationale} onChange={(event) => updateRemediationRule(question.id, ruleIndex, "rationale", event.target.value)} /></label>
+                          </div>
+                        )) : <p className="text-sm text-muted-foreground">No targeted remediation rules. Add one to route a recognizable wrong answer to a clip or concept.</p>}
+                      </fieldset>
                     </div>
                     <div className="mt-7 flex flex-wrap gap-2 border-t border-border pt-5">
                       <Button disabled={acceptButtonDisabled(question.review_status)} onClick={() => acceptQuestion(question.id)} type="button">{acceptButtonLabel(question.review_status)}</Button>
@@ -2452,8 +2613,8 @@ export default function HomePage() {
               </div>
               {dashboardColdStartMessage(dashboardSummary) ? <div className="border-b border-amber-200 bg-amber-50 px-8 py-3 text-sm text-amber-900" role="status"><strong>Not enough data yet.</strong> {dashboardColdStartMessage(dashboardSummary)}</div> : null}
 
-              <div className="grid min-h-[560px] grid-cols-[280px_minmax(0,1fr)_300px]">
-                <aside className="border-r border-border bg-muted/20" aria-label="Dashboard signal queue">
+              <div className="grid min-h-[560px] grid-cols-[240px_minmax(0,1fr)_minmax(280px,320px)] xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+                <aside className="min-w-0 border-r border-border bg-muted/20" aria-label="Dashboard signal queue">
                   <div className="border-b border-border px-4 py-4"><div className="flex items-center justify-between"><p className="text-xs font-semibold uppercase text-muted-foreground">Signal queue</p><Badge variant="outline">{dashboardSummary.signals.length}</Badge></div></div>
                   {dashboardSummary.signals.length ? dashboardSummary.signals.map((signal) => (
                     <button className={`w-full border-b border-border px-4 py-3 text-left hover:bg-muted ${signal.id === selectedDashboardSignal?.id ? "bg-background shadow-[inset_3px_0_0_var(--primary)]" : ""}`} data-slot="dashboard-signal" key={signal.id} onClick={() => setSelectedDashboardSignalId(signal.id)} type="button">
@@ -2479,15 +2640,15 @@ export default function HomePage() {
                   })() : <div className="flex min-h-96 items-center justify-center text-sm text-muted-foreground">No open signal selected.</div>}
                 </div>
 
-                <aside className="border-l border-border bg-muted/20 px-5 py-6">
+                <aside className="min-w-0 border-l border-border bg-muted/20 px-5 py-6">
                   {selectedDashboardSignal ? <><InspectorSection title="Related entity"><p className="break-all text-sm">{selectedDashboardSignal.related_entity_type}: {selectedDashboardSignal.related_entity_id}</p></InspectorSection><InspectorSection title="Traceability"><TraceabilityBlock artifact={{ status: selectedDashboardSignal.status, ai_proposal: { rationale: dashboardSignalSummary(selectedDashboardSignal) }, instructor_revision: selectedDashboardSignal.instructor_action }} /></InspectorSection></> : null}
                   {graph ? (
                     <InspectorSection title="Manual learner override">
                       <form className="grid gap-3" onSubmit={submitLearnerOverride}>
-                        <label className="grid gap-1.5 text-xs font-medium">Learner id<Input onChange={(event) => setOverrideLearnerId(event.target.value)} placeholder="Paste learner UUID" value={overrideLearnerId} /></label>
-                        <label className="grid gap-1.5 text-xs font-medium">Concept<select className="h-8 rounded-lg border border-input bg-background px-2 text-sm" data-slot="override-concept" onChange={(event) => setOverrideConceptId(event.target.value)} value={overrideConceptId}>{graph.concepts.filter((concept) => concept.review_status === "accepted" || concept.review_status === "edited").map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select></label>
-                        <label className="grid gap-1.5 text-xs font-medium">Override action<select className="h-8 rounded-lg border border-input bg-background px-2 text-sm" data-slot="override-action" onChange={(event) => setOverrideAction(event.target.value as "skip_ahead" | "send_back")} value={overrideAction}><option value="send_back">Send back for remediation</option><option value="skip_ahead">Skip ahead / mark mastered</option></select></label>
-                        <Button className="mt-1" size="sm" type="submit">Apply learner override</Button>
+                        <label className="grid min-w-0 gap-1.5 text-xs font-medium">Learner id<Input className="min-w-0" onChange={(event) => setOverrideLearnerId(event.target.value)} placeholder="Paste learner UUID" value={overrideLearnerId} /></label>
+                        <label className="grid min-w-0 gap-1.5 text-xs font-medium">Concept<select className="h-9 min-w-0 w-full rounded-lg border border-input bg-background px-2 text-sm" data-slot="override-concept" onChange={(event) => setOverrideConceptId(event.target.value)} value={overrideConceptId}>{graph.concepts.filter((concept) => concept.review_status === "accepted" || concept.review_status === "edited").map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select></label>
+                        <label className="grid min-w-0 gap-1.5 text-xs font-medium">Override action<select className="h-9 min-w-0 w-full rounded-lg border border-input bg-background px-2 text-sm" data-slot="override-action" onChange={(event) => setOverrideAction(event.target.value as "skip_ahead" | "send_back")} value={overrideAction}><option value="send_back">Send back for remediation</option><option value="skip_ahead">Skip ahead / mark mastered</option></select></label>
+                        <Button className="mt-1 w-full" size="sm" type="submit">Apply learner override</Button>
                       </form>
                     </InspectorSection>
                   ) : null}
@@ -2520,13 +2681,7 @@ type EdgeDraft = {
   rationale: string;
 };
 
-type QuestionDraft = {
-  body: string;
-  type: Question["type"];
-  correct_answer_json: string;
-  confidence_prompt: string;
-  remediation_rules_json: string;
-};
+type QuestionDraft = AssessmentEditorDraft;
 
 function topicToDraft(topic: Topic): TopicDraft {
   return {
@@ -2538,17 +2693,7 @@ function topicToDraft(topic: Topic): TopicDraft {
 }
 
 function questionToDraft(question: Question): QuestionDraft {
-  return {
-    body: question.body,
-    type: question.type,
-    correct_answer_json: JSON.stringify(question.correct_answer, null, 2),
-    confidence_prompt: question.confidence_prompt,
-    remediation_rules_json: JSON.stringify(
-      question.remediation_rules.map(remediationRuleToEditPayload),
-      null,
-      2,
-    ),
-  };
+  return questionToAssessmentDraft(question);
 }
 
 function policyToDraft(policy: RoutingPolicy): RoutingPolicyDraft {
@@ -2557,17 +2702,6 @@ function policyToDraft(policy: RoutingPolicy): RoutingPolicyDraft {
     correct_attempts_for_mastery: policy.correct_attempts_for_mastery,
     advancement_mode: policy.advancement_mode,
     max_remediation_attempts: policy.max_remediation_attempts,
-  };
-}
-
-function remediationRuleToEditPayload(rule: RemediationRule) {
-  return {
-    wrong_answer_pattern: rule.wrong_answer_pattern,
-    target_clip_id: rule.target_clip_id,
-    target_concept_id: rule.target_concept_id,
-    rationale: String(
-      rule.instructor_revision?.rationale ?? rule.ai_proposal?.rationale ?? "",
-    ),
   };
 }
 
