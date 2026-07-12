@@ -1,7 +1,7 @@
 # CourseFoundry UI/UX Redesign Plan
 
 **Status:** Active
-**Current stage:** Stage 1 - Design concepts and system
+**Current stage:** Stage 2 - Shared foundation and application shell
 **Last updated:** 2026-07-12
 **Scope:** Desktop and laptop web only. Tablet, mobile, and native-app layouts are not part of this redesign.
 
@@ -43,8 +43,8 @@ The learner experience prioritizes the current lesson, the next recommended acti
 
 | Stage | Status | Deliverable | Approval gate |
 |---|---|---|---|
-| 1. Design concepts and system | In progress | Complete desktop concepts, tokens, typography, density, states, and interaction thesis | User approves visual direction before UI implementation |
-| 2. Shared foundation and application shell | Not started | Tailwind/shadcn foundation, tokens, app shell, component extraction, workspace navigation | Instructor and learner shells render correctly with existing data |
+| 1. Design concepts and system | Complete | Complete desktop concepts, tokens, typography, density, states, and interaction thesis | User approved continuing with the generated instructor concepts and textual learner specification on 2026-07-12 |
+| 2. Shared foundation and application shell | In progress | Tailwind/shadcn foundation, tokens, app shell, component extraction, workspace navigation | Instructor and learner shells render correctly with existing data |
 | 3. Instructor onboarding and course builder | Not started | Source ingestion, processing, readiness, publishing, and course-production stepper | Existing ingestion-to-publish flow passes E2E and visual review |
 | 4. Instructor review workspaces | Not started | Outline, clip, and assessment review queues with contextual inspectors | All Accept/Edit/Dismiss paths retain behavior and traceability |
 | 5. Graph and routing workspace | Not started | Full-canvas graph, review filters, concept/edge inspector, routing tools, simulator | Graph editing and routing branches pass E2E and visual review |
@@ -56,12 +56,25 @@ The learner experience prioritizes the current lesson, the next recommended acti
 
 ### Required concept screens
 
-- Shared instructor shell and course overview.
-- Instructor course builder/review workspace.
-- Full-canvas concept graph and inspector.
-- Instructor insights/dashboard and problem-review state.
-- Learner player/comprehension state.
-- Learner course path/mastery map.
+- Shared instructor shell and course overview. Concept generated and direction accepted.
+- Instructor course builder/review workspace. Outline-review concept generated and direction accepted.
+- Full-canvas concept graph and inspector. Concept generated and direction accepted.
+- Instructor insights/dashboard and problem-review state. Concept generated and direction accepted.
+- Learner player/comprehension state. Defined textually below; image generation intentionally cancelled by user.
+- Learner course path/mastery map. Defined textually below; image generation intentionally cancelled by user.
+
+### Concept artifacts
+
+- `design/concepts/01-instructor-overview.png` - initial shell and course-production overview direction. The shell, hierarchy, density, production sequence, and readiness rail are candidates for approval. Placeholder counts and the illustrative recent-activity feed do not authorize new product functionality.
+- `design/concepts/02-outline-review.png` - review queue, focused editor, evidence rail, boundary controls, and persistent Accept/Edit/Dismiss action area.
+- `design/concepts/03-concept-graph.png` - full-canvas graph, compact floating controls, stateful nodes, and contextual concept/routing inspector.
+- `design/concepts/04-instructor-insights.png` - summary band, signal queue, evidence-focused detail area, and correction actions using existing dashboard data.
+
+### Learner screen specification
+
+- **Player/comprehension:** compact learner top bar; large 16:9 player; current topic and clip context; professional course-outline rail; comprehension question and confidence control adjacent to the learning flow; neutral `Why this is next` explanation; clear reinforcement/advance message; no instructor sidebar.
+- **Course path/mastery:** unit-grouped prerequisite path using refined concept nodes and connectors; mastered, current, available, reinforcement, and locked states; selected-concept inspector with mastery, prerequisite status, related topic, routing explanation, and Continue lesson action; no characters, points, streaks, rewards, or decorative game objects.
+- Both learner screens reuse the instructor system's warm-white, graphite, cobalt, and semantic colors with more whitespace and a restrained Source Serif 4 orientation/title moment.
 
 ### Interaction thesis
 
@@ -113,6 +126,7 @@ The learner experience prioritizes the current lesson, the next recommended acti
 - 2026-07-12: Desktop and laptop web are the only responsive targets for this redesign; tablet and mobile are explicitly excluded.
 - 2026-07-12: Linear is the primary reference for hierarchy, navigation, review queues, and dashboard restraint; Miro informs the graph canvas; Coursera informs learner orientation; Duolingo informs path sequencing only, without playful character styling.
 - 2026-07-12: Product functionality and backend contracts are frozen during the redesign unless the user separately approves a functional change.
+- 2026-07-12: User approved continuing from the four completed instructor concepts and requested no further image generation because of latency. Learner screens will follow the textual specification in this document.
 
 ## Completion Rule
 
