@@ -41,10 +41,16 @@ async function routeDevelopmentContext(page: Page) {
   );
 }
 
-async function routeReviewedCourse(page: Page) {
+async function routeReviewedCourse(
+  page: Page,
+  readinessSequence: Array<{ course_id: string; ready: boolean; blockers: string[] }> = [
+    { course_id: courseId, ready: true, blockers: [] },
+  ],
+) {
   let status: "draft" | "published" = "draft";
   let enrolled = false;
   let signalOpen = true;
+  let readinessRequest = 0;
 
   await page.route(`${pipeline}/videos/url`, (route) =>
     route.fulfill({
@@ -142,7 +148,9 @@ async function routeReviewedCourse(page: Page) {
   await page.route(`${pipeline}/courses/${courseId}/publish-readiness`, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ course_id: courseId, ready: true, blockers: [] }),
+      body: JSON.stringify(
+        readinessSequence[Math.min(readinessRequest++, readinessSequence.length - 1)],
+      ),
     }),
   );
   await page.route(`${pipeline}/courses/${courseId}/publish`, (route) => {
@@ -197,6 +205,26 @@ async function routeReviewedCourse(page: Page) {
     });
   });
 }
+
+test("publishing checklist refreshes after reviewed artifacts load", async ({ page }) => {
+  await routeDevelopmentContext(page);
+  await routeReviewedCourse(page, [
+    {
+      course_id: courseId,
+      ready: false,
+      blockers: ["At least one reviewed topic is required."],
+    },
+    { course_id: courseId, ready: true, blockers: [] },
+  ]);
+  await page.goto("/");
+
+  await page.getByLabel("Direct audio/video URL").fill("https://example.com/lecture.mp4");
+  await page.getByRole("button", { name: "Ingest URL" }).click();
+  await page.getByRole("button", { name: "Refresh" }).first().click();
+
+  await expect(page.getByRole("button", { name: "Publish course" })).toBeEnabled();
+  await expect(page.getByText("At least one reviewed topic is required.")).toBeHidden();
+});
 
 test("instructor publishes, learner enrolls, and dashboard correction closes the loop", async ({
   page,

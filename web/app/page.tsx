@@ -304,6 +304,16 @@ export default function HomePage() {
     routeDecision,
     activeLearnerTopic?.id ?? null,
   );
+  const publishReadinessRevision = [
+    ...topics.map((topic) => `topic:${topic.id}:${topic.review_status}`),
+    ...(graph?.concepts.map(
+      (concept) => `concept:${concept.id}:${concept.review_status}`,
+    ) ?? []),
+    ...(graph?.edges.map((edge) => `edge:${edge.id}:${edge.review_status}`) ?? []),
+    ...questions.map((question) => `question:${question.id}:${question.review_status}`),
+  ]
+    .sort()
+    .join("|");
 
   useEffect(() => {
     async function initializeDevelopmentContext() {
@@ -329,6 +339,33 @@ export default function HomePage() {
 
     void initializeDevelopmentContext();
   }, []);
+
+  useEffect(() => {
+    const courseId = job?.course_id;
+    if (!courseId || selectedIdentity?.role !== "instructor") return;
+    const instructorId = selectedIdentity.id;
+
+    let cancelled = false;
+    async function refreshReadiness() {
+      const response = await fetch(
+        `${pipelineBaseUrl}/courses/${courseId}/publish-readiness`,
+        { headers: { "X-User-ID": instructorId } },
+      );
+      if (response.ok && !cancelled) {
+        setPublishReadiness((await response.json()) as PublishReadiness);
+      }
+    }
+
+    void refreshReadiness();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    job?.course_id,
+    publishReadinessRevision,
+    selectedIdentity?.id,
+    selectedIdentity?.role,
+  ]);
 
   async function uploadFile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
