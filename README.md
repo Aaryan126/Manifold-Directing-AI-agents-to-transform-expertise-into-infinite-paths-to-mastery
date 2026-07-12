@@ -107,63 +107,43 @@ the live status rather than relying on this summary for phase completion.
 ## Technical Architecture
 
 ```mermaid
-flowchart TB
-    Instructor([Instructor]) --> Upload[Lecture video or media URL]
-    Upload --> ASR[OpenAI transcription<br/>word-level timestamps]
+flowchart LR
+    Instructor[Instructor] --> Web[Next.js web application]
+    Learner[Learner] --> Web
+    Web <--> API[FastAPI orchestration]
 
-    subgraph CourseBuilder[AI-assisted course builder]
+    subgraph AI[AI-assisted pipeline]
         direction TB
-
-        subgraph Knowledge[Structure the knowledge]
-            direction LR
-            Segment[Segmentation agent<br/>topics and summaries]
-            TopicReview{Review topics}
-            Graph[Concept-graph agent<br/>concepts and prerequisites]
-            GraphReview{Review graph}
-            Segment --> TopicReview --> Graph --> GraphReview
-        end
-
-        subgraph Material[Create the learning material]
-            direction LR
-            Clips[Clip agent<br/>clean reusable spans]
-            ClipReview{Review clips}
-            Assess[Assessment agent<br/>questions and remediation]
-            AssessReview{Review assessments}
-            Clips --> ClipReview --> Assess --> AssessReview
-        end
-
-        GraphReview --> Clips
+        ASR[Transcription<br/>word timestamps]
+        Segment[Segmentation<br/>topics and summaries]
+        Graph[Concept graph<br/>prerequisites and rationale]
+        Clips[Clip extraction<br/>boundaries and concept tags]
+        Assess[Assessment and grading<br/>questions, feedback, remediation]
+        Review[Instructor review gates<br/>Accept / Edit / Dismiss]
+        ASR --> Segment --> Graph --> Clips --> Assess --> Review
     end
 
-    ASR --> Segment
-    AssessReview --> Publish[Publish reviewed course]
+    API --> ASR
 
-    subgraph Learning[Adaptive learning loop]
-        direction LR
-        Player[Reviewed video and clips]
-        Answer[Learner answer<br/>and confidence]
-        Grade[AI answer grading]
-        Route[Policy-based routing]
-        Next[Advance, reinforce<br/>or remediate]
-        Player --> Answer --> Grade --> Route --> Next
+    subgraph Platform[Storage and delivery]
+        direction TB
+        DB[(PostgreSQL<br/>content, graph and mastery)]
+        Video[Mux or local<br/>video provider]
     end
 
-    Publish --> Player
-    Learner([Learner]) --> Player
-    Route --> Mastery[(Attempts and mastery)]
-    Mastery --> Insights[Performance signals]
-    Insights --> Improve{Instructor reviews<br/>proposed corrections}
+    Review --> DB
+    API <--> DB
+    API --> Video
 ```
 
 The AI pipeline is deliberately not a single autonomous course generator. Each
 agent receives structured, reviewed inputs and returns schema-validated proposals
 with evidence or rationale. Those proposals stop at the instructor review gate;
 only accepted or edited artifacts are available to the learner and routing
-engine. Adaptive routing itself is deterministic and policy-controlled, while
-GPT-5.4 grades free-text learner answers before correctness enters the mastery
-loop. Every review diamond uses the same **Accept / Edit / Dismiss** pattern.
-Provider, persistence, and testing details are summarized in the technology table
-below rather than duplicated in the flow.
+engine. GPT-5.4 handles the proposal and semantic-grading tasks shown in the AI
+block; adaptive routing remains deterministic and instructor-policy-controlled.
+Local deterministic agent implementations keep development and automated tests
+independent of external model calls.
 
 The application is a monorepo with a React web client, a Python processing and
 application service, shared TypeScript schemas, and PostgreSQL as the durable
