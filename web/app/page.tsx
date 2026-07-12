@@ -2018,13 +2018,17 @@ export default function HomePage() {
 
       {learnerQuestions.length > 0 ? (
         <section
-          className="panel learnerExperience learnerOnly"
+          className="learnerOnly border-b border-border bg-background"
           id="learner-preview"
           aria-labelledby="learner-experience-title"
         >
-          <div className="jobHeader">
-            <h2 id="learner-experience-title">Learner Experience</h2>
-            <button
+          <header className="flex min-h-24 items-center justify-between gap-6 border-b border-border px-6 py-5 xl:px-8">
+            <div>
+              <p className="text-xs font-semibold uppercase text-muted-foreground">Current lesson</p>
+              <h2 className="mt-1 font-serif text-2xl font-semibold" id="learner-experience-title">Learner Experience</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{activeLearnerTopic?.title ?? "Choose a topic to begin"}</p>
+            </div>
+            <Button
               disabled={isLearnerContext && course?.status !== "published"}
               type="button"
               onClick={isLearnerContext ? startEnrolledCourse : createDemoLearner}
@@ -2036,78 +2040,71 @@ export default function HomePage() {
                 : demoLearnerId
                   ? "Restart as new learner"
                   : "Start course"}
-            </button>
-          </div>
+            </Button>
+          </header>
 
-          <div className="learnerGrid">
-            <section aria-labelledby="learner-player-title" className="learnerMain">
-              <h3 id="learner-player-title">
-                {activeLearnerTopic?.title ?? "Choose a topic"}
-              </h3>
+          <div className="grid grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="min-w-0 px-6 py-7 xl:px-8">
+              <section aria-labelledby="learner-player-title" className="mx-auto max-w-4xl">
+                <div className="mb-4 flex items-end justify-between gap-4">
+                  <div><p className="text-xs font-medium uppercase text-muted-foreground">Now learning</p><h3 className="mt-1 text-xl font-semibold" id="learner-player-title">{activeLearnerTopic?.title ?? "Choose a topic"}</h3></div>
+                  {activeLearnerClip ? <p className="text-xs tabular-nums text-muted-foreground">{formatTime(activeLearnerClip.start_seconds)}–{formatTime(activeLearnerClip.end_seconds)}</p> : null}
+                </div>
+                {activeLearnerClip && job?.video_id && playback ? (
+                  <ProviderVideo
+                    endSeconds={activeLearnerClip.end_seconds}
+                    pipelineBaseUrl={pipelineBaseUrl}
+                    playback={playback}
+                    startSeconds={activeLearnerClip.start_seconds}
+                    title={`Current learning clip for ${activeLearnerTopic?.title ?? "this topic"}`}
+                    videoId={job.video_id}
+                    viewerId={demoLearnerId}
+                    onClipComplete={(watchedSeconds) => void recordWatchEvent(activeLearnerClip, watchedSeconds)}
+                  />
+                ) : <div className="flex aspect-video items-center justify-center bg-black text-sm text-white/70">No active learner clip is available for this topic.</div>}
 
               {routeDecision ? (
                 <div
                   aria-live="polite"
-                  className={`routeMessage ${routeTone(routeDecision.action)}`}
+                  className={`mt-4 border-l-2 px-4 py-3 text-sm ${routeTone(routeDecision.action) === "advance" ? "border-emerald-600 bg-emerald-50 text-emerald-950" : routeTone(routeDecision.action) === "support" ? "border-amber-500 bg-amber-50 text-amber-950" : "border-destructive bg-destructive/5"}`}
                   role="status"
                 >
-                  <strong>Why this is next</strong>
-                  <p>{routeDecision.why}</p>
+                  <strong className="font-semibold">Why this is next</strong>
+                  <p className="mt-1 leading-6">{routeDecision.why}</p>
                   {routeDecision.action === "flag_instructor" ? (
-                    <p>
-                      You are not being sent through the same loop again. The instructor
-                      has been flagged to review this concept.
-                    </p>
+                    <p className="mt-1 leading-6">You are not being sent through the same loop again. The instructor has been flagged to review this concept.</p>
                   ) : null}
                 </div>
               ) : (
-                <p className="evidence">
-                  Start the course, watch the current clip, then answer the check-in.
-                </p>
-              )}
-
-              {activeLearnerClip && job?.video_id && playback ? (
-                <ProviderVideo
-                  endSeconds={activeLearnerClip.end_seconds}
-                  pipelineBaseUrl={pipelineBaseUrl}
-                  playback={playback}
-                  startSeconds={activeLearnerClip.start_seconds}
-                  title={`Current learning clip for ${activeLearnerTopic?.title ?? "this topic"}`}
-                  videoId={job.video_id}
-                  viewerId={demoLearnerId}
-                  onClipComplete={(watchedSeconds) =>
-                    void recordWatchEvent(activeLearnerClip, watchedSeconds)
-                  }
-                />
-              ) : (
-                <p className="emptyState">No active learner clip is available for this topic.</p>
+                <div className="mt-4 border-l-2 border-primary bg-primary/5 px-4 py-3 text-sm"><strong>Why this is next</strong><p className="mt-1 text-muted-foreground">Start the course, watch the current clip, then answer the check-in.</p></div>
               )}
 
               {activeLearnerQuestion ? (
                 <form
-                  className="learnerQuestion"
+                  className="mt-7 border-t border-border pt-6"
                   onSubmit={(event) => event.preventDefault()}
                 >
-                  <h3>Comprehension Check</h3>
-                  <p>{activeLearnerQuestion.body}</p>
-                  <fieldset>
-                    <legend>{activeLearnerQuestion.confidence_prompt}</legend>
-                    <div className="actions" role="group" aria-label="Answer outcomes">
-                      <button
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">Comprehension check</p>
+                  <h3 className="mt-2 font-serif text-xl font-semibold leading-8">{activeLearnerQuestion.body}</h3>
+                  <fieldset className="mt-5 border-0 p-0">
+                    <legend className="text-sm text-muted-foreground">{activeLearnerQuestion.confidence_prompt}</legend>
+                    <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Answer outcomes">
+                      <Button
                         disabled={!demoLearnerId}
                         type="button"
                         onClick={() => submitLearnerAttempt(activeLearnerQuestion.id, true, 4)}
                       >
                         I got it and feel confident
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         disabled={!demoLearnerId}
                         type="button"
                         onClick={() => submitLearnerAttempt(activeLearnerQuestion.id, true, 2)}
+                        variant="outline"
                       >
                         I got it but feel unsure
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         disabled={!demoLearnerId}
                         type="button"
                         onClick={() =>
@@ -2117,55 +2114,59 @@ export default function HomePage() {
                             1,
                             activeLearnerQuestion.remediation_rules[0]?.wrong_answer_pattern ??
                               "incorrect",
-                          )
-                        }
+                            )
+                          }
+                        variant="destructive"
                       >
                         I missed this
-                      </button>
+                      </Button>
                     </div>
                   </fieldset>
                 </form>
               ) : null}
-            </section>
+              </section>
+            </div>
 
-            <aside aria-labelledby="mastery-map-title" className="masteryMap" id="mastery-map">
-              <h3 id="mastery-map-title">Mastery Map</h3>
-              <p>{masterySummary(learnerProgress)}</p>
-              <div className="progressList">
-                {learnerProgress.map((item) => (
+            <aside aria-labelledby="learner-topics" className="border-l border-border bg-muted/20">
+              <div className="border-b border-border px-5 py-5"><p className="text-xs font-semibold uppercase text-muted-foreground">Course outline</p><h3 className="mt-1 text-base font-semibold" id="learner-topics">Topics</h3></div>
+              <div role="list" aria-labelledby="learner-topics">
+                {topics.filter((topic) => topic.review_status === "accepted" || topic.review_status === "edited").map((topic, index) => (
                   <button
-                    className={`progressItem ${item.state}`}
-                    key={item.concept_id}
+                    aria-current={topic.id === activeLearnerTopic?.id ? "true" : undefined}
+                    className={`flex w-full items-start gap-3 border-b border-border px-5 py-4 text-left hover:bg-muted ${topic.id === activeLearnerTopic?.id ? "bg-background shadow-[inset_3px_0_0_var(--primary)]" : ""}`}
+                    key={topic.id}
                     type="button"
-                    onClick={() => setActiveLearnerTopicId(item.topic_id)}
+                    onClick={() => setActiveLearnerTopicId(topic.id)}
                   >
-                    <span>{item.name}</span>
-                    <strong>{item.state.replaceAll("_", " ")}</strong>
+                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border text-xs tabular-nums text-muted-foreground">{index + 1}</span>
+                    <span className="min-w-0"><span className="block text-sm font-medium leading-5">{topic.title}</span><span className="mt-1 block text-xs text-muted-foreground">{formatTime(topic.start_seconds)}–{formatTime(topic.end_seconds)}</span></span>
                   </button>
                 ))}
               </div>
-
-              <h3 id="learner-topics">Topics</h3>
-              <div className="progressList" role="list" aria-labelledby="learner-topics">
-                {topics
-                  .filter((topic) => topic.review_status === "accepted" || topic.review_status === "edited")
-                  .map((topic) => (
-                    <button
-                      aria-current={topic.id === activeLearnerTopic?.id ? "true" : undefined}
-                      className="progressItem"
-                      key={topic.id}
-                      type="button"
-                      onClick={() => setActiveLearnerTopicId(topic.id)}
-                    >
-                      <span>{topic.title}</span>
-                      <strong>
-                        {formatTime(topic.start_seconds)} - {formatTime(topic.end_seconds)}
-                      </strong>
-                    </button>
-                  ))}
-              </div>
             </aside>
           </div>
+
+          <section className="border-t border-border bg-muted/10 px-6 py-8 xl:px-8" id="mastery-map" aria-labelledby="mastery-map-title">
+            <div className="mx-auto max-w-5xl">
+              <div className="flex items-end justify-between gap-6"><div><p className="text-xs font-semibold uppercase text-muted-foreground">Course path</p><h3 className="mt-1 font-serif text-2xl font-semibold" id="mastery-map-title">Mastery Map</h3></div><p className="text-sm text-muted-foreground">{masterySummary(learnerProgress)}</p></div>
+              {learnerProgress.length ? (
+                <div className="mt-7 grid grid-cols-4 gap-x-4 gap-y-7">
+                  {learnerProgress.map((item, index) => (
+                    <button
+                      className={`relative min-h-28 rounded-lg border bg-background p-4 text-left transition-colors hover:border-primary ${item.state === "mastered" ? "border-emerald-500" : item.state === "struggling" ? "border-destructive" : item.state === "practiced" ? "border-amber-400" : "border-border"}`}
+                      key={item.concept_id}
+                      type="button"
+                      onClick={() => setActiveLearnerTopicId(item.topic_id)}
+                    >
+                      <span className="text-xs font-medium text-muted-foreground">Concept {index + 1}</span><span className="mt-2 block text-sm font-semibold leading-5">{item.name}</span><Badge className="mt-3 capitalize" variant="outline">{item.state.replaceAll("_", " ")}</Badge>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-6 border border-dashed border-border px-6 py-10 text-center"><p className="text-sm font-medium">Mastery begins after your first check-in</p><p className="mt-1 text-sm text-muted-foreground">Concept progress and routing status will appear here.</p></div>
+              )}
+            </div>
+          </section>
         </section>
       ) : null}
 

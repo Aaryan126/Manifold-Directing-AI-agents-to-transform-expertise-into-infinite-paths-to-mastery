@@ -242,9 +242,7 @@ test("instructor publishes, learner enrolls, and dashboard correction closes the
   await page.getByRole("button", { name: "Publish course" }).click();
   await expect(page.getByText("Course status:")).toContainText("published");
 
-  const dashboard = page.locator("section.panel").filter({
-    has: page.getByRole("heading", { name: "Instructor Dashboard" }),
-  });
+  const dashboard = page.locator("#insights");
   await expect(
     dashboard.getByText("Possible missing prerequisite", { exact: true }),
   ).toBeVisible();
