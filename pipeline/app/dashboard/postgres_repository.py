@@ -1,0 +1,548 @@
+from typing import Any
+from uuid import UUID
+
+import psycopg
+from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
+
+from app.dashboard.models import (
+    ClipSignalStats,
+    ConceptSignalStats,
+    DashboardAction,
+    DashboardSignal,
+    DashboardSignalProposal,
+    DashboardSignalStatus,
+    DashboardSignalType,
+    LearnerOverride,
+    QuestionSignalStats,
+)
+from app.dashboard.repository import DashboardRepository
+
+
+class PostgresDashboardRepository(DashboardRepository):
+    def __init__(self, database_url: str) -> None:
+        self._database_url = database_url
+
+    async def learner_count(self, course_id: UUID) -> int:
+        async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+            row = await (
+                await conn.execute(
+                    "select count(*) from enrollments where course_id = %s",
+                    (course_id,),
+                )
+            ).fetchone()
+            return int(row[0] or 0) if row else 0
+
+    async def attempt_count(self, course_id: UUID) -> int:
+        async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+            row = await (
+                await conn.execute(
+                    """
+                    select count(*)
+                    from attempts a
+                    join questions q on q.id = a.question_id
+                    join topics t on t.id = q.topic_id
+                    where t.course_id = %s
+                    """,
+                    (course_id,),
+                )
+            ).fetchone()
+            return int(row[0] or 0) if row else 0
+
+    async def concept_stats(self, course_id: UUID) -> tuple[ConceptSignalStats, ...]:
+        async with await psycopg.AsyncConnection.connect(
+            self._database_url,
+            row_factory=dict_row,
+        ) as conn:
+            rows = await (
+                await conn.execute(
+                    """
+                    select
+                      c.id,
+                      c.name,
+                      count(distinct a.learner_id) as touched_learners,
+                      count(distinct m.learner_id)
+                        filter (where m.state = 'struggling') as struggling_learners,
+                      count(distinct m.learner_id) filter (
+                        where m.state = 'struggling'
+                          and exists (
+                            select 1
+                            from concept_edges e
+                            join concepts prereq on prereq.id = e.from_concept_id
+                            where e.to_concept_id = c.id
+                              and e.review_status in ('accepted', 'edited')
+                              and prereq.review_status in ('accepted', 'edited')
+                          )
+                          and not exists (
+                            select 1
+                            from concept_edges e
+                            join concepts prereq on prereq.id = e.from_concept_id
+                            where e.to_concept_id = c.id
+                              and e.review_status in ('accepted', 'edited')
+                              and prereq.review_status in ('accepted', 'edited')
+                              and not exists (
+                                select 1
+                                from learner_concept_mastery pm
+                                where pm.learner_id = m.learner_id
+                                  and pm.concept_id = e.from_concept_id
+                                  and pm.state = 'mastered'
+                              )
+                          )
+                      ) as mastered_prerequisite_struggling_learners
+                    from concepts c
+                    left join topic_concepts tc on tc.concept_id = c.id
+                    left join questions q on q.topic_id = tc.topic_id
+                      and q.review_status in ('accepted', 'edited')
+                    left join attempts a on a.question_id = q.id
+                    left join learner_concept_mastery m on m.concept_id = c.id
+                    where c.course_id = %s
+                      and c.review_status in ('accepted', 'edited')
+                    group by c.id, c.name
+                    order by c.name
+                    """,
+                    (course_id,),
+                )
+            ).fetchall()
+            return tuple(
+                ConceptSignalStats(
+                    concept_id=UUID(str(row["id"])),
+                    concept_name=str(row["name"]),
+                    touched_learners=int(row["touched_learners"] or 0),
+                    struggling_learners=int(row["struggling_learners"] or 0),
+                    mastered_prerequisite_struggling_learners=int(
+                        row["mastered_prerequisite_struggling_learners"] or 0,
+                    ),
+                )
+                for row in rows
+            )
+
+    async def question_stats(self, course_id: UUID) -> tuple[QuestionSignalStats, ...]:
+        async with await psycopg.AsyncConnection.connect(
+            self._database_url,
+            row_factory=dict_row,
+        ) as conn:
+            rows = await (
+                await conn.execute(
+                    """
+                    select
+                      q.id,
+                      q.topic_id,
+                      q.body,
+                      count(a.id) as attempts,
+                      count(a.id) filter (where not a.correctness) as incorrect_attempts,
+                      count(a.id) filter (where a.correctness and a.confidence < 3)
+                        as low_confidence_correct_attempts
+                    from questions q
+                    join topics t on t.id = q.topic_id
+                    left join attempts a on a.question_id = q.id
+                    where t.course_id = %s
+                      and q.review_status in ('accepted', 'edited')
+                      and t.review_status in ('accepted', 'edited')
+                    group by q.id, q.topic_id, q.body
+                    order by q.created_at
+                    """,
+                    (course_id,),
+                )
+            ).fetchall()
+            return tuple(
+                QuestionSignalStats(
+                    question_id=UUID(str(row["id"])),
+                    topic_id=UUID(str(row["topic_id"])),
+                    prompt=str(row["body"]),
+                    attempts=int(row["attempts"] or 0),
+                    incorrect_attempts=int(row["incorrect_attempts"] or 0),
+                    low_confidence_correct_attempts=int(
+                        row["low_confidence_correct_attempts"] or 0,
+                    ),
+                )
+                for row in rows
+            )
+
+    async def clip_stats(self, course_id: UUID) -> tuple[ClipSignalStats, ...]:
+        async with await psycopg.AsyncConnection.connect(
+            self._database_url,
+            row_factory=dict_row,
+        ) as conn:
+            rows = await (
+                await conn.execute(
+                    """
+                    select
+                      clip.id,
+                      clip.topic_id,
+                      cc.concept_id,
+                      count(a.id) filter (where not a.correctness) as remediation_attempts,
+                      count(distinct m.learner_id)
+                        filter (where m.state = 'struggling') as struggling_learners
+                    from clips clip
+                    join topics t on t.id = clip.topic_id
+                    join clip_concepts cc on cc.clip_id = clip.id
+                    join concepts c on c.id = cc.concept_id
+                    left join learner_concept_mastery m on m.concept_id = cc.concept_id
+                    left join remediation_rules rr on rr.target_clip_id = clip.id
+                       or rr.target_concept_id = cc.concept_id
+                    left join attempts a on a.question_id = rr.question_id
+                    where t.course_id = %s
+                      and clip.status = 'active'
+                      and c.review_status in ('accepted', 'edited')
+                    group by clip.id, clip.topic_id, cc.concept_id
+                    order by clip.start_seconds
+                    """,
+                    (course_id,),
+                )
+            ).fetchall()
+            return tuple(
+                ClipSignalStats(
+                    clip_id=UUID(str(row["id"])),
+                    topic_id=UUID(str(row["topic_id"])),
+                    concept_id=UUID(str(row["concept_id"])),
+                    remediation_attempts=int(row["remediation_attempts"] or 0),
+                    struggling_learners=int(row["struggling_learners"] or 0),
+                )
+                for row in rows
+            )
+
+    async def open_signals(self, course_id: UUID) -> tuple[DashboardSignal, ...]:
+        async with await psycopg.AsyncConnection.connect(
+            self._database_url,
+            row_factory=dict_row,
+        ) as conn:
+            rows = await (
+                await conn.execute(
+                    """
+                    select id, course_id, type, related_entity_type, related_entity_id,
+                           ai_diagnosis, status, instructor_action
+                    from dashboard_signals
+                    where course_id = %s and status = 'open'
+                    order by created_at desc
+                    """,
+                    (course_id,),
+                )
+            ).fetchall()
+            return tuple(_signal_from_row(row) for row in rows)
+
+    async def upsert_signal(
+        self,
+        course_id: UUID,
+        proposal: DashboardSignalProposal,
+    ) -> DashboardSignal:
+        async with await psycopg.AsyncConnection.connect(
+            self._database_url,
+            row_factory=dict_row,
+        ) as conn:
+            existing = await (
+                await conn.execute(
+                    """
+                    select id, course_id, type, related_entity_type, related_entity_id,
+                           ai_diagnosis, status, instructor_action
+                    from dashboard_signals
+                    where course_id = %s
+                      and status = 'open'
+                      and ai_diagnosis->>'fingerprint' = %s
+                    limit 1
+                    """,
+                    (course_id, proposal.fingerprint),
+                )
+            ).fetchone()
+            if existing:
+                return _signal_from_row(existing)
+            row = await (
+                await conn.execute(
+                    """
+                    insert into dashboard_signals (
+                      course_id, type, related_entity_type, related_entity_id, ai_diagnosis
+                    )
+                    values (%s, %s, %s, %s, %s::jsonb)
+                    returning id, course_id, type, related_entity_type, related_entity_id,
+                              ai_diagnosis, status, instructor_action
+                    """,
+                    (
+                        course_id,
+                        proposal.type.value,
+                        proposal.related_entity_type,
+                        proposal.related_entity_id,
+                        Jsonb(_proposal_json(proposal)),
+                    ),
+                )
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("Failed to create dashboard signal.")
+            return _signal_from_row(row)
+
+    async def accept_signal(
+        self,
+        signal_id: UUID,
+        action: DashboardAction,
+    ) -> DashboardSignal | None:
+        return await self._resolve_signal(signal_id, DashboardSignalStatus.ACCEPTED, action)
+
+    async def edit_signal(
+        self,
+        signal_id: UUID,
+        action: DashboardAction,
+    ) -> DashboardSignal | None:
+        return await self._resolve_signal(signal_id, DashboardSignalStatus.EDITED, action)
+
+    async def dismiss_signal(
+        self,
+        signal_id: UUID,
+        action: DashboardAction,
+    ) -> DashboardSignal | None:
+        return await self._resolve_signal(signal_id, DashboardSignalStatus.DISMISSED, action)
+
+    async def apply_learner_override(self, override: LearnerOverride) -> None:
+        state = "mastered" if override.action == "skip_ahead" else "struggling"
+        async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+            await conn.execute(
+                """
+                insert into learner_concept_mastery (learner_id, concept_id, state)
+                values (%s, %s, %s)
+                on conflict (learner_id, concept_id) do update
+                set state = excluded.state,
+                    updated_at = now()
+                """,
+                (override.learner_id, override.concept_id, state),
+            )
+            course = await (
+                await conn.execute(
+                    "select course_id from concepts where id = %s",
+                    (override.concept_id,),
+                )
+            ).fetchone()
+            if course:
+                await conn.execute(
+                    """
+                    insert into dashboard_signals (
+                      course_id, type, related_entity_type, related_entity_id,
+                      ai_diagnosis, status, instructor_action, resolved_at
+                    )
+                    values (%s, 'stuck_cohort', 'learner_override', %s,
+                            %s::jsonb, 'accepted', %s::jsonb, now())
+                    """,
+                    (
+                        UUID(str(course[0])),
+                        override.learner_id,
+                        Jsonb(
+                            {
+                                "title": "Manual learner override",
+                                "summary": "Instructor manually adjusted learner mastery.",
+                                "concept_id": str(override.concept_id),
+                            },
+                        ),
+                        Jsonb(
+                            {
+                                "action": override.action,
+                                "note": override.note,
+                                "applied_scope": "single_learner",
+                            },
+                        ),
+                    ),
+                )
+
+    async def course_id_for_concept(self, concept_id: UUID) -> UUID | None:
+        async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+            row = await (
+                await conn.execute(
+                    "select course_id from concepts where id = %s",
+                    (concept_id,),
+                )
+            ).fetchone()
+            return UUID(str(row[0])) if row else None
+
+    async def _resolve_signal(
+        self,
+        signal_id: UUID,
+        status: DashboardSignalStatus,
+        action: DashboardAction,
+    ) -> DashboardSignal | None:
+        async with await psycopg.AsyncConnection.connect(
+            self._database_url,
+            row_factory=dict_row,
+        ) as conn:
+            signal = await self._get_signal(conn, signal_id)
+            if signal is None:
+                return None
+            if status is not DashboardSignalStatus.DISMISSED:
+                await self._apply_signal_action(conn, signal, status, action)
+            row = await (
+                await conn.execute(
+                    """
+                    update dashboard_signals
+                    set status = %s,
+                        instructor_action = %s::jsonb,
+                        resolved_at = now()
+                    where id = %s
+                    returning id, course_id, type, related_entity_type, related_entity_id,
+                              ai_diagnosis, status, instructor_action
+                    """,
+                    (
+                        status.value,
+                        Jsonb(
+                            {
+                                "action": action.action,
+                                "note": action.note,
+                                "retroactive": action.retroactive,
+                                "applied_scope": (
+                                    "retroactive_reprocess"
+                                    if action.retroactive
+                                    else "going_forward"
+                                ),
+                            },
+                        ),
+                        signal_id,
+                    ),
+                )
+            ).fetchone()
+            return _signal_from_row(row) if row else None
+
+    async def _get_signal(
+        self,
+        conn: psycopg.AsyncConnection[Any],
+        signal_id: UUID,
+    ) -> DashboardSignal | None:
+        row = await (
+            await conn.execute(
+                """
+                select id, course_id, type, related_entity_type, related_entity_id,
+                       ai_diagnosis, status, instructor_action
+                from dashboard_signals
+                where id = %s
+                """,
+                (signal_id,),
+            )
+        ).fetchone()
+        return _signal_from_row(row) if row else None
+
+    async def _apply_signal_action(
+        self,
+        conn: psycopg.AsyncConnection[Any],
+        signal: DashboardSignal,
+        status: DashboardSignalStatus,
+        action: DashboardAction,
+    ) -> None:
+        note = action.note or signal.ai_diagnosis.get("recommended_action") or ""
+        if (
+            signal.type is DashboardSignalType.STUCK_COHORT
+            and signal.related_entity_type == "concept"
+        ):
+            await conn.execute(
+                """
+                insert into routing_policies (course_id, concept_id, policy)
+                values (%s, %s, %s::jsonb)
+                on conflict (course_id, concept_id) do update
+                set policy = excluded.policy,
+                    updated_at = now()
+                """,
+                (
+                    signal.course_id,
+                    signal.related_entity_id,
+                    Jsonb(
+                        {
+                            "confidence_threshold": 3,
+                            "correct_attempts_for_mastery": 1,
+                            "advancement_mode": "require_mastery",
+                            "max_remediation_attempts": 3,
+                            "dashboard_signal_id": str(signal.id),
+                            "instructor_note": note,
+                            "review_status": status.value,
+                        },
+                    ),
+                ),
+            )
+        elif (
+            signal.type is DashboardSignalType.UNDERPERFORMING_CONTENT
+            and signal.related_entity_type == "clip"
+        ):
+            await conn.execute(
+                """
+                update clips
+                set status = 'flagged',
+                    flagged_at = now(),
+                    flag_note = %s,
+                    instructor_revision = coalesce(instructor_revision, '{}'::jsonb)
+                      || %s::jsonb,
+                    updated_at = now()
+                where id = %s and status = 'active'
+                """,
+                (
+                    note,
+                    Jsonb({"dashboard_signal_id": str(signal.id), "review_status": status.value}),
+                    signal.related_entity_id,
+                ),
+            )
+        elif (
+            signal.type is DashboardSignalType.UNDERPERFORMING_CONTENT
+            and signal.related_entity_type == "question"
+        ):
+            await conn.execute(
+                """
+                update questions
+                set review_status = 'edited',
+                    instructor_revision = coalesce(instructor_revision, '{}'::jsonb)
+                      || %s::jsonb,
+                    updated_at = now()
+                where id = %s
+                """,
+                (
+                    Jsonb(
+                        {
+                            "dashboard_signal_id": str(signal.id),
+                            "instructor_note": note,
+                            "review_status": status.value,
+                        },
+                    ),
+                    signal.related_entity_id,
+                ),
+            )
+        elif (
+            signal.type is DashboardSignalType.GRAPH_DRIFT
+            and signal.related_entity_type == "concept"
+        ):
+            await conn.execute(
+                """
+                update concepts
+                set instructor_revision = coalesce(instructor_revision, '{}'::jsonb)
+                  || %s::jsonb,
+                    updated_at = now()
+                where id = %s
+                """,
+                (
+                    Jsonb(
+                        {
+                            "dashboard_signal_id": str(signal.id),
+                            "instructor_note": note,
+                            "suggested_graph_review": True,
+                            "review_status": status.value,
+                        },
+                    ),
+                    signal.related_entity_id,
+                ),
+            )
+
+
+def _proposal_json(proposal: DashboardSignalProposal) -> dict[str, object]:
+    return {
+        "title": proposal.title,
+        "summary": proposal.summary,
+        "recommended_action": proposal.recommended_action,
+        "fingerprint": proposal.fingerprint,
+        "metrics": proposal.metrics,
+    }
+
+
+def _signal_from_row(row: dict[str, Any]) -> DashboardSignal:
+    diagnosis = row["ai_diagnosis"]
+    instructor_action = row["instructor_action"]
+    if not isinstance(diagnosis, dict):
+        diagnosis = {}
+    if instructor_action is not None and not isinstance(instructor_action, dict):
+        instructor_action = {}
+    return DashboardSignal(
+        id=UUID(str(row["id"])),
+        course_id=UUID(str(row["course_id"])),
+        type=DashboardSignalType(str(row["type"])),
+        related_entity_type=str(row["related_entity_type"]),
+        related_entity_id=UUID(str(row["related_entity_id"])),
+        status=DashboardSignalStatus(str(row["status"])),
+        ai_diagnosis=diagnosis,
+        instructor_action=instructor_action,
+    )
