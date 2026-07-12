@@ -95,6 +95,7 @@ export function ReviewQueueItem({
 
   return (
     <button
+      data-slot="review-queue-item"
       className={cn(
         "flex w-full items-start gap-2.5 border-b border-border px-4 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         active && "bg-background shadow-[inset_3px_0_0_var(--primary)]",

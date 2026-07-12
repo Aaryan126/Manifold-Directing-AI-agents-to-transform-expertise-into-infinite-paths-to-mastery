@@ -7,7 +7,7 @@ const learnerId = "10000000-0000-4000-8000-000000000002";
 const courseId = "20000000-0000-4000-8000-000000000001";
 const videoId = "30000000-0000-4000-8000-000000000001";
 
-async function routeDevelopmentContext(page: Page) {
+export async function routeDevelopmentContext(page: Page) {
   await page.route(`${pipeline}/development/identities`, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -41,7 +41,7 @@ async function routeDevelopmentContext(page: Page) {
   );
 }
 
-async function routeReviewedCourse(
+export async function routeReviewedCourse(
   page: Page,
   readinessSequence: Array<{ course_id: string; ready: boolean; blockers: string[] }> = [
     { course_id: courseId, ready: true, blockers: [] },
@@ -271,6 +271,51 @@ test("instructor and learner surfaces have no WCAG 2.2 A/AA axe violations", asy
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
     .analyze();
   expect(results.violations).toEqual([]);
+});
+
+async function loadReviewedWorkspace(page: Page) {
+  await routeDevelopmentContext(page);
+  await routeReviewedCourse(page);
+  await page.goto("/");
+  await page.getByLabel("Direct audio/video URL").fill("https://example.com/lecture.mp4");
+  await page.getByRole("button", { name: "Ingest URL" }).click();
+  await page.getByRole("button", { name: "Refresh" }).first().click();
+  await expect(page.getByRole("heading", { name: "Topic Outline" })).toBeVisible();
+}
+
+test("instructor workspaces match approved desktop visual system", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await loadReviewedWorkspace(page);
+  await expect(page.locator("#concept-graph .react-flow__node")).toBeVisible();
+
+  for (const id of ["course-setup", "outline", "concept-graph", "insights"]) {
+    const workspace = page.locator(`#${id}`);
+    await expect(workspace).toBeVisible();
+    await expect(workspace).toHaveScreenshot(`${id}-desktop.png`, {
+      animations: "disabled",
+      mask: [page.locator("video, mux-player")],
+    });
+  }
+});
+
+test("laptop and learner workspaces do not overflow", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await loadReviewedWorkspace(page);
+
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  for (const id of ["course-setup", "outline", "concept-graph", "clips", "assessments", "routing", "insights"]) {
+    const workspace = page.locator(`#${id}`);
+    await expect(workspace).toBeVisible();
+    expect(await workspace.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  }
+
+  await page.getByLabel("Development identity").selectOption(learnerId);
+  const learner = page.locator("#learner-preview");
+  await expect(learner).toBeVisible();
+  await expect(learner).toHaveScreenshot("learner-laptop.png", {
+    animations: "disabled",
+    mask: [page.locator("video, mux-player")],
+  });
 });
 
 const topic = {

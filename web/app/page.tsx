@@ -304,11 +304,20 @@ export default function HomePage() {
   );
   const flowNodes: FlowNode[] = graph
     ? graphNodeModels(graph.concepts.filter((concept) => visibleGraphConceptIds.has(concept.id))).map((node) => ({
-        id: node.id,
-        position: { x: node.x, y: node.y },
-        data: { label: `${node.label}\n${node.status}` },
-        className: node.muted ? "graphNode muted" : "graphNode",
-      }))
+      id: node.id,
+      position: { x: node.x, y: node.y },
+      data: { label: `${node.label}\n${node.status}` },
+      className: node.muted ? "graphNode muted" : "graphNode",
+      width: 190,
+      height: 72,
+      style: {
+        width: 190,
+        minHeight: 72,
+        borderColor: node.muted ? "var(--border)" : "var(--primary)",
+        borderRadius: 6,
+        padding: 12,
+      },
+    }))
     : [];
   const flowEdges: FlowEdge[] = graph
     ? graphEdgeModels(graph.edges.filter((edge) =>
@@ -1674,8 +1683,8 @@ export default function HomePage() {
 
                 <InspectorSection title="Browse artifacts">
                   <div className="max-h-44 space-y-1 overflow-y-auto">
-                    {graph.concepts.map((concept) => <button className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted" key={concept.id} onClick={() => { setSelectedGraphConceptId(concept.id); setSelectedGraphEdgeId(""); }} type="button"><span className="truncate">{concept.name}</span><span className="text-xs capitalize text-muted-foreground">{concept.review_status}</span></button>)}
-                    {graph.edges.map((edge) => <button className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted" key={edge.id} onClick={() => { setSelectedGraphEdgeId(edge.id); setSelectedGraphConceptId(""); }} type="button"><span className="truncate">{conceptName(graph, edge.from_concept_id)} → {conceptName(graph, edge.to_concept_id)}</span><span className="text-xs capitalize text-muted-foreground">{edge.review_status}</span></button>)}
+                    {graph.concepts.map((concept) => <button className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted" data-slot="graph-artifact" key={concept.id} onClick={() => { setSelectedGraphConceptId(concept.id); setSelectedGraphEdgeId(""); }} type="button"><span className="truncate">{concept.name}</span><span className="text-xs capitalize text-muted-foreground">{concept.review_status}</span></button>)}
+                    {graph.edges.map((edge) => <button className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted" data-slot="graph-artifact" key={edge.id} onClick={() => { setSelectedGraphEdgeId(edge.id); setSelectedGraphConceptId(""); }} type="button"><span className="truncate">{conceptName(graph, edge.from_concept_id)} → {conceptName(graph, edge.to_concept_id)}</span><span className="text-xs capitalize text-muted-foreground">{edge.review_status}</span></button>)}
                   </div>
                 </InspectorSection>
 
@@ -1996,7 +2005,7 @@ export default function HomePage() {
           <div className="grid grid-cols-[240px_minmax(0,1fr)_300px]">
             <aside className="border-r border-border bg-muted/20">
               <div className="border-b border-border px-4 py-4"><p className="text-xs font-semibold uppercase text-muted-foreground">Test questions</p></div>
-              {simulatorQuestions.map((question) => <button className={`w-full border-b border-border px-4 py-3 text-left text-sm hover:bg-muted ${question.id === selectedSimulatorQuestion?.id ? "bg-background shadow-[inset_3px_0_0_var(--primary)]" : ""}`} key={question.id} onClick={() => setSelectedSimulatorQuestionId(question.id)} type="button"><span className="block truncate font-medium">{topics.find((topic) => topic.id === question.topic_id)?.title ?? "Untitled topic"}</span><span className="mt-1 block text-xs capitalize text-muted-foreground">{question.type.replaceAll("_", " ")}</span></button>)}
+              {simulatorQuestions.map((question) => <button className={`w-full border-b border-border px-4 py-3 text-left text-sm hover:bg-muted ${question.id === selectedSimulatorQuestion?.id ? "bg-background shadow-[inset_3px_0_0_var(--primary)]" : ""}`} data-slot="simulator-question" key={question.id} onClick={() => setSelectedSimulatorQuestionId(question.id)} type="button"><span className="block truncate font-medium">{topics.find((topic) => topic.id === question.topic_id)?.title ?? "Untitled topic"}</span><span className="mt-1 block text-xs capitalize text-muted-foreground">{question.type.replaceAll("_", " ")}</span></button>)}
             </aside>
             <div className="min-w-0 px-8 py-7">
               {selectedSimulatorQuestion ? (() => {
@@ -2134,6 +2143,7 @@ export default function HomePage() {
                   <button
                     aria-current={topic.id === activeLearnerTopic?.id ? "true" : undefined}
                     className={`flex w-full items-start gap-3 border-b border-border px-5 py-4 text-left hover:bg-muted ${topic.id === activeLearnerTopic?.id ? "bg-background shadow-[inset_3px_0_0_var(--primary)]" : ""}`}
+                    data-slot="learner-topic"
                     key={topic.id}
                     type="button"
                     onClick={() => setActiveLearnerTopicId(topic.id)}
@@ -2154,6 +2164,7 @@ export default function HomePage() {
                   {learnerProgress.map((item, index) => (
                     <button
                       className={`relative min-h-28 rounded-lg border bg-background p-4 text-left transition-colors hover:border-primary ${item.state === "mastered" ? "border-emerald-500" : item.state === "struggling" ? "border-destructive" : item.state === "practiced" ? "border-amber-400" : "border-border"}`}
+                      data-slot="mastery-concept"
                       key={item.concept_id}
                       type="button"
                       onClick={() => setActiveLearnerTopicId(item.topic_id)}
@@ -2190,7 +2201,7 @@ export default function HomePage() {
                 <aside className="border-r border-border bg-muted/20" aria-label="Dashboard signal queue">
                   <div className="border-b border-border px-4 py-4"><div className="flex items-center justify-between"><p className="text-xs font-semibold uppercase text-muted-foreground">Signal queue</p><Badge variant="outline">{dashboardSummary.signals.length}</Badge></div></div>
                   {dashboardSummary.signals.length ? dashboardSummary.signals.map((signal) => (
-                    <button className={`w-full border-b border-border px-4 py-3 text-left hover:bg-muted ${signal.id === selectedDashboardSignal?.id ? "bg-background shadow-[inset_3px_0_0_var(--primary)]" : ""}`} key={signal.id} onClick={() => setSelectedDashboardSignalId(signal.id)} type="button">
+                    <button className={`w-full border-b border-border px-4 py-3 text-left hover:bg-muted ${signal.id === selectedDashboardSignal?.id ? "bg-background shadow-[inset_3px_0_0_var(--primary)]" : ""}`} data-slot="dashboard-signal" key={signal.id} onClick={() => setSelectedDashboardSignalId(signal.id)} type="button">
                       <span className="block text-sm font-medium">{dashboardSignalTitle(signal)}</span><span className="mt-1 block text-xs capitalize text-muted-foreground">{signal.type.replaceAll("_", " ")}</span>
                     </button>
                   )) : <p className="px-4 py-6 text-sm text-muted-foreground">No open dashboard problems. Refresh after more learner activity.</p>}
@@ -2206,7 +2217,7 @@ export default function HomePage() {
                         <p className="mt-5 text-sm leading-7">{dashboardSignalSummary(signal)}</p>
                         <div className="mt-5 border-l-2 border-primary bg-primary/5 px-4 py-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Recommended action</p><p className="mt-1 text-sm leading-6">{dashboardSignalRecommendedAction(signal)}</p></div>
                         <label className="mt-5 grid gap-2 text-sm font-medium">Instructor note<Textarea className="min-h-28" onChange={(event) => setDashboardNotes((current) => ({ ...current, [signal.id]: event.target.value }))} placeholder="Optional edit, rationale, or implementation note" value={dashboardNotes[signal.id] ?? ""} /></label>
-                        <label className="mt-4 flex items-start gap-2 text-sm"><input checked={retroactive} className="mt-1 size-4 accent-primary" onChange={(event) => setDashboardRetroactive((current) => ({ ...current, [signal.id]: event.target.checked }))} type="checkbox" /><span>{dashboardActionScopeLabel(retroactive)}</span></label>
+                        <label className="mt-4 flex items-start gap-2 text-sm"><input checked={retroactive} className="mt-1 size-4 accent-primary" data-slot="dashboard-retroactive" onChange={(event) => setDashboardRetroactive((current) => ({ ...current, [signal.id]: event.target.checked }))} type="checkbox" /><span>{dashboardActionScopeLabel(retroactive)}</span></label>
                         <div className="mt-6 flex flex-wrap gap-2 border-t border-border pt-5"><Button onClick={() => resolveDashboardSignal(signal.id, "accept")} type="button">Accept AI suggestion</Button><Button onClick={() => resolveDashboardSignal(signal.id, "edit")} type="button" variant="outline">Edit manually</Button><Button onClick={() => resolveDashboardSignal(signal.id, "dismiss")} type="button" variant="destructive">Dismiss</Button></div>
                       </div>
                     );
