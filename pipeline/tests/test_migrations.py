@@ -18,6 +18,12 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
         encoding="utf-8"
     )
     audit_migration = Path("migrations/007_audit_events.sql").read_text(encoding="utf-8")
+    phase10_migration = Path("migrations/008_phase10_access_and_performance.sql").read_text(
+        encoding="utf-8",
+    )
+    dashboard_index_migration = Path("migrations/010_dashboard_fingerprint_index.sql").read_text(
+        encoding="utf-8",
+    )
 
     for table_name in [
         "users",
@@ -59,6 +65,10 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     assert "audit_events_artifact_idx" in audit_migration
     assert "dashboard_signal_id" in audit_migration
     assert "scope text not null" in audit_migration
+    assert "course_publish_status" in phase10_migration
+    assert "learner_watch_events" in phase10_migration
+    assert "dashboard_signals_course_status_idx" in phase10_migration
+    assert "dashboard_signals_open_fingerprint_idx" in dashboard_index_migration
 
 
 def test_legacy_schema_baseline_covers_every_migration() -> None:

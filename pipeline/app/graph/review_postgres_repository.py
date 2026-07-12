@@ -5,6 +5,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from app.db.pool import pooled_connection
 from app.graph.models import (
     Concept,
     ConceptEdit,
@@ -26,10 +27,7 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
         self._database_url = database_url
 
     async def get_course_context(self, course_id: UUID) -> CourseGraphContext | None:
-        async with await psycopg.AsyncConnection.connect(
-            self._database_url,
-            row_factory=dict_row,
-        ) as conn:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
             rows = await (
                 await conn.execute(
                     """

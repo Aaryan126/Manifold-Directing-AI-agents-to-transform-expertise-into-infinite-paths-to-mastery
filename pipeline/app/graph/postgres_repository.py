@@ -2,6 +2,7 @@ from uuid import UUID
 
 import psycopg
 
+from app.db.pool import pooled_connection
 from app.graph.repository import ConceptEdge, GraphRepository
 
 
@@ -13,7 +14,7 @@ class PostgresGraphRepository(GraphRepository):
         if edge.relationship != "requires":
             msg = "Only requires edges are supported in the prerequisite graph."
             raise ValueError(msg)
-        async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+        async with pooled_connection(self._database_url) as conn:
             await self._raise_if_cycle(conn, edge)
             await conn.execute(
                 """
@@ -29,7 +30,7 @@ class PostgresGraphRepository(GraphRepository):
         course_id: UUID,
         mastered_concept_ids: set[UUID],
     ) -> set[UUID]:
-        async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+        async with pooled_connection(self._database_url) as conn:
             rows = await conn.execute(
                 """
                 select c.id

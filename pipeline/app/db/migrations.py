@@ -13,6 +13,13 @@ _LEGACY_MIGRATION_MARKERS: dict[str, tuple[tuple[str, str | None], ...]] = {
     "005_clip_review_status.sql": (("clips", "status"),),
     "006_question_review_status.sql": (("questions", "review_status"),),
     "007_audit_events.sql": (("audit_events", None),),
+    "008_phase10_access_and_performance.sql": (
+        ("courses", "status"),
+        ("users", "display_name"),
+        ("learner_watch_events", None),
+    ),
+    "009_phase10_query_indexes.sql": (("remediation_rules_target_clip_idx", None),),
+    "010_dashboard_fingerprint_index.sql": (("dashboard_signals_open_fingerprint_idx", None),),
 }
 
 

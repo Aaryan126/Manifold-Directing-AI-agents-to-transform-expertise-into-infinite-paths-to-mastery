@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     openai_api_key: str | None = Field(default=None)
     mux_token_id: str | None = Field(default=None)
     mux_token_secret: str | None = Field(default=None)
+    mux_max_stored_videos: int = 10
+    mux_poll_interval_seconds: float = 2.0
+    mux_poll_timeout_seconds: float = 600.0
 
 
 @lru_cache

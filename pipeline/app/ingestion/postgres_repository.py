@@ -14,6 +14,7 @@ from app.ingestion.models import (
     transcript_to_json,
 )
 from app.ingestion.repository import IngestionRepository
+from app.video.base import PlaybackReference
 
 
 class PostgresIngestionRepository(IngestionRepository):
@@ -73,15 +74,36 @@ class PostgresIngestionRepository(IngestionRepository):
             (job_id,),
         )
 
-    async def mark_complete(self, job_id: UUID, transcript: Transcript) -> None:
+    async def mark_complete(
+        self,
+        job_id: UUID,
+        transcript: Transcript,
+        playback: PlaybackReference | None = None,
+    ) -> None:
         async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
             await conn.execute(
                 """
                 update videos
-                set transcript = %s::jsonb
+                set transcript = %s::jsonb,
+                    playback_provider = coalesce(%s, playback_provider),
+                    playback_id = coalesce(%s, playback_id),
+                    source_metadata = source_metadata || %s::jsonb
                 where id = (select video_id from ingestion_jobs where id = %s)
                 """,
-                (Jsonb(transcript_to_json(transcript)), job_id),
+                (
+                    Jsonb(transcript_to_json(transcript)),
+                    playback.provider if playback else None,
+                    playback.playback_id if playback else None,
+                    Jsonb(
+                        {
+                            "playback_url": playback.playback_url,
+                            "delivery_asset_id": playback.asset_id,
+                        }
+                        if playback
+                        else {},
+                    ),
+                    job_id,
+                ),
             )
             await conn.execute(
                 """
@@ -141,7 +163,8 @@ class PostgresIngestionRepository(IngestionRepository):
             row = await (
                 await conn.execute(
                     """
-                    select source_kind, source_uri, source_metadata
+                    select source_kind, source_uri, source_metadata,
+                           playback_provider, playback_id
                     from videos
                     where id = %s
                     """,
@@ -152,10 +175,18 @@ class PostgresIngestionRepository(IngestionRepository):
                 return None
             metadata = row["source_metadata"] if isinstance(row["source_metadata"], dict) else {}
             content_type = metadata.get("content_type")
+            playback_url = metadata.get("playback_url")
+            delivery_asset_id = metadata.get("delivery_asset_id")
             return VideoMedia(
                 source_kind=SourceKind(str(row["source_kind"])),
                 source_uri=str(row["source_uri"]),
                 content_type=str(content_type) if content_type else None,
+                playback_provider=(
+                    str(row["playback_provider"]) if row["playback_provider"] else None
+                ),
+                playback_id=str(row["playback_id"]) if row["playback_id"] else None,
+                playback_url=str(playback_url) if playback_url else None,
+                delivery_asset_id=str(delivery_asset_id) if delivery_asset_id else None,
             )
 
     async def _ensure_dev_course(self, conn: psycopg.AsyncConnection[dict[str, Any]]) -> UUID:

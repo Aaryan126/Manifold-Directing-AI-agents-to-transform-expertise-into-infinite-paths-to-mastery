@@ -39,6 +39,7 @@ from app.segmentation.models import (
     TranscriptWord as SegmentationTranscriptWord,
 )
 from app.segmentation.repository import TopicRepository
+from app.video.base import PlaybackReference
 
 
 class StaticASRProvider(ASRProvider):
@@ -94,10 +95,26 @@ class MemoryIngestionRepository(IngestionRepository):
             error_message=None,
         )
 
-    async def mark_complete(self, job_id: UUID, transcript: Transcript) -> None:
+    async def mark_complete(
+        self,
+        job_id: UUID,
+        transcript: Transcript,
+        playback: PlaybackReference | None = None,
+    ) -> None:
         job = self.jobs[job_id]
         if job.video_id is not None:
             self.transcripts[job.video_id] = transcript_to_json(transcript)
+            if playback is not None:
+                media = self.media[job.video_id]
+                self.media[job.video_id] = VideoMedia(
+                    source_kind=media.source_kind,
+                    source_uri=media.source_uri,
+                    content_type=media.content_type,
+                    playback_provider=playback.provider,
+                    playback_id=playback.playback_id,
+                    playback_url=playback.playback_url,
+                    delivery_asset_id=playback.asset_id,
+                )
         self.jobs[job_id] = _replace_job(
             job,
             status=IngestionJobStatus.COMPLETE,

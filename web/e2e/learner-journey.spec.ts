@@ -4,6 +4,21 @@ const pipeline = "http://localhost:8000";
 
 test("learner journey covers remediation and advancement branches", async ({ page }) => {
   let progressState = "not_started";
+  await page.route(`${pipeline}/development/identities`, async (route) => {
+    await route.fulfill({ contentType: "application/json", body: "[]" });
+  });
+  await page.route(`${pipeline}/videos/delivery/capacity`, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        provider: "local",
+        stored_count: 0,
+        max_stored: null,
+        remaining: null,
+        can_upload: true,
+      }),
+    });
+  });
   await page.route(`${pipeline}/videos/url`, async (route) => {
     await route.fulfill({
       contentType: "application/json",

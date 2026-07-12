@@ -17,6 +17,7 @@ from app.dashboard.models import (
     QuestionSignalStats,
 )
 from app.dashboard.repository import DashboardRepository
+from app.db.pool import pooled_connection
 
 
 class PostgresDashboardRepository(DashboardRepository):
@@ -24,7 +25,7 @@ class PostgresDashboardRepository(DashboardRepository):
         self._database_url = database_url
 
     async def learner_count(self, course_id: UUID) -> int:
-        async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+        async with pooled_connection(self._database_url) as conn:
             row = await (
                 await conn.execute(
                     "select count(*) from enrollments where course_id = %s",
@@ -34,7 +35,7 @@ class PostgresDashboardRepository(DashboardRepository):
             return int(row[0] or 0) if row else 0
 
     async def attempt_count(self, course_id: UUID) -> int:
-        async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+        async with pooled_connection(self._database_url) as conn:
             row = await (
                 await conn.execute(
                     """
@@ -50,57 +51,69 @@ class PostgresDashboardRepository(DashboardRepository):
             return int(row[0] or 0) if row else 0
 
     async def concept_stats(self, course_id: UUID) -> tuple[ConceptSignalStats, ...]:
-        async with await psycopg.AsyncConnection.connect(
-            self._database_url,
-            row_factory=dict_row,
-        ) as conn:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
             rows = await (
                 await conn.execute(
                     """
+                    with touched as (
+                      select tc.concept_id, count(distinct a.learner_id) as learner_count
+                      from topic_concepts tc
+                      join topics t on t.id = tc.topic_id
+                      join questions q on q.topic_id = t.id
+                        and q.review_status in ('accepted', 'edited')
+                      join attempts a on a.question_id = q.id
+                      where t.course_id = %s
+                      group by tc.concept_id
+                    ), mastery as (
+                      select
+                        m.concept_id,
+                        count(*) filter (where m.state = 'struggling') as struggling_count
+                      from learner_concept_mastery m
+                      join concepts mc on mc.id = m.concept_id
+                      where mc.course_id = %s
+                      group by m.concept_id
+                    ), prereq_ready as (
+                      select m.concept_id, count(*) as learner_count
+                      from learner_concept_mastery m
+                      join concepts mc on mc.id = m.concept_id
+                      where mc.course_id = %s
+                        and m.state = 'struggling'
+                        and exists (
+                          select 1 from concept_edges e
+                          where e.to_concept_id = m.concept_id
+                            and e.review_status in ('accepted', 'edited')
+                        )
+                        and not exists (
+                          select 1
+                          from concept_edges e
+                          where e.to_concept_id = m.concept_id
+                            and e.review_status in ('accepted', 'edited')
+                            and not exists (
+                              select 1
+                              from learner_concept_mastery pm
+                              where pm.learner_id = m.learner_id
+                                and pm.concept_id = e.from_concept_id
+                                and pm.state = 'mastered'
+                            )
+                        )
+                      group by m.concept_id
+                    )
                     select
                       c.id,
                       c.name,
-                      count(distinct a.learner_id) as touched_learners,
-                      count(distinct m.learner_id)
-                        filter (where m.state = 'struggling') as struggling_learners,
-                      count(distinct m.learner_id) filter (
-                        where m.state = 'struggling'
-                          and exists (
-                            select 1
-                            from concept_edges e
-                            join concepts prereq on prereq.id = e.from_concept_id
-                            where e.to_concept_id = c.id
-                              and e.review_status in ('accepted', 'edited')
-                              and prereq.review_status in ('accepted', 'edited')
-                          )
-                          and not exists (
-                            select 1
-                            from concept_edges e
-                            join concepts prereq on prereq.id = e.from_concept_id
-                            where e.to_concept_id = c.id
-                              and e.review_status in ('accepted', 'edited')
-                              and prereq.review_status in ('accepted', 'edited')
-                              and not exists (
-                                select 1
-                                from learner_concept_mastery pm
-                                where pm.learner_id = m.learner_id
-                                  and pm.concept_id = e.from_concept_id
-                                  and pm.state = 'mastered'
-                              )
-                          )
-                      ) as mastered_prerequisite_struggling_learners
+                      coalesce(touched.learner_count, 0) as touched_learners,
+                      coalesce(mastery.struggling_count, 0) as struggling_learners,
+                      coalesce(prereq_ready.learner_count, 0)
+                        as mastered_prerequisite_struggling_learners
                     from concepts c
-                    left join topic_concepts tc on tc.concept_id = c.id
-                    left join questions q on q.topic_id = tc.topic_id
-                      and q.review_status in ('accepted', 'edited')
-                    left join attempts a on a.question_id = q.id
-                    left join learner_concept_mastery m on m.concept_id = c.id
+                    left join touched on touched.concept_id = c.id
+                    left join mastery on mastery.concept_id = c.id
+                    left join prereq_ready on prereq_ready.concept_id = c.id
                     where c.course_id = %s
                       and c.review_status in ('accepted', 'edited')
-                    group by c.id, c.name
                     order by c.name
                     """,
-                    (course_id,),
+                    (course_id, course_id, course_id, course_id),
                 )
             ).fetchall()
             return tuple(
@@ -117,10 +130,7 @@ class PostgresDashboardRepository(DashboardRepository):
             )
 
     async def question_stats(self, course_id: UUID) -> tuple[QuestionSignalStats, ...]:
-        async with await psycopg.AsyncConnection.connect(
-            self._database_url,
-            row_factory=dict_row,
-        ) as conn:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
             rows = await (
                 await conn.execute(
                     """
@@ -159,32 +169,43 @@ class PostgresDashboardRepository(DashboardRepository):
             )
 
     async def clip_stats(self, course_id: UUID) -> tuple[ClipSignalStats, ...]:
-        async with await psycopg.AsyncConnection.connect(
-            self._database_url,
-            row_factory=dict_row,
-        ) as conn:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
             rows = await (
                 await conn.execute(
                     """
+                    with struggling as (
+                      select concept_id, count(*) as learner_count
+                      from learner_concept_mastery
+                      where state = 'struggling'
+                      group by concept_id
+                    ), remediation as (
+                      select
+                        clip.id as clip_id,
+                        count(a.id) as attempt_count
+                      from clips clip
+                      join clip_concepts cc on cc.clip_id = clip.id
+                      join remediation_rules rr
+                        on rr.target_clip_id = clip.id
+                        or rr.target_concept_id = cc.concept_id
+                      join attempts a on a.question_id = rr.question_id
+                      where not a.correctness
+                      group by clip.id
+                    )
                     select
                       clip.id,
                       clip.topic_id,
                       cc.concept_id,
-                      count(a.id) filter (where not a.correctness) as remediation_attempts,
-                      count(distinct m.learner_id)
-                        filter (where m.state = 'struggling') as struggling_learners
+                      coalesce(remediation.attempt_count, 0) as remediation_attempts,
+                      coalesce(struggling.learner_count, 0) as struggling_learners
                     from clips clip
                     join topics t on t.id = clip.topic_id
                     join clip_concepts cc on cc.clip_id = clip.id
                     join concepts c on c.id = cc.concept_id
-                    left join learner_concept_mastery m on m.concept_id = cc.concept_id
-                    left join remediation_rules rr on rr.target_clip_id = clip.id
-                       or rr.target_concept_id = cc.concept_id
-                    left join attempts a on a.question_id = rr.question_id
+                    left join struggling on struggling.concept_id = cc.concept_id
+                    left join remediation on remediation.clip_id = clip.id
                     where t.course_id = %s
                       and clip.status = 'active'
                       and c.review_status in ('accepted', 'edited')
-                    group by clip.id, clip.topic_id, cc.concept_id
                     order by clip.start_seconds
                     """,
                     (course_id,),
@@ -202,10 +223,7 @@ class PostgresDashboardRepository(DashboardRepository):
             )
 
     async def open_signals(self, course_id: UUID) -> tuple[DashboardSignal, ...]:
-        async with await psycopg.AsyncConnection.connect(
-            self._database_url,
-            row_factory=dict_row,
-        ) as conn:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
             rows = await (
                 await conn.execute(
                     """
@@ -225,10 +243,7 @@ class PostgresDashboardRepository(DashboardRepository):
         course_id: UUID,
         proposal: DashboardSignalProposal,
     ) -> DashboardSignal:
-        async with await psycopg.AsyncConnection.connect(
-            self._database_url,
-            row_factory=dict_row,
-        ) as conn:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
             existing = await (
                 await conn.execute(
                     """
@@ -268,6 +283,50 @@ class PostgresDashboardRepository(DashboardRepository):
                 raise RuntimeError("Failed to create dashboard signal.")
             return _signal_from_row(row)
 
+    async def upsert_signals(
+        self,
+        course_id: UUID,
+        proposals: tuple[DashboardSignalProposal, ...],
+    ) -> None:
+        if not proposals:
+            return
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            fingerprints = [proposal.fingerprint for proposal in proposals]
+            rows = await (
+                await conn.execute(
+                    """
+                    select ai_diagnosis->>'fingerprint' as fingerprint
+                    from dashboard_signals
+                    where course_id = %s
+                      and status = 'open'
+                      and ai_diagnosis->>'fingerprint' = any(%s::text[])
+                    """,
+                    (course_id, fingerprints),
+                )
+            ).fetchall()
+            existing = {str(row["fingerprint"]) for row in rows}
+            missing = [proposal for proposal in proposals if proposal.fingerprint not in existing]
+            if not missing:
+                return
+            cursor = conn.cursor()
+            await cursor.executemany(
+                """
+                insert into dashboard_signals (
+                  course_id, type, related_entity_type, related_entity_id, ai_diagnosis
+                ) values (%s, %s, %s, %s, %s::jsonb)
+                """,
+                [
+                    (
+                        course_id,
+                        proposal.type.value,
+                        proposal.related_entity_type,
+                        proposal.related_entity_id,
+                        Jsonb(_proposal_json(proposal)),
+                    )
+                    for proposal in missing
+                ],
+            )
+
     async def accept_signal(
         self,
         signal_id: UUID,
@@ -291,7 +350,7 @@ class PostgresDashboardRepository(DashboardRepository):
 
     async def apply_learner_override(self, override: LearnerOverride) -> None:
         state = "mastered" if override.action == "skip_ahead" else "struggling"
-        async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+        async with pooled_connection(self._database_url) as conn:
             await conn.execute(
                 """
                 insert into learner_concept_mastery (learner_id, concept_id, state)
@@ -339,7 +398,7 @@ class PostgresDashboardRepository(DashboardRepository):
                 )
 
     async def course_id_for_concept(self, concept_id: UUID) -> UUID | None:
-        async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+        async with pooled_connection(self._database_url) as conn:
             row = await (
                 await conn.execute(
                     "select course_id from concepts where id = %s",
@@ -354,10 +413,7 @@ class PostgresDashboardRepository(DashboardRepository):
         status: DashboardSignalStatus,
         action: DashboardAction,
     ) -> DashboardSignal | None:
-        async with await psycopg.AsyncConnection.connect(
-            self._database_url,
-            row_factory=dict_row,
-        ) as conn:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
             signal = await self._get_signal(conn, signal_id)
             if signal is None:
                 return None

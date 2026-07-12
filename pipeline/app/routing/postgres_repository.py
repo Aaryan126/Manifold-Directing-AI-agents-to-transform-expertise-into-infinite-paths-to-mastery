@@ -5,6 +5,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from app.db.pool import pooled_connection
 from app.routing.models import (
     AdvancementMode,
     AttemptContext,
@@ -30,10 +31,7 @@ class PostgresRoutingRepository(RoutingRepository):
         learner_id: UUID,
         question_id: UUID,
     ) -> AttemptContext | None:
-        async with await psycopg.AsyncConnection.connect(
-            self._database_url,
-            row_factory=dict_row,
-        ) as conn:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
             question = await (
                 await conn.execute(
                     """
@@ -43,8 +41,16 @@ class PostgresRoutingRepository(RoutingRepository):
                     where q.id = %s
                       and q.review_status in ('accepted', 'edited')
                       and t.review_status in ('accepted', 'edited')
+                      and exists (
+                        select 1
+                        from enrollments e
+                        join courses course on course.id = e.course_id
+                        where e.learner_id = %s
+                          and e.course_id = t.course_id
+                          and course.status = 'published'
+                      )
                     """,
-                    (question_id,),
+                    (question_id, learner_id),
                 )
             ).fetchone()
             if question is None:
@@ -71,7 +77,7 @@ class PostgresRoutingRepository(RoutingRepository):
             )
 
     async def record_attempt(self, submission: AttemptSubmission) -> UUID:
-        async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+        async with pooled_connection(self._database_url) as conn:
             row = await (
                 await conn.execute(
                     """
@@ -100,7 +106,7 @@ class PostgresRoutingRepository(RoutingRepository):
             return UUID(str(row[0]))
 
     async def update_mastery(self, learner_id: UUID, mastery: LearnerMastery) -> None:
-        async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+        async with pooled_connection(self._database_url) as conn:
             await conn.execute(
                 """
                 insert into learner_concept_mastery (learner_id, concept_id, state)
@@ -112,15 +118,55 @@ class PostgresRoutingRepository(RoutingRepository):
                 (learner_id, mastery.concept_id, mastery.state.value),
             )
 
+    async def record_attempt_and_update_mastery(
+        self,
+        submission: AttemptSubmission,
+        mastery: LearnerMastery,
+    ) -> UUID:
+        async with pooled_connection(self._database_url) as conn:
+            row = await (
+                await conn.execute(
+                    """
+                    insert into attempts (
+                      learner_id, question_id, answer, correctness, confidence
+                    )
+                    values (%s, %s, %s::jsonb, %s, %s)
+                    returning id
+                    """,
+                    (
+                        submission.learner_id,
+                        submission.question_id,
+                        Jsonb(
+                            {
+                                **submission.answer,
+                                "wrong_answer_pattern": submission.wrong_answer_pattern,
+                            },
+                        ),
+                        submission.correctness,
+                        submission.confidence,
+                    ),
+                )
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("Failed to record attempt.")
+            await conn.execute(
+                """
+                insert into learner_concept_mastery (learner_id, concept_id, state)
+                values (%s, %s, %s)
+                on conflict (learner_id, concept_id) do update
+                set state = excluded.state,
+                    updated_at = now()
+                """,
+                (submission.learner_id, mastery.concept_id, mastery.state.value),
+            )
+            return UUID(str(row[0]))
+
     async def eligible_next_concepts(
         self,
         course_id: UUID,
         mastered_concept_ids: frozenset[UUID],
     ) -> tuple[RouteableConcept, ...]:
-        async with await psycopg.AsyncConnection.connect(
-            self._database_url,
-            row_factory=dict_row,
-        ) as conn:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
             rows = await (
                 await conn.execute(
                     """
@@ -164,10 +210,7 @@ class PostgresRoutingRepository(RoutingRepository):
         topic_id: UUID,
         preferred_clip_id: UUID | None = None,
     ) -> RouteableClip | None:
-        async with await psycopg.AsyncConnection.connect(
-            self._database_url,
-            row_factory=dict_row,
-        ) as conn:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
             row = await (
                 await conn.execute(
                     """
@@ -201,7 +244,7 @@ class PostgresRoutingRepository(RoutingRepository):
         context: AttemptContext,
         decision: RouteDecision,
     ) -> UUID:
-        async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+        async with pooled_connection(self._database_url) as conn:
             existing = await (
                 await conn.execute(
                     """
@@ -248,10 +291,7 @@ class PostgresRoutingRepository(RoutingRepository):
             return UUID(str(row[0]))
 
     async def list_policies(self, course_id: UUID) -> dict[UUID | None, RoutingPolicy]:
-        async with await psycopg.AsyncConnection.connect(
-            self._database_url,
-            row_factory=dict_row,
-        ) as conn:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
             rows = await (
                 await conn.execute(
                     "select concept_id, policy from routing_policies where course_id = %s",
@@ -271,7 +311,7 @@ class PostgresRoutingRepository(RoutingRepository):
         concept_id: UUID | None,
         policy: RoutingPolicy,
     ) -> RoutingPolicy:
-        async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+        async with pooled_connection(self._database_url) as conn:
             await conn.execute(
                 """
                 insert into routing_policies (course_id, concept_id, policy)
@@ -285,7 +325,7 @@ class PostgresRoutingRepository(RoutingRepository):
             return policy
 
     async def create_demo_learner(self, course_id: UUID) -> UUID:
-        async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+        async with pooled_connection(self._database_url) as conn:
             row = await (
                 await conn.execute(
                     """
@@ -314,25 +354,27 @@ class PostgresRoutingRepository(RoutingRepository):
         learner_id: UUID,
         course_id: UUID,
     ) -> tuple[LearnerConceptProgress, ...]:
-        async with await psycopg.AsyncConnection.connect(
-            self._database_url,
-            row_factory=dict_row,
-        ) as conn:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
             rows = await (
                 await conn.execute(
                     """
                     select c.id, c.name, coalesce(m.state, 'not_started') as state,
                            min(tc.topic_id::text) as topic_id
                     from concepts c
+                    join courses course on course.id = c.course_id
+                    join enrollments enrollment
+                      on enrollment.course_id = c.course_id
+                     and enrollment.learner_id = %s
                     left join learner_concept_mastery m
                       on m.concept_id = c.id and m.learner_id = %s
                     left join topic_concepts tc on tc.concept_id = c.id
                     where c.course_id = %s
                       and c.review_status in ('accepted', 'edited')
+                      and course.status = 'published'
                     group by c.id, c.name, m.state
                     order by c.name
                     """,
-                    (learner_id, course_id),
+                    (learner_id, learner_id, course_id),
                 )
             ).fetchall()
             return tuple(

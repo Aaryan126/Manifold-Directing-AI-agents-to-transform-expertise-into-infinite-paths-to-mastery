@@ -42,6 +42,10 @@ class VideoMedia:
     source_kind: SourceKind
     source_uri: str
     content_type: str | None
+    playback_provider: str | None = None
+    playback_id: str | None = None
+    playback_url: str | None = None
+    delivery_asset_id: str | None = None
 
 
 def transcript_to_json(transcript: Transcript) -> dict[str, object]:

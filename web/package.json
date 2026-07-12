@@ -10,16 +10,19 @@
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:mux-performance": "MUX_EXTERNAL_PERFORMANCE=1 playwright test e2e/mux-performance.spec.ts --workers=1"
   },
   "dependencies": {
     "@coursefoundry/shared": "0.0.0",
+    "@mux/mux-player-react": "^3.13.0",
     "@xyflow/react": "^12.11.2",
     "next": "^15.4.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "^1.61.1",
     "@types/node": "^22.16.0",
     "@types/react": "^19.1.8",

@@ -3,6 +3,7 @@ from uuid import UUID
 
 from app.asr.base import Transcript
 from app.ingestion.models import IngestionJob, SourceKind, VideoMedia
+from app.video.base import PlaybackReference
 
 
 class IngestionRepository(ABC):
@@ -21,7 +22,12 @@ class IngestionRepository(ABC):
         """Mark a queued job as processing."""
 
     @abstractmethod
-    async def mark_complete(self, job_id: UUID, transcript: Transcript) -> None:
+    async def mark_complete(
+        self,
+        job_id: UUID,
+        transcript: Transcript,
+        playback: PlaybackReference | None = None,
+    ) -> None:
         """Persist transcript JSON and mark the job complete."""
 
     @abstractmethod

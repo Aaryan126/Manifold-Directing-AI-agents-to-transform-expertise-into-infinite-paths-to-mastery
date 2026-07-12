@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from app.access.service import AccessService
 from app.routing.models import (
     AttemptSubmission,
     LearnerConceptProgress,
@@ -16,8 +17,13 @@ class RoutingValidationError(ValueError):
 
 
 class RoutingService:
-    def __init__(self, repository: RoutingRepository) -> None:
+    def __init__(
+        self,
+        repository: RoutingRepository,
+        access_service: AccessService | None = None,
+    ) -> None:
         self._repository = repository
+        self._access_service = access_service
 
     async def submit_attempt(self, submission: AttemptSubmission) -> RouteDecision:
         context = await self._repository.get_attempt_context(
@@ -26,10 +32,17 @@ class RoutingService:
         )
         if context is None:
             raise RoutingValidationError("Approved question routing context not found.")
+        if self._access_service is not None and not await self._access_service.is_enrolled(
+            context.course_id,
+            submission.learner_id,
+        ):
+            raise RoutingValidationError("Learner is not enrolled in this published course.")
 
         evaluation = evaluate_attempt(submission, context)
-        await self._repository.record_attempt(submission)
-        await self._repository.update_mastery(submission.learner_id, evaluation.mastery)
+        await self._repository.record_attempt_and_update_mastery(
+            submission,
+            evaluation.mastery,
+        )
 
         decision = evaluation.decision
         if evaluation.needs_instructor_signal:
@@ -88,6 +101,11 @@ class RoutingService:
         learner_id: UUID,
         course_id: UUID,
     ) -> tuple[LearnerConceptProgress, ...]:
+        if self._access_service is not None and not await self._access_service.is_enrolled(
+            course_id,
+            learner_id,
+        ):
+            raise RoutingValidationError("Learner is not enrolled in this published course.")
         return await self._repository.learner_progress(learner_id, course_id)
 
 

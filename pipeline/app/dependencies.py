@@ -1,5 +1,7 @@
 from functools import lru_cache
 
+from app.access.postgres_repository import PostgresAccessRepository
+from app.access.service import AccessService
 from app.asr.factory import build_asr_provider
 from app.assessments.factory import build_assessment_agent
 from app.assessments.postgres_repository import PostgresAssessmentRepository
@@ -24,6 +26,17 @@ from app.routing.service import RoutingService
 from app.segmentation.factory import build_segmentation_agent
 from app.segmentation.postgres_repository import PostgresTopicRepository
 from app.segmentation.service import SegmentationService
+from app.video.factory import build_video_delivery_provider
+
+
+@lru_cache
+def get_access_service() -> AccessService:
+    settings = get_settings()
+    return build_access_service(settings)
+
+
+def build_access_service(settings: Settings) -> AccessService:
+    return AccessService(repository=PostgresAccessRepository(settings.database_url))
 
 
 @lru_cache
@@ -41,6 +54,7 @@ def build_ingestion_service(settings: Settings) -> IngestionService:
             settings.local_video_storage_path,
             settings.direct_url_download_timeout_seconds,
         ),
+        video_delivery_provider=build_video_delivery_provider(settings),
     )
 
 

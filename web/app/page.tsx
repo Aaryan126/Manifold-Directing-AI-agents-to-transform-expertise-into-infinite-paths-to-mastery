@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import {
   Background,
   Controls,
@@ -27,7 +27,7 @@ import {
   isTopicReviewedForClipGeneration,
   topicClipGenerationBlockReason,
 } from "./clipReview";
-import { clipPreviewUrl } from "./clipPreview";
+import { ProviderVideo, type PlaybackInfo } from "./ProviderVideo";
 import {
   dashboardActionScopeLabel,
   dashboardColdStartMessage,
@@ -179,10 +179,47 @@ type DashboardSummary = {
   signals: DashboardSignal[];
 };
 
+type DevelopmentIdentity = {
+  id: string;
+  email: string;
+  display_name: string;
+  role: "instructor" | "learner";
+};
+
+type DeliveryCapacity = {
+  provider: "local" | "mux";
+  stored_count: number;
+  max_stored: number | null;
+  remaining: number | null;
+  can_upload: boolean;
+};
+
+type CourseInfo = {
+  id: string;
+  instructor_id: string;
+  title: string;
+  description: string | null;
+  status: "draft" | "published";
+  published_at: string | null;
+};
+
+type PublishReadiness = {
+  course_id: string;
+  ready: boolean;
+  blockers: string[];
+};
+
 const pipelineBaseUrl =
   process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localhost:8000";
 
 export default function HomePage() {
+  const [identities, setIdentities] = useState<DevelopmentIdentity[]>([]);
+  const [selectedIdentityId, setSelectedIdentityId] = useState("");
+  const [deliveryCapacity, setDeliveryCapacity] = useState<DeliveryCapacity | null>(null);
+  const [playback, setPlayback] = useState<PlaybackInfo | null>(null);
+  const [course, setCourse] = useState<CourseInfo | null>(null);
+  const [publishReadiness, setPublishReadiness] = useState<PublishReadiness | null>(null);
+  const [isEnrolled, setIsEnrolled] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [url, setUrl] = useState("");
   const [job, setJob] = useState<Job | null>(null);
@@ -223,6 +260,9 @@ export default function HomePage() {
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSegmenting, setIsSegmenting] = useState(false);
+  const selectedIdentity =
+    identities.find((identity) => identity.id === selectedIdentityId) ?? null;
+  const isLearnerContext = selectedIdentity?.role === "learner";
   const sourceStartSeconds = transcript ? transcriptStartSeconds(transcript) : 0;
   const sourceEndSeconds = transcript ? transcriptEndSeconds(transcript) : 0;
   const coverageGaps =
@@ -264,6 +304,31 @@ export default function HomePage() {
     activeLearnerTopic?.id ?? null,
   );
 
+  useEffect(() => {
+    async function initializeDevelopmentContext() {
+      const [identityResponse, capacityResponse] = await Promise.all([
+        fetch(`${pipelineBaseUrl}/development/identities`),
+        fetch(`${pipelineBaseUrl}/videos/delivery/capacity`),
+      ]);
+      if (identityResponse.ok) {
+        const nextIdentities = (await identityResponse.json()) as DevelopmentIdentity[];
+        setIdentities(nextIdentities);
+        setSelectedIdentityId(
+          (current) =>
+            current ||
+            nextIdentities.find((identity) => identity.role === "instructor")?.id ||
+            nextIdentities[0]?.id ||
+            "",
+        );
+      }
+      if (capacityResponse.ok) {
+        setDeliveryCapacity((await capacityResponse.json()) as DeliveryCapacity);
+      }
+    }
+
+    void initializeDevelopmentContext();
+  }, []);
+
   async function uploadFile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedFile) {
@@ -283,6 +348,10 @@ export default function HomePage() {
     setLearnerProgress([]);
     setDashboardSummary(null);
     setActiveLearnerTopicId(null);
+    setPlayback(null);
+    setCourse(null);
+    setPublishReadiness(null);
+    setIsEnrolled(false);
     const formData = new FormData();
     formData.append("file", selectedFile);
     await createJob(`${pipelineBaseUrl}/videos/upload`, {
@@ -306,6 +375,10 @@ export default function HomePage() {
     setLearnerProgress([]);
     setDashboardSummary(null);
     setActiveLearnerTopicId(null);
+    setPlayback(null);
+    setCourse(null);
+    setPublishReadiness(null);
+    setIsEnrolled(false);
     await createJob(`${pipelineBaseUrl}/videos/url`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -351,8 +424,130 @@ export default function HomePage() {
           await loadGraph(nextJob.course_id);
           await loadRoutingPolicies(nextJob.course_id);
           await loadDashboard(nextJob.course_id);
+          await loadCourse(nextJob.course_id);
         }
+        await loadPlayback(nextJob.video_id);
+        await loadDeliveryCapacity();
       }
+    }
+  }
+
+  async function loadDeliveryCapacity() {
+    const response = await fetch(`${pipelineBaseUrl}/videos/delivery/capacity`);
+    if (response.ok) {
+      setDeliveryCapacity((await response.json()) as DeliveryCapacity);
+    }
+  }
+
+  async function loadPlayback(videoId: string) {
+    const response = await fetch(`${pipelineBaseUrl}/videos/${videoId}/playback`);
+    if (response.ok) {
+      setPlayback((await response.json()) as PlaybackInfo);
+    }
+  }
+
+  async function loadCourse(courseId: string) {
+    const response = await fetch(`${pipelineBaseUrl}/courses/${courseId}`);
+    if (!response.ok) return;
+    const nextCourse = (await response.json()) as CourseInfo;
+    setCourse(nextCourse);
+    if (selectedIdentity) {
+      if (selectedIdentity.role === "instructor") {
+        await loadPublishReadiness(courseId, selectedIdentity.id);
+      } else {
+        await loadEnrollment(courseId, selectedIdentity.id);
+      }
+    }
+  }
+
+  async function loadPublishReadiness(courseId: string, instructorId: string) {
+    const response = await fetch(
+      `${pipelineBaseUrl}/courses/${courseId}/publish-readiness`,
+      { headers: { "X-User-ID": instructorId } },
+    );
+    if (response.ok) {
+      setPublishReadiness((await response.json()) as PublishReadiness);
+    }
+  }
+
+  async function publishCourse() {
+    if (!job?.course_id || selectedIdentity?.role !== "instructor") return;
+    const response = await fetch(`${pipelineBaseUrl}/courses/${job.course_id}/publish`, {
+      method: "POST",
+      headers: { "X-User-ID": selectedIdentity.id },
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      setMessage(body?.detail ?? `Publish failed with ${response.status}.`);
+      await loadPublishReadiness(job.course_id, selectedIdentity.id);
+      return;
+    }
+    setCourse(body as CourseInfo);
+    setPublishReadiness({ course_id: job.course_id, ready: true, blockers: [] });
+    setMessage("Course published. Learners can now enroll.");
+  }
+
+  async function loadEnrollment(courseId: string, learnerId: string) {
+    const response = await fetch(`${pipelineBaseUrl}/courses/${courseId}/enrollment`, {
+      headers: { "X-User-ID": learnerId },
+    });
+    if (response.ok) {
+      const body = (await response.json()) as { enrolled: boolean };
+      setIsEnrolled(body.enrolled);
+    }
+  }
+
+  async function startEnrolledCourse() {
+    if (!job?.course_id || selectedIdentity?.role !== "learner") {
+      setMessage("Select the learner development identity to enroll.");
+      return;
+    }
+    const response = await fetch(`${pipelineBaseUrl}/courses/${job.course_id}/enrollment`, {
+      method: "POST",
+      headers: { "X-User-ID": selectedIdentity.id },
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      setMessage(body?.detail ?? `Enrollment failed with ${response.status}.`);
+      return;
+    }
+    setIsEnrolled(true);
+    setDemoLearnerId(selectedIdentity.id);
+    setRouteDecision(null);
+    await loadLearnerProgress(selectedIdentity.id);
+    setMessage("Enrolled in the published course.");
+  }
+
+  async function recordWatchEvent(clip: { id: string }, watchedSeconds: number) {
+    if (!job?.course_id || !job.video_id || selectedIdentity?.role !== "learner") return;
+    await fetch(`${pipelineBaseUrl}/courses/${job.course_id}/watch-events`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-User-ID": selectedIdentity.id,
+      },
+      body: JSON.stringify({
+        video_id: job.video_id,
+        clip_id: clip.id,
+        path_mode: "adaptive",
+        watched_seconds: watchedSeconds,
+      }),
+    });
+  }
+
+  async function changeIdentity(identityId: string) {
+    setSelectedIdentityId(identityId);
+    setDemoLearnerId(null);
+    setLearnerProgress([]);
+    setRouteDecision(null);
+    const identity = identities.find((item) => item.id === identityId);
+    if (!job?.course_id || !identity) return;
+    if (identity.role === "instructor") {
+      setIsEnrolled(false);
+      await loadPublishReadiness(job.course_id, identity.id);
+    } else {
+      setPublishReadiness(null);
+      await loadEnrollment(job.course_id, identity.id);
     }
   }
 
@@ -1072,12 +1267,33 @@ export default function HomePage() {
   }
 
   return (
-    <main className="shell">
+    <main className={`shell ${isLearnerContext ? "learnerContext" : "instructorContext"}`}>
       <section className="panel">
-        <h1>CourseFoundry</h1>
-        <p>Upload or link a lecture, then review the AI-generated outline.</p>
+        <div className="productHeader">
+          <div>
+            <h1>CourseFoundry</h1>
+            <p>Turn reviewed lecture material into an adaptive course.</p>
+          </div>
+          <label className="identityPicker" htmlFor="development-identity">
+            Development identity
+            <select
+              id="development-identity"
+              value={selectedIdentityId}
+              onChange={(event) => void changeIdentity(event.target.value)}
+            >
+              {identities.map((identity) => (
+                <option key={identity.id} value={identity.id}>
+                  {identity.display_name} ({identity.role})
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <p className="devIdentityNotice" role="note">
+          Development identity only. Credentials and secure sessions are not implemented.
+        </p>
 
-        <div className="forms">
+        <div className="forms instructorOnly">
           <form onSubmit={uploadFile}>
             <label htmlFor="video-file">Video or audio file</label>
             <input
@@ -1106,11 +1322,26 @@ export default function HomePage() {
           </form>
         </div>
 
-        {message ? <p className="message">{message}</p> : null}
+        {deliveryCapacity?.provider === "mux" ? (
+          <div
+            className={deliveryCapacity.can_upload ? "capacityNotice" : "coverageWarning"}
+            role={deliveryCapacity.can_upload ? "status" : "alert"}
+          >
+            <strong>Mux storage</strong>
+            <p>
+              {deliveryCapacity.stored_count} of {deliveryCapacity.max_stored} stored videos used.
+              {deliveryCapacity.can_upload
+                ? ` ${deliveryCapacity.remaining} slot(s) remain.`
+                : " New ingestion is blocked; no existing asset will be overwritten."}
+            </p>
+          </div>
+        ) : null}
+
+        {message ? <p className="message" role="status">{message}</p> : null}
       </section>
 
       {job ? (
-        <section className="panel">
+        <section className="panel instructorOnly">
           <div className="jobHeader">
             <h2>Ingestion Status</h2>
             <button type="button" onClick={refreshJob}>
@@ -1137,11 +1368,43 @@ export default function HomePage() {
               </div>
             ) : null}
           </dl>
+
+          {course ? (
+            <div className="publishBar">
+              <div>
+                <strong>{course.title}</strong>
+                <p>
+                  Course status: <span className={`statusBadge ${course.status}`}>{course.status}</span>
+                </p>
+              </div>
+              <button
+                disabled={
+                  selectedIdentity?.role !== "instructor" ||
+                  course.status === "published" ||
+                  publishReadiness?.ready !== true
+                }
+                type="button"
+                onClick={publishCourse}
+              >
+                {course.status === "published" ? "Published" : "Publish course"}
+              </button>
+            </div>
+          ) : null}
+          {course?.status === "draft" && publishReadiness?.blockers.length ? (
+            <div className="coverageWarning" role="status">
+              <strong>Publishing checklist</strong>
+              <ul>
+                {publishReadiness.blockers.map((blocker) => (
+                  <li key={blocker}>{blocker}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
       {transcript ? (
-        <section className="panel">
+        <section className="panel instructorOnly">
           <h2>Transcript</h2>
           <p>{transcript.text}</p>
           <p>{transcript.words.length} timestamped words stored.</p>
@@ -1149,7 +1412,7 @@ export default function HomePage() {
       ) : null}
 
       {transcript && job?.video_id ? (
-        <section className="panel">
+        <section className="panel instructorOnly">
           <div className="jobHeader">
             <h2>Topic Outline</h2>
             <div className="actions">
@@ -1178,6 +1441,11 @@ export default function HomePage() {
           ) : null}
 
           <div className="topicList">
+            {topics.length === 0 ? (
+              <p className="emptyState">
+                No topics yet. Generate an outline to begin instructor review.
+              </p>
+            ) : null}
             {topics.map((topic, index) => {
               const draft = topicDrafts[topic.id] ?? topicToDraft(topic);
               const nextTopic = topics[index + 1];
@@ -1359,7 +1627,7 @@ export default function HomePage() {
       ) : null}
 
       {job?.course_id ? (
-        <section className="panel">
+        <section className="panel instructorOnly">
           <div className="jobHeader">
             <h2>Concept Graph</h2>
             <div className="actions">
@@ -1413,6 +1681,9 @@ export default function HomePage() {
               <div className="graphPanels">
                 <section>
                   <h3>Concepts</h3>
+                  {graph.concepts.length === 0 ? (
+                    <p className="emptyState">No concepts have been generated yet.</p>
+                  ) : null}
                   <div className="graphList">
                     {graph.concepts.map((concept) => {
                       const draft = conceptDrafts[concept.id] ?? {
@@ -1597,7 +1868,7 @@ export default function HomePage() {
       ) : null}
 
       {job?.video_id && topics.length > 0 ? (
-        <section className="panel">
+        <section className="panel instructorOnly">
           <div className="jobHeader">
             <h2>Clip Spot Check</h2>
             <div className="actions">
@@ -1637,6 +1908,11 @@ export default function HomePage() {
           </div>
 
           <div className="clipList">
+            {clips.length === 0 ? (
+              <p className="emptyState">
+                No clips yet. Generate clips from a reviewed topic with linked concepts.
+              </p>
+            ) : null}
             {clips.map((clip) => (
               <article
                 className={clip.status === "superseded" ? "clipCard muted" : "clipCard"}
@@ -1656,20 +1932,15 @@ export default function HomePage() {
                 {clip.source_clip_id ? (
                   <p className="evidence">Re-cut from clip {clip.source_clip_id}</p>
                 ) : null}
-                {job.video_id ? (
-                  <video
-                    className="clipPreview"
-                    controls
-                    preload="metadata"
-                    src={clipPreviewUrl(pipelineBaseUrl, job.video_id, clip)}
-                    onTimeUpdate={(event) => {
-                      if (event.currentTarget.currentTime >= clip.end_seconds) {
-                        event.currentTarget.pause();
-                      }
-                    }}
-                  >
-                    <track kind="captions" />
-                  </video>
+                {job.video_id && playback ? (
+                  <ProviderVideo
+                    endSeconds={clip.end_seconds}
+                    pipelineBaseUrl={pipelineBaseUrl}
+                    playback={playback}
+                    startSeconds={clip.start_seconds}
+                    title={`Instructor preview: ${clip.type.replaceAll("_", " ")}`}
+                    videoId={job.video_id}
+                  />
                 ) : null}
                 <textarea
                   aria-label={`Flag note for clip ${clip.id}`}
@@ -1702,7 +1973,7 @@ export default function HomePage() {
       ) : null}
 
       {job?.video_id && topics.length > 0 ? (
-        <section className="panel">
+        <section className="panel instructorOnly">
           <div className="jobHeader">
             <h2>Assessment Review</h2>
             <div className="actions">
@@ -1713,6 +1984,11 @@ export default function HomePage() {
           </div>
 
           <div className="topicList">
+            {questions.length === 0 ? (
+              <p className="emptyState">
+                No assessment proposals yet. Generate one after clips are available.
+              </p>
+            ) : null}
             {topics
               .filter((topic) => topic.review_status === "accepted" || topic.review_status === "edited")
               .map((topic) => {
@@ -1873,7 +2149,7 @@ export default function HomePage() {
       ) : null}
 
       {job?.course_id && graph ? (
-        <section className="panel">
+        <section className="panel instructorOnly">
           <div className="jobHeader">
             <h2>Routing Policy</h2>
             <div className="actions">
@@ -1988,7 +2264,7 @@ export default function HomePage() {
       ) : null}
 
       {questions.some((question) => question.review_status === "accepted" || question.review_status === "edited") ? (
-        <section className="panel">
+        <section className="panel instructorOnly">
           <div className="jobHeader">
             <h2>Learner Routing Simulator</h2>
             <button type="button" onClick={createDemoLearner}>
@@ -2064,11 +2340,24 @@ export default function HomePage() {
       ) : null}
 
       {learnerQuestions.length > 0 ? (
-        <section className="panel learnerExperience" aria-labelledby="learner-experience-title">
+        <section
+          className="panel learnerExperience learnerOnly"
+          aria-labelledby="learner-experience-title"
+        >
           <div className="jobHeader">
             <h2 id="learner-experience-title">Learner Experience</h2>
-            <button type="button" onClick={createDemoLearner}>
-              {demoLearnerId ? "Restart as new learner" : "Start course"}
+            <button
+              disabled={isLearnerContext && course?.status !== "published"}
+              type="button"
+              onClick={isLearnerContext ? startEnrolledCourse : createDemoLearner}
+            >
+              {isLearnerContext
+                ? isEnrolled
+                  ? "Resume course"
+                  : "Enroll and start"
+                : demoLearnerId
+                  ? "Restart as new learner"
+                  : "Start course"}
             </button>
           </div>
 
@@ -2099,23 +2388,21 @@ export default function HomePage() {
                 </p>
               )}
 
-              {activeLearnerClip && job?.video_id ? (
-                <video
-                  aria-label={`Current learning clip for ${activeLearnerTopic?.title ?? "this topic"}`}
-                  className="clipPreview"
-                  controls
-                  preload="metadata"
-                  src={clipPreviewUrl(pipelineBaseUrl, job.video_id, activeLearnerClip)}
-                  onTimeUpdate={(event) => {
-                    if (event.currentTarget.currentTime >= activeLearnerClip.end_seconds) {
-                      event.currentTarget.pause();
-                    }
-                  }}
-                >
-                  <track kind="captions" />
-                </video>
+              {activeLearnerClip && job?.video_id && playback ? (
+                <ProviderVideo
+                  endSeconds={activeLearnerClip.end_seconds}
+                  pipelineBaseUrl={pipelineBaseUrl}
+                  playback={playback}
+                  startSeconds={activeLearnerClip.start_seconds}
+                  title={`Current learning clip for ${activeLearnerTopic?.title ?? "this topic"}`}
+                  videoId={job.video_id}
+                  viewerId={demoLearnerId}
+                  onClipComplete={(watchedSeconds) =>
+                    void recordWatchEvent(activeLearnerClip, watchedSeconds)
+                  }
+                />
               ) : (
-                <p className="message">No active learner clip is available for this topic.</p>
+                <p className="emptyState">No active learner clip is available for this topic.</p>
               )}
 
               {activeLearnerQuestion ? (
@@ -2205,7 +2492,7 @@ export default function HomePage() {
       ) : null}
 
       {job?.course_id ? (
-        <section className="panel">
+        <section className="panel instructorOnly">
           <div className="jobHeader">
             <h2>Instructor Dashboard</h2>
             <button type="button" onClick={() => loadDashboard(job.course_id!)}>
@@ -2238,6 +2525,11 @@ export default function HomePage() {
               ) : null}
 
               <div className="topicList">
+                {!dashboardSummary.not_enough_data && dashboardSummary.signals.length === 0 ? (
+                  <p className="emptyState">
+                    No open dashboard problems. Refresh after more learner activity.
+                  </p>
+                ) : null}
                 {dashboardSummary.signals.map((signal) => {
                   const retroactive = Boolean(dashboardRetroactive[signal.id]);
                   return (

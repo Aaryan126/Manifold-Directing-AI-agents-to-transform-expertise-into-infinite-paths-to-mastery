@@ -30,6 +30,15 @@ class RoutingRepository(ABC):
     async def update_mastery(self, learner_id: UUID, mastery: LearnerMastery) -> None:
         raise NotImplementedError
 
+    async def record_attempt_and_update_mastery(
+        self,
+        submission: AttemptSubmission,
+        mastery: LearnerMastery,
+    ) -> UUID:
+        attempt_id = await self.record_attempt(submission)
+        await self.update_mastery(submission.learner_id, mastery)
+        return attempt_id
+
     @abstractmethod
     async def eligible_next_concepts(
         self,

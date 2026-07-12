@@ -1,3 +1,4 @@
+import asyncio
 from uuid import UUID
 
 from app.audit.models import AuditEventCreate
@@ -25,18 +26,35 @@ class DashboardService:
     ) -> None:
         self._repository = repository
         self._audit_service = audit_service
+        self._refresh_tasks: dict[UUID, asyncio.Task[DashboardSummary]] = {}
+        self._refresh_lock = asyncio.Lock()
 
     async def refresh_dashboard(self, course_id: UUID) -> DashboardSummary:
+        async with self._refresh_lock:
+            task = self._refresh_tasks.get(course_id)
+            if task is None:
+                task = asyncio.create_task(self._compute_dashboard(course_id))
+                self._refresh_tasks[course_id] = task
+        try:
+            return await asyncio.shield(task)
+        finally:
+            async with self._refresh_lock:
+                if self._refresh_tasks.get(course_id) is task and task.done():
+                    del self._refresh_tasks[course_id]
+
+    async def _compute_dashboard(self, course_id: UUID) -> DashboardSummary:
         learner_count = await self._repository.learner_count(course_id)
         attempt_count = await self._repository.attempt_count(course_id)
         if learner_count > 0 or attempt_count > 0:
+            concept_stats = await self._repository.concept_stats(course_id)
+            question_stats = await self._repository.question_stats(course_id)
+            clip_stats = await self._repository.clip_stats(course_id)
             proposals = generate_signal_proposals(
-                concept_stats=await self._repository.concept_stats(course_id),
-                question_stats=await self._repository.question_stats(course_id),
-                clip_stats=await self._repository.clip_stats(course_id),
+                concept_stats=concept_stats,
+                question_stats=question_stats,
+                clip_stats=clip_stats,
             )
-            for proposal in proposals:
-                await self._repository.upsert_signal(course_id, proposal)
+            await self._repository.upsert_signals(course_id, proposals)
         signals = await self._repository.open_signals(course_id)
         return DashboardSummary(
             course_id=course_id,

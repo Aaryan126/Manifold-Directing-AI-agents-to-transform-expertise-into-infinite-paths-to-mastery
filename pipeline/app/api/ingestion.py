@@ -9,6 +9,7 @@ from pydantic import BaseModel, HttpUrl
 from app.dependencies import get_ingestion_service
 from app.ingestion.models import IngestionJob, SourceKind
 from app.ingestion.service import IngestionService
+from app.video.base import VideoCapacityError, VideoDeliveryError
 
 router = APIRouter(prefix="/videos", tags=["videos"])
 IngestionServiceDependency = Annotated[IngestionService, Depends(get_ingestion_service)]
@@ -30,6 +31,36 @@ class IngestionJobResponse(BaseModel):
     error_message: str | None
 
 
+class DeliveryCapacityResponse(BaseModel):
+    provider: str
+    stored_count: int
+    max_stored: int | None
+    remaining: int | None
+    can_upload: bool
+
+
+class PlaybackResponse(BaseModel):
+    provider: str
+    playback_id: str | None
+    playback_url: str
+    delivery_asset_id: str | None
+
+
+@router.get("/delivery/capacity", response_model=DeliveryCapacityResponse)
+async def delivery_capacity(service: IngestionServiceDependency) -> DeliveryCapacityResponse:
+    try:
+        capacity = await service.delivery_capacity()
+    except VideoDeliveryError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return DeliveryCapacityResponse(
+        provider=capacity.provider,
+        stored_count=capacity.stored_count,
+        max_stored=capacity.max_stored,
+        remaining=capacity.remaining,
+        can_upload=capacity.can_upload,
+    )
+
+
 @router.post("/upload", response_model=IngestionJobResponse, status_code=202)
 async def upload_video(
     background_tasks: BackgroundTasks,
@@ -42,7 +73,10 @@ async def upload_video(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    job = await service.create_upload_job(stored.source_uri, stored.content_type, course_id)
+    try:
+        job = await service.create_upload_job(stored.source_uri, stored.content_type, course_id)
+    except VideoCapacityError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     background_tasks.add_task(service.process_job, job.id)
     return _job_response(job)
 
@@ -53,7 +87,10 @@ async def ingest_url(
     background_tasks: BackgroundTasks,
     service: IngestionServiceDependency,
 ) -> IngestionJobResponse:
-    job = await service.create_url_job(str(request.url), request.course_id)
+    try:
+        job = await service.create_url_job(str(request.url), request.course_id)
+    except VideoCapacityError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     background_tasks.add_task(service.process_job, job.id)
     return _job_response(job)
 
@@ -80,6 +117,24 @@ async def get_video_transcript(
     return transcript
 
 
+@router.get("/{video_id}/captions.vtt")
+async def get_video_captions(
+    video_id: UUID,
+    service: IngestionServiceDependency,
+) -> Response:
+    transcript = await service.get_video_transcript(video_id)
+    if transcript is None:
+        raise HTTPException(status_code=404, detail="Transcript not found.")
+    words = transcript.get("words")
+    if not isinstance(words, list):
+        raise HTTPException(status_code=404, detail="Timestamped transcript not found.")
+    return Response(
+        content=_transcript_vtt(words),
+        media_type="text/vtt",
+        headers={"Content-Disposition": 'inline; filename="captions.vtt"'},
+    )
+
+
 @router.get("/{video_id}/media")
 async def get_video_media(
     video_id: UUID,
@@ -101,6 +156,29 @@ async def get_video_media(
     )
 
 
+@router.get("/{video_id}/playback", response_model=PlaybackResponse)
+async def get_video_playback(
+    video_id: UUID,
+    service: IngestionServiceDependency,
+) -> PlaybackResponse:
+    media = await service.get_video_media(video_id)
+    if media is None:
+        raise HTTPException(status_code=404, detail="Video playback not found.")
+    if media.playback_provider == "mux" and media.playback_url:
+        return PlaybackResponse(
+            provider="mux",
+            playback_id=media.playback_id,
+            playback_url=media.playback_url,
+            delivery_asset_id=media.delivery_asset_id,
+        )
+    return PlaybackResponse(
+        provider="local",
+        playback_id=media.playback_id,
+        playback_url=f"/videos/{video_id}/media",
+        delivery_asset_id=None,
+    )
+
+
 def _job_response(job: IngestionJob) -> IngestionJobResponse:
     return IngestionJobResponse(
         id=job.id,
@@ -112,3 +190,34 @@ def _job_response(job: IngestionJob) -> IngestionJobResponse:
         progress=job.progress,
         error_message=job.error_message,
     )
+
+
+def _transcript_vtt(words: list[object]) -> str:
+    cues: list[str] = ["WEBVTT", ""]
+    valid_words = [word for word in words if isinstance(word, dict)]
+    for cue_index, start in enumerate(range(0, len(valid_words), 8), start=1):
+        chunk = valid_words[start : start + 8]
+        if not chunk:
+            continue
+        start_seconds = float(chunk[0].get("start_seconds", 0))
+        end_seconds = float(chunk[-1].get("end_seconds", start_seconds + 0.1))
+        text = " ".join(str(word.get("text", "")).strip() for word in chunk).strip()
+        if not text:
+            continue
+        cues.extend(
+            [
+                str(cue_index),
+                f"{_vtt_timestamp(start_seconds)} --> {_vtt_timestamp(end_seconds)}",
+                text,
+                "",
+            ],
+        )
+    return "\n".join(cues)
+
+
+def _vtt_timestamp(seconds: float) -> str:
+    milliseconds = max(0, round(seconds * 1000))
+    hours, remainder = divmod(milliseconds, 3_600_000)
+    minutes, remainder = divmod(remainder, 60_000)
+    whole_seconds, millis = divmod(remainder, 1000)
+    return f"{hours:02d}:{minutes:02d}:{whole_seconds:02d}.{millis:03d}"

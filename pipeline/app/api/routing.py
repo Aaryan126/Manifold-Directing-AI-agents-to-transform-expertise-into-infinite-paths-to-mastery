@@ -112,7 +112,10 @@ async def learner_progress(
     course_id: UUID,
     service: RoutingServiceDependency,
 ) -> list[LearnerConceptProgressResponse]:
-    progress = await service.learner_progress(learner_id, course_id)
+    try:
+        progress = await service.learner_progress(learner_id, course_id)
+    except RoutingValidationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     return [
         LearnerConceptProgressResponse(
             concept_id=item.concept_id,

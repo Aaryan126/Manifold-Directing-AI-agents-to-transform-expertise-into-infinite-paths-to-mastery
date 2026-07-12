@@ -45,6 +45,14 @@ class DashboardRepository(ABC):
     ) -> DashboardSignal:
         raise NotImplementedError
 
+    async def upsert_signals(
+        self,
+        course_id: UUID,
+        proposals: tuple[DashboardSignalProposal, ...],
+    ) -> None:
+        for proposal in proposals:
+            await self.upsert_signal(course_id, proposal)
+
     @abstractmethod
     async def accept_signal(
         self,
