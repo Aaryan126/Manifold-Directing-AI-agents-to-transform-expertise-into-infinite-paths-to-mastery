@@ -107,17 +107,108 @@ the live status rather than relying on this summary for phase completion.
 ## Technical Architecture
 
 ```mermaid
-flowchart LR
-    I[Instructor] --> W[Next.js web application]
-    L[Learner] --> W
-    W --> P[FastAPI AI and video pipeline]
-    P --> O[OpenAI transcription and GPT-5.4 agents]
-    P --> D[(PostgreSQL)]
-    P --> V[Mux or local video provider]
-    W --> V
-    D --> P
-    P --> W
+flowchart TB
+    Instructor[Instructor] --> InstructorUI[Instructor workspaces]
+    Learner[Learner] --> LearnerUI[Learner player and mastery view]
+
+    subgraph Web[Next.js 15 web application]
+        InstructorUI
+        LearnerUI
+        ReviewUI[Accept / Edit / Dismiss reviews]
+        GraphUI[Concept graph editor]
+        DashboardUI[Insights and correction workspace]
+        InstructorUI --> ReviewUI
+        InstructorUI --> GraphUI
+        InstructorUI --> DashboardUI
+    end
+
+    subgraph API[FastAPI application and orchestration layer]
+        Ingestion[Async ingestion jobs]
+        Validation[Schema and domain validation]
+        Review[Review-state and publish gates]
+        Audit[Immutable audit trail]
+        Routing[Deterministic adaptive routing engine]
+        Analytics[Analytics and signal rules]
+    end
+
+    subgraph AIPipeline[AI-assisted course production]
+        ASR[Transcription provider<br/>word-level timestamps]
+        Segment[Segmentation agent<br/>topics, ranges, summaries, evidence]
+        Concept[Concept-graph agent<br/>concepts, prerequisites, rationale]
+        Clip[Clip agent<br/>reusable spans, types, concept tags]
+        Assess[Assessment agent<br/>questions and remediation mappings]
+        Grade[Answer-grading agent<br/>correctness, feedback, misconception]
+
+        ASR -->|timestamped transcript| Segment
+    end
+
+    subgraph Providers[Replaceable providers]
+        OpenAIASR[OpenAI ASR]
+        GPT[OpenAI GPT-5.4]
+        LocalAI[Deterministic local agents<br/>development and tests]
+        Video[Mux or local video delivery]
+    end
+
+    subgraph Data[PostgreSQL system of record]
+        Content[(Videos, transcripts, topics,<br/>concepts, edges, clips, questions)]
+        Learning[(Enrollments, attempts,<br/>mastery and routing policies)]
+        Governance[(Review states, rationales,<br/>dashboard signals and audit events)]
+        GraphStore[(Adjacency tables<br/>DAG checks and recursive CTEs)]
+    end
+
+    InstructorUI -->|uploads and generation commands| Ingestion
+    ReviewUI <-->|proposal review and edits| Review
+    GraphUI <-->|graph review and editing| Review
+    DashboardUI <-->|accept, edit or dismiss actions| Analytics
+    LearnerUI -->|answer plus confidence| Grade
+    Grade -->|graded attempt| Routing
+    Routing -->|advance, reinforce or remediate| LearnerUI
+
+    Ingestion -->|source media| ASR
+    Ingestion --> Video
+    Segment --> Validation
+    Concept --> Validation
+    Clip --> Validation
+    Assess --> Validation
+    Validation -->|validated proposals| Review
+    Review -->|accepted or edited topics| Concept
+    Review -->|reviewed topics, concepts and edges| Clip
+    Review -->|reviewed topics, concepts and usable clips| Assess
+    Review -->|approved learner-facing artifacts| Content
+    Review --> Audit
+
+    ASR -. provider interface .-> OpenAIASR
+    Segment -. agent interface .-> GPT
+    Concept -. agent interface .-> GPT
+    Clip -. agent interface .-> GPT
+    Assess -. agent interface .-> GPT
+    Grade -. agent interface .-> GPT
+    LocalAI -. offline alternative .-> Segment
+    LocalAI -. offline alternative .-> Concept
+    LocalAI -. offline alternative .-> Clip
+    LocalAI -. offline alternative .-> Assess
+    LocalAI -. offline alternative .-> Grade
+
+    Routing <-->|reviewed graph, policy and mastery| Learning
+    Routing -->|stuck-loop escalation| Analytics
+    Analytics <-->|aggregate real learner outcomes| Learning
+    Analytics -->|reviewable signals| Governance
+    Audit --> Governance
+    Review <--> GraphStore
+    GraphStore -->|eligible next concepts| Routing
+    Content --> LearnerUI
+    Content -->|reviewed question and answer key| Grade
+    Video --> LearnerUI
 ```
+
+The AI pipeline is deliberately not a single autonomous course generator. Each
+agent receives structured, reviewed inputs and returns schema-validated proposals
+with evidence or rationale. Those proposals stop at the instructor review gate;
+only accepted or edited artifacts are available to the learner and routing
+engine. Adaptive routing itself is deterministic and policy-controlled, while
+GPT-5.4 grades free-text learner answers before correctness enters the mastery
+loop. Local deterministic agent implementations keep development and automated
+tests independent of external model calls.
 
 The application is a monorepo with a React web client, a Python processing and
 application service, shared TypeScript schemas, and PostgreSQL as the durable
