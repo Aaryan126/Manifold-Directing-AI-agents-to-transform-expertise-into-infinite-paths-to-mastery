@@ -233,6 +233,7 @@ export default function HomePage() {
   const [questionDrafts, setQuestionDrafts] = useState<Record<string, QuestionDraft>>({});
   const [policyDrafts, setPolicyDrafts] = useState<Record<string, RoutingPolicyDraft>>({});
   const [demoLearnerId, setDemoLearnerId] = useState<string | null>(null);
+  const [routingError, setRoutingError] = useState<string | null>(null);
   const [routeDecision, setRouteDecision] = useState<RouteDecision | null>(null);
   const [learnerProgress, setLearnerProgress] = useState<LearnerProgress[]>([]);
   const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary | null>(null);
@@ -1100,13 +1101,14 @@ export default function HomePage() {
   async function createDemoLearner() {
     if (!job?.course_id) return;
     setMessage(null);
+    setRoutingError(null);
     const response = await fetch(
       `${pipelineBaseUrl}/courses/${job.course_id}/routing/demo-learner`,
       { method: "POST" },
     );
     if (!response.ok) {
       const body = await response.json().catch(() => null);
-      setMessage(body?.detail ?? `Demo learner creation failed with ${response.status}.`);
+      setRoutingError(body?.detail ?? `Demo learner creation failed with ${response.status}.`);
       return;
     }
     const body = (await response.json()) as { learner_id: string };
@@ -1123,10 +1125,10 @@ export default function HomePage() {
     wrongAnswerPattern: string | null = null,
   ) {
     if (!demoLearnerId) {
-      setMessage("Create a demo learner before submitting attempts.");
+      setRoutingError("Create a demo learner before submitting attempts.");
       return;
     }
-    setMessage(null);
+    setRoutingError(null);
     const response = await fetch(
       `${pipelineBaseUrl}/learners/${demoLearnerId}/questions/${questionId}/attempt`,
       {
@@ -1142,7 +1144,7 @@ export default function HomePage() {
     );
     if (!response.ok) {
       const body = await response.json().catch(() => null);
-      setMessage(body?.detail ?? `Learner attempt failed with ${response.status}.`);
+      setRoutingError(body?.detail ?? `Learner attempt failed with ${response.status}.`);
       return;
     }
     setRouteDecision((await response.json()) as RouteDecision);
@@ -2273,6 +2275,11 @@ export default function HomePage() {
           </div>
 
           {demoLearnerId ? <p>Demo learner: {demoLearnerId}</p> : null}
+          {routingError ? (
+            <p className="message" role="alert">
+              {routingError}
+            </p>
+          ) : null}
           {routeDecision ? (
             <div className="coverageWarning" role="status">
               <strong>{routeDecision.action.replaceAll("_", " ")}</strong>

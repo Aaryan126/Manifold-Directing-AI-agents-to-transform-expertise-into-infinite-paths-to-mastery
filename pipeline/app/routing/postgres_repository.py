@@ -45,9 +45,10 @@ class PostgresRoutingRepository(RoutingRepository):
                         select 1
                         from enrollments e
                         join courses course on course.id = e.course_id
+                        join users learner on learner.id = e.learner_id
                         where e.learner_id = %s
                           and e.course_id = t.course_id
-                          and course.status = 'published'
+                          and (course.status = 'published' or learner.is_simulated)
                       )
                     """,
                     (question_id, learner_id),
@@ -329,9 +330,9 @@ class PostgresRoutingRepository(RoutingRepository):
             row = await (
                 await conn.execute(
                     """
-                    insert into users (email, role)
+                    insert into users (email, display_name, role, is_simulated)
                     values ('demo-learner-' || gen_random_uuid()::text || '@coursefoundry.local',
-                            'learner')
+                            'Routing simulator learner', 'learner', true)
                     returning id
                     """,
                 )
@@ -365,12 +366,13 @@ class PostgresRoutingRepository(RoutingRepository):
                     join enrollments enrollment
                       on enrollment.course_id = c.course_id
                      and enrollment.learner_id = %s
+                    join users learner on learner.id = enrollment.learner_id
                     left join learner_concept_mastery m
                       on m.concept_id = c.id and m.learner_id = %s
                     left join topic_concepts tc on tc.concept_id = c.id
                     where c.course_id = %s
                       and c.review_status in ('accepted', 'edited')
-                      and course.status = 'published'
+                      and (course.status = 'published' or learner.is_simulated)
                     group by c.id, c.name, m.state
                     order by c.name
                     """,

@@ -24,6 +24,9 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     dashboard_index_migration = Path("migrations/010_dashboard_fingerprint_index.sql").read_text(
         encoding="utf-8",
     )
+    simulated_learner_migration = Path("migrations/011_simulated_learners.sql").read_text(
+        encoding="utf-8",
+    )
 
     for table_name in [
         "users",
@@ -69,6 +72,8 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     assert "learner_watch_events" in phase10_migration
     assert "dashboard_signals_course_status_idx" in phase10_migration
     assert "dashboard_signals_open_fingerprint_idx" in dashboard_index_migration
+    assert "is_simulated boolean not null default false" in simulated_learner_migration
+    assert "demo-learner-%@coursefoundry.local" in simulated_learner_migration
 
 
 def test_legacy_schema_baseline_covers_every_migration() -> None:
