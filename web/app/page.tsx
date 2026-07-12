@@ -2614,14 +2614,14 @@ export default function HomePage() {
                 >
                   <p className="text-xs font-semibold uppercase text-muted-foreground">Comprehension check</p>
                   <h3 className="mt-2 font-serif text-xl font-semibold leading-8">{activeLearnerQuestion.body}</h3>
-                  <fieldset className="mt-5 border-0 p-0">
+                  <fieldset className="mt-5 border-0 p-0" data-slot="learner-answer">
                     <legend className="text-sm font-medium">Your answer</legend>
                     {questionChoices(activeLearnerQuestion).length ? (
                       <div className="mt-3 grid gap-2">
                         {questionChoices(activeLearnerQuestion).map((choice) => (
-                          <label className={`flex cursor-pointer items-start gap-3 border px-4 py-3 text-sm transition-colors ${learnerAnswer === choice ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"}`} key={choice}>
-                            <input checked={learnerAnswer === choice} className="mt-0.5 size-4 accent-primary" disabled={!learnerCanAttempt || isGradingAnswer} name="learner-answer" onChange={() => setLearnerAnswer(choice)} type="radio" value={choice} />
-                            <span className="leading-6">{choice}</span>
+                          <label className={`flex cursor-pointer items-start gap-3 rounded-md border px-4 py-3 text-left text-sm transition-colors focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 ${learnerAnswer === choice ? "border-primary bg-primary/5" : "border-border hover:border-foreground/25 hover:bg-muted/40"}`} key={choice}>
+                            <input checked={learnerAnswer === choice} className="mt-1 size-4 shrink-0 accent-primary" data-slot="learner-answer-option" disabled={!learnerCanAttempt || isGradingAnswer} name="learner-answer" onChange={() => setLearnerAnswer(choice)} type="radio" value={choice} />
+                            <span className="min-w-0 flex-1 leading-6">{choice}</span>
                           </label>
                         ))}
                       </div>
