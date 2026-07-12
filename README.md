@@ -108,77 +108,51 @@ the live status rather than relying on this summary for phase completion.
 
 ```mermaid
 flowchart TB
-    Instructor([Instructor]) --> Studio[Next.js instructor studio]
+    Instructor([Instructor]) --> Upload[Lecture video or media URL]
+    Upload --> ASR[OpenAI transcription<br/>word-level timestamps]
 
-    subgraph Produce[1. Build a course from source video]
-        direction LR
-        Upload[Upload or media URL] --> Ingest[Async ingestion job]
-        Ingest --> ASR[OpenAI ASR<br/>word timestamps]
-        ASR --> Transcript[(Timestamped transcript)]
+    subgraph CourseBuilder[AI-assisted course builder]
+        direction TB
+
+        subgraph Knowledge[Structure the knowledge]
+            direction LR
+            Segment[Segmentation agent<br/>topics and summaries]
+            TopicReview{Review topics}
+            Graph[Concept-graph agent<br/>concepts and prerequisites]
+            GraphReview{Review graph}
+            Segment --> TopicReview --> Graph --> GraphReview
+        end
+
+        subgraph Material[Create the learning material]
+            direction LR
+            Clips[Clip agent<br/>clean reusable spans]
+            ClipReview{Review clips}
+            Assess[Assessment agent<br/>questions and remediation]
+            AssessReview{Review assessments}
+            Clips --> ClipReview --> Assess --> AssessReview
+        end
+
+        GraphReview --> Clips
     end
 
-    Studio --> Upload
+    ASR --> Segment
+    AssessReview --> Publish[Publish reviewed course]
 
-    subgraph Structure[2. Structure knowledge]
+    subgraph Learning[Adaptive learning loop]
         direction LR
-        Segment[Segmentation agent<br/>topics, ranges, summaries] --> TopicReview{Review topics<br/>Accept / Edit / Dismiss}
-        TopicReview --> Graph[Concept-graph agent<br/>concepts and prerequisites]
-        Graph --> GraphCheck[DAG and schema validation]
-        GraphCheck --> GraphReview{Review graph<br/>Accept / Edit / Dismiss}
+        Player[Reviewed video and clips]
+        Answer[Learner answer<br/>and confidence]
+        Grade[AI answer grading]
+        Route[Policy-based routing]
+        Next[Advance, reinforce<br/>or remediate]
+        Player --> Answer --> Grade --> Route --> Next
     end
 
-    Transcript --> Segment
-
-    subgraph Compose[3. Compose learning material]
-        direction LR
-        Clips[Clip agent<br/>spans, types and concept tags] --> ClipCheck[Timestamp snapping<br/>and boundary validation]
-        ClipCheck --> ClipReview{Review clips<br/>Accept / Edit / Dismiss}
-        ClipReview --> Questions[Assessment agent<br/>questions and remediation]
-        Questions --> QuestionReview{Review assessments<br/>Accept / Edit / Dismiss}
-    end
-
-    GraphReview --> Clips
-    QuestionReview --> Publish[Publish gate<br/>reviewed artifacts only]
-
-    subgraph Learn[4. Adaptive learner loop]
-        direction LR
-        Player[Video and clip player] --> Answer[Learner answer<br/>plus confidence]
-        Answer --> Grade[Answer-grading agent<br/>correctness and misconception]
-        Grade --> Route[Deterministic routing<br/>policy plus prerequisites]
-        Route --> Decision[Advance, reinforce<br/>or remediate]
-    end
-
-    Learner([Learner]) --> Player
     Publish --> Player
-    Decision --> Player
-
-    subgraph Improve[5. Evidence and instructor correction]
-        direction LR
-        Mastery[(Attempts, watch time<br/>and concept mastery)] --> Signals[Analytics rules<br/>cohort, content and graph signals]
-        Signals --> SignalReview{Review correction<br/>Accept / Edit / Dismiss}
-        SignalReview --> Changes[Reviewed content,<br/>graph or policy change]
-    end
-
-    Route --> Mastery
-    Route -->|stuck-loop escalation| Signals
-    Changes --> Route
-    SignalReview --> Studio
-
-    subgraph Platform[Shared platform services]
-        direction LR
-        API[FastAPI orchestration<br/>and domain services]
-        Models[GPT-5.4 agents<br/>local deterministic test providers]
-        Video[Mux or local<br/>video delivery]
-        DB[(PostgreSQL<br/>content, graph, learning and governance)]
-        Audit[Immutable audit trail<br/>rationale, actor and scope]
-    end
-
-    API -. coordinates .-> Segment
-    Models -. provider interfaces .-> Questions
-    Video -. playback .-> Player
-    Publish --> DB
-    Mastery --> DB
-    SignalReview --> Audit
+    Learner([Learner]) --> Player
+    Route --> Mastery[(Attempts and mastery)]
+    Mastery --> Insights[Performance signals]
+    Insights --> Improve{Instructor reviews<br/>proposed corrections}
 ```
 
 The AI pipeline is deliberately not a single autonomous course generator. Each
@@ -187,8 +161,9 @@ with evidence or rationale. Those proposals stop at the instructor review gate;
 only accepted or edited artifacts are available to the learner and routing
 engine. Adaptive routing itself is deterministic and policy-controlled, while
 GPT-5.4 grades free-text learner answers before correctness enters the mastery
-loop. Local deterministic agent implementations keep development and automated
-tests independent of external model calls.
+loop. Every review diamond uses the same **Accept / Edit / Dismiss** pattern.
+Provider, persistence, and testing details are summarized in the technology table
+below rather than duplicated in the flow.
 
 The application is a monorepo with a React web client, a Python processing and
 application service, shared TypeScript schemas, and PostgreSQL as the durable
