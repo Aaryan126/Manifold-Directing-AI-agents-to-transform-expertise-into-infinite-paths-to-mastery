@@ -1,0 +1,22 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pipeline/pyproject.toml ./
+RUN pip install --no-cache-dir -e .
+
+COPY pipeline/app ./app
+COPY pipeline/migrations ./migrations
+COPY pipeline/scripts ./scripts
+COPY pipeline/demo ./demo
+COPY test_video.mp4 ./demo/test_video.mp4
+
+ENV DEMO_VIDEO_PATH=/app/demo/test_video.mp4
+ENV DEMO_TRANSCRIPT_PATH=/app/demo/transcript.json
+
+EXPOSE 10000
+CMD ["sh", "-c", "python -m app.db.apply_migrations && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]

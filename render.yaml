@@ -1,0 +1,47 @@
+services:
+  - type: web
+    name: manifold-pipeline-aaryan126
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./pipeline/Dockerfile.render
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: manifold-db-aaryan126
+          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: VIDEO_PROVIDER
+        value: mux
+      - key: MUX_TOKEN_ID
+        sync: false
+      - key: MUX_TOKEN_SECRET
+        sync: false
+      - key: MUX_MAX_STORED_VIDEOS
+        value: "10"
+      - key: CORS_ORIGINS
+        value: https://manifold-aaryan126.onrender.com
+
+  - type: web
+    name: manifold-aaryan126
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./web/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NEXT_PUBLIC_PIPELINE_BASE_URL
+        value: https://manifold-pipeline-aaryan126.onrender.com
+
+databases:
+  - name: manifold-db-aaryan126
+    plan: free
+    region: singapore
+    databaseName: manifold
+    user: manifold

@@ -14,6 +14,7 @@ from app.api.health import router as health_router
 from app.api.ingestion import router as ingestion_router
 from app.api.routing import router as routing_router
 from app.api.topics import router as topics_router
+from app.config import get_settings
 from app.db.pool import close_connection_pools
 
 
@@ -23,10 +24,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await close_connection_pools()
 
 
-app = FastAPI(title="CourseFoundry Pipeline", lifespan=lifespan)
+settings = get_settings()
+cors_origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
+
+app = FastAPI(title="Manifold Pipeline", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=cors_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
