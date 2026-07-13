@@ -9,6 +9,7 @@ from app.assessments.service import AssessmentService
 from app.audit.postgres_repository import PostgresAuditRepository
 from app.audit.service import AuditService
 from app.clips.factory import build_clip_extraction_agent
+from app.clips.materializer import LocalFfmpegClipMaterializer
 from app.clips.postgres_repository import PostgresClipRepository
 from app.clips.service import ClipService
 from app.config import Settings, get_settings
@@ -95,10 +96,17 @@ def get_clip_service() -> ClipService:
 
 
 def build_clip_service(settings: Settings) -> ClipService:
+    materializer = None
+    if settings.force_local_video_delivery or settings.video_provider == "local":
+        materializer = LocalFfmpegClipMaterializer(
+            settings.local_video_storage_path,
+            settings.local_clip_ffmpeg_timeout_seconds,
+        )
     return ClipService(
         repository=PostgresClipRepository(settings.database_url),
         agent=build_clip_extraction_agent(settings),
         audit_service=build_audit_service(settings),
+        materializer=materializer,
     )
 
 

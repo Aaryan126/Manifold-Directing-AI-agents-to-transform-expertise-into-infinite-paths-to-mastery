@@ -1,7 +1,13 @@
 from abc import ABC, abstractmethod
 from uuid import UUID
 
-from app.clips.models import Clip, ClipContext, ClipFlag, ClipProposal
+from app.clips.models import (
+    Clip,
+    ClipContext,
+    ClipFlag,
+    ClipMaterializationStatus,
+    ClipProposal,
+)
 
 
 class ClipRepository(ABC):
@@ -11,6 +17,14 @@ class ClipRepository(ABC):
 
     @abstractmethod
     async def list_clips_for_video(self, video_id: UUID) -> tuple[Clip, ...]:
+        pass
+
+    @abstractmethod
+    async def list_replaceable_clips_for_topic(self, topic_id: UUID) -> tuple[Clip, ...]:
+        pass
+
+    @abstractmethod
+    async def get_clip(self, clip_id: UUID) -> Clip | None:
         pass
 
     @abstractmethod
@@ -38,3 +52,14 @@ class ClipRepository(ABC):
     ) -> Clip | None:
         pass
 
+    @abstractmethod
+    async def update_materialization(
+        self,
+        clip_id: UUID,
+        status: ClipMaterializationStatus,
+        *,
+        playback_provider: str | None = None,
+        playback_id: str | None = None,
+        error: str | None = None,
+    ) -> Clip | None:
+        pass

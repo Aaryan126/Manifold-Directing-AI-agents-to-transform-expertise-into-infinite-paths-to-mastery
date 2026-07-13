@@ -1,14 +1,17 @@
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
 
 from app.clips.agent import ClipExtractionAgent
 from app.clips.boundaries import is_clean_boundary, snap_proposal_to_clean_boundaries
+from app.clips.materializer import ClipMaterializer
 from app.clips.models import (
     Clip,
     ClipConcept,
     ClipContext,
     ClipFlag,
+    ClipMaterializationStatus,
     ClipProposal,
     ClipStatus,
     ClipTopicContext,
@@ -113,6 +116,44 @@ async def test_flag_then_recut_supersedes_original_clip() -> None:
     assert repository.clips[original.id].superseded_by_clip_id == replacement.id
 
 
+@pytest.mark.anyio
+async def test_generate_materializes_independent_clip_and_removes_replaced_file(
+    tmp_path: Path,
+) -> None:
+    topic_id = uuid4()
+    concept_id = uuid4()
+    repository = MemoryClipRepository(_clip_context(topic_id, concept_id))
+    materializer = MemoryClipMaterializer(tmp_path)
+    service = ClipService(
+        repository=repository,
+        agent=StaticClipAgent(
+            (
+                ClipProposal(
+                    title="Definition",
+                    start_seconds=0,
+                    end_seconds=20,
+                    type=ClipType.DEFINITION,
+                    difficulty="introductory",
+                    concept_ids=(concept_id,),
+                    rationale="Reusable definition.",
+                    confidence=0.9,
+                ),
+            )
+        ),
+        materializer=materializer,
+    )
+
+    first = (await service.generate_clips_for_topic(topic_id))[0]
+    second = (await service.generate_clips_for_topic(topic_id))[0]
+
+    assert first.materialization_status == ClipMaterializationStatus.READY
+    assert first.playback_provider == "local_clip"
+    assert first.playback_id is not None
+    assert first.playback_id in materializer.removed
+    assert second.playback_id is not None
+    assert materializer.resolve(second.playback_id) is not None
+
+
 def test_boundary_snapper_rejects_mid_word_cleanliness_regressions() -> None:
     concept_id = uuid4()
     words = _words()
@@ -188,6 +229,26 @@ class StaticClipAgent(ClipExtractionAgent):
         return self._proposals
 
 
+class MemoryClipMaterializer(ClipMaterializer):
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.removed: list[str] = []
+
+    async def materialize(self, clip: Clip, context: ClipContext) -> str:
+        del context
+        playback_id = f"{clip.id}.mp4"
+        (self.root / playback_id).write_bytes(b"independent clip")
+        return playback_id
+
+    def resolve(self, playback_id: str) -> Path | None:
+        path = self.root / playback_id
+        return path if path.is_file() else None
+
+    def remove(self, playback_id: str) -> None:
+        self.removed.append(playback_id)
+        (self.root / playback_id).unlink(missing_ok=True)
+
+
 class MemoryClipRepository(ClipRepository):
     def __init__(self, context: ClipContext) -> None:
         self.context = context
@@ -202,6 +263,18 @@ class MemoryClipRepository(ClipRepository):
         if video_id != self.context.topic.video_id:
             return ()
         return tuple(sorted(self.clips.values(), key=lambda clip: clip.start_seconds))
+
+    async def list_replaceable_clips_for_topic(self, topic_id: UUID) -> tuple[Clip, ...]:
+        return tuple(
+            clip
+            for clip in self.clips.values()
+            if clip.topic_id == topic_id
+            and clip.status == ClipStatus.ACTIVE
+            and clip.source_clip_id is None
+        )
+
+    async def get_clip(self, clip_id: UUID) -> Clip | None:
+        return self.clips.get(clip_id)
 
     async def replace_topic_clips(
         self,
@@ -264,6 +337,28 @@ class MemoryClipRepository(ClipRepository):
         )
         return replacement
 
+    async def update_materialization(
+        self,
+        clip_id: UUID,
+        status: ClipMaterializationStatus,
+        *,
+        playback_provider: str | None = None,
+        playback_id: str | None = None,
+        error: str | None = None,
+    ) -> Clip | None:
+        clip = self.clips.get(clip_id)
+        if clip is None:
+            return None
+        updated = _replace_clip(
+            clip,
+            materialization_status=status,
+            playback_provider=playback_provider,
+            playback_id=playback_id,
+            materialization_error=error,
+        )
+        self.clips[clip_id] = updated
+        return updated
+
 
 def _clip_context(topic_id: UUID, concept_id: UUID) -> ClipContext:
     return ClipContext(
@@ -275,6 +370,7 @@ def _clip_context(topic_id: UUID, concept_id: UUID) -> ClipContext:
             summary="Definitions and examples.",
             start_seconds=0,
             end_seconds=20,
+            source_path=None,
         ),
         transcript_text="A vector space has vectors. It also has operations.",
         words=_words(),
@@ -317,6 +413,10 @@ def _clip_from_proposal(
         flag_note=None,
         superseded_by_clip_id=None,
         source_clip_id=source_clip_id,
+        playback_provider=None,
+        playback_id=None,
+        materialization_status=ClipMaterializationStatus.SOURCE_REFERENCE,
+        materialization_error=None,
         created_at="now",
     )
 
@@ -328,6 +428,10 @@ def _replace_clip(
     flagged_at: str | None = None,
     flag_note: str | None = None,
     superseded_by_clip_id: UUID | None = None,
+    playback_provider: str | None = None,
+    playback_id: str | None = None,
+    materialization_status: ClipMaterializationStatus | None = None,
+    materialization_error: str | None = None,
 ) -> Clip:
     return Clip(
         id=clip.id,
@@ -348,5 +452,19 @@ def _replace_clip(
             else superseded_by_clip_id
         ),
         source_clip_id=clip.source_clip_id,
+        playback_provider=(
+            clip.playback_provider if playback_provider is None else playback_provider
+        ),
+        playback_id=clip.playback_id if playback_id is None else playback_id,
+        materialization_status=(
+            clip.materialization_status
+            if materialization_status is None
+            else materialization_status
+        ),
+        materialization_error=(
+            clip.materialization_error
+            if materialization_error is None
+            else materialization_error
+        ),
         created_at=clip.created_at,
     )

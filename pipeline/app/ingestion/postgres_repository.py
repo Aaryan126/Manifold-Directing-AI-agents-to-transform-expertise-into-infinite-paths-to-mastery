@@ -159,6 +159,7 @@ class PostgresIngestionRepository(IngestionRepository):
         job_id: UUID,
         transcript: Transcript,
         playback: PlaybackReference | None = None,
+        local_source_uri: str | None = None,
     ) -> None:
         async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
             await conn.execute(
@@ -178,9 +179,10 @@ class PostgresIngestionRepository(IngestionRepository):
                         {
                             "playback_url": playback.playback_url,
                             "delivery_asset_id": playback.asset_id,
+                            "local_source_uri": local_source_uri,
                         }
                         if playback
-                        else {},
+                        else ({"local_source_uri": local_source_uri} if local_source_uri else {}),
                     ),
                     job_id,
                 ),
@@ -257,6 +259,7 @@ class PostgresIngestionRepository(IngestionRepository):
             content_type = metadata.get("content_type")
             playback_url = metadata.get("playback_url")
             delivery_asset_id = metadata.get("delivery_asset_id")
+            local_source_uri = metadata.get("local_source_uri")
             return VideoMedia(
                 source_kind=SourceKind(str(row["source_kind"])),
                 source_uri=str(row["source_uri"]),
@@ -267,6 +270,7 @@ class PostgresIngestionRepository(IngestionRepository):
                 playback_id=str(row["playback_id"]) if row["playback_id"] else None,
                 playback_url=str(playback_url) if playback_url else None,
                 delivery_asset_id=str(delivery_asset_id) if delivery_asset_id else None,
+                local_source_uri=str(local_source_uri) if local_source_uri else None,
             )
 
     async def _ensure_dev_course(self, conn: psycopg.AsyncConnection[dict[str, Any]]) -> UUID:

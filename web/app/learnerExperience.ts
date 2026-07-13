@@ -5,6 +5,7 @@ export type LearnerClip = {
   status: string;
   start_seconds: number;
   end_seconds: number;
+  materialization_status?: "source_reference" | "processing" | "ready" | "failed";
 };
 
 export type LearnerProgress = {

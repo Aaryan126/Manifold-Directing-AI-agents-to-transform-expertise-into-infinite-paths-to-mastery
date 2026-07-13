@@ -1,4 +1,5 @@
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, cast
 from uuid import UUID
 
@@ -11,6 +12,7 @@ from app.clips.models import (
     ClipConcept,
     ClipContext,
     ClipFlag,
+    ClipMaterializationStatus,
     ClipProposal,
     ClipStatus,
     ClipTopicContext,
@@ -32,7 +34,7 @@ class PostgresClipRepository(ClipRepository):
             topic_row = await (
                 await conn.execute(
                     """
-                    select t.*, v.transcript
+                    select t.*, v.transcript, v.source_kind, v.source_uri, v.source_metadata
                     from topics t
                     join videos v on v.id = t.video_id
                     where t.id = %s
@@ -84,6 +86,33 @@ class PostgresClipRepository(ClipRepository):
                 )
             ).fetchall()
             return tuple([await _clip_from_row_with_concepts(conn, row) for row in rows])
+
+    async def list_replaceable_clips_for_topic(self, topic_id: UUID) -> tuple[Clip, ...]:
+        async with await psycopg.AsyncConnection.connect(
+            self._database_url,
+            row_factory=dict_row,
+        ) as conn:
+            rows = await (
+                await conn.execute(
+                    """
+                    select * from clips
+                    where topic_id = %s and status = 'active' and source_clip_id is null
+                    order by start_seconds asc
+                    """,
+                    (topic_id,),
+                )
+            ).fetchall()
+            return tuple([await _clip_from_row_with_concepts(conn, row) for row in rows])
+
+    async def get_clip(self, clip_id: UUID) -> Clip | None:
+        async with await psycopg.AsyncConnection.connect(
+            self._database_url,
+            row_factory=dict_row,
+        ) as conn:
+            row = await (
+                await conn.execute("select * from clips where id = %s", (clip_id,))
+            ).fetchone()
+            return await _clip_from_row_with_concepts(conn, row) if row else None
 
     async def replace_topic_clips(
         self,
@@ -198,6 +227,36 @@ class PostgresClipRepository(ClipRepository):
             )
             return await _clip_from_row_with_concepts(conn, replacement_row)
 
+    async def update_materialization(
+        self,
+        clip_id: UUID,
+        status: ClipMaterializationStatus,
+        *,
+        playback_provider: str | None = None,
+        playback_id: str | None = None,
+        error: str | None = None,
+    ) -> Clip | None:
+        async with await psycopg.AsyncConnection.connect(
+            self._database_url,
+            row_factory=dict_row,
+        ) as conn:
+            row = await (
+                await conn.execute(
+                    """
+                    update clips
+                    set materialization_status = %s,
+                        playback_provider = %s,
+                        playback_id = %s,
+                        materialization_error = %s,
+                        updated_at = now()
+                    where id = %s
+                    returning *
+                    """,
+                    (status.value, playback_provider, playback_id, error, clip_id),
+                )
+            ).fetchone()
+            return await _clip_from_row_with_concepts(conn, row) if row else None
+
     async def _insert_clip(
         self,
         conn: psycopg.AsyncConnection[Any],
@@ -244,6 +303,11 @@ class PostgresClipRepository(ClipRepository):
 
 
 def _topic_context_from_row(row: dict[str, Any]) -> ClipTopicContext:
+    metadata = row["source_metadata"] if isinstance(row.get("source_metadata"), dict) else {}
+    local_source_uri = metadata.get("local_source_uri")
+    source_uri = local_source_uri or (
+        row.get("source_uri") if str(row.get("source_kind")) == "upload" else None
+    )
     return ClipTopicContext(
         id=UUID(str(row["id"])),
         course_id=UUID(str(row["course_id"])),
@@ -252,6 +316,7 @@ def _topic_context_from_row(row: dict[str, Any]) -> ClipTopicContext:
         summary=str(row["summary"]) if row["summary"] is not None else None,
         start_seconds=_float_from_row(row["start_seconds"]),
         end_seconds=_float_from_row(row["end_seconds"]),
+        source_path=Path(str(source_uri)) if source_uri else None,
     )
 
 
@@ -305,6 +370,16 @@ async def _clip_from_row_with_concepts(
             UUID(str(row["superseded_by_clip_id"])) if row["superseded_by_clip_id"] else None
         ),
         source_clip_id=UUID(str(row["source_clip_id"])) if row["source_clip_id"] else None,
+        playback_provider=(
+            str(row["playback_provider"]) if row.get("playback_provider") else None
+        ),
+        playback_id=str(row["playback_id"]) if row.get("playback_id") else None,
+        materialization_status=ClipMaterializationStatus(
+            str(row.get("materialization_status", "source_reference"))
+        ),
+        materialization_error=(
+            str(row["materialization_error"]) if row.get("materialization_error") else None
+        ),
         created_at=str(row["created_at"]) if row["created_at"] else None,
     )
 

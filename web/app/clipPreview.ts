@@ -13,6 +13,17 @@ export function clipPreviewUrl(
   )},${formatSeconds(clip.end_seconds)}`;
 }
 
+export function materializedClipUrl(pipelineBaseUrl: string, clipId: string): string {
+  return `${pipelineBaseUrl}/clips/${clipId}/media`;
+}
+
+export function materializedClipCaptionsUrl(
+  pipelineBaseUrl: string,
+  clipId: string,
+): string {
+  return `${pipelineBaseUrl}/clips/${clipId}/captions.vtt`;
+}
+
 function formatSeconds(seconds: number): string {
   return Number.isInteger(seconds) ? String(seconds) : seconds.toFixed(3).replace(/0+$/, "");
 }

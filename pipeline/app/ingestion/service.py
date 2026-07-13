@@ -114,7 +114,12 @@ class IngestionService:
                         ),
                     ),
                 )
-            await self._repository.mark_complete(job_id, transcript, playback)
+            await self._repository.mark_complete(
+                job_id,
+                transcript,
+                playback,
+                local_source_uri=str(media_path.resolve()),
+            )
         except Exception as exc:
             await self._repository.mark_failed(job_id, str(exc))
 

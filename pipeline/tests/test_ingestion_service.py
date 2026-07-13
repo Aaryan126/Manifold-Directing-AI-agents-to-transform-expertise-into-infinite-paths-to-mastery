@@ -36,6 +36,9 @@ async def test_process_upload_job_transitions_to_complete(tmp_path: Path) -> Non
     assert transcript is not None
     assert transcript["text"] == "Hello adaptive learning."
     assert len(transcript["words"]) == 3
+    media = await service.get_video_media(completed.video_id)
+    assert media is not None
+    assert media.local_source_uri == str(media_path.resolve())
 
 
 @pytest.mark.anyio

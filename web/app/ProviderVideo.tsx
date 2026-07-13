@@ -1,7 +1,11 @@
 "use client";
 
 import MuxPlayer from "@mux/mux-player-react";
-import { clipPreviewUrl } from "./clipPreview";
+import {
+  clipPreviewUrl,
+  materializedClipCaptionsUrl,
+  materializedClipUrl,
+} from "./clipPreview";
 
 export type PlaybackInfo = {
   provider: "local" | "mux";
@@ -19,6 +23,8 @@ type ProviderVideoProps = {
   endSeconds: number;
   viewerId?: string | null;
   onClipComplete?: (watchedSeconds: number) => void;
+  clipId?: string;
+  clipMaterializationStatus?: "source_reference" | "processing" | "ready" | "failed";
 };
 
 export function ProviderVideo({
@@ -30,10 +36,23 @@ export function ProviderVideo({
   endSeconds,
   viewerId,
   onClipComplete,
+  clipId,
+  clipMaterializationStatus = "source_reference",
 }: ProviderVideoProps) {
-  const captions = `${pipelineBaseUrl}/videos/${videoId}/captions.vtt`;
+  const materializedClipId =
+    playback.provider === "local" && clipMaterializationStatus === "ready"
+      ? clipId ?? null
+      : null;
+  const usesMaterializedClip = materializedClipId !== null;
+  const effectiveStartSeconds = usesMaterializedClip ? 0 : startSeconds;
+  const effectiveEndSeconds = usesMaterializedClip
+    ? Math.max(0, endSeconds - startSeconds)
+    : endSeconds;
+  const captions = usesMaterializedClip
+    ? materializedClipCaptionsUrl(pipelineBaseUrl, materializedClipId)
+    : `${pipelineBaseUrl}/videos/${videoId}/captions.vtt`;
   const stopAtBoundary = (player: HTMLVideoElement) => {
-    if (player.currentTime < endSeconds) return;
+    if (player.currentTime < effectiveEndSeconds) return;
     player.pause();
     onClipComplete?.(Math.max(0, endSeconds - startSeconds));
   };
@@ -63,11 +82,14 @@ export function ProviderVideo({
       aria-label={title}
       className="clipPreview"
       controls
+      data-materialized-clip={usesMaterializedClip ? "true" : "false"}
       preload="metadata"
-      src={clipPreviewUrl(pipelineBaseUrl, videoId, {
-        start_seconds: startSeconds,
-        end_seconds: endSeconds,
-      })}
+      src={usesMaterializedClip
+        ? materializedClipUrl(pipelineBaseUrl, materializedClipId)
+        : clipPreviewUrl(pipelineBaseUrl, videoId, {
+            start_seconds: effectiveStartSeconds,
+            end_seconds: effectiveEndSeconds,
+          })}
       onTimeUpdate={(event) => stopAtBoundary(event.currentTarget)}
     >
       <track default kind="captions" label="English" src={captions} srcLang="en" />

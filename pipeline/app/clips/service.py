@@ -1,3 +1,4 @@
+from pathlib import Path
 from uuid import UUID
 
 from app.audit.models import AuditEventCreate
@@ -13,7 +14,15 @@ from app.clips.boundaries import (
     is_clean_boundary,
     snap_proposal_to_clean_boundaries,
 )
-from app.clips.models import Clip, ClipContext, ClipFlag, ClipProposal
+from app.clips.materializer import ClipMaterializationError, ClipMaterializer
+from app.clips.models import (
+    Clip,
+    ClipContext,
+    ClipFlag,
+    ClipMaterializationStatus,
+    ClipProposal,
+    ClipStatus,
+)
 from app.clips.repository import ClipRepository
 from app.segmentation.models import TranscriptWord
 
@@ -31,10 +40,12 @@ class ClipService:
         repository: ClipRepository,
         agent: ClipExtractionAgent,
         audit_service: AuditService | None = None,
+        materializer: ClipMaterializer | None = None,
     ) -> None:
         self._repository = repository
         self._agent = agent
         self._audit_service = audit_service
+        self._materializer = materializer
 
     async def generate_clips_for_topic(self, topic_id: UUID) -> tuple[Clip, ...]:
         context = await self._repository.get_context_for_topic(topic_id)
@@ -42,13 +53,49 @@ class ClipService:
             raise ClipValidationError("Reviewed topic with transcript not found.")
         proposals = await self._agent.propose_clips(context)
         clean = _clean_and_validate_proposals(proposals, context)
+        replaced = await self._repository.list_replaceable_clips_for_topic(topic_id)
         clips = await self._repository.replace_topic_clips(topic_id, clean)
+        clips = await self._materialize_clips(clips, context)
+        self._remove_materialized_files(replaced)
         for clip in clips:
             await self._audit(context.topic.course_id, clip, None, clip, "propose", "ai")
         return clips
 
     async def list_clips_for_video(self, video_id: UUID) -> tuple[Clip, ...]:
         return await self._repository.list_clips_for_video(video_id)
+
+    async def materialize_clips_for_video(self, video_id: UUID) -> tuple[Clip, ...]:
+        clips = await self._repository.list_clips_for_video(video_id)
+        if self._materializer is None:
+            return clips
+        for clip in clips:
+            if (
+                clip.status == ClipStatus.SUPERSEDED
+                or clip.materialization_status == ClipMaterializationStatus.READY
+            ):
+                continue
+            found = await self._repository.get_clip_context(clip.id)
+            if found is None:
+                continue
+            current, context = found
+            await self._materialize_clips((current,), context)
+        return await self._repository.list_clips_for_video(video_id)
+
+    async def get_clip_media(self, clip_id: UUID) -> Path | None:
+        if self._materializer is None:
+            return None
+        clip = await self._repository.get_clip(clip_id)
+        if (
+            clip is None
+            or clip.materialization_status != ClipMaterializationStatus.READY
+            or clip.playback_provider != "local_clip"
+            or clip.playback_id is None
+        ):
+            return None
+        return self._materializer.resolve(clip.playback_id)
+
+    async def get_clip_with_context(self, clip_id: UUID) -> tuple[Clip, ClipContext] | None:
+        return await self._repository.get_clip_context(clip_id)
 
     async def flag_clip(self, clip_id: UUID, note: str) -> Clip | None:
         if not note.strip():
@@ -72,8 +119,48 @@ class ClipService:
         replacement = _best_recut_for_original(original, clean)
         clip = await self._repository.supersede_clip(clip_id, replacement, note.strip())
         if clip is not None:
+            materialized = await self._materialize_clips((clip,), context)
+            clip = materialized[0]
             await self._audit(context.topic.course_id, clip, original, clip, "recut", "instructor")
         return clip
+
+    async def _materialize_clips(
+        self,
+        clips: tuple[Clip, ...],
+        context: ClipContext,
+    ) -> tuple[Clip, ...]:
+        if self._materializer is None:
+            return clips
+        materialized: list[Clip] = []
+        for clip in clips:
+            processing = await self._repository.update_materialization(
+                clip.id,
+                ClipMaterializationStatus.PROCESSING,
+            )
+            current = processing or clip
+            try:
+                playback_id = await self._materializer.materialize(current, context)
+                updated = await self._repository.update_materialization(
+                    clip.id,
+                    ClipMaterializationStatus.READY,
+                    playback_provider="local_clip",
+                    playback_id=playback_id,
+                )
+            except ClipMaterializationError as exc:
+                updated = await self._repository.update_materialization(
+                    clip.id,
+                    ClipMaterializationStatus.FAILED,
+                    error=str(exc),
+                )
+            materialized.append(updated or current)
+        return tuple(materialized)
+
+    def _remove_materialized_files(self, clips: tuple[Clip, ...]) -> None:
+        if self._materializer is None:
+            return
+        for clip in clips:
+            if clip.playback_provider == "local_clip" and clip.playback_id:
+                self._materializer.remove(clip.playback_id)
 
     async def _audit(
         self,

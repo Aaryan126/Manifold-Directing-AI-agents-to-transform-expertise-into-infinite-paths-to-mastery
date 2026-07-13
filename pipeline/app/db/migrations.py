@@ -21,6 +21,7 @@ _LEGACY_MIGRATION_MARKERS: dict[str, tuple[tuple[str, str | None], ...]] = {
     "009_phase10_query_indexes.sql": (("remediation_rules_target_clip_idx", None),),
     "010_dashboard_fingerprint_index.sql": (("dashboard_signals_open_fingerprint_idx", None),),
     "011_simulated_learners.sql": (("users", "is_simulated"),),
+    "012_local_clip_materialization.sql": (("clips", "materialization_status"),),
 }
 
 

@@ -140,6 +140,10 @@ type Clip = {
   flag_note: string | null;
   superseded_by_clip_id: string | null;
   source_clip_id: string | null;
+  playback_provider: string | null;
+  playback_id: string | null;
+  materialization_status: "source_reference" | "processing" | "ready" | "failed";
+  materialization_error: string | null;
   created_at: string | null;
 };
 
@@ -1216,22 +1220,47 @@ export default function HomePage() {
         topicClipGenerationBlockReason(topic, graph.concepts) === null &&
         !clips.some((clip) => clip.topic_id === topic.id && clip.status !== "superseded"),
     );
-    if (!eligible.length) {
+    const usesLocalDelivery = deliveryCapacity?.provider === "local";
+    const needsMaterialization = usesLocalDelivery && clips.some(
+      (clip) => clip.status !== "superseded" && clip.materialization_status !== "ready",
+    );
+    if (!eligible.length && !needsMaterialization) {
       setMessage("Every eligible topic already has clips, or still needs reviewed concept links.");
       return;
     }
     setBulkAction("clips");
-    setMessage(`Generating clips for ${eligible.length} eligible topic(s).`);
+    setMessage(eligible.length
+      ? `Generating clips for ${eligible.length} eligible topic(s).`
+      : "Rendering existing timestamp references as independent local clips.");
     const failures: string[] = [];
     for (const topic of eligible) {
       const response = await fetch(`${pipelineBaseUrl}/topics/${topic.id}/clips/generate`, { method: "POST" });
       if (!response.ok) failures.push(topic.title);
     }
+    if (usesLocalDelivery) {
+      const materialized = await fetch(
+        `${pipelineBaseUrl}/videos/${job.video_id}/clips/materialize`,
+        { method: "POST" },
+      );
+      if (!materialized.ok) {
+        failures.push("local clip rendering");
+      } else {
+        const renderedClips = (await materialized.json()) as Clip[];
+        const renderFailureCount = renderedClips.filter(
+          (clip) => clip.status !== "superseded" && clip.materialization_status === "failed",
+        ).length;
+        if (renderFailureCount) failures.push(`${renderFailureCount} local clip render(s)`);
+      }
+    }
     await loadClips(job.video_id);
     setBulkAction(null);
     setMessage(failures.length
       ? `Clip generation failed for: ${failures.join(", ")}.`
-      : `Generated clips for ${eligible.length} topic(s).`);
+      : eligible.length
+        ? usesLocalDelivery
+          ? `Generated and rendered clips for ${eligible.length} topic(s).`
+          : `Generated clips for ${eligible.length} topic(s).`
+        : "Rendered existing clips as independent local videos.");
   }
 
   async function flagClip(clipId: string) {
@@ -2231,6 +2260,8 @@ export default function HomePage() {
                   </div>
                   {job.video_id && playback ? (
                     <ProviderVideo
+                      clipId={selectedClipReview.id}
+                      clipMaterializationStatus={selectedClipReview.materialization_status}
                       endSeconds={selectedClipReview.end_seconds}
                       pipelineBaseUrl={pipelineBaseUrl}
                       playback={playback}
@@ -2239,10 +2270,16 @@ export default function HomePage() {
                       videoId={job.video_id}
                     />
                   ) : <div className="flex aspect-video items-center justify-center bg-black text-sm text-white/70">Preview unavailable</div>}
-                  <div className="mt-5 grid grid-cols-3 gap-4 border-b border-border pb-5 text-sm">
+                  {selectedClipReview.materialization_status === "failed" ? (
+                    <p className="mt-3 text-sm text-amber-700" role="status">
+                      The independent clip could not be rendered. Previewing the source timestamp range instead.
+                    </p>
+                  ) : null}
+                  <div className="mt-5 grid grid-cols-4 gap-4 border-b border-border pb-5 text-sm">
                     <div><p className="text-xs text-muted-foreground">Duration</p><p className="mt-1 font-medium">{formatDuration(selectedClipReview.end_seconds - selectedClipReview.start_seconds)}</p></div>
                     <div><p className="text-xs text-muted-foreground">Difficulty</p><p className="mt-1 font-medium capitalize">{selectedClipReview.difficulty ?? "Not set"}</p></div>
                     <div><p className="text-xs text-muted-foreground">Concept tags</p><p className="mt-1 font-medium">{selectedClipReview.concept_ids.length}</p></div>
+                    <div><p className="text-xs text-muted-foreground">Playback</p><p className="mt-1 font-medium capitalize">{selectedClipReview.materialization_status === "ready" ? "Independent clip" : "Source range"}</p></div>
                   </div>
                   <label className="mt-5 grid gap-2 text-sm font-medium">
                     Review note
@@ -2577,6 +2614,8 @@ export default function HomePage() {
                 </div>
                 {activeLearnerClip && job?.video_id && playback ? (
                   <ProviderVideo
+                    clipId={activeLearnerClip.id}
+                    clipMaterializationStatus={activeLearnerClip.materialization_status}
                     endSeconds={activeLearnerClip.end_seconds}
                     pipelineBaseUrl={pipelineBaseUrl}
                     playback={playback}

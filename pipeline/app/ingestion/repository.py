@@ -36,6 +36,7 @@ class IngestionRepository(ABC):
         job_id: UUID,
         transcript: Transcript,
         playback: PlaybackReference | None = None,
+        local_source_uri: str | None = None,
     ) -> None:
         """Persist transcript JSON and mark the job complete."""
 

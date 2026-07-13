@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 from uuid import UUID
 
 from app.segmentation.models import TranscriptWord
@@ -19,6 +20,13 @@ class ClipStatus(StrEnum):
     SUPERSEDED = "superseded"
 
 
+class ClipMaterializationStatus(StrEnum):
+    SOURCE_REFERENCE = "source_reference"
+    PROCESSING = "processing"
+    READY = "ready"
+    FAILED = "failed"
+
+
 @dataclass(frozen=True)
 class ClipConcept:
     id: UUID
@@ -35,6 +43,7 @@ class ClipTopicContext:
     summary: str | None
     start_seconds: float
     end_seconds: float
+    source_path: Path | None
 
 
 @dataclass(frozen=True)
@@ -73,10 +82,13 @@ class Clip:
     flag_note: str | None
     superseded_by_clip_id: UUID | None
     source_clip_id: UUID | None
+    playback_provider: str | None
+    playback_id: str | None
+    materialization_status: ClipMaterializationStatus
+    materialization_error: str | None
     created_at: str | None
 
 
 @dataclass(frozen=True)
 class ClipFlag:
     note: str
-

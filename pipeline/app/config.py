@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     video_provider: str = "local"
     force_local_video_delivery: bool = False
     local_video_storage_path: str = "/data/video"
+    local_clip_ffmpeg_timeout_seconds: float = 1800.0
     direct_url_download_timeout_seconds: float = 30.0
     openai_api_key: str | None = Field(default=None)
     mux_token_id: str | None = Field(default=None)
