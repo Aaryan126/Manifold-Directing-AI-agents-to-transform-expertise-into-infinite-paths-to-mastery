@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from psycopg.rows import RowFactory
-from psycopg_pool import AsyncConnectionPool  # type: ignore[import-not-found]
+from psycopg_pool import AsyncConnectionPool
 
 _pools: dict[tuple[str, object | None], AsyncConnectionPool[Any]] = {}
 _pool_lock = asyncio.Lock()
