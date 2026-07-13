@@ -34,6 +34,12 @@ import {
   isTopicReviewedForClipGeneration,
   topicClipGenerationBlockReason,
 } from "./clipReview";
+import {
+  clipDisplayTitle,
+  clipDurationLabel,
+  sourceRangeLabel,
+  topicClipDurationLabel,
+} from "./clipPresentation";
 import { ProviderVideo, type PlaybackInfo } from "./ProviderVideo";
 import {
   dashboardActionScopeLabel,
@@ -2238,9 +2244,9 @@ export default function HomePage() {
                       {clips.map((clip, index) => (
                         <ReviewQueueItem
                           active={clip.id === selectedClipReview?.id}
-                          detail={`${formatTime(clip.start_seconds)}–${formatTime(clip.end_seconds)} · ${clip.status}`}
+                          detail={`${clipDurationLabel(clip)} · ${clip.status}`}
                           key={clip.id}
-                          label={`Clip ${index + 1}: ${clip.type.replaceAll("_", " ")}`}
+                          label={`${index + 1}. ${clipDisplayTitle(clip)}`}
                           onClick={() => setSelectedClipReviewId(clip.id)}
                           status={clip.status}
                         />
@@ -2254,7 +2260,7 @@ export default function HomePage() {
                   <div className="mb-5 flex items-start justify-between gap-4">
                     <div>
                       <p className="text-xs font-medium uppercase text-muted-foreground">{selectedClipReview.type.replaceAll("_", " ")}</p>
-                      <h3 className="mt-1 text-lg font-semibold">{formatTime(selectedClipReview.start_seconds)}–{formatTime(selectedClipReview.end_seconds)}</h3>
+                      <h3 className="mt-1 text-lg font-semibold">{clipDisplayTitle(selectedClipReview)}</h3>
                     </div>
                     <Badge className="capitalize" variant="outline">{selectedClipReview.status}</Badge>
                   </div>
@@ -2276,7 +2282,7 @@ export default function HomePage() {
                     </p>
                   ) : null}
                   <div className="mt-5 grid grid-cols-4 gap-4 border-b border-border pb-5 text-sm">
-                    <div><p className="text-xs text-muted-foreground">Duration</p><p className="mt-1 font-medium">{formatDuration(selectedClipReview.end_seconds - selectedClipReview.start_seconds)}</p></div>
+                    <div><p className="text-xs text-muted-foreground">Duration</p><p className="mt-1 font-medium">{clipDurationLabel(selectedClipReview)}</p></div>
                     <div><p className="text-xs text-muted-foreground">Difficulty</p><p className="mt-1 font-medium capitalize">{selectedClipReview.difficulty ?? "Not set"}</p></div>
                     <div><p className="text-xs text-muted-foreground">Concept tags</p><p className="mt-1 font-medium">{selectedClipReview.concept_ids.length}</p></div>
                     <div><p className="text-xs text-muted-foreground">Playback</p><p className="mt-1 font-medium capitalize">{selectedClipReview.materialization_status === "ready" ? "Independent clip" : "Source range"}</p></div>
@@ -2324,6 +2330,7 @@ export default function HomePage() {
                   </InspectorSection>
                   {selectedClipReview ? (
                     <>
+                      <InspectorSection title="Source provenance"><p className="text-xs leading-5 text-muted-foreground">{sourceRangeLabel(selectedClipReview)}</p></InspectorSection>
                       {selectedClipReview.flag_note ? <InspectorSection title="Existing flag"><p className="text-sm leading-6">{selectedClipReview.flag_note}</p></InspectorSection> : null}
                       {selectedClipReview.source_clip_id ? <InspectorSection title="Source"><p className="break-all text-xs text-muted-foreground">Re-cut from {selectedClipReview.source_clip_id}</p></InspectorSection> : null}
                       <InspectorSection title="Traceability"><TraceabilityBlock artifact={selectedClipReview} /></InspectorSection>
@@ -2610,7 +2617,7 @@ export default function HomePage() {
               <section aria-labelledby="learner-player-title" className="mx-auto max-w-4xl">
                 <div className="mb-4 flex items-end justify-between gap-4">
                   <div><p className="text-xs font-medium uppercase text-muted-foreground">Now learning</p><h3 className="mt-1 text-xl font-semibold" id="learner-player-title">{activeLearnerTopic?.title ?? "Choose a topic"}</h3></div>
-                  {activeLearnerClip ? <p className="text-xs tabular-nums text-muted-foreground">{formatTime(activeLearnerClip.start_seconds)}–{formatTime(activeLearnerClip.end_seconds)}</p> : null}
+                  {activeLearnerClip ? <p className="text-xs text-muted-foreground">{clipDurationLabel(activeLearnerClip)} lesson</p> : null}
                 </div>
                 {activeLearnerClip && job?.video_id && playback ? (
                   <ProviderVideo
@@ -2689,8 +2696,9 @@ export default function HomePage() {
             <aside aria-labelledby="learner-topics" className="border-l border-border bg-muted/20">
               <div className="border-b border-border px-5 py-5"><p className="text-xs font-semibold uppercase text-muted-foreground">Course outline</p><h3 className="mt-1 text-base font-semibold" id="learner-topics">Topics</h3></div>
               <div role="list" aria-labelledby="learner-topics">
-                {topics.filter((topic) => topic.review_status === "accepted" || topic.review_status === "edited").map((topic, index) => (
-                  <button
+                {topics.filter((topic) => topic.review_status === "accepted" || topic.review_status === "edited").map((topic, index) => {
+                  const lessonDuration = topicClipDurationLabel(clips, topic.id);
+                  return <button
                     aria-current={topic.id === activeLearnerTopic?.id ? "true" : undefined}
                     className={`flex w-full items-start gap-3 border-b border-border px-5 py-4 text-left hover:bg-muted ${topic.id === activeLearnerTopic?.id ? "bg-background shadow-[inset_3px_0_0_var(--primary)]" : ""}`}
                     data-slot="learner-topic"
@@ -2699,9 +2707,9 @@ export default function HomePage() {
                     onClick={() => setActiveLearnerTopicId(topic.id)}
                   >
                     <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border text-xs tabular-nums text-muted-foreground">{index + 1}</span>
-                    <span className="min-w-0"><span className="block text-sm font-medium leading-5">{topic.title}</span><span className="mt-1 block text-xs text-muted-foreground">{formatTime(topic.start_seconds)}–{formatTime(topic.end_seconds)}</span></span>
+                    <span className="min-w-0"><span className="block text-sm font-medium leading-5">{topic.title}</span><span className="mt-1 block text-xs text-muted-foreground">{lessonDuration}</span></span>
                   </button>
-                ))}
+                })}
               </div>
             </aside>
           </div>
