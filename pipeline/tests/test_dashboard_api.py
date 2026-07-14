@@ -23,6 +23,10 @@ async def test_dashboard_api_refresh_accept_and_override_flow() -> None:
             assert dashboard.status_code == 200
             body = dashboard.json()
             assert body["not_enough_data"] is False
+            assert body["concept_performance"][0]["concept_name"] == "Elimination"
+            assert body["concept_performance"][0]["struggling_learners"] == 3
+            assert body["question_performance"] == []
+            assert body["clip_performance"] == []
             signal_id = body["signals"][0]["id"]
 
             accepted = await client.post(

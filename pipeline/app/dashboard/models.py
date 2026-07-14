@@ -74,6 +74,9 @@ class DashboardSummary:
     learner_count: int
     attempt_count: int
     signals: tuple[DashboardSignal, ...]
+    concept_stats: tuple[ConceptSignalStats, ...] = ()
+    question_stats: tuple[QuestionSignalStats, ...] = ()
+    clip_stats: tuple[ClipSignalStats, ...] = ()
 
 
 @dataclass(frozen=True)

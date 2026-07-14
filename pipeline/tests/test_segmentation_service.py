@@ -8,6 +8,7 @@ from app.segmentation.local_agent import (
     remove_repeated_intro_noise,
 )
 from app.segmentation.models import (
+    Topic,
     TopicEdit,
     TopicProposal,
     TopicReviewStatus,
@@ -109,6 +110,46 @@ async def test_instructor_edit_preserves_ai_proposal_trace() -> None:
     assert edited.ai_proposal["title"] == "AI title"
     assert edited.instructor_revision is not None
     assert edited.instructor_revision["title"] == "Instructor title"
+
+
+@pytest.mark.anyio
+async def test_list_topics_excludes_rows_from_a_previous_video_course() -> None:
+    video_id = uuid4()
+    course_id = uuid4()
+    transcript = VideoTranscript(
+        video_id=video_id,
+        course_id=course_id,
+        text="lecture",
+        words=(),
+    )
+    repository = MemoryTopicRepository(transcript)
+    valid_topic = repository._topic_from_proposal(
+        video_id,
+        course_id,
+        _proposal("Current course", 0, 600),
+    )
+    stale_topic = Topic(
+        id=uuid4(),
+        course_id=uuid4(),
+        video_id=video_id,
+        title="Previous course",
+        summary="Should not leak into this workspace.",
+        start_seconds=0,
+        end_seconds=600,
+        review_status=TopicReviewStatus.ACCEPTED,
+        ai_proposal=None,
+        instructor_revision=None,
+        approved_at="now",
+        dismissed_at=None,
+    )
+    repository.topics = {valid_topic.id: valid_topic, stale_topic.id: stale_topic}
+
+    topics = await SegmentationService(
+        repository=repository,
+        agent=StaticSegmentationAgent(()),
+    ).list_topics(video_id)
+
+    assert topics == (valid_topic,)
 
 
 @pytest.mark.anyio

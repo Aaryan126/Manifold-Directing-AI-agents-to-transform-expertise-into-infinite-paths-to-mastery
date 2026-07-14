@@ -3,12 +3,14 @@
 import type { FormEvent } from "react";
 import {
   AlertCircle,
+  ArrowRight,
   Check,
   Circle,
   Database,
   Link2,
   LoaderCircle,
   PlayCircle,
+  Sparkles,
   Upload,
 } from "lucide-react";
 
@@ -27,6 +29,7 @@ import {
   ProgressLabel,
 } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { nextProductionAction } from "@/app/productionGuidance";
 
 type CourseSetupWorkspaceProps = {
   course: { title: string; status: "draft" | "published" } | null;
@@ -165,6 +168,19 @@ export function CourseSetupWorkspace({
     detail: step.detail,
     state: step.done ? "complete" : index === activeIndex ? "active" : "pending",
   }));
+  const recommendedAction = nextProductionAction(
+    productionSteps,
+    publishBlockers,
+    course?.status,
+  );
+
+  function openRecommendedAction() {
+    if (!recommendedAction) return;
+    document.getElementById(recommendedAction.target)?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }
 
   return (
     <section className="instructorOnly border-b border-border bg-background" id="course-setup">
@@ -320,6 +336,28 @@ export function CourseSetupWorkspace({
               Course status: <span className="font-medium text-foreground">{course?.status ?? "setup"}</span>
             </p>
           </div>
+
+          {recommendedAction ? (
+            <div className="mb-6 border-y border-primary/20 bg-primary/5 py-4">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase text-primary">
+                <Sparkles aria-hidden="true" className="size-3.5" />
+                Manifold recommends
+              </div>
+              <p className="mt-2 text-sm leading-5 text-foreground">
+                {recommendedAction.reason}
+              </p>
+              <Button
+                className="mt-3 w-full justify-between"
+                onClick={openRecommendedAction}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {recommendedAction.label}
+                <ArrowRight aria-hidden="true" />
+              </Button>
+            </div>
+          ) : null}
 
           <ol className="space-y-0" aria-label="Course production steps">
             {productionSteps.map((step, index) => (

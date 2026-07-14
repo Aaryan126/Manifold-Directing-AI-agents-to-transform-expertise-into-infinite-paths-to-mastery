@@ -29,6 +29,36 @@ async def test_refresh_surfaces_existing_stuck_loop_signal_without_attempt_data(
 
 
 @pytest.mark.anyio
+async def test_refresh_returns_underlying_performance_evidence() -> None:
+    repository = MemoryDashboardRepository()
+    repository.question_stats_value = (
+        QuestionSignalStats(
+            question_id=uuid4(),
+            topic_id=uuid4(),
+            prompt="What is elimination?",
+            attempts=5,
+            incorrect_attempts=2,
+            low_confidence_correct_attempts=1,
+        ),
+    )
+    repository.clip_stats_value = (
+        ClipSignalStats(
+            clip_id=uuid4(),
+            concept_id=repository.concept_id,
+            topic_id=uuid4(),
+            remediation_attempts=2,
+            struggling_learners=1,
+        ),
+    )
+
+    summary = await DashboardService(repository).refresh_dashboard(repository.course_id)
+
+    assert summary.concept_stats == repository.concept_stats_value
+    assert summary.question_stats == repository.question_stats_value
+    assert summary.clip_stats == repository.clip_stats_value
+
+
+@pytest.mark.anyio
 async def test_accept_signal_mutates_underlying_entity_and_records_scope() -> None:
     repository = MemoryDashboardRepository()
     service = DashboardService(repository)

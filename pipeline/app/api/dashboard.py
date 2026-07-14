@@ -36,12 +36,40 @@ class DashboardSignalResponse(BaseModel):
     instructor_action: dict[str, object] | None
 
 
+class ConceptPerformanceResponse(BaseModel):
+    concept_id: UUID
+    concept_name: str
+    touched_learners: int
+    struggling_learners: int
+    mastered_prerequisite_struggling_learners: int
+
+
+class QuestionPerformanceResponse(BaseModel):
+    question_id: UUID
+    topic_id: UUID
+    prompt: str
+    attempts: int
+    incorrect_attempts: int
+    low_confidence_correct_attempts: int
+
+
+class ClipPerformanceResponse(BaseModel):
+    clip_id: UUID
+    concept_id: UUID
+    topic_id: UUID
+    remediation_attempts: int
+    struggling_learners: int
+
+
 class DashboardSummaryResponse(BaseModel):
     course_id: UUID
     learner_count: int
     attempt_count: int
     not_enough_data: bool
     signals: list[DashboardSignalResponse]
+    concept_performance: list[ConceptPerformanceResponse]
+    question_performance: list[QuestionPerformanceResponse]
+    clip_performance: list[ClipPerformanceResponse]
 
 
 class LearnerOverrideResponse(BaseModel):
@@ -63,6 +91,39 @@ async def get_dashboard(
         attempt_count=summary.attempt_count,
         not_enough_data=not_enough_data(summary),
         signals=[_signal_response(signal) for signal in summary.signals],
+        concept_performance=[
+            ConceptPerformanceResponse(
+                concept_id=stats.concept_id,
+                concept_name=stats.concept_name,
+                touched_learners=stats.touched_learners,
+                struggling_learners=stats.struggling_learners,
+                mastered_prerequisite_struggling_learners=(
+                    stats.mastered_prerequisite_struggling_learners
+                ),
+            )
+            for stats in summary.concept_stats
+        ],
+        question_performance=[
+            QuestionPerformanceResponse(
+                question_id=stats.question_id,
+                topic_id=stats.topic_id,
+                prompt=stats.prompt,
+                attempts=stats.attempts,
+                incorrect_attempts=stats.incorrect_attempts,
+                low_confidence_correct_attempts=stats.low_confidence_correct_attempts,
+            )
+            for stats in summary.question_stats
+        ],
+        clip_performance=[
+            ClipPerformanceResponse(
+                clip_id=stats.clip_id,
+                concept_id=stats.concept_id,
+                topic_id=stats.topic_id,
+                remediation_attempts=stats.remediation_attempts,
+                struggling_learners=stats.struggling_learners,
+            )
+            for stats in summary.clip_stats
+        ],
     )
 
 

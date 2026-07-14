@@ -49,6 +49,15 @@ import {
   dashboardSignalTitle,
 } from "./dashboardReview";
 import {
+  percentage,
+  rankedClipPerformance,
+  rankedConceptPerformance,
+  rankedQuestionPerformance,
+  type ClipPerformance,
+  type ConceptPerformance,
+  type QuestionPerformance,
+} from "./dashboardPerformance";
+import {
   clipForRoute,
   masterySummary,
   routeTone,
@@ -208,6 +217,9 @@ type DashboardSummary = {
   attempt_count: number;
   not_enough_data: boolean;
   signals: DashboardSignal[];
+  concept_performance: ConceptPerformance[];
+  question_performance: QuestionPerformance[];
+  clip_performance: ClipPerformance[];
 };
 
 type DevelopmentIdentity = {
@@ -437,6 +449,15 @@ export default function HomePage() {
     ["Graph drift", dashboardSummary?.signals.filter((signal) => signal.type === "graph_drift").length ?? 0],
   ] as const;
   const largestSignalCount = Math.max(1, ...signalChartData.map(([, count]) => count));
+  const conceptPerformance = rankedConceptPerformance(
+    dashboardSummary?.concept_performance ?? [],
+  );
+  const questionPerformance = rankedQuestionPerformance(
+    dashboardSummary?.question_performance ?? [],
+  );
+  const clipPerformance = rankedClipPerformance(
+    dashboardSummary?.clip_performance ?? [],
+  );
   const publishReadinessRevision = [
     ...topics.map((topic) => `topic:${topic.id}:${topic.review_status}`),
     ...(graph?.concepts.map(
@@ -2777,6 +2798,60 @@ export default function HomePage() {
                 </section>
               </div>
               {dashboardColdStartMessage(dashboardSummary) ? <div className="border-b border-amber-200 bg-amber-50 px-8 py-3 text-sm text-amber-900" role="status"><strong>Not enough data yet.</strong> {dashboardColdStartMessage(dashboardSummary)}</div> : null}
+
+              {!dashboardSummary.not_enough_data ? (
+                <section aria-labelledby="performance-evidence-title" className="border-b border-border">
+                  <header className="flex items-end justify-between gap-6 border-b border-border px-6 py-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Performance evidence</p>
+                      <h3 className="mt-1 text-base font-semibold" id="performance-evidence-title">Where learning needs attention</h3>
+                    </div>
+                    <p className="max-w-xl text-right text-xs leading-5 text-muted-foreground">Observed learner behavior, shown before or after it crosses an intervention threshold.</p>
+                  </header>
+                  <div className="grid grid-cols-3">
+                    <div className="min-w-0 border-r border-border px-5 py-5">
+                      <div className="mb-4"><p className="text-xs font-semibold uppercase text-muted-foreground">Concept pressure</p><p className="mt-1 text-xs text-muted-foreground">Share of learners currently struggling</p></div>
+                      <div className="space-y-4">
+                        {conceptPerformance.length ? conceptPerformance.map((item) => {
+                          const rate = percentage(item.struggling_learners, item.touched_learners);
+                          return <div key={item.concept_id}>
+                            <div className="flex items-start justify-between gap-3 text-xs"><span className="min-w-0 truncate font-medium" title={item.concept_name}>{item.concept_name}</span><strong className="shrink-0 tabular-nums">{rate}%</strong></div>
+                            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-amber-500" style={{ width: `${rate}%` }} /></div>
+                            <p className="mt-1 text-[11px] text-muted-foreground">{item.struggling_learners} struggling · {item.touched_learners} reached</p>
+                          </div>;
+                        }) : <p className="text-xs leading-5 text-muted-foreground">No concept mastery evidence yet.</p>}
+                      </div>
+                    </div>
+
+                    <div className="min-w-0 border-r border-border px-5 py-5">
+                      <div className="mb-4"><p className="text-xs font-semibold uppercase text-muted-foreground">Question performance</p><p className="mt-1 text-xs text-muted-foreground">Incorrect and low-confidence responses</p></div>
+                      <div className="space-y-4">
+                        {questionPerformance.length ? questionPerformance.map((item) => {
+                          const incorrectRate = percentage(item.incorrect_attempts, item.attempts);
+                          const uncertainRate = percentage(item.low_confidence_correct_attempts, item.attempts);
+                          return <div className="border-b border-border pb-3 last:border-0" key={item.question_id}>
+                            <p className="truncate text-xs font-medium" title={item.prompt}>{item.prompt}</p>
+                            <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground"><span><strong className="text-foreground">{incorrectRate}%</strong> incorrect</span><span><strong className="text-foreground">{uncertainRate}%</strong> unsure</span><span>{item.attempts} attempts</span></div>
+                          </div>;
+                        }) : <p className="text-xs leading-5 text-muted-foreground">Question performance appears after the first learner response.</p>}
+                      </div>
+                    </div>
+
+                    <div className="min-w-0 px-5 py-5">
+                      <div className="mb-4"><p className="text-xs font-semibold uppercase text-muted-foreground">Remediation demand</p><p className="mt-1 text-xs text-muted-foreground">Clips used when learners need support</p></div>
+                      <div className="space-y-4">
+                        {clipPerformance.length ? clipPerformance.map((item) => {
+                          const clip = clips.find((candidate) => candidate.id === item.clip_id);
+                          return <div className="border-b border-border pb-3 last:border-0" key={item.clip_id}>
+                            <p className="truncate text-xs font-medium" title={clip ? clipDisplayTitle(clip) : item.clip_id}>{clip ? clipDisplayTitle(clip) : "Reviewed remediation clip"}</p>
+                            <p className="mt-2 text-[11px] text-muted-foreground"><strong className="text-foreground">{item.remediation_attempts}</strong> remediation attempts · <strong className="text-foreground">{item.struggling_learners}</strong> struggling learners</p>
+                          </div>;
+                        }) : <p className="text-xs leading-5 text-muted-foreground">No clip has accumulated remediation demand yet.</p>}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              ) : null}
 
               <div className="grid min-h-[560px] grid-cols-[240px_minmax(0,1fr)_minmax(280px,320px)] xl:grid-cols-[280px_minmax(0,1fr)_320px]">
                 <aside className="min-w-0 border-r border-border bg-muted/20" aria-label="Dashboard signal queue">

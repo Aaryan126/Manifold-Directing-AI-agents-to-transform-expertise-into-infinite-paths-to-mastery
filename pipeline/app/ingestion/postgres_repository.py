@@ -82,20 +82,23 @@ class PostgresIngestionRepository(IngestionRepository):
                     from ingestion_jobs j
                     join videos v on v.id = j.video_id
                     where v.source_metadata ->> 'demo_fixture' = 'manifold-default'
+                      and v.course_id = %s
+                      and j.course_id = %s
                       and j.status = 'complete'
                     order by j.created_at
                     limit 1
-                    """
+                    """,
+                    (course_id, course_id),
                 )
             ).fetchone()
             if existing is not None:
                 await conn.execute(
-                    "update videos set source_uri = %s, course_id = %s where id = %s",
-                    (source_uri, course_id, existing["video_id"]),
+                    "update videos set source_uri = %s where id = %s",
+                    (source_uri, existing["video_id"]),
                 )
                 await conn.execute(
-                    "update ingestion_jobs set source_uri = %s, course_id = %s where id = %s",
-                    (source_uri, course_id, existing["id"]),
+                    "update ingestion_jobs set source_uri = %s where id = %s",
+                    (source_uri, existing["id"]),
                 )
                 return _job_from_row({
                     **existing,

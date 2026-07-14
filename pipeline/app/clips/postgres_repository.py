@@ -79,6 +79,9 @@ class PostgresClipRepository(ClipRepository):
                     select c.*
                     from clips c
                     join topics t on t.id = c.topic_id
+                    join videos v
+                      on v.id = t.video_id
+                     and v.course_id = t.course_id
                     where t.video_id = %s
                     order by c.start_seconds asc, c.created_at asc
                     """,

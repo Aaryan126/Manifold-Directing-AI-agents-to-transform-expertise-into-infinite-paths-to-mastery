@@ -45,7 +45,11 @@ class SegmentationService:
         return topics
 
     async def list_topics(self, video_id: UUID) -> tuple[Topic, ...]:
-        return await self._repository.list_topics(video_id)
+        transcript = await self._repository.get_video_transcript(video_id)
+        if transcript is None:
+            return ()
+        topics = await self._repository.list_topics(video_id)
+        return tuple(topic for topic in topics if topic.course_id == transcript.course_id)
 
     async def edit_topic(self, topic_id: UUID, edit: TopicEdit) -> Topic | None:
         validate_edit(edit)

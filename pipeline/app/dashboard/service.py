@@ -4,11 +4,14 @@ from uuid import UUID
 from app.audit.models import AuditEventCreate
 from app.audit.service import AuditService, rationale_from_state, snapshot
 from app.dashboard.models import (
+    ClipSignalStats,
+    ConceptSignalStats,
     DashboardAction,
     DashboardSignal,
     DashboardSignalStatus,
     DashboardSummary,
     LearnerOverride,
+    QuestionSignalStats,
 )
 from app.dashboard.repository import DashboardRepository
 from app.dashboard.signal_generation import generate_signal_proposals
@@ -45,6 +48,9 @@ class DashboardService:
     async def _compute_dashboard(self, course_id: UUID) -> DashboardSummary:
         learner_count = await self._repository.learner_count(course_id)
         attempt_count = await self._repository.attempt_count(course_id)
+        concept_stats: tuple[ConceptSignalStats, ...] = ()
+        question_stats: tuple[QuestionSignalStats, ...] = ()
+        clip_stats: tuple[ClipSignalStats, ...] = ()
         if learner_count > 0 or attempt_count > 0:
             concept_stats = await self._repository.concept_stats(course_id)
             question_stats = await self._repository.question_stats(course_id)
@@ -61,6 +67,9 @@ class DashboardService:
             learner_count=learner_count,
             attempt_count=attempt_count,
             signals=signals,
+            concept_stats=concept_stats,
+            question_stats=question_stats,
+            clip_stats=clip_stats,
         )
 
     async def accept_signal(

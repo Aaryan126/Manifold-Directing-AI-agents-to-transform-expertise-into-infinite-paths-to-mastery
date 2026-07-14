@@ -128,6 +128,9 @@ class PostgresAssessmentRepository(AssessmentRepository):
                     select q.*
                     from questions q
                     join topics t on t.id = q.topic_id
+                    join videos v
+                      on v.id = t.video_id
+                     and v.course_id = t.course_id
                     where t.video_id = %s
                     order by t.start_seconds, q.created_at
                     """,

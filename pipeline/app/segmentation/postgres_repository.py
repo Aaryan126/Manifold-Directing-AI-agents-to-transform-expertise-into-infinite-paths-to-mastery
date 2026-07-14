@@ -62,9 +62,11 @@ class PostgresTopicRepository(TopicRepository):
             await conn.execute(
                 """
                 delete from topics
-                where video_id = %s and review_status = 'proposed'
+                where video_id = %s
+                  and course_id = %s
+                  and review_status = 'proposed'
                 """,
-                (video_id,),
+                (video_id, course_id),
             )
             rows: list[dict[str, Any]] = []
             for proposal in proposals:
@@ -102,10 +104,13 @@ class PostgresTopicRepository(TopicRepository):
             rows = await (
                 await conn.execute(
                     """
-                    select *
-                    from topics
-                    where video_id = %s and review_status <> 'dismissed'
-                    order by start_seconds asc, created_at asc
+                    select t.*
+                    from topics t
+                    join videos v
+                      on v.id = t.video_id
+                     and v.course_id = t.course_id
+                    where t.video_id = %s and t.review_status <> 'dismissed'
+                    order by t.start_seconds asc, t.created_at asc
                     """,
                     (video_id,),
                 )

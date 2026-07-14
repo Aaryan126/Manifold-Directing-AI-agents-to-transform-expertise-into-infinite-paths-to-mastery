@@ -181,7 +181,7 @@ class PostgresDashboardRepository(DashboardRepository):
                     ), remediation as (
                       select
                         clip.id as clip_id,
-                        count(a.id) as attempt_count
+                        count(distinct a.id) as attempt_count
                       from clips clip
                       join clip_concepts cc on cc.clip_id = clip.id
                       join remediation_rules rr
@@ -199,13 +199,19 @@ class PostgresDashboardRepository(DashboardRepository):
                       coalesce(struggling.learner_count, 0) as struggling_learners
                     from clips clip
                     join topics t on t.id = clip.topic_id
-                    join clip_concepts cc on cc.clip_id = clip.id
-                    join concepts c on c.id = cc.concept_id
+                    join lateral (
+                      select linked.concept_id
+                      from clip_concepts linked
+                      join concepts c on c.id = linked.concept_id
+                      where linked.clip_id = clip.id
+                        and c.review_status in ('accepted', 'edited')
+                      order by linked.concept_id
+                      limit 1
+                    ) cc on true
                     left join struggling on struggling.concept_id = cc.concept_id
                     left join remediation on remediation.clip_id = clip.id
                     where t.course_id = %s
                       and clip.status = 'active'
-                      and c.review_status in ('accepted', 'edited')
                     order by clip.start_seconds
                     """,
                     (course_id,),
