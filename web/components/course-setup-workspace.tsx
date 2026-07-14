@@ -3,14 +3,10 @@
 import type { FormEvent } from "react";
 import {
   AlertCircle,
-  ArrowRight,
-  Check,
-  Circle,
   Database,
   Link2,
   LoaderCircle,
   PlayCircle,
-  Sparkles,
   Upload,
 } from "lucide-react";
 
@@ -29,7 +25,6 @@ import {
   ProgressLabel,
 } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-import { nextProductionAction } from "@/app/productionGuidance";
 
 type CourseSetupWorkspaceProps = {
   course: { title: string; status: "draft" | "published" } | null;
@@ -47,141 +42,28 @@ type CourseSetupWorkspaceProps = {
     progress: number;
     error_message: string | null;
   } | null;
-  message: string | null;
   onFileChange: (file: File | null) => void;
   onLoadDemo: () => void;
   onSubmitFile: (event: FormEvent<HTMLFormElement>) => void;
   onSubmitUrl: (event: FormEvent<HTMLFormElement>) => void;
-  publishBlockers: string[];
-  publishReady: boolean;
-  reviewedConceptCount: number;
-  reviewedQuestionCount: number;
-  reviewedTopicCount: number;
-  routingPolicyCount: number;
   selectedFileName: string | null;
-  totalClipCount: number;
-  totalConceptCount: number;
-  totalQuestionCount: number;
-  totalTopicCount: number;
   url: string;
   onUrlChange: (value: string) => void;
 };
-
-type ProductionStep = {
-  label: string;
-  detail: string;
-  state: "complete" | "active" | "pending";
-};
-
-function StepIcon({ state }: { state: ProductionStep["state"] }) {
-  if (state === "complete") {
-    return (
-      <span className="flex size-6 items-center justify-center rounded-full bg-emerald-600 text-white">
-        <Check aria-hidden="true" className="size-3.5" />
-      </span>
-    );
-  }
-  if (state === "active") {
-    return (
-      <span className="flex size-6 items-center justify-center rounded-full border-2 border-primary bg-primary/10 text-primary">
-        <Circle aria-hidden="true" className="size-2 fill-current" />
-      </span>
-    );
-  }
-  return (
-    <span className="flex size-6 items-center justify-center rounded-full border border-border bg-background text-muted-foreground">
-      <Circle aria-hidden="true" className="size-2" />
-    </span>
-  );
-}
 
 export function CourseSetupWorkspace({
   course,
   deliveryCapacity,
   isSubmitting,
   job,
-  message,
   onFileChange,
   onLoadDemo,
   onSubmitFile,
   onSubmitUrl,
-  publishBlockers,
-  publishReady,
-  reviewedConceptCount,
-  reviewedQuestionCount,
-  reviewedTopicCount,
-  routingPolicyCount,
   selectedFileName,
-  totalClipCount,
-  totalConceptCount,
-  totalQuestionCount,
-  totalTopicCount,
   url,
   onUrlChange,
 }: CourseSetupWorkspaceProps) {
-  const stepData = [
-    {
-      label: "Source",
-      detail: job ? (job.status === "complete" ? "Processed" : `${job.progress}% processed`) : "Not added",
-      done: job?.status === "complete",
-    },
-    {
-      label: "Outline",
-      detail: totalTopicCount ? `${reviewedTopicCount}/${totalTopicCount} reviewed` : "Not generated",
-      done: totalTopicCount > 0 && reviewedTopicCount === totalTopicCount,
-    },
-    {
-      label: "Graph",
-      detail: totalConceptCount ? `${reviewedConceptCount}/${totalConceptCount} reviewed` : "Not generated",
-      done: totalConceptCount > 0 && reviewedConceptCount === totalConceptCount,
-    },
-    {
-      label: "Clips",
-      detail: totalClipCount ? `${totalClipCount} extracted` : "Not generated",
-      done: totalClipCount > 0,
-    },
-    {
-      label: "Assessments",
-      detail: totalQuestionCount ? `${reviewedQuestionCount}/${totalQuestionCount} reviewed` : "Not generated",
-      done: totalQuestionCount > 0 && reviewedQuestionCount === totalQuestionCount,
-    },
-    {
-      label: "Routing",
-      detail: routingPolicyCount ? `${routingPolicyCount} policies` : "Not configured",
-      done: routingPolicyCount > 0,
-    },
-    {
-      label: "Publish",
-      detail: course?.status === "published"
-        ? "Live"
-        : publishBlockers.length
-          ? `${publishBlockers.length} blockers`
-          : publishReady
-            ? "Ready"
-            : "Waiting for course",
-      done: course?.status === "published",
-    },
-  ];
-  const activeIndex = Math.max(0, stepData.findIndex((step) => !step.done));
-  const productionSteps: ProductionStep[] = stepData.map((step, index) => ({
-    label: step.label,
-    detail: step.detail,
-    state: step.done ? "complete" : index === activeIndex ? "active" : "pending",
-  }));
-  const recommendedAction = nextProductionAction(
-    productionSteps,
-    publishBlockers,
-    course?.status,
-  );
-
-  function openRecommendedAction() {
-    if (!recommendedAction) return;
-    document.getElementById(recommendedAction.target)?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  }
-
   return (
     <section className="instructorOnly border-b border-border bg-background" id="course-setup">
       <div className="border-b border-border px-6 py-6 xl:px-8">
@@ -315,13 +197,6 @@ export function CourseSetupWorkspace({
               </div>
             )}
 
-            {message ? (
-              <Alert role="status">
-                <AlertCircle aria-hidden="true" />
-                <AlertTitle>Course update</AlertTitle>
-                <AlertDescription>{message}</AlertDescription>
-              </Alert>
-            ) : null}
           </div>
         </div>
 
@@ -337,56 +212,21 @@ export function CourseSetupWorkspace({
             </p>
           </div>
 
-          {recommendedAction ? (
-            <div className="mb-6 border-y border-primary/20 bg-primary/5 py-4">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase text-primary">
-                <Sparkles aria-hidden="true" className="size-3.5" />
-                Manifold recommends
-              </div>
-              <p className="mt-2 text-sm leading-5 text-foreground">
-                {recommendedAction.reason}
-              </p>
-              <Button
-                className="mt-3 w-full justify-between"
-                onClick={openRecommendedAction}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                {recommendedAction.label}
-                <ArrowRight aria-hidden="true" />
-              </Button>
-            </div>
-          ) : null}
-
-          <ol className="space-y-0" aria-label="Course production steps">
-            {productionSteps.map((step, index) => (
-              <li className="relative flex gap-3 pb-5 last:pb-0" key={step.label}>
-                {index < productionSteps.length - 1 ? (
-                  <span className="absolute bottom-0 left-[11px] top-6 w-px bg-border" aria-hidden="true" />
-                ) : null}
-                <StepIcon state={step.state} />
-                <div className="min-w-0 pt-0.5">
-                  <p className={cn("text-sm font-medium", step.state === "pending" && "text-muted-foreground")}>
-                    {step.label}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{step.detail}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-
-          {course?.status === "draft" && publishBlockers.length ? (
-            <Alert className="mt-7 border-amber-300 bg-amber-50 text-amber-950">
-              <AlertCircle aria-hidden="true" />
-              <AlertTitle>Publishing checklist</AlertTitle>
-              <AlertDescription className="text-amber-900">
-                <ul className="mt-1 list-disc space-y-1 pl-4">
-                  {publishBlockers.map((blocker) => <li key={blocker}>{blocker}</li>)}
-                </ul>
-              </AlertDescription>
-            </Alert>
-          ) : null}
+          <div className="border-y border-border py-4">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">Source state</p>
+            <p className="mt-2 text-sm font-medium">
+              {!job ? "Waiting for source" : job.status === "complete" ? "Transcript ready" : job.status === "failed" ? "Needs attention" : "Processing"}
+            </p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              {!job
+                ? "Choose a lecture or load the prepared demo."
+                : job.status === "complete"
+                  ? "Continue to Structure from the production stages above."
+                  : job.status === "failed"
+                    ? "Review the error and retry with another source."
+                    : "Manifold will update this workspace when processing completes."}
+            </p>
+          </div>
 
           {deliveryCapacity?.provider === "mux" ? (
             <Alert

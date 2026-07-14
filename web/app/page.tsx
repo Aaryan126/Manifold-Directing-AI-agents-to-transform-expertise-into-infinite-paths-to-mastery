@@ -58,6 +58,14 @@ import {
   type QuestionPerformance,
 } from "./dashboardPerformance";
 import {
+  buildWorkflow,
+  topicRepairTarget,
+  type CreationStageId,
+  type InstructorStageId,
+  type TopicReadiness,
+  type WorkflowTask,
+} from "./instructorWorkflow";
+import {
   clipForRoute,
   masterySummary,
   routeTone,
@@ -80,6 +88,10 @@ import {
 } from "./traceability";
 import { CourseFoundryShell } from "@/components/coursefoundry-shell";
 import { CourseSetupWorkspace } from "@/components/course-setup-workspace";
+import {
+  InstructorProductionStudio,
+  InstructorPublishReview,
+} from "@/components/instructor-production-studio";
 import {
   InspectorSection,
   ReviewQueueHeader,
@@ -266,6 +278,7 @@ export default function HomePage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [url, setUrl] = useState("");
   const [job, setJob] = useState<Job | null>(null);
+  const [workflowHydratedJobId, setWorkflowHydratedJobId] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [selectedTopicReviewId, setSelectedTopicReviewId] = useState("");
@@ -321,7 +334,10 @@ export default function HomePage() {
   const [learnerConfidence, setLearnerConfidence] = useState<number | null>(null);
   const [isGradingAnswer, setIsGradingAnswer] = useState(false);
   const [gradingFeedback, setGradingFeedback] = useState<string | null>(null);
+  const [activeInstructorStage, setActiveInstructorStage] = useState<InstructorStageId>("source");
+  const [showAllInstructorWorkspaces, setShowAllInstructorWorkspaces] = useState(false);
   const hydratedJobs = useRef(new Set<string>());
+  const workflowAutoFocusedJob = useRef<string | null>(null);
   const refreshJobRef = useRef<() => Promise<void>>(async () => undefined);
   const hydrateCompletedJobRef = useRef<(nextJob: Job) => Promise<void>>(async () => undefined);
   const selectedIdentity =
@@ -662,6 +678,7 @@ export default function HomePage() {
         }
         await loadPlayback(nextJob.video_id);
         await loadDeliveryCapacity();
+        setWorkflowHydratedJobId(nextJob.id);
       }
     } catch (error) {
       hydratedJobs.current.delete(nextJob.id);
@@ -1837,14 +1854,124 @@ export default function HomePage() {
     simulatorQuestions.find((question) => question.id === selectedSimulatorQuestionId) ?? simulatorQuestions[0] ?? null;
   const selectedDashboardSignal =
     dashboardSummary?.signals.find((signal) => signal.id === selectedDashboardSignalId) ?? dashboardSummary?.signals[0] ?? null;
+  const reviewedConcepts = graph?.concepts.filter(
+    (concept) => concept.review_status === "accepted" || concept.review_status === "edited",
+  ) ?? [];
+  const topicReadiness: TopicReadiness[] = topics
+    .filter((topic) => topic.review_status !== "dismissed")
+    .map((topic) => ({
+      id: topic.id,
+      title: topic.title,
+      reviewStatus: topic.review_status,
+      reviewedConcepts: reviewedConceptCountForTopic(topic.id, graph?.concepts ?? []),
+      clips: clips.filter((clip) => clip.topic_id === topic.id && clip.status !== "superseded").length,
+      approvedQuestions: questions.filter(
+        (question) => question.topic_id === topic.id &&
+          (question.review_status === "accepted" || question.review_status === "edited"),
+      ).length,
+      proposedQuestions: questions.filter(
+        (question) => question.topic_id === topic.id && question.review_status === "proposed",
+      ).length,
+    }));
+  const workflow = buildWorkflow({
+    sourceStatus: !job
+      ? "missing"
+      : job.status === "complete"
+        ? "complete"
+        : job.status === "failed"
+          ? "failed"
+          : "processing",
+    topicCount: topics.length,
+    proposedTopics: topics.filter((topic) => topic.review_status === "proposed").length,
+    reviewedTopics: topics.filter(
+      (topic) => topic.review_status === "accepted" || topic.review_status === "edited",
+    ).length,
+    conceptCount: graph?.concepts.length ?? 0,
+    proposedConcepts: graph?.concepts.filter((concept) => concept.review_status === "proposed").length ?? 0,
+    proposedEdges: graph?.edges.filter((edge) => edge.review_status === "proposed").length ?? 0,
+    topicsMissingConcepts: topicReadiness.filter(
+      (topic) => topic.reviewStatus !== "proposed" && topic.reviewedConcepts === 0,
+    ).length,
+    topicsMissingClips: topicReadiness.filter(
+      (topic) => topic.reviewedConcepts > 0 && topic.clips === 0,
+    ).length,
+    topicsMissingQuestions: topicReadiness.filter(
+      (topic) => topic.reviewedConcepts > 0 && topic.approvedQuestions === 0 && topic.proposedQuestions === 0,
+    ).length,
+    proposedQuestions: questions.filter((question) => question.review_status === "proposed").length,
+    reviewedQuestions: questions.filter(
+      (question) => question.review_status === "accepted" || question.review_status === "edited",
+    ).length,
+    reviewedConcepts: reviewedConcepts.length,
+    routingPolicyCount: routingPolicies.filter((policy) => policy.concept_id).length,
+    routingTested: routeDecision !== null,
+    publishBlockers: publishReadiness?.blockers ?? [],
+    publishReady: publishReadiness?.ready ?? false,
+    published: course?.status === "published",
+  });
+
+  useEffect(() => {
+    if (!workflowHydratedJobId || workflowHydratedJobId !== job?.id || isLearnerContext) return;
+    if (workflowAutoFocusedJob.current === workflowHydratedJobId) return;
+    workflowAutoFocusedJob.current = workflowHydratedJobId;
+    setActiveInstructorStage(workflow.recommendedStage);
+    setShowAllInstructorWorkspaces(false);
+  }, [workflowHydratedJobId, job?.id, isLearnerContext, workflow.recommendedStage]);
+
+  function instructorWorkspaceVisible(stage: CreationStageId | "insights") {
+    return showAllInstructorWorkspaces || activeInstructorStage === stage;
+  }
+
+  function stageForTarget(target: string): CreationStageId {
+    if (target === "course-setup") return "source";
+    if (target === "outline" || target === "concept-graph") return "structure";
+    if (target === "clips" || target === "assessments") return "learning";
+    if (target === "routing" || target === "routing-simulator") return "adapt";
+    return "publish";
+  }
+
+  function openInstructorWorkspace(stage: CreationStageId, target: string) {
+    setActiveInstructorStage(stage);
+    setShowAllInstructorWorkspaces(false);
+    window.setTimeout(() => {
+      document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }
+
+  function openWorkflowTask(task: WorkflowTask) {
+    if (task.id === "review-topics") {
+      setSelectedTopicReviewId(topics.find((topic) => topic.review_status === "proposed")?.id ?? "");
+    } else if (task.id === "review-graph") {
+      setSelectedGraphConceptId(graph?.concepts.find((concept) => concept.review_status === "proposed")?.id ?? "");
+    } else if (task.id === "review-questions") {
+      setSelectedQuestionReviewId(questions.find((question) => question.review_status === "proposed")?.id ?? "");
+    }
+    openInstructorWorkspace(stageForTarget(task.target), task.target);
+  }
+
+  function openTopicRepair(topic: TopicReadiness) {
+    const destination = topicRepairTarget(topic);
+    setSelectedTopicReviewId(topic.id);
+    setSelectedClipReviewId(clips.find((clip) => clip.topic_id === topic.id)?.id ?? "");
+    setSelectedQuestionReviewId(questions.find((question) => question.topic_id === topic.id)?.id ?? "");
+    setSelectedGraphConceptId(
+      graph?.concepts.find((concept) => conceptTopicIds(concept).includes(topic.id))?.id ?? "",
+    );
+    openInstructorWorkspace(destination.stage, destination.target);
+  }
 
   return (
     <CourseFoundryShell
+      activeInstructorView={activeInstructorStage === "insights" ? "insights" : "build"}
       courseStatus={course?.status}
       courseTitle={course?.title ?? "Course workspace"}
       identities={identities}
       isLearner={isLearnerContext}
       onIdentityChange={(identityId) => void changeIdentity(identityId)}
+      onInstructorViewChange={(view) => {
+        setShowAllInstructorWorkspaces(false);
+        setActiveInstructorStage(view === "insights" ? "insights" : workflow.recommendedStage);
+      }}
       onPublish={() => void publishCourse()}
       publishDisabled={
         selectedIdentity?.role !== "instructor" ||
@@ -1860,45 +1987,49 @@ export default function HomePage() {
           isLearnerContext ? "learnerContext" : "instructorContext"
         }`}
       >
-      <CourseSetupWorkspace
+      {!isLearnerContext && activeInstructorStage !== "insights" ? (
+        <InstructorProductionStudio
+          activeStage={activeInstructorStage}
+          advancedMode={showAllInstructorWorkspaces}
+          onOpenTask={openWorkflowTask}
+          onOpenTopic={openTopicRepair}
+          onStageChange={setActiveInstructorStage}
+          onToggleAdvancedMode={() => setShowAllInstructorWorkspaces((current) => !current)}
+          stages={workflow.stages}
+          tasks={workflow.tasks}
+          topics={topicReadiness}
+        />
+      ) : null}
+      {message ? (
+        <div className="border-b border-border bg-primary/5 px-6 py-3 text-sm text-foreground xl:px-8" role="status">
+          {!isLearnerContext ? <strong className="font-semibold">Course update: </strong> : null}{message}
+        </div>
+      ) : null}
+
+      <div className={instructorWorkspaceVisible("source") ? "" : "hidden"}>
+        <CourseSetupWorkspace
         course={course}
         deliveryCapacity={deliveryCapacity}
         isSubmitting={isSubmitting}
         job={job}
-        message={isLearnerContext ? null : message}
         onFileChange={setSelectedFile}
         onLoadDemo={() => void loadDemo()}
         onSubmitFile={uploadFile}
         onSubmitUrl={submitUrl}
         onUrlChange={setUrl}
-        publishBlockers={publishReadiness?.blockers ?? []}
-        publishReady={publishReadiness?.ready ?? false}
-        reviewedConceptCount={graph?.concepts.filter((concept) => concept.review_status !== "proposed").length ?? 0}
-        reviewedQuestionCount={questions.filter((question) => question.review_status !== "proposed").length}
-        reviewedTopicCount={topics.filter((topic) => topic.review_status !== "proposed").length}
-        routingPolicyCount={routingPolicies.length}
         selectedFileName={selectedFile?.name ?? null}
-        totalClipCount={clips.length}
-        totalConceptCount={graph?.concepts.length ?? 0}
-        totalQuestionCount={questions.length}
-        totalTopicCount={topics.length}
         url={url}
       />
-      {isLearnerContext && message ? (
-        <div className="border-b border-border bg-primary/5 px-8 py-3 text-sm text-foreground" role="status">
-          {message}
-        </div>
-      ) : null}
-
       {transcript ? (
         <details className="instructorOnly border-b border-border bg-background px-6 py-4 xl:px-8">
           <summary className="cursor-pointer text-sm font-medium">View processed transcript <span className="ml-2 text-xs font-normal text-muted-foreground">{transcript.words.length} timestamped words</span></summary>
           <p className="mt-4 max-w-4xl whitespace-pre-wrap text-sm leading-7 text-muted-foreground">{transcript.text}</p>
         </details>
       ) : null}
+      </div>
 
       {transcript && job?.video_id ? (
-        <div id="outline">
+        <div className={instructorWorkspaceVisible("structure") ? "" : "hidden"} id="outline">
           <ReviewWorkspace
             description="Confirm topic boundaries, titles, and summaries before graph generation."
             eyebrow="Content review"
@@ -2063,7 +2194,7 @@ export default function HomePage() {
       ) : null}
 
       {job?.course_id ? (
-        <section className="instructorOnly border-b border-border bg-background" id="concept-graph">
+        <section className={`instructorOnly border-b border-border bg-background ${instructorWorkspaceVisible("structure") ? "" : "hidden"}`} id="concept-graph">
           <header className="flex min-h-24 flex-wrap items-center justify-between gap-4 border-b border-border px-6 py-5 xl:px-8">
             <div>
               <p className="text-xs font-semibold uppercase text-muted-foreground">Knowledge structure</p>
@@ -2240,7 +2371,7 @@ export default function HomePage() {
       ) : null}
 
       {job?.video_id && topics.length > 0 ? (
-        <div id="clips">
+        <div className={instructorWorkspaceVisible("learning") ? "" : "hidden"} id="clips">
           <ReviewWorkspace
             description="Preview source boundaries and flag only clips that need a corrected cut."
             eyebrow="Media review"
@@ -2365,7 +2496,7 @@ export default function HomePage() {
       ) : null}
 
       {job?.video_id && topics.length > 0 ? (
-        <div id="assessments">
+        <div className={instructorWorkspaceVisible("learning") ? "" : "hidden"} id="assessments">
           <ReviewWorkspace
             description="Approve learner-facing checks and verify that remediation maps to reviewed content."
             eyebrow="Assessment review"
@@ -2519,7 +2650,7 @@ export default function HomePage() {
       ) : null}
 
       {job?.course_id && graph ? (
-        <div id="routing">
+        <div className={instructorWorkspaceVisible("adapt") ? "" : "hidden"} id="routing">
           <ReviewWorkspace
             description="Tune mastery and remediation thresholds for each reviewed concept."
             eyebrow="Adaptive learning"
@@ -2576,7 +2707,7 @@ export default function HomePage() {
       ) : null}
 
       {questions.some((question) => question.review_status === "accepted" || question.review_status === "edited") ? (
-        <section className="instructorOnly border-b border-border bg-background" id="routing-simulator">
+        <section className={`instructorOnly border-b border-border bg-background ${instructorWorkspaceVisible("adapt") ? "" : "hidden"}`} id="routing-simulator">
           <header className="flex items-center justify-between gap-6 border-b border-border px-6 py-5 xl:px-8">
             <div><p className="text-xs font-semibold uppercase text-muted-foreground">Policy validation</p><h2 className="mt-1 text-xl font-semibold">Learner routing simulator</h2><p className="mt-1 text-sm text-muted-foreground">Test deterministic outcomes before publishing.</p></div>
             <Button onClick={createDemoLearner} type="button">
@@ -2604,6 +2735,20 @@ export default function HomePage() {
             </aside>
           </div>
         </section>
+      ) : null}
+
+      {job?.course_id ? (
+        <div className={instructorWorkspaceVisible("publish") ? "" : "hidden"}>
+          <InstructorPublishReview
+            blockers={publishReadiness?.blockers ?? []}
+            courseStatus={course?.status}
+            onOpenTask={openWorkflowTask}
+            onPublish={() => void publishCourse()}
+            publishReady={publishReadiness?.ready ?? false}
+            stages={workflow.stages}
+            tasks={workflow.tasks}
+          />
+        </div>
       ) : null}
 
       {learnerQuestions.length > 0 ? (
@@ -2766,7 +2911,7 @@ export default function HomePage() {
       ) : null}
 
       {job?.course_id ? (
-        <section className="instructorOnly border-b border-border bg-background" id="insights">
+        <section className={`instructorOnly border-b border-border bg-background ${instructorWorkspaceVisible("insights") ? "" : "hidden"}`} id="insights">
           <header className="flex min-h-24 items-center justify-between gap-6 border-b border-border px-6 py-5 xl:px-8">
             <div><p className="text-xs font-semibold uppercase text-muted-foreground">Learning operations</p><h2 className="mt-1 text-xl font-semibold">Instructor dashboard</h2><p className="mt-1 text-sm text-muted-foreground">Review evidence-backed signals and correct the underlying learning system.</p></div>
             <Button onClick={() => loadDashboard(job.course_id!)} type="button"><RefreshCw data-icon="inline-start" /> Refresh signals</Button>

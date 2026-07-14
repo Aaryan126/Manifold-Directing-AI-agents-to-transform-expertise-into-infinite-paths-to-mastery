@@ -4,17 +4,11 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import {
   BarChart3Icon,
   BookOpenCheckIcon,
-  ClipboardCheckIcon,
   EyeIcon,
-  FilmIcon,
   GraduationCapIcon,
   GitBranchIcon,
-  LayoutDashboardIcon,
-  ListTreeIcon,
-  NetworkIcon,
   PlayCircleIcon,
   RouteIcon,
-  Settings2Icon,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -41,27 +35,22 @@ type IdentityOption = {
 };
 
 type CourseFoundryShellProps = {
+  activeInstructorView: "build" | "insights";
   children: ReactNode;
   courseStatus?: "draft" | "published";
   courseTitle?: string;
   identities: IdentityOption[];
   isLearner: boolean;
   onIdentityChange: (identityId: string) => void;
+  onInstructorViewChange: (view: "build" | "insights") => void;
   onPublish: () => void;
   publishDisabled: boolean;
   selectedIdentityId: string;
 };
 
 const instructorNavigation = [
-  { label: "Overview", target: "course-overview", icon: LayoutDashboardIcon },
-  { label: "Course setup", target: "course-setup", icon: Settings2Icon },
-  { label: "Outline", target: "outline", icon: ListTreeIcon },
-  { label: "Concept graph", target: "concept-graph", icon: NetworkIcon },
-  { label: "Clips", target: "clips", icon: FilmIcon },
-  { label: "Assessments", target: "assessments", icon: ClipboardCheckIcon },
-  { label: "Routing", target: "routing", icon: RouteIcon },
-  { label: "Learner preview", target: "routing-simulator", icon: EyeIcon },
-  { label: "Insights", target: "insights", icon: BarChart3Icon },
+  { label: "Build course", view: "build", icon: BookOpenCheckIcon },
+  { label: "Insights", view: "insights", icon: BarChart3Icon },
 ] as const;
 
 const learnerNavigation = [
@@ -72,26 +61,32 @@ const learnerNavigation = [
 ] as const;
 
 export function CourseFoundryShell({
+  activeInstructorView,
   children,
   courseStatus = "draft",
   courseTitle = "Course workspace",
   identities,
   isLearner,
   onIdentityChange,
+  onInstructorViewChange,
   onPublish,
   publishDisabled,
   selectedIdentityId,
 }: CourseFoundryShellProps) {
-  const navigation = isLearner ? learnerNavigation : instructorNavigation;
-  const [activeItem, setActiveItem] = useState<string>(navigation[0].label);
+  const [activeLearnerItem, setActiveLearnerItem] = useState<string>(learnerNavigation[0].label);
 
   useEffect(() => {
-    setActiveItem(navigation[0].label);
-  }, [isLearner, navigation]);
+    setActiveLearnerItem(learnerNavigation[0].label);
+  }, [isLearner]);
 
   function navigateTo(target: string, label?: string) {
-    if (label) setActiveItem(label);
+    if (label) setActiveLearnerItem(label);
     document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function previewCourse() {
+    const learner = identities.find((identity) => identity.role === "learner");
+    if (learner) onIdentityChange(learner.id);
   }
 
   return (
@@ -105,7 +100,9 @@ export function CourseFoundryShell({
             <SidebarMenuItem>
               <SidebarMenuButton
                 className="h-10 font-semibold tracking-[-0.01em]"
-                onClick={() => navigateTo(isLearner ? "learner-preview" : "course-overview", navigation[0].label)}
+                onClick={() => isLearner
+                  ? navigateTo("learner-preview", learnerNavigation[0].label)
+                  : onInstructorViewChange("build")}
                 tooltip="Manifold"
               >
                 <span className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
@@ -121,12 +118,17 @@ export function CourseFoundryShell({
           <SidebarGroup className="px-2 py-3">
             <SidebarGroupContent>
               <SidebarMenu className="gap-1">
-                {navigation.map((item) => (
-                  <SidebarMenuItem key={`${item.label}-${item.target}`}>
+                {(isLearner ? learnerNavigation : instructorNavigation).map((item) => (
+                  <SidebarMenuItem key={item.label}>
                     <SidebarMenuButton
                       className="h-10"
-                      isActive={activeItem === item.label}
-                      onClick={() => navigateTo(item.target, item.label)}
+                      isActive={isLearner
+                        ? activeLearnerItem === item.label
+                        : activeInstructorView === ("view" in item ? item.view : "build")}
+                      onClick={() => {
+                        if (isLearner && "target" in item) navigateTo(item.target, item.label);
+                        if (!isLearner && "view" in item) onInstructorViewChange(item.view);
+                      }}
                       tooltip={item.label}
                     >
                       <item.icon />
@@ -178,7 +180,7 @@ export function CourseFoundryShell({
             </div>
             {!isLearner ? (
               <>
-              <Button variant="outline" onClick={() => navigateTo("learner-preview")}>
+              <Button variant="outline" onClick={previewCourse}>
                 <EyeIcon data-icon="inline-start" />
                 Preview course
               </Button>

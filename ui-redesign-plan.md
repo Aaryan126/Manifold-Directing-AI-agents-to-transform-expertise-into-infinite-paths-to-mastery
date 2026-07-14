@@ -1,8 +1,8 @@
 # Manifold UI/UX Redesign Plan
 
-**Status:** Automated tests passing; awaiting human confirmation
-**Current stage:** Stage 8 - Human retest pending
-**Last updated:** 2026-07-12
+**Status:** Guided production studio automated tests passing; awaiting human confirmation
+**Current stage:** Stage 8 - Guided production studio human retest pending
+**Last updated:** 2026-07-14
 **Scope:** Desktop and laptop web only. Tablet, mobile, and native-app layouts are not part of this redesign.
 
 This is the ground-truth execution document for the Phase 10 production UI/UX redesign. Update it whenever a stage starts, a deliverable is completed, a design decision is approved, or a blocker is found. Do not silently skip stages or change the approved visual direction.
@@ -29,9 +29,9 @@ Manifold is a calm instructional operating system: precise and information-dense
 
 ### Instructor workspace
 
-`Overview -> Course setup -> Outline -> Concept graph -> Clips -> Assessments -> Routing -> Learner preview -> Insights`
+Course creation uses `Source -> Structure -> Learning material -> Adaptation -> Publish`, with `Insights` as a separate post-publication operating workspace.
 
-The instructor experience uses a subdued left navigation rail, a compact course header, one primary working surface, and a contextual right inspector. Review work is organized as queues and focused editors instead of one long page.
+The instructor experience uses a subdued left navigation rail, a compact course header, one active production stage, and contextual inspectors. An agent-style review inbox surfaces the next persisted proposals or blockers, and a topic course map opens the appropriate repair surface. Review work is organized as queues and focused editors instead of one long page. The previous all-workspaces document is retained only as an explicit advanced mode.
 
 ### Learner workspace
 
@@ -131,6 +131,8 @@ The learner experience prioritizes the current lesson, the next recommended acti
 
 ## Decisions Log
 
+- 2026-07-14: User approved the guided-stage plus agent-review-inbox recommendation after testing found that anchor navigation over a page containing every instructor workspace remained overwhelming. Five creation stages become the default, `Insights` stays separate, a topic course map supports local repair, and all-workspaces becomes advanced mode. Existing APIs, persistence, review semantics, audit behavior, and learner logic remain unchanged.
+- 2026-07-14: Guided production studio implementation completed. The shell now switches between Build course and Insights instead of anchor-scrolling; five production stages control workspace visibility; the review inbox, automatic unresolved-stage resume, Course Map repair routing, focused Publish review, cross-stage feedback, and advanced all-workspaces mode are implemented. Frontend lint/typecheck, 42 unit tests, production build, and 8 applicable Playwright journey/guided-stage/WCAG/visual/overflow tests pass; the local credential-gated Mux test skips. Human confirmation remains pending.
 - 2026-07-12: User approved a staged production-grade redesign split across shared foundations, instructor workflows, learner workflows, and hardening.
 - 2026-07-12: Desktop and laptop web are the only responsive targets for this redesign; tablet and mobile are explicitly excluded.
 - 2026-07-12: Linear is the primary reference for hierarchy, navigation, review queues, and dashboard restraint; Miro informs the graph canvas; Coursera informs learner orientation; Duolingo informs path sequencing only, without playful character styling.

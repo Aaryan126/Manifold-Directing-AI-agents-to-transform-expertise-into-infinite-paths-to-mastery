@@ -259,15 +259,16 @@ test("publishing checklist refreshes after reviewed artifacts load", async ({ pa
   await expect(page.getByText("At least one reviewed topic is required.")).toBeHidden();
 });
 
-test("one-click demo loads the cached source and enters topic review", async ({ page }) => {
+test("one-click demo loads the cached source and resumes the next production stage", async ({ page }) => {
   await routeDevelopmentContext(page);
   await routeReviewedCourse(page);
   await page.goto("/");
 
   await page.getByRole("button", { name: "Use demo" }).click();
 
-  await expect(page.getByText("View processed transcript")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Topic outline" })).toBeVisible();
+  await expect(page.getByText("View processed transcript")).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Adaptation", exact: true })).toBeVisible();
+  await expect(page.locator("#routing")).toBeVisible();
 });
 
 test("instructor publishes, learner enrolls, and dashboard correction closes the loop", async ({
@@ -285,6 +286,7 @@ test("instructor publishes, learner enrolls, and dashboard correction closes the
   await page.getByRole("button", { name: "Publish course" }).click();
   await expect(page.getByText("Course status:")).toContainText("published");
 
+  await page.getByRole("button", { name: "Insights", exact: true }).click();
   const dashboard = page.locator("#insights");
   await expect(
     dashboard.getByText("Possible missing prerequisite", { exact: true }),
@@ -330,15 +332,49 @@ async function loadReviewedWorkspace(page: Page) {
   const ingestButton = page.getByRole("button", { name: "Ingest URL" });
   await expect(ingestButton).toBeEnabled();
   await ingestButton.click();
-  await expect(page.getByRole("heading", { name: "Topic Outline" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Adaptation", exact: true })).toBeVisible();
+  await page.locator('[data-stage="structure"]').click();
+  await expect(page.getByRole("heading", { name: "Topic outline", exact: true })).toBeVisible();
 }
+
+test("guided production shows one stage and keeps advanced workspaces optional", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await loadReviewedWorkspace(page);
+
+  await expect(page.getByRole("heading", { name: "Structure", exact: true })).toBeVisible();
+  await expect(page.locator("#outline")).toBeVisible();
+  await expect(page.locator("#concept-graph")).toBeVisible();
+  await expect(page.locator("#course-setup")).toBeHidden();
+  await expect(page.locator("#clips")).toBeHidden();
+
+  await page.locator('[data-stage="learning"]').click();
+  await expect(page.getByRole("heading", { name: "Learning material", exact: true })).toBeVisible();
+  await expect(page.locator("#clips")).toBeVisible();
+  await expect(page.locator("#assessments")).toBeVisible();
+  await expect(page.locator("#outline")).toBeHidden();
+
+  await page.getByRole("button", { name: "Course map" }).click();
+  await expect(page.getByRole("heading", { name: "Course map" })).toBeVisible();
+  await page.getByRole("button", { name: /Vector basics/ }).click();
+  await expect(page.locator("#assessments")).toBeVisible();
+
+  await page.getByRole("button", { name: "All workspaces" }).click();
+  await expect(page.locator("#course-setup")).toBeVisible();
+  await expect(page.locator("#outline")).toBeVisible();
+  await expect(page.locator("#routing")).toBeVisible();
+});
 
 test("instructor workspaces match approved desktop visual system", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
   await loadReviewedWorkspace(page);
   await expect(page.locator("#concept-graph .react-flow__node")).toBeVisible();
 
-  for (const id of ["course-setup", "outline", "concept-graph", "insights"]) {
+  await page.locator('[data-stage="adapt"]').click();
+  await expect(page.locator("#production-studio")).toHaveScreenshot("production-studio-desktop.png", {
+    animations: "disabled",
+  });
+  await page.locator('[data-stage="structure"]').click();
+  for (const id of ["outline", "concept-graph"]) {
     const workspace = page.locator(`#${id}`);
     await expect(workspace).toBeVisible();
     await expect(workspace).toHaveScreenshot(`${id}-desktop.png`, {
@@ -347,14 +383,24 @@ test("instructor workspaces match approved desktop visual system", async ({ page
       maxDiffPixels: id === "concept-graph" ? 500 : 0,
     });
   }
+  await page.locator('[data-stage="source"]').click();
+  await expect(page.locator("#course-setup")).toHaveScreenshot("course-setup-desktop.png", {
+    animations: "disabled",
+  });
+  await page.getByRole("button", { name: "Insights", exact: true }).click();
+  await expect(page.locator("#insights")).toHaveScreenshot("insights-desktop.png", {
+    animations: "disabled",
+  });
 });
 
 test("laptop and learner workspaces do not overflow", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await loadReviewedWorkspace(page);
+  await page.getByRole("button", { name: "All workspaces" }).click();
 
   const viewportOverflow = await page.evaluate(() =>
     [...document.querySelectorAll<HTMLElement>("body *")]
+      .filter((element) => !element.closest(".react-flow"))
       .map((element) => {
         const bounds = element.getBoundingClientRect();
         return {
