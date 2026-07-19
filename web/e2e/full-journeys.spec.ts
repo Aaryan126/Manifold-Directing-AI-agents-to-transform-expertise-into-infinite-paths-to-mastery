@@ -267,7 +267,7 @@ test("one-click demo loads the cached source and resumes the next production sta
   await page.getByRole("button", { name: "Use demo" }).click();
 
   await expect(page.getByText("View processed transcript")).toBeHidden();
-  await expect(page.getByRole("heading", { name: "Adaptation", exact: true })).toBeVisible();
+  await expect(page.locator('[data-stage="adapt"][aria-current="step"]')).toBeVisible();
   await expect(page.locator("#routing")).toBeVisible();
 });
 
@@ -332,7 +332,7 @@ async function loadReviewedWorkspace(page: Page) {
   const ingestButton = page.getByRole("button", { name: "Ingest URL" });
   await expect(ingestButton).toBeEnabled();
   await ingestButton.click();
-  await expect(page.getByRole("heading", { name: "Adaptation", exact: true })).toBeVisible();
+  await expect(page.locator('[data-stage="adapt"][aria-current="step"]')).toBeVisible();
   await page.locator('[data-stage="structure"]').click();
   await expect(page.getByRole("heading", { name: "Topic outline", exact: true })).toBeVisible();
 }
@@ -341,14 +341,19 @@ test("guided production shows one stage and keeps advanced workspaces optional",
   await page.setViewportSize({ width: 1440, height: 900 });
   await loadReviewedWorkspace(page);
 
-  await expect(page.getByRole("heading", { name: "Structure", exact: true })).toBeVisible();
+  const sidebar = page.locator('[data-slot="sidebar"]').first();
+  await expect(sidebar).toHaveAttribute("data-state", "expanded");
+  await page.getByRole("button", { name: "Collapse or expand navigation" }).click();
+  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+
+  await expect(page.locator('[data-stage="structure"][aria-current="step"]')).toBeVisible();
   await expect(page.locator("#outline")).toBeVisible();
   await expect(page.locator("#concept-graph")).toBeVisible();
   await expect(page.locator("#course-setup")).toBeHidden();
   await expect(page.locator("#clips")).toBeHidden();
 
   await page.locator('[data-stage="learning"]').click();
-  await expect(page.getByRole("heading", { name: "Learning material", exact: true })).toBeVisible();
+  await expect(page.locator('[data-stage="learning"][aria-current="step"]')).toBeVisible();
   await expect(page.locator("#clips")).toBeVisible();
   await expect(page.locator("#assessments")).toBeVisible();
   await expect(page.locator("#outline")).toBeHidden();

@@ -3,17 +3,11 @@
 import { useState } from "react";
 import {
   ArrowRight,
-  BookOpenCheck,
   Check,
-  GitBranch,
-  ListChecks,
   LockKeyhole,
   Map,
   PanelsTopLeft,
-  PlayCircle,
   Rocket,
-  Route,
-  Upload,
 } from "lucide-react";
 
 import {
@@ -36,130 +30,108 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
-const stageIcons = {
-  source: Upload,
-  structure: GitBranch,
-  learning: BookOpenCheck,
-  adapt: Route,
-  publish: Rocket,
-} satisfies Record<CreationStageId, typeof Upload>;
-
 type InstructorProductionStudioProps = {
   activeStage: CreationStageId;
   advancedMode: boolean;
-  onOpenTask: (task: WorkflowTask) => void;
   onOpenTopic: (topic: TopicReadiness) => void;
   onStageChange: (stage: CreationStageId) => void;
   onToggleAdvancedMode: () => void;
   stages: WorkflowStage[];
-  tasks: WorkflowTask[];
   topics: TopicReadiness[];
 };
 
 export function InstructorProductionStudio({
   activeStage,
   advancedMode,
-  onOpenTask,
   onOpenTopic,
   onStageChange,
   onToggleAdvancedMode,
   stages,
-  tasks,
   topics,
 }: InstructorProductionStudioProps) {
   const [courseMapOpen, setCourseMapOpen] = useState(false);
   const activeStageModel = stages.find((stage) => stage.id === activeStage) ?? stages[0];
-  const activeTasks = tasks.filter((task) => task.stage === activeStage);
-  const completedStages = stages.filter((stage) => stage.state === "complete").length;
-  const firstTask = activeTasks[0];
 
   return (
     <section className="instructorOnly border-b border-border bg-background" id="production-studio">
-      <div className="border-b border-border px-6 py-4 xl:px-7">
-        <div className="flex min-h-12 items-center justify-between gap-8">
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase leading-4 text-muted-foreground">Guided production</p>
-            <div className="mt-0.5 flex items-baseline gap-3">
-              <h1 className="font-serif text-2xl font-semibold leading-8">{activeStageModel.label}</h1>
-              <span className="text-xs tabular-nums text-muted-foreground">Stage {creationStageOrder.indexOf(activeStage) + 1} of 5</span>
-            </div>
-            <p className="mt-0.5 max-w-2xl text-sm leading-5 text-muted-foreground">
-              {activeStageModel.description}
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Sheet open={courseMapOpen} onOpenChange={setCourseMapOpen}>
-              <SheetTrigger render={<Button type="button" variant="outline" />}>
-                <Map data-icon="inline-start" />
-                Course map
-              </SheetTrigger>
-              <SheetContent className="w-[420px] sm:max-w-[420px]">
-                <SheetHeader className="border-b border-border px-5 py-5">
-                  <SheetTitle>Course map</SheetTitle>
-                  <SheetDescription>
-                    Open the next repair point for any topic without searching across workspaces.
-                  </SheetDescription>
-                </SheetHeader>
-                <div className="min-h-0 flex-1 overflow-y-auto">
-                  {topics.length ? topics.map((topic, index) => {
-                    const label = topicReadinessLabel(topic);
-                    return (
-                      <button
-                        className="flex w-full items-start gap-3 border-b border-border px-5 py-4 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                        data-slot="course-map-topic"
-                        key={topic.id}
-                        onClick={() => {
-                          setCourseMapOpen(false);
-                          onOpenTopic(topic);
-                        }}
-                        type="button"
-                      >
-                        <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border text-xs tabular-nums text-muted-foreground">
-                          {index + 1}
+      <div className="flex min-h-12 items-center justify-between gap-6 border-b border-border px-6 py-2 xl:px-7">
+        <p className="text-xs font-semibold uppercase text-muted-foreground">
+          Stage {creationStageOrder.indexOf(activeStage) + 1} of 5
+          <span className="mx-2 text-border">/</span>
+          <span className="text-foreground">{activeStageModel.label}</span>
+        </p>
+        <div className="flex shrink-0 items-center gap-1">
+          <Sheet open={courseMapOpen} onOpenChange={setCourseMapOpen}>
+            <SheetTrigger render={<Button size="sm" type="button" variant="ghost" />}>
+              <Map data-icon="inline-start" />
+              Course map
+            </SheetTrigger>
+            <SheetContent className="w-[420px] sm:max-w-[420px]">
+              <SheetHeader className="border-b border-border px-5 py-5">
+                <SheetTitle>Course map</SheetTitle>
+                <SheetDescription>
+                  Open the next repair point for any topic without searching across workspaces.
+                </SheetDescription>
+              </SheetHeader>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {topics.length ? topics.map((topic, index) => {
+                  const label = topicReadinessLabel(topic);
+                  return (
+                    <button
+                      className="flex w-full items-start gap-3 border-b border-border px-5 py-4 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      data-slot="course-map-topic"
+                      key={topic.id}
+                      onClick={() => {
+                        setCourseMapOpen(false);
+                        onOpenTopic(topic);
+                      }}
+                      type="button"
+                    >
+                      <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border text-xs tabular-nums text-muted-foreground">
+                        {index + 1}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium leading-5">{topic.title}</span>
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          {topic.reviewedConcepts} concepts · {topic.clips} clips · {topic.approvedQuestions} approved checks
                         </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-medium leading-5">{topic.title}</span>
-                          <span className="mt-1 block text-xs text-muted-foreground">
-                            {topic.reviewedConcepts} concepts · {topic.clips} clips · {topic.approvedQuestions} approved checks
-                          </span>
-                        </span>
-                        <Badge variant={label === "Ready" ? "secondary" : "outline"}>{label}</Badge>
-                      </button>
-                    );
-                  }) : (
-                    <div className="px-5 py-10 text-center">
-                      <p className="text-sm font-medium">No topics yet</p>
-                      <p className="mt-1 text-sm text-muted-foreground">The course map appears after source processing.</p>
-                    </div>
-                  )}
-                </div>
-              </SheetContent>
-            </Sheet>
-            <Button
-              aria-pressed={advancedMode}
-              onClick={onToggleAdvancedMode}
-              type="button"
-              variant={advancedMode ? "secondary" : "outline"}
-            >
-              <PanelsTopLeft data-icon="inline-start" />
-              {advancedMode ? "Guided view" : "All workspaces"}
-            </Button>
-          </div>
+                      </span>
+                      <Badge variant={label === "Ready" ? "secondary" : "outline"}>{label}</Badge>
+                    </button>
+                  );
+                }) : (
+                  <div className="px-5 py-10 text-center">
+                    <p className="text-sm font-medium">No topics yet</p>
+                    <p className="mt-1 text-sm text-muted-foreground">The course map appears after source processing.</p>
+                  </div>
+                )}
+              </div>
+            </SheetContent>
+          </Sheet>
+          <Button
+            aria-pressed={advancedMode}
+            size="sm"
+            onClick={onToggleAdvancedMode}
+            type="button"
+            variant={advancedMode ? "secondary" : "ghost"}
+          >
+            <PanelsTopLeft data-icon="inline-start" />
+            {advancedMode ? "Guided view" : "All workspaces"}
+          </Button>
         </div>
       </div>
 
-      <nav aria-label="Course production stages" className="grid grid-cols-5 border-b border-border">
+      <nav aria-label="Course production stages" className="grid grid-cols-5 border-b border-border px-6 xl:px-7">
         {creationStageOrder.map((stageId, index) => {
           const stage = stages.find((item) => item.id === stageId)!;
-          const Icon = stageIcons[stageId];
           const isActive = stageId === activeStage;
           const isBlocked = stage.state === "blocked";
           return (
             <button
               aria-current={isActive ? "step" : undefined}
               className={cn(
-                "relative flex min-h-[68px] items-center gap-2.5 border-r border-border px-4 text-left last:border-r-0 hover:bg-muted focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                isActive && "bg-primary/5 shadow-[inset_0_-3px_0_var(--primary)]",
+                "relative flex min-h-14 items-center gap-2.5 border-b-2 border-transparent px-2 text-left hover:bg-muted/50 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                isActive && "border-primary text-foreground",
               )}
               data-stage={stageId}
               data-slot="production-stage"
@@ -168,16 +140,13 @@ export function InstructorProductionStudio({
               type="button"
             >
               <span className={cn(
-                "flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground",
-                isActive && "border-primary/30 text-primary",
+                "flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold tabular-nums text-muted-foreground",
+                isActive && "bg-primary text-primary-foreground",
                 stage.state === "complete" && "border-emerald-200 bg-emerald-50 text-emerald-700",
               )}>
-                {stage.state === "complete" ? <Check aria-hidden="true" className="size-4" /> : isBlocked ? <LockKeyhole aria-hidden="true" className="size-4" /> : <Icon aria-hidden="true" className="size-4" />}
+                {stage.state === "complete" ? <Check aria-hidden="true" className="size-3.5" /> : isBlocked ? <LockKeyhole aria-hidden="true" className="size-3" /> : index + 1}
               </span>
-              <span className="min-w-0">
-                <span className="block text-[10px] font-medium leading-4 text-muted-foreground">{index + 1} of 5</span>
-                <span className="block truncate text-sm font-semibold leading-5">{stage.label}</span>
-              </span>
+              <span className={cn("min-w-0 truncate text-sm font-medium text-muted-foreground", isActive && "font-semibold text-foreground")}>{stage.label}</span>
               {stage.taskCount > 0 && !isBlocked ? (
                 <Badge className="ml-auto" variant="outline">{stage.taskCount}</Badge>
               ) : null}
@@ -185,59 +154,6 @@ export function InstructorProductionStudio({
           );
         })}
       </nav>
-
-      <div className="grid grid-cols-[minmax(0,1fr)_248px] border-b border-border bg-muted/10">
-        <div className="min-w-0 px-6 py-4 xl:px-7">
-          <div className="flex items-center gap-2">
-            <ListChecks aria-hidden="true" className="size-4 text-primary" />
-            <p className="text-xs font-semibold uppercase text-muted-foreground">Review inbox</p>
-          </div>
-          {activeStageModel.state === "blocked" ? (
-            <div className="mt-3 flex items-center gap-3 text-sm">
-              <span className="flex size-8 items-center justify-center rounded-full bg-muted text-muted-foreground"><LockKeyhole aria-hidden="true" className="size-4" /></span>
-              <div><p className="font-medium">This stage is waiting</p><p className="mt-0.5 text-muted-foreground">Complete the earlier required checkpoint before working here.</p></div>
-            </div>
-          ) : firstTask ? (
-            <div className="mt-2.5 flex items-center justify-between gap-6">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-base font-semibold">{firstTask.title}</h2>
-                  {firstTask.count ? <Badge variant="outline">{firstTask.count}</Badge> : null}
-                </div>
-                <p className="mt-0.5 text-sm leading-5 text-muted-foreground">{firstTask.detail}</p>
-                {activeTasks.length > 1 ? (
-                  <p className="mt-2 text-xs text-muted-foreground">{activeTasks.length - 1} more decision{activeTasks.length === 2 ? "" : "s"} in this stage</p>
-                ) : null}
-              </div>
-              <Button className="shrink-0" onClick={() => onOpenTask(firstTask)} type="button">
-                Review next <ArrowRight data-icon="inline-end" />
-              </Button>
-            </div>
-          ) : (
-            <div className="mt-3 flex items-center gap-3 text-sm">
-              <span className="flex size-8 items-center justify-center rounded-full bg-emerald-50 text-emerald-700"><Check aria-hidden="true" className="size-4" /></span>
-              <div><p className="font-medium">This stage is clear</p><p className="mt-0.5 text-muted-foreground">No unresolved proposals or blockers are waiting here.</p></div>
-            </div>
-          )}
-        </div>
-        <div className="border-l border-border px-5 py-4">
-          <div className="flex items-center justify-between text-xs"><span className="font-medium text-muted-foreground">Creation progress</span><strong className="tabular-nums">{completedStages}/5</strong></div>
-          <div
-            aria-label="Course creation progress"
-            aria-valuemax={5}
-            aria-valuemin={0}
-            aria-valuenow={completedStages}
-            className="mt-3 flex gap-1"
-            role="progressbar"
-          >
-            {stages.map((stage) => <span className={cn("h-1.5 flex-1 rounded-full bg-muted", stage.state === "complete" && "bg-emerald-600", stage.state === "active" && "bg-primary")} key={stage.id} />)}
-          </div>
-          <p className="mt-2.5 flex items-center gap-2 text-xs leading-4 text-muted-foreground">
-            {advancedMode ? <PanelsTopLeft aria-hidden="true" className="size-3.5" /> : <PlayCircle aria-hidden="true" className="size-3.5" />}
-            {advancedMode ? "Showing every instructor workspace" : "Only the active stage is shown below"}
-          </p>
-        </div>
-      </div>
     </section>
   );
 }
@@ -265,9 +181,8 @@ export function InstructorPublishReview({
 
   return (
     <section className="instructorOnly scroll-mt-20 border-b border-border bg-background" id="publish-review">
-      <header className="border-b border-border px-6 py-4 xl:px-7">
-        <p className="text-[11px] font-semibold uppercase leading-4 text-muted-foreground">Final review</p>
-        <h2 className="mt-0.5 text-lg font-semibold leading-7">Publish course</h2>
+      <header className="min-h-[76px] border-b border-border px-6 py-3.5 xl:px-7">
+        <h2 className="text-base font-semibold leading-6">Publish course</h2>
         <p className="mt-0.5 max-w-2xl text-sm leading-5 text-muted-foreground">
           Confirm every required human checkpoint has been completed before learners can enroll.
         </p>

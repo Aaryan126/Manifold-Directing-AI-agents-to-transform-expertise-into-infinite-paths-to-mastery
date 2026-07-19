@@ -41,10 +41,12 @@ export function WorkspaceHeader({
   toolbar?: ReactNode;
 }) {
   return (
-    <header className="flex min-h-[88px] flex-wrap items-center justify-between gap-x-8 gap-y-4 border-b border-border px-6 py-4 xl:px-7">
+    <header
+      aria-label={`${eyebrow}: ${title}`}
+      className="flex min-h-[76px] flex-wrap items-center justify-between gap-x-8 gap-y-3 border-b border-border px-6 py-3.5 xl:px-7"
+    >
       <div className="min-w-0 max-w-2xl">
-        <p className="text-[11px] font-semibold uppercase leading-4 text-muted-foreground">{eyebrow}</p>
-        <h2 className="mt-0.5 text-lg font-semibold leading-7">{title}</h2>
+        <h2 className="text-base font-semibold leading-6">{title}</h2>
         <p className="mt-0.5 max-w-xl text-sm leading-5 text-muted-foreground">{description}</p>
       </div>
       {toolbar ? <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2">{toolbar}</div> : null}

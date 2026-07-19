@@ -1992,12 +1992,10 @@ export default function HomePage() {
         <InstructorProductionStudio
           activeStage={activeInstructorStage}
           advancedMode={showAllInstructorWorkspaces}
-          onOpenTask={openWorkflowTask}
           onOpenTopic={openTopicRepair}
           onStageChange={setActiveInstructorStage}
           onToggleAdvancedMode={() => setShowAllInstructorWorkspaces((current) => !current)}
           stages={workflow.stages}
-          tasks={workflow.tasks}
           topics={topicReadiness}
         />
       ) : null}
@@ -2009,18 +2007,19 @@ export default function HomePage() {
 
       <div className={instructorWorkspaceVisible("source") ? "" : "hidden"}>
         <CourseSetupWorkspace
-        course={course}
-        deliveryCapacity={deliveryCapacity}
-        isSubmitting={isSubmitting}
-        job={job}
-        onFileChange={setSelectedFile}
-        onLoadDemo={() => void loadDemo()}
-        onSubmitFile={uploadFile}
-        onSubmitUrl={submitUrl}
-        onUrlChange={setUrl}
-        selectedFileName={selectedFile?.name ?? null}
-        url={url}
-      />
+          completedStageCount={workflow.stages.filter((stage) => stage.state === "complete").length}
+          course={course}
+          deliveryCapacity={deliveryCapacity}
+          isSubmitting={isSubmitting}
+          job={job}
+          onFileChange={setSelectedFile}
+          onLoadDemo={() => void loadDemo()}
+          onSubmitFile={uploadFile}
+          onSubmitUrl={submitUrl}
+          onUrlChange={setUrl}
+          selectedFileName={selectedFile?.name ?? null}
+          url={url}
+        />
       {transcript ? (
         <details className="instructorOnly border-b border-border bg-background px-6 py-4 xl:px-8">
           <summary className="cursor-pointer text-sm font-medium">View processed transcript <span className="ml-2 text-xs font-normal text-muted-foreground">{transcript.words.length} timestamped words</span></summary>

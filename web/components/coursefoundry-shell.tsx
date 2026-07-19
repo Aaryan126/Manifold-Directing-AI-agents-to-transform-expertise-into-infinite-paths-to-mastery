@@ -146,7 +146,7 @@ export function CourseFoundryShell({
 
       <SidebarInset className="min-w-0 bg-background">
         <header className="sticky top-0 z-10 flex h-16 items-center gap-3 border-b bg-background/95 px-5 backdrop-blur supports-[backdrop-filter]:bg-background/85">
-          <SidebarTrigger className="shrink-0" />
+          <SidebarTrigger aria-label="Collapse or expand navigation" className="shrink-0" title="Collapse or expand navigation" />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <strong className="truncate text-sm font-semibold">{courseTitle}</strong>

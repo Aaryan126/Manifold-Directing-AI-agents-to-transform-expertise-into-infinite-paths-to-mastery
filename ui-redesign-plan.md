@@ -1,7 +1,7 @@
 # Manifold UI/UX Redesign Plan
 
-**Status:** Guided production studio layout hardening automated tests passing; awaiting human confirmation
-**Current stage:** Stage 8 - Cross-workspace layout human retest pending
+**Status:** Guided production studio minimal-density refinement automated tests passing; awaiting human confirmation
+**Current stage:** Stage 8 - Desktop/laptop human retest pending
 **Last updated:** 2026-07-19
 **Scope:** Desktop and laptop web only. Tablet, mobile, and native-app layouts are not part of this redesign.
 
@@ -131,6 +131,8 @@ The learner experience prioritizes the current lesson, the next recommended acti
 
 ## Decisions Log
 
+- 2026-07-19: Minimal-density refinement completed. The studio now uses compact numbered stage navigation without a duplicate review-inbox strip; each active workspace owns its primary action. Source has equal-height icon-led file/URL methods and a fixed 304px progress/status/next-checkpoint rail, all review surfaces use title/description headers plus consistent queue/editor/inspector geometry, and the left navigation collapse control is explicitly labelled and covered by E2E. Lint, typecheck, 43 unit tests, production build, 8 applicable Playwright journey/WCAG/visual/overflow tests, Docker rebuild, and health checks pass; human confirmation remains pending.
+- 2026-07-19: User selected a more minimal production layout after the consistency pass: compact numbered stage navigation, workspace-owned primary actions, concise source controls, and a fixed progress/status/next-checkpoint rail. Duplicate guidance components are removed and the existing left navigation collapse behavior becomes explicit; functionality remains frozen.
 - 2026-07-19: Human review reopened the guided production studio for a presentation-only consistency pass. All instructor stages will share a compact header, bounded/centered content gutter, consistent queue/editor/inspector geometry, aligned controls, and one visually dominant next action. The redundant Source page title and repeated guidance will be removed; no API, persistence, review-state, routing, or learner behavior changes are authorized.
 - 2026-07-19: Cross-workspace layout hardening implementation and automated verification completed. Every instructor stage now uses the same compact title band, content gutter, queue/editor/inspector geometry, scroll offset, and toolbar hierarchy; Source's duplicate title was removed and its methods/next checkpoint were reorganized. New visual baselines cover Clips, Assessments, Routing, Simulator, and Publish in addition to the existing Studio, Source, Outline, Graph, and Insights coverage. Lint, typecheck, 42 unit tests, production build, and 8 applicable Playwright journey/WCAG/visual/overflow tests pass; local Mux performance remains intentionally skipped. Human confirmation remains pending.
 - 2026-07-14: User approved the guided-stage plus agent-review-inbox recommendation after testing found that anchor navigation over a page containing every instructor workspace remained overwhelming. Five creation stages become the default, `Insights` stays separate, a topic course map supports local repair, and all-workspaces becomes advanced mode. Existing APIs, persistence, review semantics, audit behavior, and learner logic remain unchanged.
