@@ -23,16 +23,32 @@ export function ReviewWorkspace({
 }) {
   return (
     <section className="instructorOnly border-b border-border bg-background">
-      <header className="flex min-h-24 items-center justify-between gap-6 border-b border-border px-6 py-5 xl:px-8">
-        <div>
-          <p className="text-xs font-semibold uppercase text-muted-foreground">{eyebrow}</p>
-          <h2 className="mt-1 text-xl font-semibold">{title}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-        </div>
-        {toolbar ? <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">{toolbar}</div> : null}
-      </header>
+      <WorkspaceHeader description={description} eyebrow={eyebrow} title={title} toolbar={toolbar} />
       {children}
     </section>
+  );
+}
+
+export function WorkspaceHeader({
+  description,
+  eyebrow,
+  title,
+  toolbar,
+}: {
+  description: string;
+  eyebrow: string;
+  title: string;
+  toolbar?: ReactNode;
+}) {
+  return (
+    <header className="flex min-h-[88px] flex-wrap items-center justify-between gap-x-8 gap-y-4 border-b border-border px-6 py-4 xl:px-7">
+      <div className="min-w-0 max-w-2xl">
+        <p className="text-[11px] font-semibold uppercase leading-4 text-muted-foreground">{eyebrow}</p>
+        <h2 className="mt-0.5 text-lg font-semibold leading-7">{title}</h2>
+        <p className="mt-0.5 max-w-xl text-sm leading-5 text-muted-foreground">{description}</p>
+      </div>
+      {toolbar ? <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2">{toolbar}</div> : null}
+    </header>
   );
 }
 
@@ -46,9 +62,9 @@ export function ReviewWorkspaceGrid({
   queue: ReactNode;
 }) {
   return (
-    <div className="grid min-h-[620px] grid-cols-[220px_minmax(0,1fr)_260px] xl:grid-cols-[240px_minmax(0,1fr)_300px]">
+    <div className="grid min-h-[600px] grid-cols-[232px_minmax(0,1fr)_288px] xl:grid-cols-[248px_minmax(0,1fr)_304px]">
       <aside className="min-w-0 border-r border-border bg-muted/20" aria-label="Review queue">{queue}</aside>
-      <div className="min-w-0 px-6 py-6">{editor}</div>
+      <div className="min-w-0 px-6 py-6 xl:px-7">{editor}</div>
       <aside className="min-w-0 border-l border-border bg-muted/20 px-5 py-6" aria-label="Review evidence">{inspector}</aside>
     </div>
   );
@@ -62,7 +78,7 @@ export function ReviewQueueHeader({
   total: number;
 }) {
   return (
-    <div className="border-b border-border px-4 py-4">
+    <div className="border-b border-border px-4 py-3.5">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-semibold uppercase text-muted-foreground">Review queue</p>
         <Badge variant="outline">{reviewed}/{total}</Badge>
@@ -97,7 +113,7 @@ export function ReviewQueueItem({
     <button
       data-slot="review-queue-item"
       className={cn(
-        "flex w-full items-start gap-2.5 border-b border-border px-4 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "flex min-h-[58px] w-full items-start gap-2.5 border-b border-border px-4 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         active && "bg-background shadow-[inset_3px_0_0_var(--primary)]",
         (status === "dismissed" || status === "superseded") && "text-muted-foreground",
       )}

@@ -282,9 +282,9 @@ test("instructor publishes, learner enrolls, and dashboard correction closes the
   await page.getByLabel("Direct audio/video URL").fill("https://example.com/lecture.mp4");
   await page.getByRole("button", { name: "Ingest URL" }).click();
 
-  await expect(page.getByText("Course status:")).toContainText("draft");
+  await expect(page.getByLabel("Course status")).toHaveText("draft");
   await page.getByRole("button", { name: "Publish course" }).click();
-  await expect(page.getByText("Course status:")).toContainText("published");
+  await expect(page.getByLabel("Course status")).toHaveText("published");
 
   await page.getByRole("button", { name: "Insights", exact: true }).click();
   const dashboard = page.locator("#insights");
@@ -383,6 +383,26 @@ test("instructor workspaces match approved desktop visual system", async ({ page
       maxDiffPixels: id === "concept-graph" ? 500 : 0,
     });
   }
+  await page.locator('[data-stage="learning"]').click();
+  for (const id of ["clips", "assessments"]) {
+    const workspace = page.locator(`#${id}`);
+    await expect(workspace).toBeVisible();
+    await expect(workspace).toHaveScreenshot(`${id}-desktop.png`, {
+      animations: "disabled",
+    });
+  }
+  await page.locator('[data-stage="adapt"]').click();
+  for (const id of ["routing", "routing-simulator"]) {
+    const workspace = page.locator(`#${id}`);
+    await expect(workspace).toBeVisible();
+    await expect(workspace).toHaveScreenshot(`${id}-desktop.png`, {
+      animations: "disabled",
+    });
+  }
+  await page.locator('[data-stage="publish"]').click();
+  await expect(page.locator("#publish-review")).toHaveScreenshot("publish-review-desktop.png", {
+    animations: "disabled",
+  });
   await page.locator('[data-stage="source"]').click();
   await expect(page.locator("#course-setup")).toHaveScreenshot("course-setup-desktop.png", {
     animations: "disabled",

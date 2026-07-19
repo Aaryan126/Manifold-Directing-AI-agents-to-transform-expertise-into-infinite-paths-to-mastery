@@ -151,6 +151,7 @@ export function CourseFoundryShell({
             <div className="flex items-center gap-2">
               <strong className="truncate text-sm font-semibold">{courseTitle}</strong>
               <Badge
+                aria-label="Course status"
                 className="capitalize data-[status=draft]:border-amber-300 data-[status=draft]:bg-amber-50 data-[status=draft]:text-amber-800 data-[status=published]:border-emerald-300 data-[status=published]:bg-emerald-50 data-[status=published]:text-emerald-800"
                 data-status={courseStatus}
                 variant="outline"

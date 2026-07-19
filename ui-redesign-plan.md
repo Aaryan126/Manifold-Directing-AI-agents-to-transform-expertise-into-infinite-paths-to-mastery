@@ -1,8 +1,8 @@
 # Manifold UI/UX Redesign Plan
 
-**Status:** Guided production studio automated tests passing; awaiting human confirmation
-**Current stage:** Stage 8 - Guided production studio human retest pending
-**Last updated:** 2026-07-14
+**Status:** Guided production studio layout hardening automated tests passing; awaiting human confirmation
+**Current stage:** Stage 8 - Cross-workspace layout human retest pending
+**Last updated:** 2026-07-19
 **Scope:** Desktop and laptop web only. Tablet, mobile, and native-app layouts are not part of this redesign.
 
 This is the ground-truth execution document for the Phase 10 production UI/UX redesign. Update it whenever a stage starts, a deliverable is completed, a design decision is approved, or a blocker is found. Do not silently skip stages or change the approved visual direction.
@@ -131,6 +131,8 @@ The learner experience prioritizes the current lesson, the next recommended acti
 
 ## Decisions Log
 
+- 2026-07-19: Human review reopened the guided production studio for a presentation-only consistency pass. All instructor stages will share a compact header, bounded/centered content gutter, consistent queue/editor/inspector geometry, aligned controls, and one visually dominant next action. The redundant Source page title and repeated guidance will be removed; no API, persistence, review-state, routing, or learner behavior changes are authorized.
+- 2026-07-19: Cross-workspace layout hardening implementation and automated verification completed. Every instructor stage now uses the same compact title band, content gutter, queue/editor/inspector geometry, scroll offset, and toolbar hierarchy; Source's duplicate title was removed and its methods/next checkpoint were reorganized. New visual baselines cover Clips, Assessments, Routing, Simulator, and Publish in addition to the existing Studio, Source, Outline, Graph, and Insights coverage. Lint, typecheck, 42 unit tests, production build, and 8 applicable Playwright journey/WCAG/visual/overflow tests pass; local Mux performance remains intentionally skipped. Human confirmation remains pending.
 - 2026-07-14: User approved the guided-stage plus agent-review-inbox recommendation after testing found that anchor navigation over a page containing every instructor workspace remained overwhelming. Five creation stages become the default, `Insights` stays separate, a topic course map supports local repair, and all-workspaces becomes advanced mode. Existing APIs, persistence, review semantics, audit behavior, and learner logic remain unchanged.
 - 2026-07-14: Guided production studio implementation completed. The shell now switches between Build course and Insights instead of anchor-scrolling; five production stages control workspace visibility; the review inbox, automatic unresolved-stage resume, Course Map repair routing, focused Publish review, cross-stage feedback, and advanced all-workspaces mode are implemented. Frontend lint/typecheck, 42 unit tests, production build, and 8 applicable Playwright journey/guided-stage/WCAG/visual/overflow tests pass; the local credential-gated Mux test skips. Human confirmation remains pending.
 - 2026-07-12: User approved a staged production-grade redesign split across shared foundations, instructor workflows, learner workflows, and hardening.

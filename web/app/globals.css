@@ -79,6 +79,12 @@ a:focus-visible,
   scroll-margin-top: 5rem;
 }
 
+.shell.instructorContext {
+  margin-inline: auto;
+  max-width: 1600px;
+  padding: 1.25rem;
+}
+
 .cf-workspace {
   min-width: 0;
 }

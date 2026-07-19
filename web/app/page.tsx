@@ -98,6 +98,7 @@ import {
   ReviewQueueItem,
   ReviewWorkspace,
   ReviewWorkspaceGrid,
+  WorkspaceHeader,
 } from "@/components/review-workspace";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -2029,7 +2030,7 @@ export default function HomePage() {
       </div>
 
       {transcript && job?.video_id ? (
-        <div className={instructorWorkspaceVisible("structure") ? "" : "hidden"} id="outline">
+        <div className={`scroll-mt-20 ${instructorWorkspaceVisible("structure") ? "" : "hidden"}`} id="outline">
           <ReviewWorkspace
             description="Confirm topic boundaries, titles, and summaries before graph generation."
             eyebrow="Content review"
@@ -2194,14 +2195,12 @@ export default function HomePage() {
       ) : null}
 
       {job?.course_id ? (
-        <section className={`instructorOnly border-b border-border bg-background ${instructorWorkspaceVisible("structure") ? "" : "hidden"}`} id="concept-graph">
-          <header className="flex min-h-24 flex-wrap items-center justify-between gap-4 border-b border-border px-6 py-5 xl:px-8">
-            <div>
-              <p className="text-xs font-semibold uppercase text-muted-foreground">Knowledge structure</p>
-              <h2 className="mt-1 text-xl font-semibold">Concept graph</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Review prerequisite structure and inspect each AI-proposed relationship.</p>
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-2">
+        <section className={`instructorOnly scroll-mt-20 border-b border-border bg-background ${instructorWorkspaceVisible("structure") ? "" : "hidden"}`} id="concept-graph">
+          <WorkspaceHeader
+            description="Review prerequisite structure and inspect each AI-proposed relationship."
+            eyebrow="Knowledge structure"
+            title="Concept graph"
+            toolbar={<>
               <select
                 aria-label="Graph review filter"
                 className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm"
@@ -2225,8 +2224,8 @@ export default function HomePage() {
                 {generationAction === "graph" ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />}
                 {generationAction === "graph" ? "Generating graph" : "Generate graph"}
               </Button>
-            </div>
-          </header>
+            </>}
+          />
 
           {graphBlockReason ? (
             <div className="border-b border-amber-200 bg-amber-50 px-8 py-3 text-sm text-amber-900" role="alert">
@@ -2251,7 +2250,7 @@ export default function HomePage() {
           ) : null}
 
           {graph ? (
-            <div className="grid grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
+            <div className="grid grid-cols-[minmax(0,1fr)_304px]">
               <div className="relative min-w-0 bg-muted/15">
                 <div className="absolute left-5 top-5 z-10 flex gap-2 rounded-lg border border-border bg-background p-2 shadow-sm">
                   <Badge variant="outline">{flowNodes.length} concepts</Badge>
@@ -2272,7 +2271,7 @@ export default function HomePage() {
                 </div>
               </div>
 
-              <aside className="max-h-[700px] overflow-y-auto border-l border-border bg-background px-5 py-6" aria-label="Graph inspector">
+              <aside className="max-h-[700px] overflow-y-auto border-l border-border bg-muted/20 px-5 py-6" aria-label="Graph inspector">
                 {selectedGraphEdge ? (
                   <>
                     <div className="flex items-start justify-between gap-3">
@@ -2330,7 +2329,7 @@ export default function HomePage() {
                       </div>
                       <div className="mt-5 flex flex-wrap gap-2 border-b border-border pb-5">
                         <Button disabled={acceptButtonDisabled(concept.review_status)} onClick={() => acceptConcept(concept.id)} size="sm" type="button">{acceptButtonLabel(concept.review_status)}</Button>
-                        <Button onClick={() => updateConcept(concept.id, draft)} size="sm" type="button" variant="outline">Edit manually</Button>
+                        <Button onClick={() => updateConcept(concept.id, draft)} size="sm" type="button" variant="outline">Edit</Button>
                         <Button onClick={() => dismissConcept(concept.id)} size="sm" type="button" variant="destructive">Dismiss</Button>
                       </div>
                       <InspectorSection title="Traceability"><TraceabilityBlock artifact={concept} /></InspectorSection>
@@ -2371,7 +2370,7 @@ export default function HomePage() {
       ) : null}
 
       {job?.video_id && topics.length > 0 ? (
-        <div className={instructorWorkspaceVisible("learning") ? "" : "hidden"} id="clips">
+        <div className={`scroll-mt-20 ${instructorWorkspaceVisible("learning") ? "" : "hidden"}`} id="clips">
           <ReviewWorkspace
             description="Preview source boundaries and flag only clips that need a corrected cut."
             eyebrow="Media review"
@@ -2496,7 +2495,7 @@ export default function HomePage() {
       ) : null}
 
       {job?.video_id && topics.length > 0 ? (
-        <div className={instructorWorkspaceVisible("learning") ? "" : "hidden"} id="assessments">
+        <div className={`scroll-mt-20 ${instructorWorkspaceVisible("learning") ? "" : "hidden"}`} id="assessments">
           <ReviewWorkspace
             description="Approve learner-facing checks and verify that remediation maps to reviewed content."
             eyebrow="Assessment review"
@@ -2650,7 +2649,7 @@ export default function HomePage() {
       ) : null}
 
       {job?.course_id && graph ? (
-        <div className={instructorWorkspaceVisible("adapt") ? "" : "hidden"} id="routing">
+        <div className={`scroll-mt-20 ${instructorWorkspaceVisible("adapt") ? "" : "hidden"}`} id="routing">
           <ReviewWorkspace
             description="Tune mastery and remediation thresholds for each reviewed concept."
             eyebrow="Adaptive learning"
@@ -2707,19 +2706,21 @@ export default function HomePage() {
       ) : null}
 
       {questions.some((question) => question.review_status === "accepted" || question.review_status === "edited") ? (
-        <section className={`instructorOnly border-b border-border bg-background ${instructorWorkspaceVisible("adapt") ? "" : "hidden"}`} id="routing-simulator">
-          <header className="flex items-center justify-between gap-6 border-b border-border px-6 py-5 xl:px-8">
-            <div><p className="text-xs font-semibold uppercase text-muted-foreground">Policy validation</p><h2 className="mt-1 text-xl font-semibold">Learner routing simulator</h2><p className="mt-1 text-sm text-muted-foreground">Test deterministic outcomes before publishing.</p></div>
-            <Button onClick={createDemoLearner} type="button">
+        <section className={`instructorOnly scroll-mt-20 border-b border-border bg-background ${instructorWorkspaceVisible("adapt") ? "" : "hidden"}`} id="routing-simulator">
+          <WorkspaceHeader
+            description="Test deterministic outcomes before publishing."
+            eyebrow="Policy validation"
+            title="Learner routing simulator"
+            toolbar={<Button onClick={createDemoLearner} type="button">
               {demoLearnerId ? "Create new learner" : "Create demo learner"}
-            </Button>
-          </header>
-          <div className="grid grid-cols-[240px_minmax(0,1fr)_300px]">
+            </Button>}
+          />
+          <div className="grid min-h-[480px] grid-cols-[248px_minmax(0,1fr)_304px]">
             <aside className="border-r border-border bg-muted/20">
               <div className="border-b border-border px-4 py-4"><p className="text-xs font-semibold uppercase text-muted-foreground">Test questions</p></div>
               {simulatorQuestions.map((question) => <button className={`w-full border-b border-border px-4 py-3 text-left text-sm hover:bg-muted ${question.id === selectedSimulatorQuestion?.id ? "bg-background shadow-[inset_3px_0_0_var(--primary)]" : ""}`} data-slot="simulator-question" key={question.id} onClick={() => setSelectedSimulatorQuestionId(question.id)} type="button"><span className="block truncate font-medium">{topics.find((topic) => topic.id === question.topic_id)?.title ?? "Untitled topic"}</span><span className="mt-1 block text-xs capitalize text-muted-foreground">{question.type.replaceAll("_", " ")}</span></button>)}
             </aside>
-            <div className="min-w-0 px-8 py-7">
+            <div className="min-w-0 px-6 py-6 xl:px-7">
               {selectedSimulatorQuestion ? (() => {
                 const question = selectedSimulatorQuestion;
                 const firstPattern = question.remediation_rules[0]?.wrong_answer_pattern ?? "incorrect";
@@ -2911,11 +2912,13 @@ export default function HomePage() {
       ) : null}
 
       {job?.course_id ? (
-        <section className={`instructorOnly border-b border-border bg-background ${instructorWorkspaceVisible("insights") ? "" : "hidden"}`} id="insights">
-          <header className="flex min-h-24 items-center justify-between gap-6 border-b border-border px-6 py-5 xl:px-8">
-            <div><p className="text-xs font-semibold uppercase text-muted-foreground">Learning operations</p><h2 className="mt-1 text-xl font-semibold">Instructor dashboard</h2><p className="mt-1 text-sm text-muted-foreground">Review evidence-backed signals and correct the underlying learning system.</p></div>
-            <Button onClick={() => loadDashboard(job.course_id!)} type="button"><RefreshCw data-icon="inline-start" /> Refresh signals</Button>
-          </header>
+        <section className={`instructorOnly scroll-mt-20 border-b border-border bg-background ${instructorWorkspaceVisible("insights") ? "" : "hidden"}`} id="insights">
+          <WorkspaceHeader
+            description="Review evidence-backed signals and correct the underlying learning system."
+            eyebrow="Learning operations"
+            title="Instructor dashboard"
+            toolbar={<Button onClick={() => loadDashboard(job.course_id!)} type="button"><RefreshCw data-icon="inline-start" /> Refresh signals</Button>}
+          />
 
           {dashboardSummary ? (
             <>
@@ -2998,7 +3001,7 @@ export default function HomePage() {
                 </section>
               ) : null}
 
-              <div className="grid min-h-[560px] grid-cols-[240px_minmax(0,1fr)_minmax(280px,320px)] xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+              <div className="grid min-h-[560px] grid-cols-[248px_minmax(0,1fr)_304px]">
                 <aside className="min-w-0 border-r border-border bg-muted/20" aria-label="Dashboard signal queue">
                   <div className="border-b border-border px-4 py-4"><div className="flex items-center justify-between"><p className="text-xs font-semibold uppercase text-muted-foreground">Signal queue</p><Badge variant="outline">{dashboardSummary.signals.length}</Badge></div></div>
                   {dashboardSummary.signals.length ? dashboardSummary.signals.map((signal) => (
@@ -3008,7 +3011,7 @@ export default function HomePage() {
                   )) : <p className="px-4 py-6 text-sm text-muted-foreground">No open dashboard problems. Refresh after more learner activity.</p>}
                 </aside>
 
-                <div className="min-w-0 px-8 py-7">
+                <div className="min-w-0 px-6 py-6 xl:px-7">
                   {selectedDashboardSignal ? (() => {
                     const signal = selectedDashboardSignal;
                     const retroactive = Boolean(dashboardRetroactive[signal.id]);

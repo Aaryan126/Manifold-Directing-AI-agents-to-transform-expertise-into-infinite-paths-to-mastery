@@ -24,6 +24,7 @@ import {
   Progress,
   ProgressLabel,
 } from "@/components/ui/progress";
+import { WorkspaceHeader } from "@/components/review-workspace";
 import { cn } from "@/lib/utils";
 
 type CourseSetupWorkspaceProps = {
@@ -65,35 +66,28 @@ export function CourseSetupWorkspace({
   onUrlChange,
 }: CourseSetupWorkspaceProps) {
   return (
-    <section className="instructorOnly border-b border-border bg-background" id="course-setup">
-      <div className="border-b border-border px-6 py-6 xl:px-8">
-        <div className="max-w-3xl">
-          <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Course production</p>
-          <h1 className="font-serif text-3xl font-semibold text-foreground">Build your course</h1>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Add source material, monitor processing, and move each generated artifact through instructor review.
-          </p>
-        </div>
-      </div>
+    <section className="instructorOnly scroll-mt-20 border-b border-border bg-background" id="course-setup">
+      <WorkspaceHeader
+        description="Choose one source method. Manifold will prepare the transcript and unlock Structure automatically."
+        eyebrow="Source setup"
+        title="Source material"
+        toolbar={job ? <Badge className="capitalize" variant={job.status === "failed" ? "destructive" : "outline"}>{job.status}</Badge> : undefined}
+      />
 
-      <div className="grid min-h-[560px] grid-cols-[minmax(0,1fr)_280px] xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="min-w-0 px-6 py-7 xl:px-8">
-          <div className="max-w-3xl space-y-8">
+      <div className="grid min-h-[480px] grid-cols-[minmax(0,1fr)_288px] xl:grid-cols-[minmax(0,1fr)_304px]">
+        <div className="min-w-0 px-6 py-6 xl:px-7">
+          <div className="mx-auto max-w-5xl space-y-7">
             <div>
-              <div className="mb-4 flex items-start justify-between gap-6">
+              <div className="mb-4 flex items-end justify-between gap-6">
                 <div>
-                  <h2 className="text-base font-semibold">Source material</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Upload a recording or ingest a direct media URL.</p>
+                  <h3 className="text-base font-semibold">Add a recording</h3>
+                  <p className="mt-1 text-sm leading-5 text-muted-foreground">Upload a local file or provide a direct media URL.</p>
                 </div>
-                {job ? (
-                  <Badge variant={job.status === "failed" ? "destructive" : "outline"}>
-                    {job.status}
-                  </Badge>
-                ) : null}
+                <p className="text-xs text-muted-foreground">Supported: audio and video</p>
               </div>
 
               <FieldGroup className="grid grid-cols-2 gap-4">
-                <form className="rounded-lg border border-border p-4" onSubmit={onSubmitFile}>
+                <form className="grid min-h-[220px] grid-rows-[1fr_auto] rounded-lg border border-border p-4" onSubmit={onSubmitFile}>
                   <Field>
                     <FieldLabel htmlFor="video-file">
                       <Upload aria-hidden="true" className="size-4 text-muted-foreground" />
@@ -118,7 +112,7 @@ export function CourseSetupWorkspace({
                     </label>
                     <FieldDescription>Choose a locally stored source recording.</FieldDescription>
                   </Field>
-                  <div className="mt-4 grid grid-cols-2 gap-2">
+                  <div className="mt-5 grid grid-cols-2 gap-2">
                     <Button className="h-10" disabled={isSubmitting} type="submit">
                       <Upload data-icon="inline-start" />
                       Upload
@@ -130,7 +124,7 @@ export function CourseSetupWorkspace({
                   </div>
                 </form>
 
-                <form className="rounded-lg border border-border p-4" onSubmit={onSubmitUrl}>
+                <form className="grid min-h-[220px] grid-rows-[1fr_auto] rounded-lg border border-border p-4" onSubmit={onSubmitUrl}>
                   <Field>
                     <FieldLabel htmlFor="video-url">
                       <Link2 aria-hidden="true" className="size-4 text-muted-foreground" />
@@ -146,7 +140,7 @@ export function CourseSetupWorkspace({
                     />
                     <FieldDescription>Use a URL that resolves directly to media.</FieldDescription>
                   </Field>
-                  <Button className="mt-4 h-10" disabled={isSubmitting || !url} type="submit">
+                  <Button className="mt-5 h-10 w-full" disabled={isSubmitting || !url} type="submit">
                     <Link2 data-icon="inline-start" />
                     Ingest URL
                   </Button>
@@ -155,7 +149,7 @@ export function CourseSetupWorkspace({
             </div>
 
             {job ? (
-              <div className="border-t border-border pt-7">
+              <div className="border-t border-border pt-6">
                 <div className="mb-4 flex items-center justify-between gap-4">
                   <div>
                     <h2 className="text-base font-semibold">Processing status</h2>
@@ -188,36 +182,28 @@ export function CourseSetupWorkspace({
                 ) : null}
               </div>
             ) : (
-              <div className="border-t border-border pt-7">
-                <h2 className="text-base font-semibold">What happens next</h2>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                  Processing creates a timestamped transcript. You then review the outline, concept graph, clips,
-                  assessments, and routing policy before publishing.
-                </p>
+              <div className="flex items-start gap-3 border-t border-border pt-5 text-sm">
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border text-xs font-semibold text-muted-foreground">2</span>
+                <div>
+                  <h3 className="font-semibold">Structure unlocks next</h3>
+                  <p className="mt-0.5 max-w-2xl leading-5 text-muted-foreground">After processing, review the generated topic outline before Manifold builds concepts and learning material.</p>
+                </div>
               </div>
             )}
 
           </div>
         </div>
 
-        <aside className="border-l border-border bg-muted/25 px-5 py-7" aria-label="Course readiness">
-          <div className="mb-6">
-            <p className="text-xs font-semibold uppercase text-muted-foreground">Readiness</p>
+        <aside className="border-l border-border bg-muted/20 px-5 py-6" aria-label="Source readiness">
+          <div>
+            <p className="text-[11px] font-semibold uppercase leading-4 text-muted-foreground">Stage status</p>
             <div className="mt-3 flex items-center justify-between gap-3">
-              <p className="min-w-0 truncate text-sm font-semibold">{course?.title ?? "New course"}</p>
+              <p className="text-sm font-semibold">
+                {!job ? "Waiting for source" : job.status === "complete" ? "Transcript ready" : job.status === "failed" ? "Needs attention" : "Processing"}
+              </p>
               <Badge className="capitalize" variant="outline">{course?.status ?? "setup"}</Badge>
             </div>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Course status: <span className="font-medium text-foreground">{course?.status ?? "setup"}</span>
-            </p>
-          </div>
-
-          <div className="border-y border-border py-4">
-            <p className="text-xs font-semibold uppercase text-muted-foreground">Source state</p>
-            <p className="mt-2 text-sm font-medium">
-              {!job ? "Waiting for source" : job.status === "complete" ? "Transcript ready" : job.status === "failed" ? "Needs attention" : "Processing"}
-            </p>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
               {!job
                 ? "Choose a lecture or load the prepared demo."
                 : job.status === "complete"
@@ -226,6 +212,12 @@ export function CourseSetupWorkspace({
                     ? "Review the error and retry with another source."
                     : "Manifold will update this workspace when processing completes."}
             </p>
+          </div>
+
+          <div className="mt-5 border-y border-border py-4">
+            <p className="text-[11px] font-semibold uppercase leading-4 text-muted-foreground">Next checkpoint</p>
+            <p className="mt-2 text-sm font-medium">Review the topic outline</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">Structure opens automatically when the transcript is ready.</p>
           </div>
 
           {deliveryCapacity?.provider === "mux" ? (
@@ -246,7 +238,7 @@ export function CourseSetupWorkspace({
             </Alert>
           ) : null}
 
-          <p className="mt-6 text-xs leading-5 text-muted-foreground" role="note">
+          <p className="mt-5 border-t border-border pt-4 text-xs leading-5 text-muted-foreground" role="note">
             Development identity only. Credentials and secure sessions are not implemented.
           </p>
         </aside>

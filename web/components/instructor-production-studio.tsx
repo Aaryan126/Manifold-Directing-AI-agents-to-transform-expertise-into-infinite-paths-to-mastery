@@ -75,12 +75,15 @@ export function InstructorProductionStudio({
 
   return (
     <section className="instructorOnly border-b border-border bg-background" id="production-studio">
-      <div className="border-b border-border px-6 py-5 xl:px-8">
-        <div className="flex items-start justify-between gap-8">
+      <div className="border-b border-border px-6 py-4 xl:px-7">
+        <div className="flex min-h-12 items-center justify-between gap-8">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase text-muted-foreground">Guided production</p>
-            <h1 className="mt-1 font-serif text-3xl font-semibold">{activeStageModel.label}</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+            <p className="text-[11px] font-semibold uppercase leading-4 text-muted-foreground">Guided production</p>
+            <div className="mt-0.5 flex items-baseline gap-3">
+              <h1 className="font-serif text-2xl font-semibold leading-8">{activeStageModel.label}</h1>
+              <span className="text-xs tabular-nums text-muted-foreground">Stage {creationStageOrder.indexOf(activeStage) + 1} of 5</span>
+            </div>
+            <p className="mt-0.5 max-w-2xl text-sm leading-5 text-muted-foreground">
               {activeStageModel.description}
             </p>
           </div>
@@ -155,7 +158,7 @@ export function InstructorProductionStudio({
             <button
               aria-current={isActive ? "step" : undefined}
               className={cn(
-                "relative flex min-h-20 items-center gap-3 border-r border-border px-4 text-left last:border-r-0 hover:bg-muted focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                "relative flex min-h-[68px] items-center gap-2.5 border-r border-border px-4 text-left last:border-r-0 hover:bg-muted focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                 isActive && "bg-primary/5 shadow-[inset_0_-3px_0_var(--primary)]",
               )}
               data-stage={stageId}
@@ -165,15 +168,15 @@ export function InstructorProductionStudio({
               type="button"
             >
               <span className={cn(
-                "flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground",
+                "flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground",
                 isActive && "border-primary/30 text-primary",
                 stage.state === "complete" && "border-emerald-200 bg-emerald-50 text-emerald-700",
               )}>
                 {stage.state === "complete" ? <Check aria-hidden="true" className="size-4" /> : isBlocked ? <LockKeyhole aria-hidden="true" className="size-4" /> : <Icon aria-hidden="true" className="size-4" />}
               </span>
               <span className="min-w-0">
-                <span className="block text-[11px] font-medium text-muted-foreground">{index + 1} of 5</span>
-                <span className="mt-0.5 block truncate text-sm font-semibold">{stage.label}</span>
+                <span className="block text-[10px] font-medium leading-4 text-muted-foreground">{index + 1} of 5</span>
+                <span className="block truncate text-sm font-semibold leading-5">{stage.label}</span>
               </span>
               {stage.taskCount > 0 && !isBlocked ? (
                 <Badge className="ml-auto" variant="outline">{stage.taskCount}</Badge>
@@ -183,8 +186,8 @@ export function InstructorProductionStudio({
         })}
       </nav>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_280px] border-b border-border bg-muted/10">
-        <div className="min-w-0 px-6 py-5 xl:px-8">
+      <div className="grid grid-cols-[minmax(0,1fr)_248px] border-b border-border bg-muted/10">
+        <div className="min-w-0 px-6 py-4 xl:px-7">
           <div className="flex items-center gap-2">
             <ListChecks aria-hidden="true" className="size-4 text-primary" />
             <p className="text-xs font-semibold uppercase text-muted-foreground">Review inbox</p>
@@ -195,13 +198,13 @@ export function InstructorProductionStudio({
               <div><p className="font-medium">This stage is waiting</p><p className="mt-0.5 text-muted-foreground">Complete the earlier required checkpoint before working here.</p></div>
             </div>
           ) : firstTask ? (
-            <div className="mt-3 flex items-center justify-between gap-6">
+            <div className="mt-2.5 flex items-center justify-between gap-6">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <h2 className="text-base font-semibold">{firstTask.title}</h2>
                   {firstTask.count ? <Badge variant="outline">{firstTask.count}</Badge> : null}
                 </div>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">{firstTask.detail}</p>
+                <p className="mt-0.5 text-sm leading-5 text-muted-foreground">{firstTask.detail}</p>
                 {activeTasks.length > 1 ? (
                   <p className="mt-2 text-xs text-muted-foreground">{activeTasks.length - 1} more decision{activeTasks.length === 2 ? "" : "s"} in this stage</p>
                 ) : null}
@@ -217,7 +220,7 @@ export function InstructorProductionStudio({
             </div>
           )}
         </div>
-        <div className="border-l border-border px-5 py-5">
+        <div className="border-l border-border px-5 py-4">
           <div className="flex items-center justify-between text-xs"><span className="font-medium text-muted-foreground">Creation progress</span><strong className="tabular-nums">{completedStages}/5</strong></div>
           <div
             aria-label="Course creation progress"
@@ -229,7 +232,7 @@ export function InstructorProductionStudio({
           >
             {stages.map((stage) => <span className={cn("h-1.5 flex-1 rounded-full bg-muted", stage.state === "complete" && "bg-emerald-600", stage.state === "active" && "bg-primary")} key={stage.id} />)}
           </div>
-          <p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+          <p className="mt-2.5 flex items-center gap-2 text-xs leading-4 text-muted-foreground">
             {advancedMode ? <PanelsTopLeft aria-hidden="true" className="size-3.5" /> : <PlayCircle aria-hidden="true" className="size-3.5" />}
             {advancedMode ? "Showing every instructor workspace" : "Only the active stage is shown below"}
           </p>
@@ -261,16 +264,16 @@ export function InstructorPublishReview({
   const blockerTask = tasks.find((task) => task.id === "resolve-publish-blockers");
 
   return (
-    <section className="instructorOnly border-b border-border bg-background" id="publish-review">
-      <header className="border-b border-border px-6 py-6 xl:px-8">
-        <p className="text-xs font-semibold uppercase text-muted-foreground">Final review</p>
-        <h2 className="mt-1 text-xl font-semibold">Publish course</h2>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+    <section className="instructorOnly scroll-mt-20 border-b border-border bg-background" id="publish-review">
+      <header className="border-b border-border px-6 py-4 xl:px-7">
+        <p className="text-[11px] font-semibold uppercase leading-4 text-muted-foreground">Final review</p>
+        <h2 className="mt-0.5 text-lg font-semibold leading-7">Publish course</h2>
+        <p className="mt-0.5 max-w-2xl text-sm leading-5 text-muted-foreground">
           Confirm every required human checkpoint has been completed before learners can enroll.
         </p>
       </header>
-      <div className="grid min-h-[420px] grid-cols-[minmax(0,1fr)_320px]">
-        <div className="min-w-0 px-6 py-7 xl:px-8">
+      <div className="grid min-h-[420px] grid-cols-[minmax(0,1fr)_304px]">
+        <div className="min-w-0 px-6 py-6 xl:px-7">
           {courseStatus === "published" ? (
             <div className="flex items-start gap-4 border-l-2 border-emerald-600 bg-emerald-50 px-5 py-4 text-emerald-950">
               <Check aria-hidden="true" className="mt-0.5 size-5" />
@@ -296,7 +299,7 @@ export function InstructorPublishReview({
             </div>
           )}
         </div>
-        <aside className="border-l border-border bg-muted/20 px-5 py-7" aria-label="Production stage summary">
+        <aside className="border-l border-border bg-muted/20 px-5 py-6" aria-label="Production stage summary">
           <p className="text-xs font-semibold uppercase text-muted-foreground">Stage summary</p>
           <div className="mt-4 space-y-3">
             {stages.map((stage, index) => (
