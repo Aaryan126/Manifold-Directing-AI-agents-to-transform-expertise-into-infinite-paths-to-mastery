@@ -58,16 +58,24 @@ export function ReviewWorkspaceGrid({
   editor,
   inspector,
   queue,
+  queueWidth = "default",
 }: {
   editor: ReactNode;
-  inspector: ReactNode;
+  inspector?: ReactNode;
   queue: ReactNode;
+  queueWidth?: "default" | "wide";
 }) {
+  const columns = inspector
+    ? "grid-cols-[232px_minmax(0,1fr)_288px] xl:grid-cols-[248px_minmax(0,1fr)_304px]"
+    : queueWidth === "wide"
+      ? "grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)]"
+      : "grid-cols-[248px_minmax(0,1fr)]";
+
   return (
-    <div className="grid min-h-[600px] grid-cols-[232px_minmax(0,1fr)_288px] xl:grid-cols-[248px_minmax(0,1fr)_304px]">
+    <div className={cn("grid min-h-[600px]", columns)}>
       <aside className="min-w-0 border-r border-border bg-muted/20" aria-label="Review queue">{queue}</aside>
       <div className="min-w-0 px-6 py-6 xl:px-7">{editor}</div>
-      <aside className="min-w-0 border-l border-border bg-muted/20 px-5 py-6" aria-label="Review evidence">{inspector}</aside>
+      {inspector ? <aside className="min-w-0 border-l border-border bg-muted/20 px-5 py-6" aria-label="Review evidence">{inspector}</aside> : null}
     </div>
   );
 }

@@ -77,8 +77,8 @@ import {
   routingPolicyValidationError,
   type RoutingPolicyDraft,
 } from "./routingPolicy";
-import { detectCoverageGaps } from "./topicCoverage";
 import { graphGenerationBlockedReason, reviewedTopicCount } from "./topicReview";
+import { formatTimecode, parseTimecode } from "./timecode";
 import {
   aiRationale,
   instructorTrace,
@@ -342,12 +342,6 @@ export default function HomePage() {
   const selectedIdentity =
     identities.find((identity) => identity.id === selectedIdentityId) ?? null;
   const isLearnerContext = selectedIdentity?.role === "learner";
-  const sourceStartSeconds = transcript ? transcriptStartSeconds(transcript) : 0;
-  const sourceEndSeconds = transcript ? transcriptEndSeconds(transcript) : 0;
-  const coverageGaps =
-    transcript && topics.length > 0
-      ? detectCoverageGaps(topics, sourceStartSeconds, sourceEndSeconds)
-      : [];
   const graphBlockReason = graphGenerationBlockedReason(topics);
   const reviewedTopics = reviewedTopicCount(topics);
   const topicsWithoutReviewedConcepts = topics.filter(
@@ -2051,12 +2045,15 @@ export default function HomePage() {
                       </nav>
                     </>
                   )}
+                  queueWidth="wide"
                   editor={(
-                    <div className="mx-auto max-w-2xl">
+                    <div className="mx-auto max-w-4xl">
                       <div className="mb-6 flex items-start justify-between gap-4">
                         <div>
-                          <p className="text-xs font-medium text-muted-foreground">Topic {index + 1} of {topics.length}</p>
-                          <h3 className="mt-1 text-lg font-semibold">Review topic</h3>
+                          <p className="text-sm font-medium">Topic {index + 1} of {topics.length}</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {formatTime(draft.start_seconds)}–{formatTime(draft.end_seconds)} · {formatDuration(draft.end_seconds - draft.start_seconds)}
+                          </p>
                         </div>
                         <Badge className="capitalize" variant="outline">{topic.review_status}</Badge>
                       </div>
@@ -2084,52 +2081,35 @@ export default function HomePage() {
                           />
                         </label>
                         <div className="grid grid-cols-2 gap-4">
-                          <label className="grid gap-2 text-sm font-medium">Start
-                            <Input min="0" step="1" type="number" value={draft.start_seconds} onChange={(event) =>
-                              setTopicDrafts((current) => ({ ...current, [topic.id]: { ...draft, start_seconds: Number(event.target.value) } }))
-                            } />
-                          </label>
-                          <label className="grid gap-2 text-sm font-medium">End
-                            <Input min="0" step="1" type="number" value={draft.end_seconds} onChange={(event) =>
-                              setTopicDrafts((current) => ({ ...current, [topic.id]: { ...draft, end_seconds: Number(event.target.value) } }))
-                            } />
-                          </label>
+                          <TimecodeInput
+                            id={`start-${topic.id}`}
+                            label="Start time"
+                            onChange={(seconds) => setTopicDrafts((current) => ({
+                              ...current,
+                              [topic.id]: { ...draft, start_seconds: seconds },
+                            }))}
+                            value={draft.start_seconds}
+                          />
+                          <TimecodeInput
+                            id={`end-${topic.id}`}
+                            label="End time"
+                            onChange={(seconds) => setTopicDrafts((current) => ({
+                              ...current,
+                              [topic.id]: { ...draft, end_seconds: seconds },
+                            }))}
+                            value={draft.end_seconds}
+                          />
                         </div>
-                      </div>
-                      <div className="mt-8 flex flex-wrap items-center gap-2 border-t border-border pt-5">
-                        <Button disabled={acceptButtonDisabled(topic.review_status)} onClick={() => acceptTopic(topic.id)} type="button">
-                          {acceptButtonLabel(topic.review_status)}
-                        </Button>
-                        <Button onClick={() => updateTopic(topic.id, draft)} type="button" variant="outline">Edit manually</Button>
-                        <Button onClick={() => dismissTopic(topic.id)} type="button" variant="destructive">Dismiss</Button>
-                        <Button onClick={() => splitTopic(topic)} type="button" variant="ghost">Split</Button>
-                        <Button disabled={!nextTopic} onClick={() => mergeTopicWithNext(index)} type="button" variant="ghost">Merge next</Button>
-                      </div>
-                      <details className="mt-8 border-t border-border pt-5">
-                        <summary className="cursor-pointer text-sm font-medium">Add a topic manually</summary>
-                        <form className="mt-4 grid gap-3" onSubmit={addManualTopic}>
-                          <Input aria-label="Manual topic title" placeholder="Title" value={manualTopic.title} onChange={(event) => setManualTopic((current) => ({ ...current, title: event.target.value }))} />
-                          <Textarea aria-label="Manual topic summary" placeholder="Summary" value={manualTopic.summary} onChange={(event) => setManualTopic((current) => ({ ...current, summary: event.target.value }))} />
-                          <div className="grid grid-cols-2 gap-3">
-                            <Input aria-label="Manual topic start" min="0" step="1" type="number" value={manualTopic.start_seconds} onChange={(event) => setManualTopic((current) => ({ ...current, start_seconds: Number(event.target.value) }))} />
-                            <Input aria-label="Manual topic end" min="0" step="1" type="number" value={manualTopic.end_seconds} onChange={(event) => setManualTopic((current) => ({ ...current, end_seconds: Number(event.target.value) }))} />
-                          </div>
-                          <Button className="w-fit" disabled={!manualTopic.title} type="submit">Add topic</Button>
-                        </form>
-                      </details>
-                    </div>
-                  )}
-                  inspector={(
-                    <>
-                      <InspectorSection title="Source range">
-                        <p className="text-sm font-medium">{formatTime(draft.start_seconds)}–{formatTime(draft.end_seconds)}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">{formatDuration(draft.end_seconds - draft.start_seconds)} duration</p>
                         {nextTopic ? (
-                          <label className="mt-4 grid gap-2 text-xs font-medium">Boundary with next topic
+                          <label className="block rounded-lg border border-border bg-muted/20 px-4 py-3">
+                            <span className="flex items-center justify-between gap-4 text-sm font-medium">
+                              Boundary to next topic
+                              <span className="tabular-nums text-muted-foreground">{formatTime(draft.end_seconds)}</span>
+                            </span>
                             <input
-                              className="accent-primary"
+                              className="mt-3 w-full accent-primary"
                               max={Math.floor(nextTopic.end_seconds - 30)}
-                              min={Math.ceil(topic.start_seconds + 30)}
+                              min={Math.ceil(draft.start_seconds + 30)}
                               onChange={(event) => setTopicDrafts((current) => ({
                                 ...current,
                                 [topic.id]: { ...draft, end_seconds: Number(event.target.value) },
@@ -2143,16 +2123,38 @@ export default function HomePage() {
                             />
                           </label>
                         ) : null}
-                      </InspectorSection>
-                      {coverageGaps.length ? (
-                        <InspectorSection title="Coverage warnings">
-                          <ul className="space-y-2 text-xs leading-5 text-amber-800">
-                            {coverageGaps.map((gap) => <li key={`${gap.start_seconds}-${gap.end_seconds}`}>{formatDuration(gap.duration_seconds)} unassigned at {formatTime(gap.start_seconds)}–{formatTime(gap.end_seconds)}</li>)}
-                          </ul>
-                        </InspectorSection>
+                      </div>
+                      <div className="mt-8 grid grid-cols-5 gap-2 border-t border-border pt-5">
+                        <Button className="w-full" disabled={acceptButtonDisabled(topic.review_status)} onClick={() => acceptTopic(topic.id)} type="button" variant="outline">
+                          {acceptButtonLabel(topic.review_status)}
+                        </Button>
+                        <Button className="w-full" onClick={() => updateTopic(topic.id, draft)} type="button" variant="outline">Save changes</Button>
+                        <Button className="w-full" onClick={() => dismissTopic(topic.id)} type="button" variant="destructive">Dismiss</Button>
+                        <Button className="w-full" onClick={() => splitTopic(topic)} type="button" variant="outline">Split topic</Button>
+                        <Button className="w-full" disabled={!nextTopic} onClick={() => mergeTopicWithNext(index)} type="button" variant="outline">Merge next</Button>
+                      </div>
+                      {aiRationale(topic) || instructorTrace(topic) ? (
+                        <details className="mt-7 border-t border-border pt-4">
+                          <summary className="cursor-pointer text-sm font-medium">Why AI suggested this</summary>
+                          <div className="mt-3 max-w-3xl space-y-2 text-sm leading-6 text-muted-foreground">
+                            {aiRationale(topic) ? <p>{aiRationale(topic)}</p> : null}
+                            {instructorTrace(topic) ? <p>Instructor revision: {instructorTrace(topic)}</p> : null}
+                          </div>
+                        </details>
                       ) : null}
-                      <InspectorSection title="Traceability"><TraceabilityBlock artifact={topic} /></InspectorSection>
-                    </>
+                      <details className="mt-4 border-t border-border pt-4">
+                        <summary className="cursor-pointer text-sm font-medium">Add topic</summary>
+                        <form className="mt-4 grid gap-3" onSubmit={addManualTopic}>
+                          <Input aria-label="Manual topic title" placeholder="Title" value={manualTopic.title} onChange={(event) => setManualTopic((current) => ({ ...current, title: event.target.value }))} />
+                          <Textarea aria-label="Manual topic summary" placeholder="Summary" value={manualTopic.summary} onChange={(event) => setManualTopic((current) => ({ ...current, summary: event.target.value }))} />
+                          <div className="grid grid-cols-2 gap-3">
+                            <TimecodeInput id="manual-topic-start" label="Start time" onChange={(seconds) => setManualTopic((current) => ({ ...current, start_seconds: seconds }))} value={manualTopic.start_seconds} />
+                            <TimecodeInput id="manual-topic-end" label="End time" onChange={(seconds) => setManualTopic((current) => ({ ...current, end_seconds: seconds }))} value={manualTopic.end_seconds} />
+                          </div>
+                          <Button className="w-fit" disabled={!manualTopic.title} type="submit">Add topic</Button>
+                        </form>
+                      </details>
+                    </div>
                   )}
                 />
               );
@@ -3038,6 +3040,66 @@ type EdgeDraft = {
 
 type QuestionDraft = AssessmentEditorDraft;
 
+function TimecodeInput({
+  id,
+  label,
+  onChange,
+  value,
+}: {
+  id: string;
+  label: string;
+  onChange: (seconds: number) => void;
+  value: number;
+}) {
+  const [text, setText] = useState(() => formatTimecode(value));
+  const [invalid, setInvalid] = useState(false);
+
+  useEffect(() => {
+    setText(formatTimecode(value));
+    setInvalid(false);
+  }, [value]);
+
+  function commit() {
+    const seconds = parseTimecode(text);
+    if (seconds === null) {
+      setInvalid(true);
+      return;
+    }
+    setInvalid(false);
+    setText(formatTimecode(seconds));
+    onChange(seconds);
+  }
+
+  return (
+    <label className="grid gap-2 text-sm font-medium" htmlFor={id}>
+      {label}
+      <Input
+        aria-describedby={`${id}-hint`}
+        aria-invalid={invalid || undefined}
+        className="h-10 tabular-nums"
+        id={id}
+        inputMode="numeric"
+        onBlur={commit}
+        onChange={(event) => {
+          setText(event.target.value);
+          setInvalid(false);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            event.currentTarget.blur();
+          }
+        }}
+        placeholder="9:11"
+        value={text}
+      />
+      <span className={invalid ? "text-xs font-normal text-destructive" : "sr-only"} id={`${id}-hint`}>
+        {invalid ? "Use minutes:seconds, for example 9:11." : "Enter time as minutes and seconds."}
+      </span>
+    </label>
+  );
+}
+
 function topicToDraft(topic: Topic): TopicDraft {
   return {
     title: topic.title,
@@ -3094,14 +3156,6 @@ function formatDuration(seconds: number) {
   const remainingSeconds = rounded % 60;
   if (minutes === 0) return `${remainingSeconds}s`;
   return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
-}
-
-function transcriptStartSeconds(transcript: Transcript) {
-  return transcript.words[0]?.start_seconds ?? 0;
-}
-
-function transcriptEndSeconds(transcript: Transcript) {
-  return transcript.words.at(-1)?.end_seconds ?? 0;
 }
 
 function conceptName(graph: GraphResponse, conceptId: string) {
