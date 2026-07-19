@@ -4,8 +4,25 @@ const pipeline = "http://localhost:8000";
 
 test("learner journey covers remediation and advancement branches", async ({ page }) => {
   let progressState = "not_started";
+  let enrolled = false;
   await page.route(`${pipeline}/development/identities`, async (route) => {
-    await route.fulfill({ contentType: "application/json", body: "[]" });
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: "instructor-1",
+          email: "instructor@manifold.local",
+          display_name: "Demo Instructor",
+          role: "instructor",
+        },
+        {
+          id: "learner-1",
+          email: "learner@manifold.local",
+          display_name: "Demo Learner",
+          role: "learner",
+        },
+      ]),
+    });
   });
   await page.route(`${pipeline}/videos/delivery/capacity`, async (route) => {
     await route.fulfill({
@@ -176,6 +193,26 @@ test("learner journey covers remediation and advancement branches", async ({ pag
       }),
     });
   });
+  await page.route(`${pipeline}/courses/course-1`, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "course-1",
+        instructor_id: "instructor-1",
+        title: "Vector Foundations",
+        description: null,
+        status: "published",
+        published_at: "2026-07-12T00:00:00Z",
+      }),
+    });
+  });
+  await page.route(`${pipeline}/courses/course-1/enrollment`, async (route) => {
+    if (route.request().method() === "POST") enrolled = true;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ enrolled }),
+    });
+  });
   await page.route(`${pipeline}/courses/course-1/routing/demo-learner`, async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -237,9 +274,10 @@ test("learner journey covers remediation and advancement branches", async ({ pag
   await page.goto("/");
   await page.getByLabel("Direct audio/video URL").fill("https://example.com/lecture.mp4");
   await page.getByRole("button", { name: "Ingest URL" }).click();
+  await page.getByRole("button", { name: "learner", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Learner Experience" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Start course" }).click();
+  await page.getByRole("button", { name: "Enroll and start" }).click();
   const learnerPanel = page.getByLabel("Learner Experience");
   await expect(page.getByRole("heading", { name: "Learner Experience" })).toBeVisible();
   await expect(learnerPanel.getByText("0 of 1 concept(s) mastered")).toBeVisible();

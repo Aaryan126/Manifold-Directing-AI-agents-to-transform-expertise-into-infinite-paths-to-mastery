@@ -266,7 +266,9 @@ test("one-click demo loads the cached source and resumes the next production sta
 
   await page.getByRole("button", { name: "Use demo" }).click();
 
-  await expect(page.getByText("View processed transcript")).toBeHidden();
+  await expect(page.getByText("Loading the pre-processed Manifold demo.")).toHaveClass("sr-only");
+  await expect(page.getByText("View processed transcript")).toHaveCount(0);
+  await expect(page.locator("#learner-preview")).toHaveCount(0);
   await expect(page.locator('[data-stage="adapt"][aria-current="step"]')).toBeVisible();
   await expect(page.locator("#routing")).toBeVisible();
 });
@@ -292,12 +294,14 @@ test("instructor publishes, learner enrolls, and dashboard correction closes the
     dashboard.getByText("Possible missing prerequisite", { exact: true }),
   ).toBeVisible();
   await dashboard.getByRole("button", { name: "Accept AI suggestion" }).click();
-  await expect(page.getByText(/Applied dashboard signal/)).toBeVisible();
+  await expect(
+    dashboard.getByText("Possible missing prerequisite", { exact: true }),
+  ).toBeHidden();
 
   await page.getByRole("button", { name: "learner", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Topic Outline" })).toBeHidden();
   await page.getByRole("button", { name: "Enroll and start" }).click();
-  await expect(page.getByText("Enrolled in the published course.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Resume course" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Learner Experience" })).toBeVisible();
   const learnerExperience = page.getByLabel("Learner Experience");
   await learnerExperience.getByPlaceholder("Write your answer").fill("Magnitude and direction");

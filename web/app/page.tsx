@@ -1979,11 +1979,7 @@ export default function HomePage() {
           stages={workflow.stages}
         />
       ) : null}
-      {message ? (
-        <div className="border-b border-border bg-primary/5 px-6 py-3 text-sm text-foreground xl:px-8" role="status">
-          {!isLearnerContext ? <strong className="font-semibold">Course update: </strong> : null}{message}
-        </div>
-      ) : null}
+      {message ? <p className="sr-only" role="status">{message}</p> : null}
 
       <div className={instructorWorkspaceVisible("source") ? "" : "hidden"}>
         <CourseSetupWorkspace
@@ -1998,14 +1994,6 @@ export default function HomePage() {
           selectedFileName={selectedFile?.name ?? null}
           url={url}
       />
-      {transcript ? (
-        <div className="instructorOnly border-b border-border bg-background px-6 py-4 xl:px-8">
-          <details className="mx-auto max-w-4xl">
-            <summary className="cursor-pointer text-sm font-medium">View processed transcript <span className="ml-2 text-xs font-normal text-muted-foreground">{transcript.words.length} timestamped words</span></summary>
-            <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-muted-foreground">{transcript.text}</p>
-          </details>
-        </div>
-      ) : null}
       </div>
 
       {transcript && job?.video_id ? (
@@ -2731,7 +2719,7 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      {learnerQuestions.length > 0 ? (
+      {isLearnerContext && learnerQuestions.length > 0 ? (
         <section
           className="learnerOnly border-b border-border bg-background"
           id="learner-preview"
