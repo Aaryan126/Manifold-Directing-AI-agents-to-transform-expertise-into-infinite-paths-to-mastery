@@ -95,11 +95,11 @@ export function CourseFoundryShell({
       style={{ "--sidebar-width": "15.25rem" } as CSSProperties}
     >
       <Sidebar collapsible="icon" className="border-sidebar-border/80">
-        <SidebarHeader className="h-16 justify-center border-b border-sidebar-border/70 px-3">
+        <SidebarHeader className="h-16 justify-center border-b border-sidebar-border/70 px-3 group-data-[collapsible=icon]:px-2">
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
-                className="h-10 font-semibold tracking-[-0.01em]"
+                className="h-10 font-semibold tracking-[-0.01em] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!"
                 onClick={() => isLearner
                   ? navigateTo("learner-preview", learnerNavigation[0].label)
                   : onInstructorViewChange("build")}

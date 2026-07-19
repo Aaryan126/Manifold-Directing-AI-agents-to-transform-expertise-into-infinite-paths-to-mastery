@@ -345,6 +345,20 @@ test("guided production shows one stage and keeps advanced workspaces optional",
   await expect(sidebar).toHaveAttribute("data-state", "expanded");
   await page.getByRole("button", { name: "Collapse or expand navigation" }).click();
   await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+  const collapsedBrand = page.getByRole("button", { name: "Manifold" });
+  await expect(collapsedBrand).toHaveCSS("width", "32px");
+  await expect(collapsedBrand).toHaveCSS("height", "32px");
+  expect(await collapsedBrand.evaluate((button) => {
+    const buttonBounds = button.getBoundingClientRect();
+    const logoBounds = button.querySelector("span")?.getBoundingClientRect();
+    return Boolean(
+      logoBounds &&
+      logoBounds.left >= buttonBounds.left &&
+      logoBounds.right <= buttonBounds.right &&
+      logoBounds.top >= buttonBounds.top &&
+      logoBounds.bottom <= buttonBounds.bottom
+    );
+  })).toBe(true);
 
   await expect(page.locator('[data-stage="structure"][aria-current="step"]')).toBeVisible();
   await expect(page.locator("#outline")).toBeVisible();
