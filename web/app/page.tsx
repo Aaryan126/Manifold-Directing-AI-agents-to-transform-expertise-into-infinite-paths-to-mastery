@@ -59,7 +59,6 @@ import {
 } from "./dashboardPerformance";
 import {
   buildWorkflow,
-  topicRepairTarget,
   type CreationStageId,
   type InstructorStageId,
   type TopicReadiness,
@@ -336,7 +335,6 @@ export default function HomePage() {
   const [isGradingAnswer, setIsGradingAnswer] = useState(false);
   const [gradingFeedback, setGradingFeedback] = useState<string | null>(null);
   const [activeInstructorStage, setActiveInstructorStage] = useState<InstructorStageId>("source");
-  const [showAllInstructorWorkspaces, setShowAllInstructorWorkspaces] = useState(false);
   const hydratedJobs = useRef(new Set<string>());
   const workflowAutoFocusedJob = useRef<string | null>(null);
   const refreshJobRef = useRef<() => Promise<void>>(async () => undefined);
@@ -1916,11 +1914,10 @@ export default function HomePage() {
     if (workflowAutoFocusedJob.current === workflowHydratedJobId) return;
     workflowAutoFocusedJob.current = workflowHydratedJobId;
     setActiveInstructorStage(workflow.recommendedStage);
-    setShowAllInstructorWorkspaces(false);
   }, [workflowHydratedJobId, job?.id, isLearnerContext, workflow.recommendedStage]);
 
   function instructorWorkspaceVisible(stage: CreationStageId | "insights") {
-    return showAllInstructorWorkspaces || activeInstructorStage === stage;
+    return activeInstructorStage === stage;
   }
 
   function stageForTarget(target: string): CreationStageId {
@@ -1933,7 +1930,6 @@ export default function HomePage() {
 
   function openInstructorWorkspace(stage: CreationStageId, target: string) {
     setActiveInstructorStage(stage);
-    setShowAllInstructorWorkspaces(false);
     window.setTimeout(() => {
       document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 0);
@@ -1950,17 +1946,6 @@ export default function HomePage() {
     openInstructorWorkspace(stageForTarget(task.target), task.target);
   }
 
-  function openTopicRepair(topic: TopicReadiness) {
-    const destination = topicRepairTarget(topic);
-    setSelectedTopicReviewId(topic.id);
-    setSelectedClipReviewId(clips.find((clip) => clip.topic_id === topic.id)?.id ?? "");
-    setSelectedQuestionReviewId(questions.find((question) => question.topic_id === topic.id)?.id ?? "");
-    setSelectedGraphConceptId(
-      graph?.concepts.find((concept) => conceptTopicIds(concept).includes(topic.id))?.id ?? "",
-    );
-    openInstructorWorkspace(destination.stage, destination.target);
-  }
-
   return (
     <CourseFoundryShell
       activeInstructorView={activeInstructorStage === "insights" ? "insights" : "build"}
@@ -1970,7 +1955,6 @@ export default function HomePage() {
       isLearner={isLearnerContext}
       onIdentityChange={(identityId) => void changeIdentity(identityId)}
       onInstructorViewChange={(view) => {
-        setShowAllInstructorWorkspaces(false);
         setActiveInstructorStage(view === "insights" ? "insights" : workflow.recommendedStage);
       }}
       onPublish={() => void publishCourse()}
@@ -1991,12 +1975,8 @@ export default function HomePage() {
       {!isLearnerContext && activeInstructorStage !== "insights" ? (
         <InstructorProductionStudio
           activeStage={activeInstructorStage}
-          advancedMode={showAllInstructorWorkspaces}
-          onOpenTopic={openTopicRepair}
           onStageChange={setActiveInstructorStage}
-          onToggleAdvancedMode={() => setShowAllInstructorWorkspaces((current) => !current)}
           stages={workflow.stages}
-          topics={topicReadiness}
         />
       ) : null}
       {message ? (
@@ -2007,8 +1987,6 @@ export default function HomePage() {
 
       <div className={instructorWorkspaceVisible("source") ? "" : "hidden"}>
         <CourseSetupWorkspace
-          completedStageCount={workflow.stages.filter((stage) => stage.state === "complete").length}
-          course={course}
           deliveryCapacity={deliveryCapacity}
           isSubmitting={isSubmitting}
           job={job}
@@ -2019,12 +1997,14 @@ export default function HomePage() {
           onUrlChange={setUrl}
           selectedFileName={selectedFile?.name ?? null}
           url={url}
-        />
+      />
       {transcript ? (
-        <details className="instructorOnly border-b border-border bg-background px-6 py-4 xl:px-8">
-          <summary className="cursor-pointer text-sm font-medium">View processed transcript <span className="ml-2 text-xs font-normal text-muted-foreground">{transcript.words.length} timestamped words</span></summary>
-          <p className="mt-4 max-w-4xl whitespace-pre-wrap text-sm leading-7 text-muted-foreground">{transcript.text}</p>
-        </details>
+        <div className="instructorOnly border-b border-border bg-background px-6 py-4 xl:px-8">
+          <details className="mx-auto max-w-4xl">
+            <summary className="cursor-pointer text-sm font-medium">View processed transcript <span className="ml-2 text-xs font-normal text-muted-foreground">{transcript.words.length} timestamped words</span></summary>
+            <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-muted-foreground">{transcript.text}</p>
+          </details>
+        </div>
       ) : null}
       </div>
 

@@ -1,124 +1,41 @@
-"use client";
-
-import { useState } from "react";
 import {
   ArrowRight,
   Check,
   LockKeyhole,
-  Map,
-  PanelsTopLeft,
   Rocket,
 } from "lucide-react";
 
 import {
   creationStageOrder,
-  topicReadinessLabel,
   type CreationStageId,
-  type TopicReadiness,
   type WorkflowStage,
   type WorkflowTask,
 } from "@/app/instructorWorkflow";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
 type InstructorProductionStudioProps = {
   activeStage: CreationStageId;
-  advancedMode: boolean;
-  onOpenTopic: (topic: TopicReadiness) => void;
   onStageChange: (stage: CreationStageId) => void;
-  onToggleAdvancedMode: () => void;
   stages: WorkflowStage[];
-  topics: TopicReadiness[];
 };
 
 export function InstructorProductionStudio({
   activeStage,
-  advancedMode,
-  onOpenTopic,
   onStageChange,
-  onToggleAdvancedMode,
   stages,
-  topics,
 }: InstructorProductionStudioProps) {
-  const [courseMapOpen, setCourseMapOpen] = useState(false);
   const activeStageModel = stages.find((stage) => stage.id === activeStage) ?? stages[0];
 
   return (
     <section className="instructorOnly border-b border-border bg-background" id="production-studio">
-      <div className="flex min-h-12 items-center justify-between gap-6 border-b border-border px-6 py-2 xl:px-7">
+      <div className="flex min-h-12 items-center border-b border-border px-6 py-2 xl:px-7">
         <p className="text-xs font-semibold uppercase text-muted-foreground">
           Stage {creationStageOrder.indexOf(activeStage) + 1} of 5
           <span className="mx-2 text-border">/</span>
           <span className="text-foreground">{activeStageModel.label}</span>
         </p>
-        <div className="flex shrink-0 items-center gap-1">
-          <Sheet open={courseMapOpen} onOpenChange={setCourseMapOpen}>
-            <SheetTrigger render={<Button size="sm" type="button" variant="ghost" />}>
-              <Map data-icon="inline-start" />
-              Course map
-            </SheetTrigger>
-            <SheetContent className="w-[420px] sm:max-w-[420px]">
-              <SheetHeader className="border-b border-border px-5 py-5">
-                <SheetTitle>Course map</SheetTitle>
-                <SheetDescription>
-                  Open the next repair point for any topic without searching across workspaces.
-                </SheetDescription>
-              </SheetHeader>
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                {topics.length ? topics.map((topic, index) => {
-                  const label = topicReadinessLabel(topic);
-                  return (
-                    <button
-                      className="flex w-full items-start gap-3 border-b border-border px-5 py-4 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                      data-slot="course-map-topic"
-                      key={topic.id}
-                      onClick={() => {
-                        setCourseMapOpen(false);
-                        onOpenTopic(topic);
-                      }}
-                      type="button"
-                    >
-                      <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border text-xs tabular-nums text-muted-foreground">
-                        {index + 1}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium leading-5">{topic.title}</span>
-                        <span className="mt-1 block text-xs text-muted-foreground">
-                          {topic.reviewedConcepts} concepts · {topic.clips} clips · {topic.approvedQuestions} approved checks
-                        </span>
-                      </span>
-                      <Badge variant={label === "Ready" ? "secondary" : "outline"}>{label}</Badge>
-                    </button>
-                  );
-                }) : (
-                  <div className="px-5 py-10 text-center">
-                    <p className="text-sm font-medium">No topics yet</p>
-                    <p className="mt-1 text-sm text-muted-foreground">The course map appears after source processing.</p>
-                  </div>
-                )}
-              </div>
-            </SheetContent>
-          </Sheet>
-          <Button
-            aria-pressed={advancedMode}
-            size="sm"
-            onClick={onToggleAdvancedMode}
-            type="button"
-            variant={advancedMode ? "secondary" : "ghost"}
-          >
-            <PanelsTopLeft data-icon="inline-start" />
-            {advancedMode ? "Guided view" : "All workspaces"}
-          </Button>
-        </div>
       </div>
 
       <nav aria-label="Course production stages" className="grid grid-cols-5 border-b border-border px-6 xl:px-7">

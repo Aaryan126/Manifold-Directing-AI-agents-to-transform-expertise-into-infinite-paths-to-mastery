@@ -31,7 +31,7 @@ Manifold is a calm instructional operating system: precise and information-dense
 
 Course creation uses `Source -> Structure -> Learning material -> Adaptation -> Publish`, with `Insights` as a separate post-publication operating workspace.
 
-The instructor experience uses a subdued left navigation rail, a compact course header, one active production stage, and contextual inspectors. An agent-style review inbox surfaces the next persisted proposals or blockers, and a topic course map opens the appropriate repair surface. Review work is organized as queues and focused editors instead of one long page. The previous all-workspaces document is retained only as an explicit advanced mode.
+The instructor experience uses a subdued collapsible navigation rail, a compact course header, one active production stage, and contextual inspectors. Review work is organized as stage-owned queues and focused editors instead of one long page. Stage selection is the only course-production navigation: there is no course-map overlay or all-workspaces document mode.
 
 ### Learner workspace
 
@@ -131,6 +131,7 @@ The learner experience prioritizes the current lesson, the next recommended acti
 
 ## Decisions Log
 
+- 2026-07-19: User removed Course Map, All workspaces, and the Source readiness rail after visual testing. The five stage controls are now the only production navigation and strictly isolate their own surfaces; Source uses a centered 896px working column, retains the required Mux capacity warning in-context, and hides completed processing telemetry. Collapsed navigation labels are explicitly hidden so only centered icons remain. `prd.md` and `plan.md` were updated because this supersedes the previously documented advanced/map navigation. Lint, typecheck, 43 unit tests, production build, eight applicable Playwright journey/WCAG/visual/overflow tests, Docker rebuild, and health checks pass.
 - 2026-07-19: Fixed the collapsed 48px navigation rail so the 32px Manifold brand control no longer inherits expanded padding or clips its 28px logo. Added a focused browser geometry assertion for the collapsed control.
 - 2026-07-19: Minimal-density refinement completed. The studio now uses compact numbered stage navigation without a duplicate review-inbox strip; each active workspace owns its primary action. Source has equal-height icon-led file/URL methods and a fixed 304px progress/status/next-checkpoint rail, all review surfaces use title/description headers plus consistent queue/editor/inspector geometry, and the left navigation collapse control is explicitly labelled and covered by E2E. Lint, typecheck, 43 unit tests, production build, 8 applicable Playwright journey/WCAG/visual/overflow tests, Docker rebuild, and health checks pass; human confirmation remains pending.
 - 2026-07-19: User selected a more minimal production layout after the consistency pass: compact numbered stage navigation, workspace-owned primary actions, concise source controls, and a fixed progress/status/next-checkpoint rail. Duplicate guidance components are removed and the existing left navigation collapse behavior becomes explicit; functionality remains frozen.

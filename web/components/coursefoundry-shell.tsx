@@ -99,6 +99,7 @@ export function CourseFoundryShell({
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
+                aria-label="Manifold"
                 className="h-10 font-semibold tracking-[-0.01em] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!"
                 onClick={() => isLearner
                   ? navigateTo("learner-preview", learnerNavigation[0].label)
@@ -121,6 +122,7 @@ export function CourseFoundryShell({
                 {(isLearner ? learnerNavigation : instructorNavigation).map((item) => (
                   <SidebarMenuItem key={item.label}>
                     <SidebarMenuButton
+                      aria-label={item.label}
                       className="h-10"
                       isActive={isLearner
                         ? activeLearnerItem === item.label

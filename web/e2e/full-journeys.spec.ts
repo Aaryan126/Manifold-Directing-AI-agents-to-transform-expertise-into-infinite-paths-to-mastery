@@ -337,7 +337,7 @@ async function loadReviewedWorkspace(page: Page) {
   await expect(page.getByRole("heading", { name: "Topic outline", exact: true })).toBeVisible();
 }
 
-test("guided production shows one stage and keeps advanced workspaces optional", async ({ page }) => {
+test("guided production shows exactly one stage at a time", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await loadReviewedWorkspace(page);
 
@@ -348,6 +348,7 @@ test("guided production shows one stage and keeps advanced workspaces optional",
   const collapsedBrand = page.getByRole("button", { name: "Manifold" });
   await expect(collapsedBrand).toHaveCSS("width", "32px");
   await expect(collapsedBrand).toHaveCSS("height", "32px");
+  await expect(collapsedBrand.locator(":scope > span").last()).toBeHidden();
   expect(await collapsedBrand.evaluate((button) => {
     const buttonBounds = button.getBoundingClientRect();
     const logoBounds = button.querySelector("span")?.getBoundingClientRect();
@@ -372,15 +373,12 @@ test("guided production shows one stage and keeps advanced workspaces optional",
   await expect(page.locator("#assessments")).toBeVisible();
   await expect(page.locator("#outline")).toBeHidden();
 
-  await page.getByRole("button", { name: "Course map" }).click();
-  await expect(page.getByRole("heading", { name: "Course map" })).toBeVisible();
-  await page.getByRole("button", { name: /Vector basics/ }).click();
-  await expect(page.locator("#assessments")).toBeVisible();
-
-  await page.getByRole("button", { name: "All workspaces" }).click();
-  await expect(page.locator("#course-setup")).toBeVisible();
-  await expect(page.locator("#outline")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Course map" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "All workspaces" })).toHaveCount(0);
+  await page.locator('[data-stage="adapt"]').click();
   await expect(page.locator("#routing")).toBeVisible();
+  await expect(page.locator("#clips")).toBeHidden();
+  await expect(page.locator("#course-setup")).toBeHidden();
 });
 
 test("instructor workspaces match approved desktop visual system", async ({ page }) => {
@@ -435,7 +433,6 @@ test("instructor workspaces match approved desktop visual system", async ({ page
 test("laptop and learner workspaces do not overflow", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await loadReviewedWorkspace(page);
-  await page.getByRole("button", { name: "All workspaces" }).click();
 
   const viewportOverflow = await page.evaluate(() =>
     [...document.querySelectorAll<HTMLElement>("body *")]
@@ -454,11 +451,26 @@ test("laptop and learner workspaces do not overflow", async ({ page }) => {
       .slice(0, 12),
   );
   expect(viewportOverflow).toEqual([]);
-  for (const id of ["course-setup", "outline", "concept-graph", "clips", "assessments", "routing", "insights"]) {
-    const workspace = page.locator(`#${id}`);
-    await expect(workspace).toBeVisible();
-    expect(await workspace.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  const stageWorkspaces = [
+    ["source", ["course-setup"]],
+    ["structure", ["outline", "concept-graph"]],
+    ["learning", ["clips", "assessments"]],
+    ["adapt", ["routing", "routing-simulator"]],
+    ["publish", ["publish-review"]],
+  ] as const;
+  for (const [stage, ids] of stageWorkspaces) {
+    await page.locator(`[data-stage="${stage}"]`).click();
+    for (const id of ids) {
+      const workspace = page.locator(`#${id}`);
+      await expect(workspace).toBeVisible();
+      expect(await workspace.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    }
   }
+
+  await page.getByRole("button", { name: "Insights", exact: true }).click();
+  const insights = page.locator("#insights");
+  await expect(insights).toBeVisible();
+  expect(await insights.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 
   await page.getByRole("button", { name: "learner", exact: true }).click();
   const learner = page.locator("#learner-preview");

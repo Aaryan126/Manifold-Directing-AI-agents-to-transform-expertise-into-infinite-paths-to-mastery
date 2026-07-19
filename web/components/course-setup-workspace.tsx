@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Field,
@@ -27,8 +26,6 @@ import {
 import { cn } from "@/lib/utils";
 
 type CourseSetupWorkspaceProps = {
-  completedStageCount: number;
-  course: { title: string; status: "draft" | "published" } | null;
   deliveryCapacity: {
     provider: "local" | "mux";
     stored_count: number;
@@ -53,8 +50,6 @@ type CourseSetupWorkspaceProps = {
 };
 
 export function CourseSetupWorkspace({
-  completedStageCount,
-  course,
   deliveryCapacity,
   isSubmitting,
   job,
@@ -66,19 +61,10 @@ export function CourseSetupWorkspace({
   url,
   onUrlChange,
 }: CourseSetupWorkspaceProps) {
-  const sourceState = !job
-    ? "Waiting for source"
-    : job.status === "complete"
-      ? "Transcript ready"
-      : job.status === "failed"
-        ? "Needs attention"
-        : "Processing";
-
   return (
     <section className="instructorOnly scroll-mt-20 border-b border-border bg-background" id="course-setup">
-      <div className="grid min-h-[540px] grid-cols-[minmax(0,1fr)_288px] xl:grid-cols-[minmax(0,1fr)_304px]">
-        <div className="min-w-0 px-6 py-6 xl:px-7">
-          <div className="mx-auto max-w-5xl space-y-6">
+      <div className="min-w-0 px-6 py-8 xl:px-7">
+          <div className="mx-auto max-w-4xl space-y-6">
             <header>
               <h2 className="text-lg font-semibold">Add source material</h2>
               <p className="mt-1 text-sm text-muted-foreground">Upload a file or paste a direct media URL.</p>
@@ -155,7 +141,24 @@ export function CourseSetupWorkspace({
               </form>
             </FieldGroup>
 
-            {job ? (
+            {deliveryCapacity?.provider === "mux" ? (
+              <Alert
+                className={cn(
+                  !deliveryCapacity.can_upload && "border-destructive/40 bg-destructive/5",
+                )}
+              >
+                <Database aria-hidden="true" />
+                <AlertTitle>Mux storage</AlertTitle>
+                <AlertDescription>
+                  {deliveryCapacity.stored_count} of {deliveryCapacity.max_stored} stored videos used.
+                  {deliveryCapacity.can_upload
+                    ? ` ${deliveryCapacity.remaining} slot(s) remain.`
+                    : " New ingestion is blocked; no existing asset will be overwritten."}
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
+            {job && job.status !== "complete" ? (
               <div className="border-t border-border pt-6">
                 <div className="mb-4 flex items-center justify-between gap-4">
                   <div>
@@ -163,10 +166,10 @@ export function CourseSetupWorkspace({
                     <p className="mt-1 font-mono text-xs text-muted-foreground">Job {job.id}</p>
                   </div>
                 </div>
-                {job.status === "complete" || job.status === "failed" ? (
-                  <Progress value={job.status === "complete" ? 100 : job.progress}>
+                {job.status === "failed" ? (
+                  <Progress value={job.progress}>
                     <ProgressLabel className="capitalize">{job.status}</ProgressLabel>
-                    <span className="ml-auto text-sm tabular-nums text-muted-foreground">{job.status === "complete" ? "100%" : `${job.progress}%`}</span>
+                    <span className="ml-auto text-sm tabular-nums text-muted-foreground">{job.progress}%</span>
                   </Progress>
                 ) : (
                   <div role="progressbar" aria-label="Processing source" aria-valuetext="Processing">
@@ -189,72 +192,8 @@ export function CourseSetupWorkspace({
                 ) : null}
               </div>
             ) : null}
-
           </div>
         </div>
-
-        <aside className="border-l border-border bg-muted/20 px-5 py-6" aria-label="Source readiness">
-          <section className="border-b border-border pb-5">
-            <div className="flex items-center justify-between text-xs">
-              <p className="font-semibold uppercase text-muted-foreground">Progress</p>
-              <strong className="tabular-nums">{completedStageCount}/5</strong>
-            </div>
-            <div
-              aria-label="Course creation progress"
-              aria-valuemax={5}
-              aria-valuemin={0}
-              aria-valuenow={completedStageCount}
-              className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"
-              role="progressbar"
-            >
-              <div className="h-full bg-primary" style={{ width: `${completedStageCount * 20}%` }} />
-            </div>
-            <p className="mt-3 text-xs leading-5 text-muted-foreground">Complete each stage to publish.</p>
-          </section>
-
-          <section className="border-b border-border py-5">
-            <p className="text-[11px] font-semibold uppercase leading-4 text-muted-foreground">Stage status</p>
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold">{sourceState}</p>
-              <Badge className="capitalize" variant="outline">{course?.status ?? "setup"}</Badge>
-            </div>
-            <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
-              {!job
-                ? "Choose a lecture or load the prepared demo."
-                : job.status === "complete"
-                  ? "Continue to Structure from the production stages above."
-                  : job.status === "failed"
-                    ? "Review the error and retry with another source."
-                    : "Manifold will update this workspace when processing completes."}
-            </p>
-          </section>
-
-          <section className="border-b border-border py-5">
-            <p className="text-[11px] font-semibold uppercase leading-4 text-muted-foreground">Next checkpoint</p>
-            <p className="mt-2 text-sm font-medium">Review the topic outline</p>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">Structure opens automatically when the transcript is ready.</p>
-          </section>
-
-          {deliveryCapacity?.provider === "mux" ? (
-            <Alert
-              className={cn(
-                "mt-4",
-                !deliveryCapacity.can_upload && "border-destructive/40 bg-destructive/5",
-              )}
-            >
-              <Database aria-hidden="true" />
-              <AlertTitle>Mux storage</AlertTitle>
-              <AlertDescription>
-                {deliveryCapacity.stored_count} of {deliveryCapacity.max_stored} stored videos used.
-                {deliveryCapacity.can_upload
-                  ? ` ${deliveryCapacity.remaining} slot(s) remain.`
-                  : " New ingestion is blocked; no existing asset will be overwritten."}
-              </AlertDescription>
-            </Alert>
-          ) : null}
-
-        </aside>
-      </div>
     </section>
   );
 }
