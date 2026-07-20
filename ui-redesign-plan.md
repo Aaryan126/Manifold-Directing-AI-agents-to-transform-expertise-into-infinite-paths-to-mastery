@@ -3,7 +3,7 @@
 **Status:** Guided production studio minimal-density refinement automated tests passing; awaiting human confirmation
 **Current stage:** Stage 8 - Desktop/laptop human retest pending
 **Last updated:** 2026-07-20
-**Scope:** Desktop and laptop web only. Tablet, mobile, and native-app layouts are not part of this redesign.
+**Scope:** The instructor and learner application workspace targets desktop and laptop web only; tablet, mobile, and native-app layouts are not part of that redesign. The public landing page is a separate responsive marketing surface spanning mobile through wide desktop.
 
 This is the ground-truth execution document for the Phase 10 production UI/UX redesign. Update it whenever a stage starts, a deliverable is completed, a design decision is approved, or a blocker is found. Do not silently skip stages or change the approved visual direction.
 

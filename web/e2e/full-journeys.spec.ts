@@ -279,7 +279,7 @@ test("publishing checklist refreshes after reviewed artifacts load", async ({ pa
     },
     { course_id: courseId, ready: true, blockers: [] },
   ]);
-  await page.goto("/");
+  await page.goto("/manifold");
 
   await page.getByLabel("Direct audio/video URL").fill("https://example.com/lecture.mp4");
   await page.getByRole("button", { name: "Ingest URL" }).click();
@@ -291,7 +291,7 @@ test("publishing checklist refreshes after reviewed artifacts load", async ({ pa
 test("one-click demo loads the cached source and resumes the next production stage", async ({ page }) => {
   await routeDevelopmentContext(page);
   await routeReviewedCourse(page);
-  await page.goto("/");
+  await page.goto("/manifold");
 
   await page.getByRole("button", { name: "Use demo" }).click();
 
@@ -307,7 +307,7 @@ test("instructor publishes, learner enrolls, and dashboard correction closes the
 }) => {
   await routeDevelopmentContext(page);
   await routeReviewedCourse(page);
-  await page.goto("/");
+  await page.goto("/manifold");
 
   await expect(page.getByText("9 of 10 stored videos used")).toBeVisible();
   await page.getByLabel("Direct audio/video URL").fill("https://example.com/lecture.mp4");
@@ -364,7 +364,7 @@ test("instructor and learner surfaces have no WCAG 2.2 A/AA axe violations", asy
 async function loadReviewedWorkspace(page: Page) {
   await routeDevelopmentContext(page);
   await routeReviewedCourse(page);
-  await page.goto("/");
+  await page.goto("/manifold");
   await page.getByLabel("Direct audio/video URL").fill("https://example.com/lecture.mp4");
   const ingestButton = page.getByRole("button", { name: "Ingest URL" });
   await expect(ingestButton).toBeEnabled();
@@ -515,7 +515,7 @@ test("topic production repairs missing concept coverage inline", async ({ page }
     });
   });
 
-  await page.goto("/");
+  await page.goto("/manifold");
   await page.getByLabel("Direct audio/video URL").fill("https://example.com/lecture.mp4");
   await page.getByRole("button", { name: "Ingest URL" }).click();
   await page.locator('[data-stage="structure"]').click();

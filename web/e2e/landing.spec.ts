@@ -1,0 +1,33 @@
+import AxeBuilder from "@axe-core/playwright";
+import { expect, test } from "@playwright/test";
+
+test("public landing page leads into the Manifold workspace", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.goto("/");
+
+  await expect(
+    page.getByRole("heading", { name: "Turn lectures into adaptive learning journeys" }),
+  ).toBeVisible();
+  const startBuilding = page.getByRole("link", { name: "Start building" }).first();
+  await expect(startBuilding).toHaveAttribute("href", "/manifold");
+  await startBuilding.click();
+  await expect(page).toHaveURL(/\/manifold$/);
+  await expect(page.getByText("Course workspace", { exact: true })).toBeVisible();
+});
+
+test("public landing page is responsive and WCAG 2.2 AA clean", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  await expect(page.getByRole("button", { name: "Open navigation" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  await expect(page.getByRole("navigation", { name: "Mobile navigation" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Company" })).toBeVisible();
+
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(results.violations).toEqual([]);
+});

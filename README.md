@@ -211,7 +211,8 @@ current implementations.
 
 4. Open the services:
 
-   - Web application: <http://localhost:3000>
+   - Public landing page: <http://localhost:3000>
+   - Instructor/learner application: <http://localhost:3000/manifold>
    - Pipeline health endpoint: <http://localhost:8000/health>
 
 PostgreSQL migrations are applied by the pipeline container at startup.
