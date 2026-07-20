@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildWorkflow,
+  topicProductionLabel,
   topicReadinessLabel,
   topicRepairTarget,
   type WorkflowSnapshot,
@@ -76,6 +77,24 @@ describe("instructor workflow", () => {
     expect(ready.tasks).toContainEqual(expect.objectContaining({ id: "publish-course" }));
   });
 
+  it("keeps missing or stale clips in Structure before opening Assessments", () => {
+    const result = buildWorkflow({
+      ...reviewedSnapshot,
+      topicsMissingClips: 1,
+      topicsMissingQuestions: 1,
+      reviewedQuestions: 0,
+      publishReady: false,
+    });
+
+    expect(result.recommendedStage).toBe("structure");
+    expect(result.tasks).toContainEqual(expect.objectContaining({
+      id: "prepare-clips",
+      stage: "structure",
+      target: "outline",
+    }));
+    expect(result.stages.find((stage) => stage.id === "assessments")?.state).toBe("blocked");
+  });
+
   it("routes a topic to its first local repair point", () => {
     const topic = {
       id: "topic-1",
@@ -83,11 +102,20 @@ describe("instructor workflow", () => {
       reviewStatus: "accepted" as const,
       reviewedConcepts: 1,
       clips: 1,
+      staleClips: 0,
+      flaggedClips: 0,
       approvedQuestions: 0,
       proposedQuestions: 1,
     };
 
     expect(topicReadinessLabel(topic)).toBe("Review question");
-    expect(topicRepairTarget(topic)).toEqual({ stage: "learning", target: "assessments" });
+    expect(topicProductionLabel(topic)).toBe("Ready");
+    expect(topicRepairTarget(topic)).toEqual({ stage: "assessments", target: "assessments" });
+
+    expect(topicProductionLabel({
+      ...topic,
+      clips: 0,
+      staleClips: 2,
+    })).toBe("Regenerate clips");
   });
 });

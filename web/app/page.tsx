@@ -63,6 +63,7 @@ import {
 } from "./dashboardPerformance";
 import {
   buildWorkflow,
+  topicProductionLabel,
   type CreationStageId,
   type InstructorStageId,
   type TopicReadiness,
@@ -937,7 +938,10 @@ export default function HomePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(draft),
     });
-    if (topic) upsertTopic(topic);
+    if (topic) {
+      upsertTopic(topic);
+      if (job?.video_id) await loadClips(job.video_id);
+    }
   }
 
   async function acceptTopic(topicId: string) {
@@ -969,6 +973,7 @@ export default function HomePage() {
     });
     if (topic) {
       setTopics((current) => current.filter((item) => item.id !== topic.id));
+      if (job?.video_id) await loadClips(job.video_id);
     }
   }
 
@@ -984,7 +989,9 @@ export default function HomePage() {
         second_topic_id: second.id,
       }),
     });
-    if (topic && job?.video_id) await loadTopics(job.video_id);
+    if (topic && job?.video_id) {
+      await Promise.all([loadTopics(job.video_id), loadClips(job.video_id)]);
+    }
   }
 
   async function splitTopic(topic: Topic) {
@@ -999,7 +1006,9 @@ export default function HomePage() {
       setMessage(body?.detail ?? `Split failed with ${response.status}.`);
       return;
     }
-    if (job?.video_id) await loadTopics(job.video_id);
+    if (job?.video_id) {
+      await Promise.all([loadTopics(job.video_id), loadClips(job.video_id)]);
+    }
   }
 
   async function addManualTopic(event: FormEvent<HTMLFormElement>) {
@@ -1186,7 +1195,8 @@ export default function HomePage() {
     )) as Concept | null;
     if (concept) {
       upsertConcept(concept);
-      setMessage("Concept topic links updated. Clip and assessment readiness recalculated.");
+      if (job?.video_id) await loadClips(job.video_id);
+      setMessage("Concept links updated. Affected clips must be regenerated before learner use.");
     }
     return concept;
   }
@@ -1196,7 +1206,12 @@ export default function HomePage() {
       `${pipelineBaseUrl}/courses/graph/concepts/${conceptId}/dismiss`,
       { method: "POST" },
     )) as Concept | null;
-    if (concept && job?.course_id) await loadGraph(job.course_id);
+    if (concept && job?.course_id) {
+      await Promise.all([
+        loadGraph(job.course_id),
+        job.video_id ? loadClips(job.video_id) : Promise.resolve(),
+      ]);
+    }
   }
 
   async function mergeConcepts(event: FormEvent<HTMLFormElement>, sourceConceptId: string) {
@@ -1210,7 +1225,12 @@ export default function HomePage() {
         target_concept_id: mergeTargetId,
       }),
     })) as Concept | null;
-    if (concept) await loadGraph(job.course_id);
+    if (concept) {
+      await Promise.all([
+        loadGraph(job.course_id),
+        job.video_id ? loadClips(job.video_id) : Promise.resolve(),
+      ]);
+    }
   }
 
   async function addGraphEdge(edge: EdgeDraft) {
@@ -1952,8 +1972,16 @@ export default function HomePage() {
   const selectedTopicReviewIndex = selectedTopicReview
     ? topics.findIndex((topic) => topic.id === selectedTopicReview.id)
     : -1;
+  const selectedTopicClips = selectedTopicReview
+    ? clips.filter((clip) => clip.topic_id === selectedTopicReview.id)
+    : [];
+  const selectedTopicActiveClips = selectedTopicClips.filter(
+    (clip) => clip.status !== "superseded",
+  );
   const selectedClipReview =
-    clips.find((clip) => clip.id === selectedClipReviewId) ?? clips[0] ?? null;
+    selectedTopicActiveClips.find((clip) => clip.id === selectedClipReviewId) ??
+    selectedTopicActiveClips[0] ??
+    null;
   const selectedQuestionReview =
     questions.find((question) => question.id === selectedQuestionReviewId) ?? questions[0] ?? null;
   const selectedGraphConcept =
@@ -1983,6 +2011,8 @@ export default function HomePage() {
       reviewStatus: topic.review_status,
       reviewedConcepts: reviewedConceptCountForTopic(topic.id, graph?.concepts ?? []),
       clips: clips.filter((clip) => clip.topic_id === topic.id && clip.status !== "superseded").length,
+      staleClips: clips.filter((clip) => clip.topic_id === topic.id && clip.status === "superseded").length,
+      flaggedClips: clips.filter((clip) => clip.topic_id === topic.id && clip.status === "flagged").length,
       approvedQuestions: questions.filter(
         (question) => question.topic_id === topic.id &&
           (question.review_status === "accepted" || question.review_status === "edited"),
@@ -2041,8 +2071,8 @@ export default function HomePage() {
 
   function stageForTarget(target: string): CreationStageId {
     if (target === "course-setup") return "source";
-    if (target === "outline" || target === "concept-graph") return "structure";
-    if (target === "clips" || target === "assessments") return "learning";
+    if (target === "outline" || target === "concept-graph" || target === "clips") return "structure";
+    if (target === "assessments") return "assessments";
     if (target === "routing" || target === "routing-simulator") return "adapt";
     return "publish";
   }
@@ -2057,6 +2087,8 @@ export default function HomePage() {
   function openWorkflowTask(task: WorkflowTask) {
     if (task.id === "review-topics") {
       setSelectedTopicReviewId(topics.find((topic) => topic.review_status === "proposed")?.id ?? "");
+    } else if (task.id === "prepare-clips") {
+      setSelectedTopicReviewId(topicReadiness.find((topic) => topic.clips === 0)?.id ?? "");
     } else if (task.id === "review-graph") {
       setSelectedGraphConceptId(graph?.concepts.find((concept) => concept.review_status === "proposed")?.id ?? "");
     } else if (task.id === "review-questions") {
@@ -2118,14 +2150,11 @@ export default function HomePage() {
       {transcript && job?.video_id ? (
         <div className={`scroll-mt-20 ${instructorWorkspaceVisible("structure") ? "" : "hidden"}`} id="outline">
           <ReviewWorkspace
-            description="Confirm topic boundaries, titles, and summaries before graph generation."
+            description="Review each topic, confirm its concept coverage, and prepare its learner clips."
             eyebrow="Content review"
-            title="Topic outline"
+            title="Topic production"
             toolbar={(
               <>
-                <Button onClick={() => loadTopics(job.video_id!)} type="button" variant="outline">
-                  <RefreshCw data-icon="inline-start" /> Refresh
-                </Button>
                 <Button
                   aria-controls="manual-topic-form"
                   aria-expanded={showManualTopicForm}
@@ -2142,6 +2171,15 @@ export default function HomePage() {
                   variant="outline"
                 >
                   Accept all
+                </Button>
+                <Button
+                  disabled={bulkAction !== null || generationAction !== null || !topics.some((topic) => topicClipGenerationBlockReason(topic, graph?.concepts ?? []) === null)}
+                  onClick={() => void generateAllMissingClips()}
+                  type="button"
+                  variant="outline"
+                >
+                  {bulkAction === "clips" ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />}
+                  {bulkAction === "clips" ? "Generating clips" : "Generate missing clips"}
                 </Button>
                 <Button disabled={isSegmenting} onClick={() => void segmentTranscript()} type="button">
                   <Sparkles data-icon="inline-start" />
@@ -2189,18 +2227,29 @@ export default function HomePage() {
                 <ReviewWorkspaceGrid
                   queue={(
                     <>
-                      <ReviewQueueHeader reviewed={reviewedTopics} total={topics.length} />
+                      <ReviewQueueHeader
+                        reviewed={topicReadiness.filter((item) =>
+                          item.reviewStatus !== "proposed" &&
+                          item.reviewedConcepts > 0 &&
+                          item.clips > 0 &&
+                          item.flaggedClips === 0
+                        ).length}
+                        total={topics.length}
+                      />
                       <nav aria-label="Topics">
-                        {topics.map((item) => (
-                          <ReviewQueueItem
-                            active={item.id === topic.id}
-                            detail={`${formatTime(item.start_seconds)}–${formatTime(item.end_seconds)} · ${item.review_status}`}
-                            key={item.id}
-                            label={item.title}
-                            onClick={() => setSelectedTopicReviewId(item.id)}
-                            status={item.review_status}
-                          />
-                        ))}
+                        {topics.map((item) => {
+                          const readiness = topicReadiness.find((entry) => entry.id === item.id);
+                          return (
+                            <ReviewQueueItem
+                              active={item.id === topic.id}
+                              detail={`${formatTime(item.start_seconds)}–${formatTime(item.end_seconds)} · ${readiness ? topicProductionLabel(readiness) : item.review_status}`}
+                              key={item.id}
+                              label={item.title}
+                              onClick={() => setSelectedTopicReviewId(item.id)}
+                              status={readiness && topicProductionLabel(readiness) === "Ready" ? item.review_status : "proposed"}
+                            />
+                          );
+                        })}
                       </nav>
                     </>
                   )}
@@ -2292,6 +2341,101 @@ export default function HomePage() {
                         <Button className="w-full" onClick={() => splitTopic(topic)} type="button" variant="outline">Split topic</Button>
                         <Button className="w-full" disabled={!nextTopic} onClick={() => mergeTopicWithNext(index)} type="button" variant="outline">Merge next</Button>
                       </div>
+                      <section className="mt-8 border-t border-border pt-6" aria-labelledby={`topic-clips-${topic.id}`}>
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                          <div>
+                            <h4 className="text-base font-semibold" id={`topic-clips-${topic.id}`}>Learning clips</h4>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              {reviewedConceptCountForTopic(topic.id, graph?.concepts ?? [])} reviewed concept{reviewedConceptCountForTopic(topic.id, graph?.concepts ?? []) === 1 ? "" : "s"}
+                              <span className="mx-2 text-border">·</span>
+                              {selectedTopicActiveClips.length} active clip{selectedTopicActiveClips.length === 1 ? "" : "s"}
+                            </p>
+                          </div>
+                          <Button
+                            disabled={topicClipGenerationBlockReason(topic, graph?.concepts ?? []) !== null || generationAction !== null || bulkAction !== null}
+                            onClick={() => generateClipsForTopic(topic.id)}
+                            type="button"
+                          >
+                            {generationAction === `clips:${topic.id}` ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />}
+                            {generationAction === `clips:${topic.id}` ? "Generating clips" : selectedTopicActiveClips.length ? "Regenerate clips" : "Generate clips"}
+                          </Button>
+                        </div>
+
+                        {topicClipGenerationBlockReason(topic, graph?.concepts ?? []) ? (
+                          <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                            {topicClipGenerationBlockReason(topic, graph?.concepts ?? [])}
+                          </p>
+                        ) : selectedTopicClips.some((clip) => clip.status === "superseded") && selectedTopicActiveClips.length === 0 ? (
+                          <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                            These clips are out of date after a structure change. Regenerate them before learners can use this topic.
+                          </p>
+                        ) : null}
+
+                        {selectedTopicActiveClips.length ? (
+                          <div className="mt-5">
+                            <div className="flex gap-2 overflow-x-auto pb-2" role="tablist" aria-label="Topic clips">
+                              {selectedTopicActiveClips.map((clip, clipIndex) => (
+                                <Button
+                                  aria-selected={selectedClipReview?.id === clip.id}
+                                  key={clip.id}
+                                  onClick={() => setSelectedClipReviewId(clip.id)}
+                                  role="tab"
+                                  size="sm"
+                                  type="button"
+                                  variant={selectedClipReview?.id === clip.id ? "default" : "outline"}
+                                >
+                                  Clip {clipIndex + 1}
+                                </Button>
+                              ))}
+                            </div>
+                            {selectedClipReview ? (
+                              <div className="mt-3 grid grid-cols-[minmax(0,1fr)_240px] gap-5">
+                                <div>
+                                  {job.video_id && playback ? (
+                                    <ProviderVideo
+                                      clipId={selectedClipReview.id}
+                                      clipMaterializationStatus={selectedClipReview.materialization_status}
+                                      endSeconds={selectedClipReview.end_seconds}
+                                      pipelineBaseUrl={pipelineBaseUrl}
+                                      playback={playback}
+                                      startSeconds={selectedClipReview.start_seconds}
+                                      title={`Instructor preview: ${selectedClipReview.type.replaceAll("_", " ")}`}
+                                      videoId={job.video_id}
+                                    />
+                                  ) : <div className="flex aspect-video items-center justify-center bg-black text-sm text-white/70">Preview unavailable</div>}
+                                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                                    <span className="font-medium">{clipDisplayTitle(selectedClipReview)}</span>
+                                    <span className="text-muted-foreground">{clipDurationLabel(selectedClipReview)}</span>
+                                    <Badge className="capitalize" variant="outline">{selectedClipReview.type.replaceAll("_", " ")}</Badge>
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="grid gap-2 text-sm font-medium">
+                                    Re-cut note
+                                    <Textarea
+                                      aria-label={`Flag note for clip ${selectedClipReview.id}`}
+                                      className="min-h-28"
+                                      placeholder="Describe a boundary or playback issue"
+                                      value={clipNotes[selectedClipReview.id] ?? ""}
+                                      onChange={(event) => setClipNotes((current) => ({ ...current, [selectedClipReview.id]: event.target.value }))}
+                                    />
+                                  </label>
+                                  <div className="mt-3 grid gap-2">
+                                    <Button disabled={clipSpotCheckActionsDisabled(selectedClipReview)} onClick={() => recutClip(selectedClipReview.id)} type="button" variant="outline">Re-cut clip</Button>
+                                    <Button disabled={clipSpotCheckActionsDisabled(selectedClipReview)} onClick={() => flagClip(selectedClipReview.id)} type="button" variant="destructive">Flag clip</Button>
+                                  </div>
+                                  <p className="mt-3 text-xs leading-5 text-muted-foreground">{sourceRangeLabel(selectedClipReview)}</p>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <div className="mt-5 rounded-md border border-dashed border-border px-5 py-8 text-center">
+                            <p className="text-sm font-medium">No learner clips yet</p>
+                            <p className="mt-1 text-sm text-muted-foreground">Generate clips after this topic and its concept coverage are reviewed.</p>
+                          </div>
+                        )}
+                      </section>
                     </div>
                   )}
                 />
@@ -2548,132 +2692,7 @@ export default function HomePage() {
       ) : null}
 
       {job?.video_id && topics.length > 0 ? (
-        <div className={`scroll-mt-20 ${instructorWorkspaceVisible("learning") ? "" : "hidden"}`} id="clips">
-          <ReviewWorkspace
-            description="Review the learner-facing media cuts generated from the approved outline."
-            eyebrow="Media review"
-            title="Clip review"
-            toolbar={(
-              <>
-                <Button onClick={() => loadClips(job.video_id!)} type="button" variant="outline">
-                  <RefreshCw data-icon="inline-start" /> Refresh
-                </Button>
-                <Button disabled={bulkAction !== null || generationAction !== null} onClick={() => void generateAllMissingClips()} type="button">
-                  {bulkAction === "clips" ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />} {bulkAction === "clips" ? "Generating clips" : "Generate all missing clips"}
-                </Button>
-              </>
-            )}
-          >
-            <ReviewWorkspaceGrid
-              queue={(
-                <>
-                  <ReviewQueueHeader reviewed={clips.filter((clip) => clip.status !== "active").length} total={clips.length} />
-                  {clips.length ? (
-                    <nav aria-label="Clips">
-                      {clips.map((clip, index) => (
-                        <ReviewQueueItem
-                          active={clip.id === selectedClipReview?.id}
-                          detail={`${clipDurationLabel(clip)} · ${clip.status}`}
-                          key={clip.id}
-                          label={`${index + 1}. ${clipDisplayTitle(clip)}`}
-                          onClick={() => setSelectedClipReviewId(clip.id)}
-                          status={clip.status}
-                        />
-                      ))}
-                    </nav>
-                  ) : <p className="px-4 py-6 text-sm text-muted-foreground">No clips generated yet.</p>}
-                </>
-              )}
-              editor={selectedClipReview ? (
-                <div className="mx-auto max-w-3xl">
-                  <div className="mb-5 flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-xs font-medium uppercase text-muted-foreground">{selectedClipReview.type.replaceAll("_", " ")}</p>
-                      <h3 className="mt-1 text-lg font-semibold">{clipDisplayTitle(selectedClipReview)}</h3>
-                    </div>
-                    <Badge className="capitalize" variant="outline">{selectedClipReview.status}</Badge>
-                  </div>
-                  {job.video_id && playback ? (
-                    <ProviderVideo
-                      clipId={selectedClipReview.id}
-                      clipMaterializationStatus={selectedClipReview.materialization_status}
-                      endSeconds={selectedClipReview.end_seconds}
-                      pipelineBaseUrl={pipelineBaseUrl}
-                      playback={playback}
-                      startSeconds={selectedClipReview.start_seconds}
-                      title={`Instructor preview: ${selectedClipReview.type.replaceAll("_", " ")}`}
-                      videoId={job.video_id}
-                    />
-                  ) : <div className="flex aspect-video items-center justify-center bg-black text-sm text-white/70">Preview unavailable</div>}
-                  {selectedClipReview.materialization_status === "failed" ? (
-                    <p className="mt-3 text-sm text-amber-700" role="status">
-                      The independent clip could not be rendered. Previewing the source timestamp range instead.
-                    </p>
-                  ) : null}
-                  <div className="mt-5 grid grid-cols-4 gap-4 border-b border-border pb-5 text-sm">
-                    <div><p className="text-xs text-muted-foreground">Duration</p><p className="mt-1 font-medium">{clipDurationLabel(selectedClipReview)}</p></div>
-                    <div><p className="text-xs text-muted-foreground">Difficulty</p><p className="mt-1 font-medium capitalize">{selectedClipReview.difficulty ?? "Not set"}</p></div>
-                    <div><p className="text-xs text-muted-foreground">Concept tags</p><p className="mt-1 font-medium">{selectedClipReview.concept_ids.length}</p></div>
-                    <div><p className="text-xs text-muted-foreground">Playback</p><p className="mt-1 font-medium capitalize">{selectedClipReview.materialization_status === "ready" ? "Independent clip" : "Source range"}</p></div>
-                  </div>
-                  <label className="mt-5 grid gap-2 text-sm font-medium">
-                    Review note
-                    <Textarea
-                      aria-label={`Flag note for clip ${selectedClipReview.id}`}
-                      className="min-h-24"
-                      placeholder="Describe the boundary issue or re-cut instruction"
-                      value={clipNotes[selectedClipReview.id] ?? ""}
-                      onChange={(event) => setClipNotes((current) => ({ ...current, [selectedClipReview.id]: event.target.value }))}
-                    />
-                  </label>
-                  <div className="mt-5 flex gap-2">
-                    <Button disabled={clipSpotCheckActionsDisabled(selectedClipReview)} onClick={() => flagClip(selectedClipReview.id)} type="button" variant="destructive">Flag clip</Button>
-                    <Button disabled={clipSpotCheckActionsDisabled(selectedClipReview)} onClick={() => recutClip(selectedClipReview.id)} type="button" variant="outline">Re-cut with note</Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex min-h-96 items-center justify-center text-center">
-                  <div><p className="text-sm font-medium">No clip selected</p><p className="mt-1 text-sm text-muted-foreground">Generate clips from a reviewed topic to begin spot checks.</p></div>
-                </div>
-              )}
-              inspector={(
-                <>
-                  <InspectorSection title="Generate by topic">
-                    <div className="space-y-3">
-                      {topics.filter(isTopicReviewedForClipGeneration).map((topic) => {
-                        const concepts = graph?.concepts ?? [];
-                        const blockReason = topicClipGenerationBlockReason(topic, concepts);
-                        return (
-                          <div className="border-b border-border pb-3 last:border-0" key={topic.id}>
-                            <p className="truncate text-sm font-medium">{topic.title}</p>
-                            <p className="mt-1 text-xs text-muted-foreground">{reviewedConceptCountForTopic(topic.id, concepts)} reviewed concepts</p>
-                            {blockReason ? <p className="mt-1 text-xs leading-5 text-amber-700">{blockReason}</p> : null}
-                            <Button className="mt-2" disabled={blockReason !== null || generationAction !== null || bulkAction !== null} onClick={() => generateClipsForTopic(topic.id)} size="sm" type="button" variant="outline">
-                              {generationAction === `clips:${topic.id}` ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : null}
-                              {generationAction === `clips:${topic.id}` ? "Generating clips" : "Generate clips"}
-                            </Button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </InspectorSection>
-                  {selectedClipReview ? (
-                    <>
-                      <InspectorSection title="Source provenance"><p className="text-xs leading-5 text-muted-foreground">{sourceRangeLabel(selectedClipReview)}</p></InspectorSection>
-                      {selectedClipReview.flag_note ? <InspectorSection title="Existing flag"><p className="text-sm leading-6">{selectedClipReview.flag_note}</p></InspectorSection> : null}
-                      {selectedClipReview.source_clip_id ? <InspectorSection title="Source"><p className="break-all text-xs text-muted-foreground">Re-cut from {selectedClipReview.source_clip_id}</p></InspectorSection> : null}
-                      <InspectorSection title="Traceability"><TraceabilityBlock artifact={selectedClipReview} /></InspectorSection>
-                    </>
-                  ) : null}
-                </>
-              )}
-            />
-          </ReviewWorkspace>
-        </div>
-      ) : null}
-
-      {job?.video_id && topics.length > 0 ? (
-        <div className={`scroll-mt-20 ${instructorWorkspaceVisible("learning") ? "" : "hidden"}`} id="assessments">
+        <div className={`scroll-mt-20 ${instructorWorkspaceVisible("assessments") ? "" : "hidden"}`} id="assessments">
           <ReviewWorkspace
             description="Approve learner-facing checks and verify that remediation maps to reviewed content."
             eyebrow="Assessment review"

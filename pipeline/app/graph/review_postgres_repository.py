@@ -310,6 +310,16 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
             concept = await self._get_concept_row(conn, concept_id)
             if concept is None:
                 return None
+            previous_topic_rows = await (
+                await conn.execute(
+                    "select topic_id from topic_concepts where concept_id = %s",
+                    (concept_id,),
+                )
+            ).fetchall()
+            previous_topic_ids = {
+                UUID(str(topic_row["topic_id"])) for topic_row in previous_topic_rows
+            }
+            next_topic_ids = set(topic_ids)
             await conn.execute("delete from topic_concepts where concept_id = %s", (concept_id,))
             for topic_id in dict.fromkeys(topic_ids):
                 linked = await (
@@ -351,6 +361,30 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
                     ),
                 )
             ).fetchone()
+            if previous_topic_ids != next_topic_ids:
+                affected_topic_ids = tuple(previous_topic_ids | next_topic_ids)
+                if affected_topic_ids:
+                    await conn.execute(
+                        """
+                        update clips
+                        set status = 'superseded',
+                            instructor_revision = coalesce(instructor_revision, '{}'::jsonb)
+                              || %s::jsonb,
+                            updated_at = now()
+                        where topic_id = any(%s::uuid[])
+                          and status in ('active', 'flagged')
+                        """,
+                        (
+                            Jsonb(
+                                {
+                                    "action": "invalidate",
+                                    "reason": "concept_topic_links_changed",
+                                    "concept_id": str(concept_id),
+                                }
+                            ),
+                            list(affected_topic_ids),
+                        ),
+                    )
             return _concept_from_row(row) if row else None
 
     async def accept_concept(self, concept_id: UUID) -> Concept | None:
@@ -386,6 +420,12 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
                 """,
                 (concept_id, concept_id),
             )
+            if row is not None:
+                await _invalidate_clips_for_concept_topics(
+                    conn,
+                    concept_id,
+                    "concept_dismissed",
+                )
             return _concept_from_row(row) if row else None
 
     async def merge_concepts(
@@ -403,6 +443,11 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
             target = await self._get_concept_row(conn, target_concept_id)
             if source is None or target is None:
                 return None
+            await _invalidate_clips_for_concept_topics(
+                conn,
+                source_concept_id,
+                "concept_merged",
+            )
             await conn.execute(
                 """
                 insert into topic_concepts (topic_id, concept_id)
@@ -665,6 +710,36 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
     ) -> dict[str, Any] | None:
         rows = await conn.execute("select * from concepts where id = %s", (concept_id,))
         return await rows.fetchone()
+
+
+async def _invalidate_clips_for_concept_topics(
+    conn: psycopg.AsyncConnection[dict[str, Any]],
+    concept_id: UUID,
+    reason: str,
+) -> None:
+    await conn.execute(
+        """
+        update clips
+        set status = 'superseded',
+            instructor_revision = coalesce(instructor_revision, '{}'::jsonb)
+              || %s::jsonb,
+            updated_at = now()
+        where topic_id in (
+          select topic_id from topic_concepts where concept_id = %s
+        )
+          and status in ('active', 'flagged')
+        """,
+        (
+            Jsonb(
+                {
+                    "action": "invalidate",
+                    "reason": reason,
+                    "concept_id": str(concept_id),
+                }
+            ),
+            concept_id,
+        ),
+    )
 
 
 def _concept_proposal_json(concept: ConceptProposal) -> dict[str, object]:

@@ -1,7 +1,7 @@
 export type InstructorStageId =
   | "source"
   | "structure"
-  | "learning"
+  | "assessments"
   | "adapt"
   | "publish"
   | "insights";
@@ -32,6 +32,8 @@ export type TopicReadiness = {
   reviewStatus: "proposed" | "accepted" | "edited" | "dismissed";
   reviewedConcepts: number;
   clips: number;
+  staleClips: number;
+  flaggedClips: number;
   approvedQuestions: number;
   proposedQuestions: number;
 };
@@ -66,9 +68,9 @@ const stageDetails: Record<CreationStageId, Pick<WorkflowStage, "label" | "descr
     label: "Structure",
     description: "Review topic boundaries, concepts, and prerequisite relationships.",
   },
-  learning: {
-    label: "Learning material",
-    description: "Spot-check clips and approve a comprehension check for every topic.",
+  assessments: {
+    label: "Assessments",
+    description: "Approve a comprehension check and remediation path for every topic.",
   },
   adapt: {
     label: "Adaptation",
@@ -83,7 +85,7 @@ const stageDetails: Record<CreationStageId, Pick<WorkflowStage, "label" | "descr
 export const creationStageOrder: CreationStageId[] = [
   "source",
   "structure",
-  "learning",
+  "assessments",
   "adapt",
   "publish",
 ];
@@ -102,10 +104,10 @@ export function buildWorkflow(snapshot: WorkflowSnapshot): {
       snapshot.conceptCount > 0 &&
       snapshot.proposedConcepts === 0 &&
       snapshot.proposedEdges === 0 &&
-      snapshot.topicsMissingConcepts === 0,
-    learning:
+      snapshot.topicsMissingConcepts === 0 &&
+      snapshot.topicsMissingClips === 0,
+    assessments:
       snapshot.reviewedTopics > 0 &&
-      snapshot.topicsMissingClips === 0 &&
       snapshot.topicsMissingQuestions === 0 &&
       snapshot.proposedQuestions === 0,
     adapt:
@@ -141,10 +143,19 @@ export function topicReadinessLabel(topic: TopicReadiness): string {
   if (topic.reviewStatus === "dismissed") return "Dismissed";
   if (topic.reviewStatus === "proposed") return "Review outline";
   if (topic.reviewedConcepts === 0) return "Link a concept";
-  if (topic.clips === 0) return "Generate clip";
+  if (topic.clips === 0) return topic.staleClips > 0 ? "Regenerate clips" : "Generate clips";
   if (topic.approvedQuestions === 0) {
     return topic.proposedQuestions > 0 ? "Review question" : "Generate question";
   }
+  return "Ready";
+}
+
+export function topicProductionLabel(topic: TopicReadiness): string {
+  if (topic.reviewStatus === "dismissed") return "Dismissed";
+  if (topic.reviewStatus === "proposed") return "Review topic";
+  if (topic.reviewedConcepts === 0) return "Needs concept";
+  if (topic.clips === 0) return topic.staleClips > 0 ? "Regenerate clips" : "Generate clips";
+  if (topic.flaggedClips > 0) return "Clip flagged";
   return "Ready";
 }
 
@@ -154,8 +165,8 @@ export function topicRepairTarget(topic: TopicReadiness): {
 } {
   if (topic.reviewStatus === "proposed") return { stage: "structure", target: "outline" };
   if (topic.reviewedConcepts === 0) return { stage: "structure", target: "concept-graph" };
-  if (topic.clips === 0) return { stage: "learning", target: "clips" };
-  return { stage: "learning", target: "assessments" };
+  if (topic.clips === 0) return { stage: "structure", target: "outline" };
+  return { stage: "assessments", target: "assessments" };
 }
 
 function buildTasks(snapshot: WorkflowSnapshot): WorkflowTask[] {
@@ -232,17 +243,17 @@ function buildTasks(snapshot: WorkflowSnapshot): WorkflowTask[] {
   if (snapshot.topicsMissingClips > 0) {
     tasks.push({
       id: "prepare-clips",
-      stage: "learning",
+      stage: "structure",
       title: "Prepare topic clips",
       detail: "Generate and spot-check concise learning clips for uncovered topics.",
-      target: "clips",
+      target: "outline",
       count: snapshot.topicsMissingClips,
     });
   }
   if (snapshot.topicsMissingQuestions > 0) {
     tasks.push({
       id: "prepare-questions",
-      stage: "learning",
+      stage: "assessments",
       title: "Prepare comprehension checks",
       detail: "Generate a learner check for each reviewed topic that is still uncovered.",
       target: "assessments",
@@ -252,7 +263,7 @@ function buildTasks(snapshot: WorkflowSnapshot): WorkflowTask[] {
   if (snapshot.proposedQuestions > 0) {
     tasks.push({
       id: "review-questions",
-      stage: "learning",
+      stage: "assessments",
       title: "Review assessment proposals",
       detail: "Approve, edit, dismiss, or regenerate each proposed learner check.",
       target: "assessments",
@@ -305,7 +316,11 @@ function buildTasks(snapshot: WorkflowSnapshot): WorkflowTask[] {
 function isStageBlocked(stage: CreationStageId, snapshot: WorkflowSnapshot): boolean {
   if (stage === "source") return false;
   if (stage === "structure") return snapshot.sourceStatus !== "complete";
-  if (stage === "learning") return snapshot.reviewedTopics === 0 || snapshot.reviewedConcepts === 0;
+  if (stage === "assessments") {
+    return snapshot.reviewedTopics === 0 ||
+      snapshot.reviewedConcepts === 0 ||
+      snapshot.topicsMissingClips > 0;
+  }
   if (stage === "adapt") return snapshot.reviewedQuestions === 0;
   if (stage === "publish") return snapshot.sourceStatus !== "complete";
   return false;

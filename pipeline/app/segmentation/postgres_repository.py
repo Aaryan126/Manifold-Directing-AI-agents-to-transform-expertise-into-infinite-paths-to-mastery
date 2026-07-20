@@ -132,6 +132,12 @@ class PostgresTopicRepository(TopicRepository):
             self._database_url,
             row_factory=dict_row,
         ) as conn:
+            previous = await (
+                await conn.execute(
+                    "select start_seconds, end_seconds from topics where id = %s",
+                    (topic_id,),
+                )
+            ).fetchone()
             row = await (
                 await conn.execute(
                     """
@@ -158,6 +164,11 @@ class PostgresTopicRepository(TopicRepository):
                     ),
                 )
             ).fetchone()
+            if previous is not None and (
+                _float_from_row(previous["start_seconds"]) != edit.start_seconds
+                or _float_from_row(previous["end_seconds"]) != edit.end_seconds
+            ):
+                await _invalidate_topic_clips(conn, topic_id, "topic_boundary_changed")
             return _topic_from_row(row) if row else None
 
     async def accept_topic(self, topic_id: UUID) -> Topic | None:
@@ -199,6 +210,8 @@ class PostgresTopicRepository(TopicRepository):
                     (topic_id,),
                 )
             ).fetchone()
+            if row is not None:
+                await _invalidate_topic_clips(conn, topic_id, "topic_dismissed")
             return _topic_from_row(row) if row else None
 
     async def add_manual_topic(
@@ -289,3 +302,22 @@ def _float_from_row(value: object) -> float:
     if isinstance(value, int | float | str | Decimal):
         return float(value)
     raise TypeError(f"Expected numeric database value, got {type(value).__name__}")
+
+
+async def _invalidate_topic_clips(
+    conn: psycopg.AsyncConnection[Any],
+    topic_id: UUID,
+    reason: str,
+) -> None:
+    await conn.execute(
+        """
+        update clips
+        set status = 'superseded',
+            instructor_revision = coalesce(instructor_revision, '{}'::jsonb)
+              || %s::jsonb,
+            updated_at = now()
+        where topic_id = %s
+          and status in ('active', 'flagged')
+        """,
+        (Jsonb({"action": "invalidate", "reason": reason}), topic_id),
+    )

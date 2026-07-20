@@ -338,7 +338,7 @@ async function loadReviewedWorkspace(page: Page) {
   await ingestButton.click();
   await expect(page.locator('[data-stage="adapt"][aria-current="step"]')).toBeVisible();
   await page.locator('[data-stage="structure"]').click();
-  await expect(page.getByRole("heading", { name: "Topic outline", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Topic production", exact: true })).toBeVisible();
 }
 
 test("guided production shows exactly one stage at a time", async ({ page }) => {
@@ -368,6 +368,7 @@ test("guided production shows exactly one stage at a time", async ({ page }) => 
   await expect(page.locator('[data-stage="structure"][aria-current="step"]')).toBeVisible();
   await expect(page.locator("#outline")).toBeVisible();
   await expect(page.locator("#concept-graph")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Learning clips", exact: true })).toBeVisible();
   await expect(page.getByText("Why AI suggested this")).toHaveCount(0);
   await page.getByRole("button", { name: "Add concept", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Add to graph" })).toBeVisible();
@@ -380,11 +381,10 @@ test("guided production shows exactly one stage at a time", async ({ page }) => 
   await page.locator("#manual-topic-form").getByRole("button", { name: "Cancel" }).click();
   await expect(page.locator("#manual-topic-form")).toHaveCount(0);
   await expect(page.locator("#course-setup")).toBeHidden();
-  await expect(page.locator("#clips")).toBeHidden();
+  await expect(page.locator("#clips")).toHaveCount(0);
 
-  await page.locator('[data-stage="learning"]').click();
-  await expect(page.locator('[data-stage="learning"][aria-current="step"]')).toBeVisible();
-  await expect(page.locator("#clips")).toBeVisible();
+  await page.locator('[data-stage="assessments"]').click();
+  await expect(page.locator('[data-stage="assessments"][aria-current="step"]')).toBeVisible();
   await expect(page.locator("#assessments")).toBeVisible();
   await expect(page.locator("#outline")).toBeHidden();
 
@@ -392,7 +392,7 @@ test("guided production shows exactly one stage at a time", async ({ page }) => 
   await expect(page.getByRole("button", { name: "All workspaces" })).toHaveCount(0);
   await page.locator('[data-stage="adapt"]').click();
   await expect(page.locator("#routing")).toBeVisible();
-  await expect(page.locator("#clips")).toBeHidden();
+  await expect(page.locator("#assessments")).toBeHidden();
   await expect(page.locator("#course-setup")).toBeHidden();
 });
 
@@ -415,14 +415,11 @@ test("instructor workspaces match approved desktop visual system", async ({ page
       maxDiffPixels: id === "concept-graph" ? 500 : 0,
     });
   }
-  await page.locator('[data-stage="learning"]').click();
-  for (const id of ["clips", "assessments"]) {
-    const workspace = page.locator(`#${id}`);
-    await expect(workspace).toBeVisible();
-    await expect(workspace).toHaveScreenshot(`${id}-desktop.png`, {
-      animations: "disabled",
-    });
-  }
+  await page.locator('[data-stage="assessments"]').click();
+  await expect(page.locator("#assessments")).toBeVisible();
+  await expect(page.locator("#assessments")).toHaveScreenshot("assessments-desktop.png", {
+    animations: "disabled",
+  });
   await page.locator('[data-stage="adapt"]').click();
   for (const id of ["routing", "routing-simulator"]) {
     const workspace = page.locator(`#${id}`);
@@ -469,7 +466,7 @@ test("laptop and learner workspaces do not overflow", async ({ page }) => {
   const stageWorkspaces = [
     ["source", ["course-setup"]],
     ["structure", ["outline", "concept-graph"]],
-    ["learning", ["clips", "assessments"]],
+    ["assessments", ["assessments"]],
     ["adapt", ["routing", "routing-simulator"]],
     ["publish", ["publish-review"]],
   ] as const;
