@@ -60,6 +60,7 @@ async def test_refresh_returns_underlying_performance_evidence() -> None:
     assert summary.clip_stats == repository.clip_stats_value
     assert summary.activity_history == repository.activity_history_value
     assert summary.mastery_distribution == repository.mastery_distribution_value
+    assert repository.seeded_courses == [repository.course_id]
 
 
 @pytest.mark.anyio
@@ -167,6 +168,10 @@ class MemoryDashboardRepository(DashboardRepository):
         self.signals: list[DashboardSignal] = []
         self.mutations: list[tuple[str, UUID]] = []
         self.mastery: dict[tuple[UUID, UUID], str] = {}
+        self.seeded_courses: list[UUID] = []
+
+    async def seed_demo_insights(self, course_id: UUID) -> None:
+        self.seeded_courses.append(course_id)
 
     async def learner_count(self, course_id: UUID) -> int:
         assert course_id == self.course_id

@@ -51,7 +51,7 @@ export function topicsReadyForAutomaticClipGeneration(
   return topics.flatMap((topic) => {
     if (!topic.id || topicClipGenerationBlockReason(topic, concepts) !== null) return [];
     const hasCurrentClip = clips.some(
-      (clip) => clip.topic_id === topic.id && clip.status !== "superseded",
+      (clip) => clip.topic_id === topic.id && clip.status === "active",
     );
     return hasCurrentClip ? [] : [topic.id];
   });

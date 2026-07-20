@@ -198,14 +198,14 @@ function DonutChart({
     <div className="relative h-64">
       <ResponsiveContainer height="100%" width="100%">
         <PieChart accessibilityLayer>
-          <Pie data={data} dataKey="value" innerRadius={58} nameKey="name" outerRadius={82} paddingAngle={2} stroke="none">
+          <Pie cx="50%" cy="50%" data={data} dataKey="value" innerRadius={58} nameKey="name" outerRadius={82} paddingAngle={2} stroke="none">
             {data.map((item) => <Cell fill={item.color} key={item.name} />)}
           </Pie>
           <Tooltip contentStyle={tooltipStyle} />
           <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />
         </PieChart>
       </ResponsiveContainer>
-      <div className="pointer-events-none absolute inset-x-0 top-[82px] text-center">
+      <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 text-center">
         <p className="text-2xl font-semibold tabular-nums">{centerLabel}</p>
         <p className="text-[11px] text-muted-foreground">{centerSubLabel}</p>
       </div>

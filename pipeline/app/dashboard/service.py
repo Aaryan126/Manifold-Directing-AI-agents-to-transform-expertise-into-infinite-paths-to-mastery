@@ -48,6 +48,7 @@ class DashboardService:
                     del self._refresh_tasks[course_id]
 
     async def _compute_dashboard(self, course_id: UUID) -> DashboardSummary:
+        await self._repository.seed_demo_insights(course_id)
         learner_count = await self._repository.learner_count(course_id)
         attempt_count = await self._repository.attempt_count(course_id)
         concept_stats: tuple[ConceptSignalStats, ...] = ()

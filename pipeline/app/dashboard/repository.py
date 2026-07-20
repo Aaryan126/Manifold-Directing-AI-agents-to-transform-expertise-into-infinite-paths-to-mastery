@@ -15,6 +15,10 @@ from app.dashboard.models import (
 
 
 class DashboardRepository(ABC):
+    async def seed_demo_insights(self, course_id: UUID) -> None:
+        """Persist the demo-only learner evidence once its course is ready."""
+        return None
+
     @abstractmethod
     async def learner_count(self, course_id: UUID) -> int:
         raise NotImplementedError

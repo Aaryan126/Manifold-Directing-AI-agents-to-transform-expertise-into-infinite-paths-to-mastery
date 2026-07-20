@@ -26,6 +26,86 @@ class PostgresDashboardRepository(DashboardRepository):
     def __init__(self, database_url: str) -> None:
         self._database_url = database_url
 
+    async def seed_demo_insights(self, course_id: UUID) -> None:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            demo_video = await (
+                await conn.execute(
+                    """
+                    select id, source_metadata
+                    from videos
+                    where course_id = %s
+                      and source_metadata ->> 'demo_fixture' = 'manifold-default'
+                    order by created_at
+                    limit 1
+                    for update
+                    """,
+                    (course_id,),
+                )
+            ).fetchone()
+            if demo_video is None:
+                return
+            metadata = (
+                demo_video["source_metadata"]
+                if isinstance(demo_video["source_metadata"], dict)
+                else {}
+            )
+            if metadata.get("insights_fixture_seeded") is True:
+                return
+
+            learners = await (
+                await conn.execute(
+                    """
+                    select learner_id
+                    from enrollments
+                    where course_id = %s
+                    order by learner_id
+                    limit 2
+                    """,
+                    (course_id,),
+                )
+            ).fetchall()
+            concept = await (
+                await conn.execute(
+                    """
+                    select c.id
+                    from concepts c
+                    join topic_concepts tc on tc.concept_id = c.id
+                    join questions q on q.topic_id = tc.topic_id
+                      and q.review_status in ('accepted', 'edited')
+                    join attempts a on a.question_id = q.id
+                    where c.course_id = %s
+                      and c.review_status in ('accepted', 'edited')
+                    group by c.id
+                    having count(distinct a.learner_id) >= 2
+                    order by count(distinct a.learner_id) desc, c.name
+                    limit 1
+                    """,
+                    (course_id,),
+                )
+            ).fetchone()
+            if len(learners) < 2 or concept is None:
+                return
+
+            cursor = conn.cursor()
+            await cursor.executemany(
+                """
+                insert into learner_concept_mastery (learner_id, concept_id, state)
+                values (%s, %s, 'struggling')
+                on conflict (learner_id, concept_id) do update
+                set state = excluded.state,
+                    updated_at = now()
+                """,
+                [(learner["learner_id"], concept["id"]) for learner in learners],
+            )
+            await conn.execute(
+                """
+                update videos
+                set source_metadata = source_metadata || %s::jsonb
+                where id = %s
+                """,
+                (Jsonb({"insights_fixture_seeded": True}), demo_video["id"]),
+            )
+
     async def learner_count(self, course_id: UUID) -> int:
         async with pooled_connection(self._database_url) as conn:
             row = await (

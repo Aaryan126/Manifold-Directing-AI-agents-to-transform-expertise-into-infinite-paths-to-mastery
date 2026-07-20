@@ -137,6 +137,6 @@ describe("instructor workflow", () => {
       ...topic,
       clips: 0,
       flaggedClips: 1,
-    })).toBe("Clip flagged");
+    })).toBe("Preparing clips");
   });
 });

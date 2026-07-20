@@ -62,4 +62,15 @@ describe("clipReview", () => {
       { topic_id: "topic-2", status: "superseded" },
     ])).toEqual(["topic-2"]);
   });
+
+  it("replaces a flagged-only clip because learners require an active clip", () => {
+    const topics = [{ id: "topic-1", review_status: "edited" }];
+    const concepts = [
+      { review_status: "accepted", ai_proposal: { topic_ids: ["topic-1"] } },
+    ];
+
+    expect(topicsReadyForAutomaticClipGeneration(topics, concepts, [
+      { topic_id: "topic-1", status: "flagged" },
+    ])).toEqual(["topic-1"]);
+  });
 });
