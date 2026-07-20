@@ -78,6 +78,18 @@ def test_graph_review_api_supports_generate_edit_accept_dismiss_and_merge() -> N
         second_concept_id = graph["concepts"][1]["id"]
         edge_id = graph["edges"][0]["id"]
 
+        create_response = client.post(
+            f"/courses/{course_id}/graph/concepts",
+            json={
+                "name": "Instructor concept",
+                "description": "Added on the canvas",
+                "topic_ids": [str(topic_id)],
+            },
+        )
+        assert create_response.status_code == 201
+        assert create_response.json()["review_status"] == "edited"
+        assert create_response.json()["instructor_revision"]["action"] == "add"
+
         edit_response = client.patch(
             f"/courses/graph/concepts/{first_concept_id}",
             json={"name": "Instructor vectors", "description": "Edited concept"},

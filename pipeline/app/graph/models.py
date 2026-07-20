@@ -85,6 +85,14 @@ class ConceptEdit:
 
 
 @dataclass(frozen=True)
+class ConceptCreate:
+    name: str
+    description: str
+    topic_ids: tuple[UUID, ...]
+    action: str
+
+
+@dataclass(frozen=True)
 class EdgeEdit:
     from_concept_id: UUID
     to_concept_id: UUID

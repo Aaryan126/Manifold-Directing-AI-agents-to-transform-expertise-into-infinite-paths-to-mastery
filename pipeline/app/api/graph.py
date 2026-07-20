@@ -5,7 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.dependencies import get_concept_graph_service
-from app.graph.models import Concept, ConceptEdit, ConceptGraph, ConceptGraphEdge, EdgeEdit
+from app.graph.models import (
+    Concept,
+    ConceptCreate,
+    ConceptEdit,
+    ConceptGraph,
+    ConceptGraphEdge,
+    EdgeEdit,
+)
 from app.graph.review_service import (
     ConceptGraphService,
     ConceptGraphValidationError,
@@ -53,6 +60,10 @@ class ConceptEditRequest(BaseModel):
     description: str = ""
 
 
+class ConceptCreateRequest(ConceptEditRequest):
+    topic_ids: list[UUID] = Field(min_length=1)
+
+
 class ConceptTopicsRequest(BaseModel):
     topic_ids: list[UUID]
 
@@ -80,6 +91,27 @@ async def generate_graph(course_id: UUID, service: GraphServiceDependency) -> Gr
 @router.get("/{course_id}/graph", response_model=GraphResponse)
 async def get_graph(course_id: UUID, service: GraphServiceDependency) -> GraphResponse:
     return _graph_response(await service.get_graph(course_id))
+
+
+@router.post("/{course_id}/graph/concepts", response_model=ConceptResponse, status_code=201)
+async def add_concept(
+    course_id: UUID,
+    request: ConceptCreateRequest,
+    service: GraphServiceDependency,
+) -> ConceptResponse:
+    try:
+        concept = await service.add_concept(
+            course_id,
+            ConceptCreate(
+                name=request.name,
+                description=request.description,
+                topic_ids=tuple(request.topic_ids),
+                action="add",
+            ),
+        )
+    except (ConceptGraphValidationError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _concept_response(concept)
 
 
 @router.patch("/graph/concepts/{concept_id}", response_model=ConceptResponse)

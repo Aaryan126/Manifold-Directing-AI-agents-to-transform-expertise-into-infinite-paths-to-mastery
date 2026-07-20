@@ -3,6 +3,7 @@ from uuid import uuid4
 import pytest
 
 from app.graph.models import (
+    ConceptCreate,
     ConceptEdit,
     ConceptGraphProposal,
     ConceptProposal,
@@ -42,6 +43,28 @@ async def test_graph_generation_preserves_ai_proposals_and_edges() -> None:
     assert all(concept.review_status == GraphReviewStatus.PROPOSED for concept in graph.concepts)
     assert graph.concepts[0].ai_proposal is not None
     assert graph.edges[0].ai_proposal is not None
+
+
+@pytest.mark.anyio
+async def test_instructor_can_add_reviewed_concept_with_topic_link() -> None:
+    course_id = uuid4()
+    topic_id = uuid4()
+    repository = MemoryConceptGraphRepository(_context(course_id, topic_id))
+    service = ConceptGraphService(repository, StaticConceptGraphAgent(_proposal(topic_id)))
+
+    concept = await service.add_concept(
+        course_id,
+        ConceptCreate(
+            name="Instructor concept",
+            description="Added directly on the graph",
+            topic_ids=(topic_id,),
+            action="add",
+        ),
+    )
+
+    assert concept.review_status == GraphReviewStatus.EDITED
+    assert concept.instructor_revision is not None
+    assert concept.instructor_revision["topic_ids"] == [str(topic_id)]
 
 
 @pytest.mark.anyio

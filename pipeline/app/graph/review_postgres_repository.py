@@ -8,6 +8,7 @@ from psycopg.types.json import Jsonb
 from app.db.pool import pooled_connection
 from app.graph.models import (
     Concept,
+    ConceptCreate,
     ConceptEdit,
     ConceptGraph,
     ConceptGraphEdge,
@@ -223,6 +224,47 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
                 edges=tuple(_edge_from_row(row) for row in edges),
             )
 
+    async def add_concept(self, course_id: UUID, create: ConceptCreate) -> Concept:
+        async with await psycopg.AsyncConnection.connect(
+            self._database_url,
+            row_factory=dict_row,
+        ) as conn:
+            topic_rows = await (
+                await conn.execute(
+                    "select id from topics where course_id = %s and id = any(%s)",
+                    (course_id, list(dict.fromkeys(create.topic_ids))),
+                )
+            ).fetchall()
+            if len(topic_rows) != len(set(create.topic_ids)):
+                raise ValueError("Concept topic links must belong to the same course.")
+            revision = {
+                "name": create.name,
+                "description": create.description,
+                "topic_ids": [str(topic_id) for topic_id in create.topic_ids],
+                "action": create.action,
+            }
+            row = await (
+                await conn.execute(
+                    """
+                    insert into concepts (
+                      course_id, name, description, instructor_revision,
+                      review_status, approved_at
+                    )
+                    values (%s, %s, %s, %s::jsonb, 'edited', now())
+                    returning *
+                    """,
+                    (course_id, create.name, create.description, Jsonb(revision)),
+                )
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("Failed to create instructor concept.")
+            for topic_id in dict.fromkeys(create.topic_ids):
+                await conn.execute(
+                    "insert into topic_concepts (topic_id, concept_id) values (%s, %s)",
+                    (topic_id, row["id"]),
+                )
+            return _concept_from_row(row)
+
     async def edit_concept(self, concept_id: UUID, edit: ConceptEdit) -> Concept | None:
         async with await psycopg.AsyncConnection.connect(
             self._database_url,
@@ -234,7 +276,8 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
                     update concepts
                     set name = %s,
                         description = %s,
-                        instructor_revision = %s::jsonb,
+                        instructor_revision = coalesce(instructor_revision, '{}'::jsonb)
+                          || %s::jsonb,
                         review_status = 'edited',
                         approved_at = now(),
                         dismissed_at = null,

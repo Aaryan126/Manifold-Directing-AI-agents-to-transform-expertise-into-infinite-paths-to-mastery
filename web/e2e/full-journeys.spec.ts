@@ -369,6 +369,12 @@ test("guided production shows exactly one stage at a time", async ({ page }) => 
   await expect(page.locator("#outline")).toBeVisible();
   await expect(page.locator("#concept-graph")).toBeVisible();
   await expect(page.getByText("Why AI suggested this")).toHaveCount(0);
+  await page.getByRole("button", { name: "Add concept", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Add to graph" })).toBeVisible();
+  await expect(page.getByLabel("Name", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel adding concept" }).click();
+  await expect(page.getByRole("heading", { name: "Add to graph" })).toHaveCount(0);
+  await expect(page.getByText("Advanced graph tools")).toHaveCount(0);
   await page.getByRole("button", { name: "Add topic", exact: true }).click();
   await expect(page.locator("#manual-topic-form")).toBeVisible();
   await page.locator("#manual-topic-form").getByRole("button", { name: "Cancel" }).click();

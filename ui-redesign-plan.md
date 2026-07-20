@@ -2,7 +2,7 @@
 
 **Status:** Guided production studio minimal-density refinement automated tests passing; awaiting human confirmation
 **Current stage:** Stage 8 - Desktop/laptop human retest pending
-**Last updated:** 2026-07-19
+**Last updated:** 2026-07-20
 **Scope:** Desktop and laptop web only. Tablet, mobile, and native-app layouts are not part of this redesign.
 
 This is the ground-truth execution document for the Phase 10 production UI/UX redesign. Update it whenever a stage starts, a deliverable is completed, a design decision is approved, or a blocker is found. Do not silently skip stages or change the approved visual direction.
@@ -132,6 +132,7 @@ The learner experience prioritizes the current lesson, the next recommended acti
 ## Decisions Log
 
 - 2026-07-20: Concept graph visual refinement completed after populated-course review. Visible topic groups are compressed to eliminate empty-column gaps; nodes use a stable six-color topic palette; prerequisite arrows inherit the source topic color, with proposed edges dashed/animated and reviewed edges solid. Repeated edge labels and the artifact browser were removed. The inspector now opens as a concise summary with editing, topic links, AI context, merge, and manual edge creation collapsed on demand. Frontend quality gates, production build, and all applicable Playwright checks pass.
+- 2026-07-20: Graph interaction consolidation makes the canvas the primary structural editor. Instructors can add reviewed concepts, drag nodes into a locally retained layout, connect and reconnect prerequisite edges, and remove nodes/edges through the existing traceable dismissal model. The canvas legend and inspector are reduced to essential counts, concept meaning, topic assignment, duplicate merge, and AI context. Topic Outline and Clip Review stay separate because they validate source structure and learner-media quality respectively; Clip Review copy now presents it as a continuation of the approved outline.
 - 2026-07-20: Concept graph hardening completed with a sparse mastery model rather than a topic-sized or fully connected diagram. Generation is limited to one to three assessable concepts per topic with evidence-backed prerequisite edges only; the review canvas defaults to active artifacts, lays nodes out in topic-order columns, and adds a topic focus that retains immediate graph neighbors. Dismissed history remains available through an explicit filter, regeneration preserves instructor-reviewed decisions, and React Flow refits after hidden-stage activation. Backend/frontend quality gates, production build, all applicable Playwright checks, Docker rebuild, and health checks pass.
 - 2026-07-20: Topic Outline removes the remaining rationale disclosure and moves `Add topic` into the top toolbar, opening a compact inline creation form only when requested. Proposal evidence remains persisted but does not occupy this rapid boundary-review surface.
 - 2026-07-19: Topic outline uses a wide queue plus one focused editor rather than the shared three-pane evidence layout. Source timing and boundary adjustment sit beside the editable content; time fields use human-readable timecodes; action controls share one consistent row; and coverage warnings are removed from this surface.

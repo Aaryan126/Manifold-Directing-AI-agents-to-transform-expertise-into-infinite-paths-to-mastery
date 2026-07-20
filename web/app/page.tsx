@@ -9,6 +9,7 @@ import {
   type Connection,
   type Edge as FlowEdge,
   type Node as FlowNode,
+  type NodeChange,
   type ReactFlowInstance,
 } from "@xyflow/react";
 import {
@@ -291,6 +292,9 @@ export default function HomePage() {
   const [selectedGraphEdgeId, setSelectedGraphEdgeId] = useState("");
   const [graphReviewFilter, setGraphReviewFilter] = useState<"active" | "all" | "proposed" | "reviewed" | "dismissed">("active");
   const [graphTopicFocus, setGraphTopicFocus] = useState("all");
+  const [graphNodePositions, setGraphNodePositions] = useState<Record<string, { x: number; y: number }>>({});
+  const [showGraphConceptForm, setShowGraphConceptForm] = useState(false);
+  const [newGraphConcept, setNewGraphConcept] = useState({ name: "", description: "", topic_id: "" });
   const [selectedRoutingConceptId, setSelectedRoutingConceptId] = useState("");
   const [selectedSimulatorQuestionId, setSelectedSimulatorQuestionId] = useState("");
   const [selectedDashboardSignalId, setSelectedDashboardSignalId] = useState("");
@@ -314,13 +318,7 @@ export default function HomePage() {
   const [activeLearnerTopicId, setActiveLearnerTopicId] = useState<string | null>(null);
   const [conceptDrafts, setConceptDrafts] = useState<Record<string, ConceptDraft>>({});
   const [conceptTopicDrafts, setConceptTopicDrafts] = useState<Record<string, string[]>>({});
-  const [mergeSourceId, setMergeSourceId] = useState("");
   const [mergeTargetId, setMergeTargetId] = useState("");
-  const [newEdge, setNewEdge] = useState<EdgeDraft>({
-    from_concept_id: "",
-    to_concept_id: "",
-    rationale: "",
-  });
   const [topicDrafts, setTopicDrafts] = useState<Record<string, TopicDraft>>({});
   const [manualTopic, setManualTopic] = useState<TopicDraft>({
     title: "",
@@ -383,7 +381,7 @@ export default function HomePage() {
       const colors = graphTopicColors(node.topicColorIndex);
       return {
       id: node.id,
-      position: { x: node.x, y: node.y },
+      position: graphNodePositions[node.id] ?? { x: node.x, y: node.y },
       data: {
         label: (
           <div className="grid gap-1 text-left">
@@ -437,6 +435,18 @@ export default function HomePage() {
     }, 0);
     return () => window.clearTimeout(timeout);
   }, [activeInstructorStage, flowNodes.length, graphReviewFilter, graphTopicFocus]);
+  useEffect(() => {
+    if (!job?.course_id) {
+      setGraphNodePositions({});
+      return;
+    }
+    try {
+      const saved = window.localStorage.getItem(`manifold:graph-layout:${job.course_id}`);
+      setGraphNodePositions(saved ? JSON.parse(saved) as Record<string, { x: number; y: number }> : {});
+    } catch {
+      setGraphNodePositions({});
+    }
+  }, [job?.course_id]);
   const learnerQuestions = questions.filter(
     (question) => question.review_status === "accepted" || question.review_status === "edited",
   );
@@ -1105,6 +1115,32 @@ export default function HomePage() {
     return concept;
   }
 
+  async function addGraphConcept(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!job?.course_id || !newGraphConcept.name.trim()) return;
+    const topicId = newGraphConcept.topic_id || topics[0]?.id;
+    if (!topicId) return;
+    const concept = (await graphRequest(
+      `${pipelineBaseUrl}/courses/${job.course_id}/graph/concepts`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newGraphConcept.name.trim(),
+          description: newGraphConcept.description.trim(),
+          topic_ids: [topicId],
+        }),
+      },
+    )) as Concept | null;
+    if (!concept) return;
+    upsertConcept(concept);
+    setSelectedGraphConceptId(concept.id);
+    setSelectedGraphEdgeId("");
+    setNewGraphConcept({ name: "", description: "", topic_id: topicId });
+    setShowGraphConceptForm(false);
+    setMessage("Concept added to the graph.");
+  }
+
   async function acceptConcept(conceptId: string) {
     const concept = (await graphRequest(
       `${pipelineBaseUrl}/courses/graph/concepts/${conceptId}/accept`,
@@ -1155,13 +1191,6 @@ export default function HomePage() {
     return concept;
   }
 
-  async function saveConceptReview(conceptId: string, draft: ConceptDraft) {
-    const updated = await updateConcept(conceptId, draft);
-    if (!updated) return;
-    const linked = await updateConceptTopicLinks(conceptId);
-    if (linked) setMessage("Concept details and topic links saved.");
-  }
-
   async function dismissConcept(conceptId: string) {
     const concept = (await graphRequest(
       `${pipelineBaseUrl}/courses/graph/concepts/${conceptId}/dismiss`,
@@ -1170,14 +1199,14 @@ export default function HomePage() {
     if (concept && job?.course_id) await loadGraph(job.course_id);
   }
 
-  async function mergeConcepts(event: FormEvent<HTMLFormElement>) {
+  async function mergeConcepts(event: FormEvent<HTMLFormElement>, sourceConceptId: string) {
     event.preventDefault();
-    if (!mergeSourceId || !mergeTargetId || !job?.course_id) return;
+    if (!sourceConceptId || !mergeTargetId || !job?.course_id) return;
     const concept = (await graphRequest(`${pipelineBaseUrl}/courses/graph/concepts/merge`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        source_concept_id: mergeSourceId,
+        source_concept_id: sourceConceptId,
         target_concept_id: mergeTargetId,
       }),
     })) as Concept | null;
@@ -1208,6 +1237,21 @@ export default function HomePage() {
     if (edge) upsertEdge(edge);
   }
 
+  async function reconnectGraphEdge(edgeId: string, connection: Connection) {
+    if (!connection.source || !connection.target) return;
+    const currentEdge = graph?.edges.find((edge) => edge.id === edgeId);
+    const edge = (await graphRequest(`${pipelineBaseUrl}/courses/graph/edges/${edgeId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from_concept_id: connection.source,
+        to_concept_id: connection.target,
+        rationale: currentEdge ? aiRationale(currentEdge) ?? "Instructor reconnected prerequisite." : "Instructor reconnected prerequisite.",
+      }),
+    })) as ConceptEdge | null;
+    if (edge) upsertEdge(edge);
+  }
+
   function setGraphState(nextGraph: GraphResponse) {
     setGraph(nextGraph);
     setConceptDrafts(
@@ -1226,18 +1270,12 @@ export default function HomePage() {
         nextGraph.concepts.map((concept) => [concept.id, conceptTopicIds(concept)]),
       ),
     );
-    setMergeSourceId(nextGraph.concepts[0]?.id ?? "");
     setMergeTargetId(nextGraph.concepts[1]?.id ?? "");
     setOverrideConceptId(
       nextGraph.concepts.find(
         (concept) => concept.review_status === "accepted" || concept.review_status === "edited",
       )?.id ?? "",
     );
-    setNewEdge((current) => ({
-      ...current,
-      from_concept_id: nextGraph.concepts[0]?.id ?? "",
-      to_concept_id: nextGraph.concepts[1]?.id ?? "",
-    }));
   }
 
   function upsertConcept(concept: Concept) {
@@ -1245,7 +1283,9 @@ export default function HomePage() {
       current
         ? {
             ...current,
-            concepts: current.concepts.map((item) => (item.id === concept.id ? concept : item)),
+            concepts: current.concepts.some((item) => item.id === concept.id)
+              ? current.concepts.map((item) => (item.id === concept.id ? concept : item))
+              : [...current.concepts, concept],
           }
         : current,
     );
@@ -1280,6 +1320,31 @@ export default function HomePage() {
       to_concept_id: connection.target,
       rationale: "Instructor-created edge from graph canvas.",
     });
+  }
+
+  function handleGraphNodesChange(changes: NodeChange<FlowNode>[]) {
+    const positionChanges = changes.filter(
+      (change): change is Extract<NodeChange<FlowNode>, { type: "position" }> =>
+        change.type === "position" && Boolean(change.position),
+    );
+    if (!positionChanges.length) return;
+    setGraphNodePositions((current) => {
+      const next = { ...current };
+      for (const change of positionChanges) {
+        if (change.position) next[change.id] = change.position;
+      }
+      return next;
+    });
+  }
+
+  function persistGraphLayout(node: FlowNode) {
+    if (!job?.course_id) return;
+    const next = { ...graphNodePositions, [node.id]: node.position };
+    setGraphNodePositions(next);
+    window.localStorage.setItem(
+      `manifold:graph-layout:${job.course_id}`,
+      JSON.stringify(next),
+    );
   }
 
   async function loadClips(videoId: string) {
@@ -2272,6 +2337,18 @@ export default function HomePage() {
               </select>
               <Button disabled={generationAction === "graph" || isAcceptingGraph} onClick={() => loadGraph(job.course_id!)} type="button" variant="outline"><RefreshCw data-icon="inline-start" /> Refresh</Button>
               <Button
+                onClick={() => {
+                  setShowGraphConceptForm(true);
+                  setSelectedGraphConceptId("");
+                  setSelectedGraphEdgeId("");
+                  setNewGraphConcept((current) => ({ ...current, topic_id: current.topic_id || topics[0]?.id || "" }));
+                }}
+                type="button"
+                variant="outline"
+              >
+                <Plus data-icon="inline-start" /> Add concept
+              </Button>
+              <Button
                 disabled={generationAction === "graph" || isAcceptingGraph || !graph || ![...graph.concepts, ...graph.edges].some((artifact) => artifact.review_status === "proposed")}
                 onClick={() => void acceptAllGraphProposals()}
                 type="button"
@@ -2305,19 +2382,19 @@ export default function HomePage() {
           {graph && topicsWithoutReviewedConcepts.length ? (
             <div className="border-b border-amber-200 bg-amber-50 px-8 py-3 text-sm text-amber-900" role="alert">
               <strong>{topicsWithoutReviewedConcepts.length} topic(s) need concept links.</strong>{" "}
-              Select a concept, open Edit concept and topics, then link them before generating clips.
+              Select an unlinked concept and assign its topic before generating clips.
             </div>
           ) : null}
 
           {graph ? (
             <div className="grid grid-cols-[minmax(0,1fr)_336px]">
               <div className="relative min-w-0 bg-muted/15">
-                <div className="absolute left-5 top-5 z-10 flex gap-2 rounded-lg border border-border bg-background p-2 shadow-sm">
-                  <Badge variant="outline">{flowNodes.length} concepts</Badge>
-                  <Badge variant="outline">{flowEdges.length} edges</Badge>
-                  {graphTopicFocus !== "all" ? <Badge>Focused + neighbors</Badge> : null}
-                  <span className="flex items-center gap-1.5 border-l border-border pl-2 text-xs text-muted-foreground"><span className="size-2 rounded-full bg-blue-600" /><span className="size-2 rounded-full bg-emerald-600" /><span className="size-2 rounded-full bg-amber-600" />Topics</span>
-                  <span className="border-l border-border pl-2 text-xs text-muted-foreground">Arrows = requires</span>
+                <div className="absolute left-5 top-5 z-10 flex h-9 items-center gap-2 rounded-md border border-border bg-background/95 px-3 text-xs text-muted-foreground shadow-sm backdrop-blur">
+                  <span><strong className="font-semibold text-foreground">{flowNodes.length}</strong> {flowNodes.length === 1 ? "concept" : "concepts"}</span>
+                  <span aria-hidden="true">·</span>
+                  <span><strong className="font-semibold text-foreground">{flowEdges.length}</strong> {flowEdges.length === 1 ? "prerequisite" : "prerequisites"}</span>
+                  {graphTopicFocus !== "all" ? <><span aria-hidden="true">·</span><span className="font-medium text-primary">Focused view</span></> : null}
+                  <span aria-label="Node colors identify topics" className="ml-1 flex gap-1" title="Node colors identify topics"><span className="size-2 rounded-full bg-blue-600" /><span className="size-2 rounded-full bg-emerald-600" /><span className="size-2 rounded-full bg-amber-600" /></span>
                 </div>
                 <div className="h-[700px] min-w-0">
                   <ReactFlow
@@ -2328,7 +2405,10 @@ export default function HomePage() {
                     onConnect={handleConnect}
                     onEdgeClick={(_, edge) => { setSelectedGraphEdgeId(edge.id); setSelectedGraphConceptId(""); }}
                     onInit={(instance) => { graphFlowRef.current = instance; }}
+                    onNodeDragStop={(_, node) => persistGraphLayout(node)}
                     onNodeClick={(_, node) => { setSelectedGraphConceptId(node.id); setSelectedGraphEdgeId(""); }}
+                    onNodesChange={handleGraphNodesChange}
+                    onReconnect={(oldEdge, connection) => void reconnectGraphEdge(oldEdge.id, connection)}
                   >
                     <Background gap={24} size={1} />
                     <Controls />
@@ -2345,7 +2425,18 @@ export default function HomePage() {
               </div>
 
               <aside className="max-h-[700px] overflow-y-auto border-l border-border bg-muted/20 px-5 py-6" aria-label="Graph inspector">
-                {selectedGraphEdge ? (
+                {showGraphConceptForm ? (
+                  <form className="grid gap-4" onSubmit={addGraphConcept}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div><p className="text-xs font-semibold uppercase text-muted-foreground">New concept</p><h3 className="mt-2 text-base font-semibold">Add to graph</h3></div>
+                      <Button aria-label="Cancel adding concept" onClick={() => setShowGraphConceptForm(false)} size="sm" type="button" variant="ghost">Cancel</Button>
+                    </div>
+                    <label className="grid gap-2 text-sm font-medium">Name<Input autoFocus value={newGraphConcept.name} onChange={(event) => setNewGraphConcept((current) => ({ ...current, name: event.target.value }))} /></label>
+                    <label className="grid gap-2 text-sm font-medium">Description<Textarea className="min-h-20" value={newGraphConcept.description} onChange={(event) => setNewGraphConcept((current) => ({ ...current, description: event.target.value }))} /></label>
+                    <label className="grid gap-2 text-sm font-medium">Topic<select className="h-10 rounded-lg border border-input bg-background px-3 text-sm" value={newGraphConcept.topic_id || topics[0]?.id || ""} onChange={(event) => setNewGraphConcept((current) => ({ ...current, topic_id: event.target.value }))}>{topics.map((topic) => <option key={topic.id} value={topic.id}>{topic.title}</option>)}</select></label>
+                    <Button disabled={!newGraphConcept.name.trim()} type="submit"><Plus data-icon="inline-start" /> Add concept</Button>
+                  </form>
+                ) : selectedGraphEdge ? (
                   <>
                     <div className="flex items-start justify-between gap-3">
                       <div><p className="text-xs font-semibold uppercase text-muted-foreground">Prerequisite</p><h3 className="mt-2 text-base font-semibold">Learning dependency</h3></div>
@@ -2358,7 +2449,7 @@ export default function HomePage() {
                     {aiRationale(selectedGraphEdge) ? <p className="mt-4 text-sm leading-6 text-muted-foreground">{aiRationale(selectedGraphEdge)}</p> : null}
                     <div className="mt-5 flex gap-2 border-b border-border pb-5">
                       {!acceptButtonDisabled(selectedGraphEdge.review_status) ? <Button onClick={() => acceptEdge(selectedGraphEdge.id)} size="sm" type="button">Accept</Button> : null}
-                      <Button onClick={() => dismissEdge(selectedGraphEdge.id)} size="sm" type="button" variant="destructive">Dismiss</Button>
+                      <Button onClick={() => dismissEdge(selectedGraphEdge.id)} size="sm" type="button" variant="destructive"><Trash2 data-icon="inline-start" /> Remove</Button>
                     </div>
                     <details className="border-b border-border py-4">
                       <summary className="cursor-pointer text-sm font-medium">AI context</summary>
@@ -2389,15 +2480,21 @@ export default function HomePage() {
                       </div>
                       <div className="mt-5 flex flex-wrap gap-2 pb-5">
                         {!acceptButtonDisabled(concept.review_status) ? <Button onClick={() => acceptConcept(concept.id)} size="sm" type="button">Accept</Button> : null}
-                        <Button onClick={() => dismissConcept(concept.id)} size="sm" type="button" variant="destructive">Dismiss</Button>
+                        <Button onClick={() => dismissConcept(concept.id)} size="sm" type="button" variant="destructive"><Trash2 data-icon="inline-start" /> Remove</Button>
                       </div>
                       <details className="border-y border-border py-4">
-                        <summary className="cursor-pointer text-sm font-medium">Edit concept and topics</summary>
+                        <summary className="cursor-pointer text-sm font-medium">Edit details</summary>
                         <div className="mt-4 space-y-4">
                           <label className="grid gap-2 text-sm font-medium">Name<Input aria-label={`Concept name ${concept.name}`} value={draft.name} onChange={(event) => setConceptDrafts((current) => ({ ...current, [concept.id]: { ...draft, name: event.target.value } }))} /></label>
                           <label className="grid gap-2 text-sm font-medium">Description<Textarea aria-label={`Concept description ${concept.name}`} className="min-h-24" value={draft.description} onChange={(event) => setConceptDrafts((current) => ({ ...current, [concept.id]: { ...draft, description: event.target.value } }))} /></label>
+                          <Button className="w-full" onClick={() => void updateConcept(concept.id, draft)} size="sm" type="button">Save details</Button>
+                        </div>
+                      </details>
+                      <details className="border-b border-border py-4">
+                        <summary className="cursor-pointer text-sm font-medium">Topic assignment</summary>
+                        <div className="mt-4 space-y-4">
                           <fieldset className="grid gap-2 border-0 p-0" data-slot="concept-topic-links">
-                            <legend className="text-sm font-medium">Topics</legend>
+                            <legend className="sr-only">Topics</legend>
                             <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-border bg-background p-2">
                               {topics.map((topic) => {
                                 const checked = (conceptTopicDrafts[concept.id] ?? []).includes(topic.id);
@@ -2424,8 +2521,15 @@ export default function HomePage() {
                               })}
                             </div>
                           </fieldset>
-                          <Button className="w-full" onClick={() => void saveConceptReview(concept.id, draft)} size="sm" type="button">Save changes</Button>
+                          <Button className="w-full" onClick={() => void updateConceptTopicLinks(concept.id)} size="sm" type="button">Save topics</Button>
                         </div>
+                      </details>
+                      <details className="border-b border-border py-4">
+                        <summary className="cursor-pointer text-sm font-medium">Merge duplicate</summary>
+                        <form className="mt-4 grid gap-2" onSubmit={(event) => void mergeConcepts(event, concept.id)}>
+                          <select aria-label="Concept to keep" className="h-9 rounded-lg border border-input bg-background px-2 text-sm" data-slot="merge-concept-target" value={mergeTargetId} onChange={(event) => setMergeTargetId(event.target.value)}>{graph.concepts.filter((item) => item.id !== concept.id && item.review_status !== "dismissed").map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
+                          <Button disabled={!mergeTargetId || mergeTargetId === concept.id} size="sm" type="submit" variant="outline">Merge into selected concept</Button>
+                        </form>
                       </details>
                       <details className="border-b border-border py-4">
                         <summary className="cursor-pointer text-sm font-medium">AI context</summary>
@@ -2435,24 +2539,6 @@ export default function HomePage() {
                   );
                 })() : <p className="text-sm text-muted-foreground">Select a concept or edge to inspect it.</p>}
 
-                <details className="py-4">
-                  <summary className="cursor-pointer text-sm font-medium">Advanced graph tools</summary>
-                  <div className="mt-4 grid gap-5">
-                    <form className="grid gap-2" onSubmit={mergeConcepts}>
-                      <p className="text-xs font-semibold uppercase text-muted-foreground">Merge duplicate</p>
-                      <select aria-label="Concept to merge" className="h-9 rounded-lg border border-input bg-background px-2 text-sm" data-slot="merge-concept-source" value={mergeSourceId} onChange={(event) => setMergeSourceId(event.target.value)}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
-                      <select aria-label="Concept to keep" className="h-9 rounded-lg border border-input bg-background px-2 text-sm" data-slot="merge-concept-target" value={mergeTargetId} onChange={(event) => setMergeTargetId(event.target.value)}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
-                      <Button disabled={!mergeSourceId || !mergeTargetId} size="sm" type="submit" variant="outline">Merge</Button>
-                    </form>
-                    <form className="grid gap-2 border-t border-border pt-4" onSubmit={(event) => { event.preventDefault(); addGraphEdge(newEdge); }}>
-                      <p className="text-xs font-semibold uppercase text-muted-foreground">Add prerequisite</p>
-                      <select aria-label="Required concept" className="h-9 rounded-lg border border-input bg-background px-2 text-sm" data-slot="edge-source" value={newEdge.from_concept_id} onChange={(event) => setNewEdge((current) => ({ ...current, from_concept_id: event.target.value }))}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
-                      <select aria-label="Unlocked concept" className="h-9 rounded-lg border border-input bg-background px-2 text-sm" data-slot="edge-target" value={newEdge.to_concept_id} onChange={(event) => setNewEdge((current) => ({ ...current, to_concept_id: event.target.value }))}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
-                      <Input aria-label="Edge rationale" placeholder="Why is it required?" value={newEdge.rationale} onChange={(event) => setNewEdge((current) => ({ ...current, rationale: event.target.value }))} />
-                      <Button size="sm" type="submit" variant="outline">Add prerequisite</Button>
-                    </form>
-                  </div>
-                </details>
               </aside>
             </div>
           ) : (
@@ -2464,9 +2550,9 @@ export default function HomePage() {
       {job?.video_id && topics.length > 0 ? (
         <div className={`scroll-mt-20 ${instructorWorkspaceVisible("learning") ? "" : "hidden"}`} id="clips">
           <ReviewWorkspace
-            description="Preview source boundaries and flag only clips that need a corrected cut."
+            description="Review the learner-facing media cuts generated from the approved outline."
             eyebrow="Media review"
-            title="Clip spot check"
+            title="Clip review"
             toolbar={(
               <>
                 <Button onClick={() => loadClips(job.video_id!)} type="button" variant="outline">

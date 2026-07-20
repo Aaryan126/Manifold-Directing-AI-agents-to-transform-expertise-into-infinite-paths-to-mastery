@@ -7,6 +7,7 @@ from app.asr.base import ASRProvider, Transcript, TranscriptWord
 from app.graph.agent import ConceptGraphAgent
 from app.graph.models import (
     Concept,
+    ConceptCreate,
     ConceptEdit,
     ConceptGraph,
     ConceptGraphEdge,
@@ -358,6 +359,32 @@ class MemoryConceptGraphRepository(ConceptGraphRepository):
             edges=tuple(self.edges.values()),
         )
 
+    async def add_concept(self, course_id: UUID, create: ConceptCreate) -> Concept:
+        valid_topic_ids = {topic.id for topic in self.context.topics}
+        if course_id != self.context.course_id or not set(create.topic_ids).issubset(
+            valid_topic_ids
+        ):
+            raise ValueError("Concept topic links must belong to the same course.")
+        concept = Concept(
+            id=uuid4(),
+            course_id=course_id,
+            name=create.name,
+            description=create.description,
+            review_status=GraphReviewStatus.EDITED,
+            ai_proposal=None,
+            instructor_revision={
+                "name": create.name,
+                "description": create.description,
+                "topic_ids": [str(topic_id) for topic_id in create.topic_ids],
+                "action": create.action,
+            },
+            approved_at="now",
+            dismissed_at=None,
+            merged_into_concept_id=None,
+        )
+        self.concepts[concept.id] = concept
+        return concept
+
     async def edit_concept(self, concept_id: UUID, edit: ConceptEdit) -> Concept | None:
         concept = self.concepts.get(concept_id)
         if concept is None:
@@ -368,6 +395,7 @@ class MemoryConceptGraphRepository(ConceptGraphRepository):
             description=edit.description,
             review_status=GraphReviewStatus.EDITED,
             instructor_revision={
+                **(concept.instructor_revision or {}),
                 "name": edit.name,
                 "description": edit.description,
                 "action": edit.action,

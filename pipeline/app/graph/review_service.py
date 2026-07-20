@@ -12,6 +12,7 @@ from app.audit.service import (
 from app.graph.agent import ConceptGraphAgent
 from app.graph.models import (
     Concept,
+    ConceptCreate,
     ConceptEdit,
     ConceptGraph,
     ConceptGraphEdge,
@@ -55,6 +56,16 @@ class ConceptGraphService:
 
     async def get_graph(self, course_id: UUID) -> ConceptGraph:
         return await self._repository.get_graph(course_id)
+
+    async def add_concept(self, course_id: UUID, create: ConceptCreate) -> Concept:
+        _validate_concept_edit(
+            ConceptEdit(name=create.name, description=create.description, action=create.action)
+        )
+        if not create.topic_ids:
+            raise ConceptGraphValidationError("A concept must be linked to at least one topic.")
+        concept = await self._repository.add_concept(course_id, create)
+        await self._audit_concept(concept, None, concept, create.action, "instructor")
+        return concept
 
     async def edit_concept(self, concept_id: UUID, edit: ConceptEdit) -> Concept | None:
         _validate_concept_edit(edit)

@@ -3,6 +3,7 @@ from uuid import UUID
 
 from app.graph.models import (
     Concept,
+    ConceptCreate,
     ConceptEdit,
     ConceptGraph,
     ConceptGraphEdge,
@@ -28,6 +29,10 @@ class ConceptGraphRepository(ABC):
     @abstractmethod
     async def get_graph(self, course_id: UUID) -> ConceptGraph:
         """Return graph including dismissed nodes and edges for review traceability."""
+
+    @abstractmethod
+    async def add_concept(self, course_id: UUID, create: ConceptCreate) -> Concept:
+        """Create an instructor-authored, reviewed concept and its topic links."""
 
     @abstractmethod
     async def edit_concept(self, concept_id: UUID, edit: ConceptEdit) -> Concept | None:
