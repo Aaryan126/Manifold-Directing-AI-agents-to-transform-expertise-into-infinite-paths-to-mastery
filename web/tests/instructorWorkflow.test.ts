@@ -126,5 +126,17 @@ describe("instructor workflow", () => {
       reviewedConcepts: 0,
       clips: 0,
     })).toBe("Connect concept");
+
+    expect(topicProductionLabel({
+      ...topic,
+      clips: 1,
+      flaggedClips: 1,
+    })).toBe("Ready");
+
+    expect(topicProductionLabel({
+      ...topic,
+      clips: 0,
+      flaggedClips: 1,
+    })).toBe("Clip flagged");
   });
 });

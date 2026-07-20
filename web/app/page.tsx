@@ -55,6 +55,7 @@ import {
   dashboardSignalTitle,
 } from "./dashboardReview";
 import {
+  answerOutcomeSummary,
   percentage,
   rankedClipPerformance,
   rankedConceptPerformance,
@@ -110,7 +111,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { LoaderCircle, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { Flag, LoaderCircle, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 
 type Job = {
   id: string;
@@ -519,12 +520,6 @@ export default function HomePage() {
         style: { stroke: "var(--muted-foreground)", strokeWidth: 1.5 },
       }))
     : [];
-  const signalChartData = [
-    ["Stuck cohorts", dashboardSummary?.signals.filter((signal) => signal.type === "stuck_cohort").length ?? 0],
-    ["Content", dashboardSummary?.signals.filter((signal) => signal.type === "underperforming_content").length ?? 0],
-    ["Graph drift", dashboardSummary?.signals.filter((signal) => signal.type === "graph_drift").length ?? 0],
-  ] as const;
-  const largestSignalCount = Math.max(1, ...signalChartData.map(([, count]) => count));
   const conceptPerformance = rankedConceptPerformance(
     dashboardSummary?.concept_performance ?? [],
   );
@@ -533,6 +528,16 @@ export default function HomePage() {
   );
   const clipPerformance = rankedClipPerformance(
     dashboardSummary?.clip_performance ?? [],
+  );
+  const answerOutcomes = answerOutcomeSummary(dashboardSummary?.question_performance ?? []);
+  const answerOutcomeRates = {
+    confident: percentage(answerOutcomes.confident_correct, answerOutcomes.attempts),
+    unsure: percentage(answerOutcomes.unsure_correct, answerOutcomes.attempts),
+    incorrect: percentage(answerOutcomes.incorrect, answerOutcomes.attempts),
+  };
+  const maxRemediationDemand = Math.max(
+    1,
+    ...clipPerformance.map((item) => item.remediation_attempts + item.struggling_learners),
   );
   const publishReadinessRevision = [
     ...topics.map((topic) => `topic:${topic.id}:${topic.review_status}`),
@@ -1968,9 +1973,12 @@ export default function HomePage() {
   const selectedTopicClips = selectedTopicReview
     ? clips.filter((clip) => clip.topic_id === selectedTopicReview.id)
     : [];
-  const selectedTopicActiveClips = selectedTopicClips.filter(
-    (clip) => clip.status !== "superseded",
-  );
+  const selectedTopicActiveClips = selectedTopicClips
+    .filter((clip) => clip.status !== "superseded")
+    .sort((first, second) => {
+      if (first.status === second.status) return 0;
+      return first.status === "active" ? -1 : 1;
+    });
   const selectedClipReview =
     selectedTopicActiveClips.find((clip) => clip.id === selectedClipReviewId) ??
     selectedTopicActiveClips[0] ??
@@ -2005,7 +2013,7 @@ export default function HomePage() {
       title: topic.title,
       reviewStatus: topic.review_status,
       reviewedConcepts: reviewedConceptCountForTopic(topic.id, graph?.concepts ?? []),
-      clips: clips.filter((clip) => clip.topic_id === topic.id && clip.status !== "superseded").length,
+      clips: clips.filter((clip) => clip.topic_id === topic.id && clip.status === "active").length,
       staleClips: clips.filter((clip) => clip.topic_id === topic.id && clip.status === "superseded").length,
       flaggedClips: clips.filter((clip) => clip.topic_id === topic.id && clip.status === "flagged").length,
       approvedQuestions: questions.filter(
@@ -2489,6 +2497,7 @@ export default function HomePage() {
                                   variant={selectedClipReview?.id === clip.id ? "default" : "outline"}
                                 >
                                   Clip {clipIndex + 1}
+                                  {clip.status === "flagged" ? <span aria-label="Flagged" className="size-1.5 rounded-full bg-red-600" /> : null}
                                 </Button>
                               ))}
                             </div>
@@ -2513,22 +2522,36 @@ export default function HomePage() {
                                     <Badge className="capitalize" variant="outline">{selectedClipReview.type.replaceAll("_", " ")}</Badge>
                                   </div>
                                 </div>
-                                <div>
-                                  <label className="grid gap-2 text-sm font-medium">
-                                    Re-cut note
-                                    <Textarea
-                                      aria-label={`Flag note for clip ${selectedClipReview.id}`}
-                                      className="min-h-28"
-                                      placeholder="Describe a boundary or playback issue"
-                                      value={clipNotes[selectedClipReview.id] ?? ""}
-                                      onChange={(event) => setClipNotes((current) => ({ ...current, [selectedClipReview.id]: event.target.value }))}
-                                    />
-                                  </label>
-                                  <div className="mt-3 grid gap-2">
-                                    <Button disabled={clipSpotCheckActionsDisabled(selectedClipReview)} onClick={() => recutClip(selectedClipReview.id)} type="button" variant="outline">Re-cut clip</Button>
-                                    <Button disabled={clipSpotCheckActionsDisabled(selectedClipReview)} onClick={() => flagClip(selectedClipReview.id)} type="button" variant="destructive">Flag clip</Button>
-                                  </div>
-                                  <p className="mt-3 text-xs leading-5 text-muted-foreground">{sourceRangeLabel(selectedClipReview)}</p>
+                                <div className="self-start">
+                                  {selectedClipReview.status === "flagged" ? (
+                                    <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+                                      <p className="font-semibold">Flagged for review</p>
+                                      <p className="mt-1 leading-5">This record is kept for audit history and is not the preferred learner clip.</p>
+                                    </div>
+                                  ) : null}
+                                  <details className="group rounded-lg border border-border bg-background">
+                                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-sm font-medium">
+                                      <span className="flex items-center gap-2"><Flag aria-hidden="true" className="size-4 text-muted-foreground" /> Report clip issue</span>
+                                      <span className="text-xs font-normal text-muted-foreground">Optional</span>
+                                    </summary>
+                                    <div className="border-t border-border p-3">
+                                      <label className="grid gap-2 text-xs font-medium">
+                                        What needs fixing?
+                                        <Textarea
+                                          aria-label={`Flag note for clip ${selectedClipReview.id}`}
+                                          className="min-h-24"
+                                          placeholder="Boundary, audio, or playback issue"
+                                          value={clipNotes[selectedClipReview.id] ?? ""}
+                                          onChange={(event) => setClipNotes((current) => ({ ...current, [selectedClipReview.id]: event.target.value }))}
+                                        />
+                                      </label>
+                                      <div className="mt-3 grid gap-2">
+                                        <Button disabled={clipSpotCheckActionsDisabled(selectedClipReview)} onClick={() => recutClip(selectedClipReview.id)} size="sm" type="button" variant="outline">Re-cut from note</Button>
+                                        <Button disabled={clipSpotCheckActionsDisabled(selectedClipReview)} onClick={() => flagClip(selectedClipReview.id)} size="sm" type="button" variant="destructive">Flag without re-cut</Button>
+                                      </div>
+                                      <p className="mt-3 text-xs leading-5 text-muted-foreground">Source: {sourceRangeLabel(selectedClipReview)}</p>
+                                    </div>
+                                  </details>
                                 </div>
                               </div>
                             ) : null}
@@ -3162,7 +3185,7 @@ export default function HomePage() {
       {job?.course_id ? (
         <section className={`instructorOnly scroll-mt-20 border-b border-border bg-background ${instructorWorkspaceVisible("insights") ? "" : "hidden"}`} id="insights">
           <WorkspaceHeader
-            description="Review evidence-backed signals and correct the underlying learning system."
+            description="See learning health and intervene where it matters."
             eyebrow="Learning operations"
             title="Instructor dashboard"
             toolbar={<Button onClick={() => loadDashboard(job.course_id!)} type="button"><RefreshCw data-icon="inline-start" /> Refresh signals</Button>}
@@ -3170,79 +3193,75 @@ export default function HomePage() {
 
           {dashboardSummary ? (
             <>
-              <div className="grid grid-cols-3 border-b border-border bg-muted/15">
+              <div className="grid grid-cols-4 border-b border-border bg-muted/15">
                 <div className="border-r border-border px-6 py-4"><p className="text-xs font-medium uppercase text-muted-foreground">Learners</p><p className="mt-1 text-2xl font-semibold tabular-nums">{dashboardSummary.learner_count}</p></div>
                 <div className="border-r border-border px-6 py-4"><p className="text-xs font-medium uppercase text-muted-foreground">Attempts</p><p className="mt-1 text-2xl font-semibold tabular-nums">{dashboardSummary.attempt_count}</p></div>
-                <div className="px-6 py-4"><p className="text-xs font-medium uppercase text-muted-foreground">Open signals</p><p className="mt-1 text-2xl font-semibold tabular-nums">{dashboardSummary.signals.length}</p></div>
-              </div>
-              <div className="grid grid-cols-[minmax(0,1fr)_260px] border-b border-border">
-                <section className="border-r border-border px-6 py-5" aria-labelledby="signal-mix-title">
-                  <div className="flex items-center justify-between gap-4"><div><p className="text-xs font-semibold uppercase text-muted-foreground" id="signal-mix-title">Open signal mix</p><p className="mt-1 text-sm text-muted-foreground">Current intervention pressure by diagnosis type</p></div><span className="text-xs text-muted-foreground">{dashboardSummary.signals.length} total</span></div>
-                  <div className="mt-4 grid grid-cols-3 gap-4">
-                    {signalChartData.map(([label, count], index) => (
-                      <div key={label}>
-                        <div className="flex items-center justify-between text-xs"><span>{label}</span><strong className="tabular-nums">{count}</strong></div>
-                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted"><div className={index === 0 ? "h-full bg-amber-500" : index === 1 ? "h-full bg-emerald-600" : "h-full bg-primary"} style={{ width: `${(count / largestSignalCount) * 100}%` }} /></div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-                <section className="px-6 py-5" aria-labelledby="attempt-density-title">
-                  <p className="text-xs font-semibold uppercase text-muted-foreground" id="attempt-density-title">Attempt density</p>
-                  <p className="mt-2 text-2xl font-semibold tabular-nums">{dashboardSummary.learner_count ? (dashboardSummary.attempt_count / dashboardSummary.learner_count).toFixed(1) : "0.0"}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Attempts per learner</p>
-                </section>
+                <div className="border-r border-border px-6 py-4"><p className="text-xs font-medium uppercase text-muted-foreground">Need attention</p><p className="mt-1 text-2xl font-semibold tabular-nums">{dashboardSummary.signals.length}</p></div>
+                <div className="px-6 py-4"><p className="text-xs font-medium uppercase text-muted-foreground">Attempts / learner</p><p className="mt-1 text-2xl font-semibold tabular-nums">{dashboardSummary.learner_count ? (dashboardSummary.attempt_count / dashboardSummary.learner_count).toFixed(1) : "0.0"}</p></div>
               </div>
               {dashboardColdStartMessage(dashboardSummary) ? <div className="border-b border-amber-200 bg-amber-50 px-8 py-3 text-sm text-amber-900" role="status"><strong>Not enough data yet.</strong> {dashboardColdStartMessage(dashboardSummary)}</div> : null}
 
               {!dashboardSummary.not_enough_data ? (
                 <section aria-labelledby="performance-evidence-title" className="border-b border-border">
-                  <header className="flex items-end justify-between gap-6 border-b border-border px-6 py-4">
-                    <div>
-                      <p className="text-xs font-semibold uppercase text-muted-foreground">Performance evidence</p>
-                      <h3 className="mt-1 text-base font-semibold" id="performance-evidence-title">Where learning needs attention</h3>
-                    </div>
-                    <p className="max-w-xl text-right text-xs leading-5 text-muted-foreground">Observed learner behavior, shown before or after it crosses an intervention threshold.</p>
+                  <header className="flex items-center justify-between gap-6 border-b border-border px-6 py-4">
+                    <h3 className="text-base font-semibold" id="performance-evidence-title">Learning health</h3>
+                    <p className="text-xs text-muted-foreground">{answerOutcomes.attempts} graded responses</p>
                   </header>
                   <div className="grid grid-cols-3">
                     <div className="min-w-0 border-r border-border px-5 py-5">
-                      <div className="mb-4"><p className="text-xs font-semibold uppercase text-muted-foreground">Concept pressure</p><p className="mt-1 text-xs text-muted-foreground">Share of learners currently struggling</p></div>
-                      <div className="space-y-4">
-                        {conceptPerformance.length ? conceptPerformance.map((item) => {
-                          const rate = percentage(item.struggling_learners, item.touched_learners);
-                          return <div key={item.concept_id}>
-                            <div className="flex items-start justify-between gap-3 text-xs"><span className="min-w-0 truncate font-medium" title={item.concept_name}>{item.concept_name}</span><strong className="shrink-0 tabular-nums">{rate}%</strong></div>
-                            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-amber-500" style={{ width: `${rate}%` }} /></div>
-                            <p className="mt-1 text-[11px] text-muted-foreground">{item.struggling_learners} struggling · {item.touched_learners} reached</p>
-                          </div>;
-                        }) : <p className="text-xs leading-5 text-muted-foreground">No concept mastery evidence yet.</p>}
-                      </div>
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Answer outcomes</p>
+                      {answerOutcomes.attempts ? (
+                        <>
+                          <div aria-label={`${answerOutcomeRates.confident}% confident correct, ${answerOutcomeRates.unsure}% unsure correct, ${answerOutcomeRates.incorrect}% incorrect`} className="mt-5 flex h-3 overflow-hidden rounded-full bg-muted">
+                            <div className="bg-emerald-600" style={{ width: `${answerOutcomeRates.confident}%` }} />
+                            <div className="bg-amber-400" style={{ width: `${answerOutcomeRates.unsure}%` }} />
+                            <div className="bg-red-500" style={{ width: `${answerOutcomeRates.incorrect}%` }} />
+                          </div>
+                          <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                            <div><p className="text-lg font-semibold tabular-nums">{answerOutcomeRates.confident}%</p><p className="text-[11px] text-muted-foreground">Confident</p></div>
+                            <div><p className="text-lg font-semibold tabular-nums">{answerOutcomeRates.unsure}%</p><p className="text-[11px] text-muted-foreground">Unsure</p></div>
+                            <div><p className="text-lg font-semibold tabular-nums">{answerOutcomeRates.incorrect}%</p><p className="text-[11px] text-muted-foreground">Incorrect</p></div>
+                          </div>
+                          <div className="mt-5 space-y-3 border-t border-border pt-4">
+                            {questionPerformance.slice(0, 3).map((item) => {
+                              const incorrectRate = percentage(item.incorrect_attempts, item.attempts);
+                              const uncertainRate = percentage(item.low_confidence_correct_attempts, item.attempts);
+                              return <div key={item.question_id}>
+                                <div className="flex items-center justify-between gap-3 text-xs"><span className="min-w-0 truncate font-medium" title={item.prompt}>{item.prompt}</span><span className="shrink-0 tabular-nums text-muted-foreground">{item.attempts}</span></div>
+                                <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-muted"><div className="bg-amber-400" style={{ width: `${uncertainRate}%` }} /><div className="bg-red-500" style={{ width: `${incorrectRate}%` }} /></div>
+                              </div>;
+                            })}
+                          </div>
+                        </>
+                      ) : <p className="mt-5 text-sm text-muted-foreground">No responses yet.</p>}
                     </div>
 
                     <div className="min-w-0 border-r border-border px-5 py-5">
-                      <div className="mb-4"><p className="text-xs font-semibold uppercase text-muted-foreground">Question performance</p><p className="mt-1 text-xs text-muted-foreground">Incorrect and low-confidence responses</p></div>
-                      <div className="space-y-4">
-                        {questionPerformance.length ? questionPerformance.map((item) => {
-                          const incorrectRate = percentage(item.incorrect_attempts, item.attempts);
-                          const uncertainRate = percentage(item.low_confidence_correct_attempts, item.attempts);
-                          return <div className="border-b border-border pb-3 last:border-0" key={item.question_id}>
-                            <p className="truncate text-xs font-medium" title={item.prompt}>{item.prompt}</p>
-                            <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground"><span><strong className="text-foreground">{incorrectRate}%</strong> incorrect</span><span><strong className="text-foreground">{uncertainRate}%</strong> unsure</span><span>{item.attempts} attempts</span></div>
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Concept reach</p>
+                      <div className="mt-5 space-y-4">
+                        {conceptPerformance.length ? conceptPerformance.map((item) => {
+                          const learnerTotal = Math.max(1, dashboardSummary.learner_count);
+                          const stableRate = Math.min(100, percentage(Math.max(0, item.touched_learners - item.struggling_learners), learnerTotal));
+                          const strugglingRate = Math.min(100 - stableRate, percentage(item.struggling_learners, learnerTotal));
+                          return <div key={item.concept_id}>
+                            <div className="flex items-center justify-between gap-3 text-xs"><span className="min-w-0 truncate font-medium" title={item.concept_name}>{item.concept_name}</span><span className="shrink-0 tabular-nums text-muted-foreground">{item.touched_learners}/{dashboardSummary.learner_count}</span></div>
+                            <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-muted"><div className="bg-emerald-500" style={{ width: `${stableRate}%` }} /><div className="bg-amber-500" style={{ width: `${strugglingRate}%` }} /></div>
                           </div>;
-                        }) : <p className="text-xs leading-5 text-muted-foreground">Question performance appears after the first learner response.</p>}
+                        }) : <p className="text-sm text-muted-foreground">No mastery activity yet.</p>}
                       </div>
                     </div>
 
                     <div className="min-w-0 px-5 py-5">
-                      <div className="mb-4"><p className="text-xs font-semibold uppercase text-muted-foreground">Remediation demand</p><p className="mt-1 text-xs text-muted-foreground">Clips used when learners need support</p></div>
-                      <div className="space-y-4">
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Remediation</p>
+                      <div className="mt-5 space-y-4">
                         {clipPerformance.length ? clipPerformance.map((item) => {
                           const clip = clips.find((candidate) => candidate.id === item.clip_id);
-                          return <div className="border-b border-border pb-3 last:border-0" key={item.clip_id}>
-                            <p className="truncate text-xs font-medium" title={clip ? clipDisplayTitle(clip) : item.clip_id}>{clip ? clipDisplayTitle(clip) : "Reviewed remediation clip"}</p>
-                            <p className="mt-2 text-[11px] text-muted-foreground"><strong className="text-foreground">{item.remediation_attempts}</strong> remediation attempts · <strong className="text-foreground">{item.struggling_learners}</strong> struggling learners</p>
+                          const demand = item.remediation_attempts + item.struggling_learners;
+                          return <div key={item.clip_id}>
+                            <div className="flex items-center justify-between gap-3 text-xs"><p className="min-w-0 truncate font-medium" title={clip ? clipDisplayTitle(clip) : item.clip_id}>{clip ? clipDisplayTitle(clip) : "Remediation clip"}</p><span className="shrink-0 tabular-nums text-muted-foreground">{item.remediation_attempts}</span></div>
+                            <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary" style={{ width: `${(demand / maxRemediationDemand) * 100}%` }} /></div>
                           </div>;
-                        }) : <p className="text-xs leading-5 text-muted-foreground">No clip has accumulated remediation demand yet.</p>}
+                        }) : <div className="rounded-lg border border-dashed border-border px-5 py-8 text-center"><p className="text-3xl font-semibold tabular-nums">0</p><p className="mt-1 text-xs text-muted-foreground">remediation plays</p></div>}
                       </div>
                     </div>
                   </div>
@@ -3277,7 +3296,15 @@ export default function HomePage() {
                 </div>
 
                 <aside className="min-w-0 border-l border-border bg-muted/20 px-5 py-6">
-                  {selectedDashboardSignal ? <><InspectorSection title="Related entity"><p className="break-all text-sm">{selectedDashboardSignal.related_entity_type}: {selectedDashboardSignal.related_entity_id}</p></InspectorSection><InspectorSection title="Traceability"><TraceabilityBlock artifact={{ status: selectedDashboardSignal.status, ai_proposal: { rationale: dashboardSignalSummary(selectedDashboardSignal) }, instructor_revision: selectedDashboardSignal.instructor_action }} /></InspectorSection></> : null}
+                  {selectedDashboardSignal ? (
+                    <details className="group mb-5 border-b border-border pb-5">
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-semibold uppercase text-muted-foreground">
+                        AI context
+                        <span className="font-normal normal-case">Optional</span>
+                      </summary>
+                      <div className="mt-3"><TraceabilityBlock artifact={{ status: selectedDashboardSignal.status, ai_proposal: { rationale: dashboardSignalSummary(selectedDashboardSignal) }, instructor_revision: selectedDashboardSignal.instructor_action }} /></div>
+                    </details>
+                  ) : null}
                   {graph ? (
                     <InspectorSection title="Manual learner override">
                       <form className="grid gap-3" onSubmit={submitLearnerOverride}>

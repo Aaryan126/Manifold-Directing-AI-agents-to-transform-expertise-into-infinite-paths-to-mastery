@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  answerOutcomeSummary,
   percentage,
   rankedClipPerformance,
   rankedConceptPerformance,
@@ -54,5 +55,23 @@ describe("dashboard performance presentation", () => {
         struggling_learners: 0,
       },
     ])).toEqual([]);
+  });
+
+  it("summarizes learner answer outcomes without double counting", () => {
+    expect(answerOutcomeSummary([
+      {
+        question_id: "question",
+        topic_id: "topic",
+        prompt: "Prompt",
+        attempts: 10,
+        incorrect_attempts: 2,
+        low_confidence_correct_attempts: 3,
+      },
+    ])).toEqual({
+      attempts: 10,
+      confident_correct: 5,
+      unsure_correct: 3,
+      incorrect: 2,
+    });
   });
 });

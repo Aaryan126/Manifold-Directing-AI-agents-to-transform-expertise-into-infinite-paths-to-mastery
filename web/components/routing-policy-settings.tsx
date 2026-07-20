@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ChevronDown, RotateCcw, Route, Sparkles } from "lucide-react";
+import { Check, ChevronDown, CircleHelp, RotateCcw, Route, Sparkles } from "lucide-react";
 
 import type { Concept, ConceptEdge } from "@/app/graphModel";
 import {
@@ -40,6 +40,14 @@ function policiesMatch(first: RoutingPolicyDraft, second: RoutingPolicyDraft) {
     first.correct_attempts_for_mastery === second.correct_attempts_for_mastery &&
     first.advancement_mode === second.advancement_mode &&
     first.max_remediation_attempts === second.max_remediation_attempts;
+}
+
+function FieldHelp({ text }: { text: string }) {
+  return (
+    <span aria-label={text} className="inline-flex cursor-help text-muted-foreground" role="img" title={text}>
+      <CircleHelp aria-hidden="true" className="size-3.5" />
+    </span>
+  );
 }
 
 export function RoutingPolicySettings({
@@ -142,7 +150,7 @@ export function RoutingPolicySettings({
                   {activeConcepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}
                 </select>
               </label>
-              <label className="grid gap-1.5 text-xs font-medium">Evidence level
+              <label className="grid gap-1.5 text-xs font-medium"><span className="flex items-center gap-1.5">Evidence level <FieldHelp text="How much evidence a learner must show before moving past this concept." /></span>
                 <select
                   aria-label={`Routing profile for ${selectedConcept.name}`}
                   className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
@@ -170,16 +178,16 @@ export function RoutingPolicySettings({
                 Advanced thresholds
               </summary>
               <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <label className="grid gap-1 text-xs font-medium">Confidence
+                <label className="grid gap-1 text-xs font-medium"><span className="flex items-center gap-1.5">Confidence <FieldHelp text="Minimum learner confidence, from 1 (unsure) to 4 (very confident)." /></span>
                   <Input max="4" min="1" type="number" value={selectedDraft.confidence_threshold} onChange={(event) => onDraftChange(selectedConcept.id, { ...selectedDraft, confidence_threshold: Number(event.target.value) })} />
                 </label>
-                <label className="grid gap-1 text-xs font-medium">Correct attempts
+                <label className="grid gap-1 text-xs font-medium"><span className="flex items-center gap-1.5">Correct attempts <FieldHelp text="Number of correct checks required before the concept is considered mastered." /></span>
                   <Input min="1" type="number" value={selectedDraft.correct_attempts_for_mastery} onChange={(event) => onDraftChange(selectedConcept.id, { ...selectedDraft, correct_attempts_for_mastery: Number(event.target.value) })} />
                 </label>
-                <label className="grid gap-1 text-xs font-medium">Retry limit
+                <label className="grid gap-1 text-xs font-medium"><span className="flex items-center gap-1.5">Retry limit <FieldHelp text="Maximum remediation attempts before Manifold raises an instructor signal." /></span>
                   <Input min="0" type="number" value={selectedDraft.max_remediation_attempts} onChange={(event) => onDraftChange(selectedConcept.id, { ...selectedDraft, max_remediation_attempts: Number(event.target.value) })} />
                 </label>
-                <label className="grid gap-1 text-xs font-medium">Advancement
+                <label className="grid gap-1 text-xs font-medium"><span className="flex items-center gap-1.5">Advancement <FieldHelp text="Require full mastery or allow the learner to continue with partial understanding." /></span>
                   <select className="h-8 rounded-lg border border-input bg-background px-2 text-sm" value={selectedDraft.advancement_mode} onChange={(event) => onDraftChange(selectedConcept.id, { ...selectedDraft, advancement_mode: event.target.value as RoutingPolicyDraft["advancement_mode"] })}>
                     <option value="require_mastery">Require mastery</option>
                     <option value="allow_partial_understanding">Allow partial</option>
