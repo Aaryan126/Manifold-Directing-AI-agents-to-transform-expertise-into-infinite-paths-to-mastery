@@ -94,9 +94,17 @@ class PostgresAccessRepository(AccessRepository):
                            select 1 from questions q
                            where q.topic_id = t.id
                              and q.review_status in ('accepted', 'edited')
-                         )) as topics_without_question
+                         )) as topics_without_question,
+                      (select count(*) from concepts c
+                       where c.course_id = %s
+                         and c.review_status in ('accepted', 'edited')
+                         and not exists (
+                           select 1 from routing_policies rp
+                           where rp.course_id = c.course_id
+                             and (rp.concept_id = c.id or rp.concept_id is null)
+                         )) as concepts_without_policy
                     """,
-                    (course_id,) * 7,
+                    (course_id,) * 8,
                 )
             ).fetchone()
             if row is None:
@@ -114,6 +122,8 @@ class PostgresAccessRepository(AccessRepository):
                 blockers.append("Review every proposed concept and prerequisite edge.")
             if int(row["topics_without_question"]) > 0:
                 blockers.append("Every reviewed topic needs an approved question.")
+            if int(row["concepts_without_policy"]) > 0:
+                blockers.append("Confirm adaptive routing settings for every reviewed concept.")
             return PublishReadiness(course_id=course_id, blockers=tuple(blockers))
 
     async def publish_course(self, course_id: UUID) -> CourseAccess:

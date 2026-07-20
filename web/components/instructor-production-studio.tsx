@@ -4,6 +4,7 @@ import {
   LockKeyhole,
   Rocket,
 } from "lucide-react";
+import type { ReactNode } from "react";
 
 import {
   creationStageOrder,
@@ -31,13 +32,13 @@ export function InstructorProductionStudio({
     <section className="instructorOnly border-b border-border bg-background" id="production-studio">
       <div className="flex min-h-12 items-center border-b border-border px-6 py-2 xl:px-7">
         <p className="text-xs font-semibold uppercase text-muted-foreground">
-          Stage {creationStageOrder.indexOf(activeStage) + 1} of 5
+          Stage {creationStageOrder.indexOf(activeStage) + 1} of {creationStageOrder.length}
           <span className="mx-2 text-border">/</span>
           <span className="text-foreground">{activeStageModel.label}</span>
         </p>
       </div>
 
-      <nav aria-label="Course production stages" className="grid grid-cols-5 border-b border-border px-6 xl:px-7">
+      <nav aria-label="Course production stages" className="grid grid-cols-4 border-b border-border px-6 xl:px-7">
         {creationStageOrder.map((stageId, index) => {
           const stage = stages.find((item) => item.id === stageId)!;
           const isActive = stageId === activeStage;
@@ -77,6 +78,7 @@ type InstructorPublishReviewProps = {
   onOpenTask: (task: WorkflowTask) => void;
   onPublish: () => void;
   publishReady: boolean;
+  routingSettings?: ReactNode;
   stages: WorkflowStage[];
   tasks: WorkflowTask[];
 };
@@ -87,6 +89,7 @@ export function InstructorPublishReview({
   onOpenTask,
   onPublish,
   publishReady,
+  routingSettings,
   stages,
   tasks,
 }: InstructorPublishReviewProps) {
@@ -126,6 +129,7 @@ export function InstructorPublishReview({
               <div><h3 className="font-semibold">Ready to publish</h3><p className="mt-1 text-sm text-muted-foreground">All required artifact reviews and learner gates are satisfied.</p></div>
             </div>
           )}
+          {routingSettings}
         </div>
         <aside className="border-l border-border bg-muted/20 px-5 py-6" aria-label="Production stage summary">
           <p className="text-xs font-semibold uppercase text-muted-foreground">Stage summary</p>

@@ -145,7 +145,16 @@ export async function routeReviewedCourse(
     route.fulfill({ contentType: "application/json", body: JSON.stringify(graph) }),
   );
   await page.route(`${pipeline}/courses/${courseId}/routing/policies`, (route) =>
-    route.fulfill({ contentType: "application/json", body: "[]" }),
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(graph.concepts.map((concept) => ({
+        concept_id: concept.id,
+        confidence_threshold: 3,
+        correct_attempts_for_mastery: 1,
+        advancement_mode: "require_mastery",
+        max_remediation_attempts: 2,
+      }))),
+    }),
   );
   await page.route(`${pipeline}/courses/${courseId}`, (route) =>
     route.fulfill({
@@ -255,7 +264,7 @@ test("publishing checklist refreshes after reviewed artifacts load", async ({ pa
   await page.getByLabel("Direct audio/video URL").fill("https://example.com/lecture.mp4");
   await page.getByRole("button", { name: "Ingest URL" }).click();
 
-  await expect(page.getByRole("button", { name: "Publish course" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Publish course" }).first()).toBeEnabled();
   await expect(page.getByText("At least one reviewed topic is required.")).toBeHidden();
 });
 
@@ -269,8 +278,8 @@ test("one-click demo loads the cached source and resumes the next production sta
   await expect(page.getByText("Loading the pre-processed Manifold demo.")).toHaveClass("sr-only");
   await expect(page.getByText("View processed transcript")).toHaveCount(0);
   await expect(page.locator("#learner-preview")).toHaveCount(0);
-  await expect(page.locator('[data-stage="adapt"][aria-current="step"]')).toBeVisible();
-  await expect(page.locator("#routing")).toBeVisible();
+  await expect(page.locator('[data-stage="publish"][aria-current="step"]')).toBeVisible();
+  await expect(page.locator("#routing-settings")).toBeVisible();
 });
 
 test("instructor publishes, learner enrolls, and dashboard correction closes the loop", async ({
@@ -340,7 +349,7 @@ async function loadReviewedWorkspace(page: Page) {
   const ingestButton = page.getByRole("button", { name: "Ingest URL" });
   await expect(ingestButton).toBeEnabled();
   await ingestButton.click();
-  await expect(page.locator('[data-stage="adapt"][aria-current="step"]')).toBeVisible();
+  await expect(page.locator('[data-stage="publish"][aria-current="step"]')).toBeVisible();
   await page.locator('[data-stage="structure"]').click();
   await expect(page.getByRole("heading", { name: "Topic production", exact: true })).toBeVisible();
 }
@@ -403,8 +412,8 @@ test("guided production shows exactly one stage at a time", async ({ page }) => 
 
   await expect(page.getByRole("button", { name: "Course map" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "All workspaces" })).toHaveCount(0);
-  await page.locator('[data-stage="adapt"]').click();
-  await expect(page.locator("#routing")).toBeVisible();
+  await page.locator('[data-stage="publish"]').click();
+  await expect(page.locator("#routing-settings")).toBeVisible();
   await expect(page.locator("#assessments")).toBeHidden();
   await expect(page.locator("#course-setup")).toBeHidden();
 });
@@ -506,7 +515,6 @@ test("instructor workspaces match approved desktop visual system", async ({ page
   await loadReviewedWorkspace(page);
   await expect(page.locator("#concept-graph .react-flow__node")).toBeVisible();
 
-  await page.locator('[data-stage="adapt"]').click();
   await expect(page.locator("#production-studio")).toHaveScreenshot("production-studio-desktop.png", {
     animations: "disabled",
   });
@@ -525,14 +533,6 @@ test("instructor workspaces match approved desktop visual system", async ({ page
   await expect(page.locator("#assessments")).toHaveScreenshot("assessments-desktop.png", {
     animations: "disabled",
   });
-  await page.locator('[data-stage="adapt"]').click();
-  for (const id of ["routing", "routing-simulator"]) {
-    const workspace = page.locator(`#${id}`);
-    await expect(workspace).toBeVisible();
-    await expect(workspace).toHaveScreenshot(`${id}-desktop.png`, {
-      animations: "disabled",
-    });
-  }
   await page.locator('[data-stage="publish"]').click();
   await expect(page.locator("#publish-review")).toHaveScreenshot("publish-review-desktop.png", {
     animations: "disabled",
@@ -572,7 +572,6 @@ test("laptop and learner workspaces do not overflow", async ({ page }) => {
     ["source", ["course-setup"]],
     ["structure", ["outline", "concept-graph"]],
     ["assessments", ["assessments"]],
-    ["adapt", ["routing", "routing-simulator"]],
     ["publish", ["publish-review"]],
   ] as const;
   for (const [stage, ids] of stageWorkspaces) {

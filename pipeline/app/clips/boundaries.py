@@ -32,22 +32,27 @@ def snap_proposal_to_clean_boundaries(
     if not topic_words:
         raise ClipBoundaryError("Cannot cut clips without word-level transcript timestamps.")
 
+    clean_topic_start = _inward_topic_start(topic_start_seconds, topic_words)
+    clean_topic_end = _inward_topic_end(topic_end_seconds, topic_words)
+    if clean_topic_end <= clean_topic_start:
+        raise ClipBoundaryError("Topic is too short after aligning it to transcript timestamps.")
+
     sentence_spans = sentence_spans_from_words(topic_words)
     clean_start = _nearest_sentence_start(
         proposal.start_seconds,
         sentence_spans,
-        topic_start_seconds,
-        topic_end_seconds,
+        clean_topic_start,
+        clean_topic_end,
     )
     clean_end = _nearest_sentence_end(
         proposal.end_seconds,
         sentence_spans,
-        topic_start_seconds,
-        topic_end_seconds,
+        clean_topic_start,
+        clean_topic_end,
     )
     if clean_end - clean_start < MIN_CLIP_SECONDS:
-        clean_start = _floor_word_start(clean_start, topic_words, topic_start_seconds)
-        clean_end = _ceil_word_end(clean_end, topic_words, topic_end_seconds)
+        clean_start = _floor_word_start(clean_start, topic_words, clean_topic_start)
+        clean_end = _ceil_word_end(clean_end, topic_words, clean_topic_end)
     if clean_end <= clean_start:
         raise ClipBoundaryError("Clip proposal collapses after boundary snapping.")
     if clean_end - clean_start < MIN_CLIP_SECONDS:
@@ -155,3 +160,30 @@ def _is_word_boundary(
         for word in words
     )
 
+
+def _inward_topic_start(target: float, words: tuple[TranscriptWord, ...]) -> float:
+    if _is_word_boundary(target, words, start=True):
+        return target
+    candidates = [
+        boundary
+        for word in words
+        for boundary in (word.start_seconds, word.end_seconds)
+        if boundary >= target
+    ]
+    if not candidates:
+        raise ClipBoundaryError("Topic start cannot be aligned to transcript timestamps.")
+    return min(candidates)
+
+
+def _inward_topic_end(target: float, words: tuple[TranscriptWord, ...]) -> float:
+    if _is_word_boundary(target, words, start=False):
+        return target
+    candidates = [
+        boundary
+        for word in words
+        for boundary in (word.start_seconds, word.end_seconds)
+        if boundary <= target
+    ]
+    if not candidates:
+        raise ClipBoundaryError("Topic end cannot be aligned to transcript timestamps.")
+    return max(candidates)

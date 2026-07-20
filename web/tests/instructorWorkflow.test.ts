@@ -23,7 +23,6 @@ const reviewedSnapshot: WorkflowSnapshot = {
   reviewedQuestions: 3,
   reviewedConcepts: 5,
   routingPolicyCount: 5,
-  routingTested: true,
   publishBlockers: [],
   publishReady: true,
   published: false,
@@ -40,7 +39,6 @@ describe("instructor workflow", () => {
       reviewedConcepts: 0,
       reviewedQuestions: 0,
       routingPolicyCount: 0,
-      routingTested: false,
       publishReady: false,
       publishBlockers: ["A completed video is required."],
     });
@@ -67,10 +65,15 @@ describe("instructor workflow", () => {
     expect(result.recommendedStage).toBe("structure");
   });
 
-  it("moves to final publication only after routing has been tested", () => {
-    const beforeTest = buildWorkflow({ ...reviewedSnapshot, routingTested: false });
-    expect(beforeTest.recommendedStage).toBe("adapt");
-    expect(beforeTest.tasks.some((task) => task.id === "test-routing")).toBe(true);
+  it("keeps routing confirmation inside the publish stage", () => {
+    const beforeConfirmation = buildWorkflow({ ...reviewedSnapshot, routingPolicyCount: 2 });
+    expect(beforeConfirmation.recommendedStage).toBe("publish");
+    expect(beforeConfirmation.tasks).toContainEqual(expect.objectContaining({
+      id: "configure-routing",
+      stage: "publish",
+      target: "routing-settings",
+      count: 3,
+    }));
 
     const ready = buildWorkflow(reviewedSnapshot);
     expect(ready.recommendedStage).toBe("publish");

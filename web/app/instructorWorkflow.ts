@@ -2,7 +2,6 @@ export type InstructorStageId =
   | "source"
   | "structure"
   | "assessments"
-  | "adapt"
   | "publish"
   | "insights";
 
@@ -53,7 +52,6 @@ export type WorkflowSnapshot = {
   reviewedQuestions: number;
   reviewedConcepts: number;
   routingPolicyCount: number;
-  routingTested: boolean;
   publishBlockers: string[];
   publishReady: boolean;
   published: boolean;
@@ -72,10 +70,6 @@ const stageDetails: Record<CreationStageId, Pick<WorkflowStage, "label" | "descr
     label: "Assessments",
     description: "Approve a comprehension check and remediation path for every topic.",
   },
-  adapt: {
-    label: "Adaptation",
-    description: "Confirm routing behavior and test how the learner path responds.",
-  },
   publish: {
     label: "Publish",
     description: "Resolve final blockers, preview the experience, and make the course available.",
@@ -86,7 +80,6 @@ export const creationStageOrder: CreationStageId[] = [
   "source",
   "structure",
   "assessments",
-  "adapt",
   "publish",
 ];
 
@@ -110,10 +103,6 @@ export function buildWorkflow(snapshot: WorkflowSnapshot): {
       snapshot.reviewedTopics > 0 &&
       snapshot.topicsMissingQuestions === 0 &&
       snapshot.proposedQuestions === 0,
-    adapt:
-      snapshot.reviewedConcepts > 0 &&
-      snapshot.routingPolicyCount >= snapshot.reviewedConcepts &&
-      snapshot.routingTested,
     publish: snapshot.published,
   };
   const recommendedStage = creationStageOrder.find((stage) => !complete[stage]) ?? "publish";
@@ -274,20 +263,11 @@ function buildTasks(snapshot: WorkflowSnapshot): WorkflowTask[] {
   if (snapshot.reviewedConcepts > 0 && missingPolicies > 0) {
     tasks.push({
       id: "configure-routing",
-      stage: "adapt",
-      title: "Confirm routing policy",
-      detail: "Set mastery, confidence, and remediation behavior for reviewed concepts.",
-      target: "routing",
+      stage: "publish",
+      title: "Confirm adaptive routing",
+      detail: "Review Manifold's recommended policy groups before publishing.",
+      target: "routing-settings",
       count: missingPolicies,
-    });
-  }
-  if (snapshot.reviewedQuestions > 0 && !snapshot.routingTested) {
-    tasks.push({
-      id: "test-routing",
-      stage: "adapt",
-      title: "Test the learner path",
-      detail: "Run at least one confident, unsure, or incorrect outcome before publishing.",
-      target: "routing-simulator",
     });
   }
   if (!snapshot.published) {
@@ -321,7 +301,6 @@ function isStageBlocked(stage: CreationStageId, snapshot: WorkflowSnapshot): boo
       snapshot.reviewedConcepts === 0 ||
       snapshot.topicsMissingClips > 0;
   }
-  if (stage === "adapt") return snapshot.reviewedQuestions === 0;
   if (stage === "publish") return snapshot.sourceStatus !== "complete";
   return false;
 }
@@ -334,6 +313,6 @@ function targetForBlocker(blocker: string): string {
     return "concept-graph";
   }
   if (normalized.includes("topic") || normalized.includes("outline")) return "outline";
-  if (normalized.includes("routing") || normalized.includes("policy")) return "routing";
+  if (normalized.includes("routing") || normalized.includes("policy")) return "routing-settings";
   return "course-setup";
 }

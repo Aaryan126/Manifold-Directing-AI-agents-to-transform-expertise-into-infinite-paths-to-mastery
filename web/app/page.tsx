@@ -75,8 +75,7 @@ import {
 } from "./learnerExperience";
 import { acceptButtonDisabled, acceptButtonLabel } from "./reviewState";
 import {
-  defaultRoutingPolicyDraft,
-  policyLabel,
+  recommendedRoutingPolicy,
   routingPolicyValidationError,
   type RoutingPolicyDraft,
 } from "./routingPolicy";
@@ -94,6 +93,7 @@ import {
   InstructorProductionStudio,
   InstructorPublishReview,
 } from "@/components/instructor-production-studio";
+import { RoutingPolicySettings } from "@/components/routing-policy-settings";
 import {
   InspectorSection,
   ReviewQueueHeader,
@@ -294,8 +294,6 @@ export default function HomePage() {
   const [graphNodePositions, setGraphNodePositions] = useState<Record<string, { x: number; y: number }>>({});
   const [showGraphConceptForm, setShowGraphConceptForm] = useState(false);
   const [newGraphConcept, setNewGraphConcept] = useState({ name: "", description: "", topic_id: "" });
-  const [selectedRoutingConceptId, setSelectedRoutingConceptId] = useState("");
-  const [selectedSimulatorQuestionId, setSelectedSimulatorQuestionId] = useState("");
   const [selectedDashboardSignalId, setSelectedDashboardSignalId] = useState("");
   const [graph, setGraph] = useState<GraphResponse | null>(null);
   const [clips, setClips] = useState<Clip[]>([]);
@@ -330,7 +328,7 @@ export default function HomePage() {
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSegmenting, setIsSegmenting] = useState(false);
-  const [bulkAction, setBulkAction] = useState<"accept-questions" | null>(null);
+  const [bulkAction, setBulkAction] = useState<"accept-questions" | "routing-policies" | null>(null);
   const [generationAction, setGenerationAction] = useState<string | null>(null);
   const [preparationFailures, setPreparationFailures] = useState<Record<string, string>>({});
   const [isAcceptingGraph, setIsAcceptingGraph] = useState(false);
@@ -805,6 +803,17 @@ export default function HomePage() {
 
   async function publishCourse() {
     if (!job?.course_id || selectedIdentity?.role !== "instructor") return;
+    if (!routingConfirmed) {
+      setMessage("Confirm the recommended adaptive routing settings before publishing.");
+      setActiveInstructorStage("publish");
+      window.setTimeout(() => {
+        document.getElementById("routing-settings")?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }, 0);
+      return;
+    }
     const response = await fetch(`${pipelineBaseUrl}/courses/${job.course_id}/publish`, {
       method: "POST",
       headers: { "X-User-ID": selectedIdentity.id },
@@ -1696,51 +1705,48 @@ export default function HomePage() {
     setRoutingPoliciesState((await response.json()) as RoutingPolicy[]);
   }
 
-  async function saveRoutingPolicy(conceptId: string) {
-    if (!job?.course_id) return;
-    const draft = policyDrafts[conceptId] ?? defaultRoutingPolicyDraft();
-    const validationError = routingPolicyValidationError(draft);
+  async function applyAllRoutingPolicies() {
+    if (!job?.course_id || !routingConcepts.length) return;
+    const nextDrafts = Object.fromEntries(
+      routingConcepts.map((concept) => [
+        concept.id,
+        policyDrafts[concept.id] ?? recommendedRoutingPolicy(concept, graph?.edges ?? []),
+      ]),
+    );
+    const validationError = Object.values(nextDrafts)
+      .map(routingPolicyValidationError)
+      .find((error) => error !== null);
     if (validationError) {
       setMessage(validationError);
       return;
     }
+    setPolicyDrafts((current) => ({ ...current, ...nextDrafts }));
     setMessage(null);
-    const response = await fetch(
-      `${pipelineBaseUrl}/courses/${job.course_id}/routing/policies/${conceptId}`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draft),
-      },
-    );
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      setMessage(body?.detail ?? `Routing policy save failed with ${response.status}.`);
-      return;
+    setBulkAction("routing-policies");
+    try {
+      const responses = await Promise.all(
+        routingConcepts.map((concept) => fetch(
+          `${pipelineBaseUrl}/courses/${job.course_id}/routing/policies/${concept.id}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(nextDrafts[concept.id]),
+          },
+        )),
+      );
+      const failed = responses.find((response) => !response.ok);
+      if (failed) {
+        setMessage(`Routing settings could not be saved (${failed.status}).`);
+        return;
+      }
+      await loadRoutingPolicies(job.course_id);
+      if (selectedIdentity?.role === "instructor") {
+        await loadPublishReadiness(job.course_id, selectedIdentity.id);
+      }
+      setMessage(`Adaptive routing confirmed for ${routingConcepts.length} concept(s).`);
+    } finally {
+      setBulkAction(null);
     }
-    upsertRoutingPolicy((await response.json()) as RoutingPolicy);
-  }
-
-  async function applyAllRoutingPolicies() {
-    if (!job?.course_id || !routingConcepts.length) return;
-    setMessage(null);
-    const responses = await Promise.all(
-      routingConcepts.map((concept) => {
-        const draft = policyDrafts[concept.id] ?? defaultRoutingPolicyDraft();
-        return fetch(`${pipelineBaseUrl}/courses/${job.course_id}/routing/policies/${concept.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(draft),
-        });
-      }),
-    );
-    const failed = responses.find((response) => !response.ok);
-    if (failed) {
-      setMessage(`Apply all routing policies failed with ${failed.status}.`);
-      return;
-    }
-    await loadRoutingPolicies(job.course_id);
-    setMessage(`Routing policies applied to ${routingConcepts.length} concept(s).`);
   }
 
   async function createDemoLearner() {
@@ -1943,19 +1949,6 @@ export default function HomePage() {
     }));
   }
 
-  function upsertRoutingPolicy(policy: RoutingPolicy) {
-    setRoutingPolicies((current) => [
-      ...current.filter((item) => item.concept_id !== policy.concept_id),
-      policy,
-    ]);
-    if (policy.concept_id) {
-      setPolicyDrafts((current) => ({
-        ...current,
-        [policy.concept_id!]: policyToDraft(policy),
-      }));
-    }
-  }
-
   const selectedTopicReview =
     topics.find((topic) => topic.id === selectedTopicReviewId) ?? topics[0] ?? null;
   const selectedTopicReviewIndex = selectedTopicReview
@@ -1986,18 +1979,14 @@ export default function HomePage() {
   const routingConcepts = graph?.concepts.filter(
     (concept) => concept.review_status === "accepted" || concept.review_status === "edited",
   ) ?? [];
-  const selectedRoutingConcept =
-    routingConcepts.find((concept) => concept.id === selectedRoutingConceptId) ?? routingConcepts[0] ?? null;
-  const simulatorQuestions = questions.filter(
-    (question) => question.review_status === "accepted" || question.review_status === "edited",
-  );
-  const selectedSimulatorQuestion =
-    simulatorQuestions.find((question) => question.id === selectedSimulatorQuestionId) ?? simulatorQuestions[0] ?? null;
   const selectedDashboardSignal =
     dashboardSummary?.signals.find((signal) => signal.id === selectedDashboardSignalId) ?? dashboardSummary?.signals[0] ?? null;
   const reviewedConcepts = graph?.concepts.filter(
     (concept) => concept.review_status === "accepted" || concept.review_status === "edited",
   ) ?? [];
+  const routingPolicyCount = routingPolicies.filter((policy) => policy.concept_id).length;
+  const routingConfirmed = reviewedConcepts.length > 0 && routingPolicyCount >= reviewedConcepts.length;
+  const effectivePublishReady = publishReadiness?.ready === true && routingConfirmed;
   const topicReadiness: TopicReadiness[] = topics
     .filter((topic) => topic.review_status !== "dismissed")
     .map((topic) => ({
@@ -2046,8 +2035,7 @@ export default function HomePage() {
       (question) => question.review_status === "accepted" || question.review_status === "edited",
     ).length,
     reviewedConcepts: reviewedConcepts.length,
-    routingPolicyCount: routingPolicies.filter((policy) => policy.concept_id).length,
-    routingTested: routeDecision !== null,
+    routingPolicyCount,
     publishBlockers: publishReadiness?.blockers ?? [],
     publishReady: publishReadiness?.ready ?? false,
     published: course?.status === "published",
@@ -2128,7 +2116,6 @@ export default function HomePage() {
     if (target === "course-setup") return "source";
     if (target === "outline" || target === "concept-graph" || target === "clips") return "structure";
     if (target === "assessments") return "assessments";
-    if (target === "routing" || target === "routing-simulator") return "adapt";
     return "publish";
   }
 
@@ -2168,7 +2155,7 @@ export default function HomePage() {
         selectedIdentity?.role !== "instructor" ||
         !course ||
         course.status === "published" ||
-        publishReadiness?.ready !== true
+        !effectivePublishReady
       }
       selectedIdentityId={selectedIdentityId}
     >
@@ -2944,96 +2931,6 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      {job?.course_id && graph ? (
-        <div className={`scroll-mt-20 ${instructorWorkspaceVisible("adapt") ? "" : "hidden"}`} id="routing">
-          <ReviewWorkspace
-            description="Tune mastery and remediation thresholds for each reviewed concept."
-            eyebrow="Adaptive learning"
-            title="Routing policy"
-            toolbar={<><Button onClick={() => loadRoutingPolicies(job.course_id!)} type="button" variant="outline"><RefreshCw data-icon="inline-start" /> Refresh</Button><Button disabled={!routingConcepts.length} onClick={() => void applyAllRoutingPolicies()} type="button" variant="outline">Apply all policies</Button></>}
-          >
-            <ReviewWorkspaceGrid
-              queue={(
-                <>
-                  <ReviewQueueHeader reviewed={routingPolicies.length} total={routingConcepts.length} />
-                  <nav aria-label="Routing concepts">
-                    {routingConcepts.map((concept) => {
-                      const saved = routingPolicies.some((policy) => policy.concept_id === concept.id);
-                      return <ReviewQueueItem active={concept.id === selectedRoutingConcept?.id} detail={saved ? "custom policy" : "default policy"} key={concept.id} label={concept.name} onClick={() => setSelectedRoutingConceptId(concept.id)} status={concept.review_status} />;
-                    })}
-                  </nav>
-                </>
-              )}
-              editor={selectedRoutingConcept ? (() => {
-                const concept = selectedRoutingConcept;
-                const draft = policyDrafts[concept.id] ?? defaultRoutingPolicyDraft();
-                const saved = routingPolicies.find((policy) => policy.concept_id === concept.id) ?? null;
-                return (
-                  <div className="mx-auto max-w-2xl">
-                    <div className="flex items-start justify-between gap-4">
-                      <div><p className="text-xs font-medium text-muted-foreground">Concept policy</p><h3 className="mt-1 text-lg font-semibold">{concept.name}</h3></div>
-                      <Badge variant={saved ? "secondary" : "outline"}>{saved ? "custom" : "default"}</Badge>
-                    </div>
-                    <p className="mt-4 border-l-2 border-primary bg-primary/5 px-4 py-3 text-sm leading-6">{policyLabel(draft)}</p>
-                    <div className="mt-6 grid grid-cols-2 gap-5">
-                      <label className="grid gap-2 text-sm font-medium">Confidence threshold<Input max="4" min="1" step="1" type="number" value={draft.confidence_threshold} onChange={(event) => setPolicyDrafts((current) => ({ ...current, [concept.id]: { ...draft, confidence_threshold: Number(event.target.value) } }))} /></label>
-                      <label className="grid gap-2 text-sm font-medium">Correct attempts for mastery<Input min="1" step="1" type="number" value={draft.correct_attempts_for_mastery} onChange={(event) => setPolicyDrafts((current) => ({ ...current, [concept.id]: { ...draft, correct_attempts_for_mastery: Number(event.target.value) } }))} /></label>
-                      <label className="grid gap-2 text-sm font-medium">Max remediation attempts<Input min="0" step="1" type="number" value={draft.max_remediation_attempts} onChange={(event) => setPolicyDrafts((current) => ({ ...current, [concept.id]: { ...draft, max_remediation_attempts: Number(event.target.value) } }))} /></label>
-                      <label className="grid gap-2 text-sm font-medium">Advancement mode
-                        <select className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm" data-slot="advancement-mode" value={draft.advancement_mode} onChange={(event) => setPolicyDrafts((current) => ({ ...current, [concept.id]: { ...draft, advancement_mode: event.target.value as RoutingPolicyDraft["advancement_mode"] } }))}>
-                          <option value="require_mastery">Require mastery</option><option value="allow_partial_understanding">Allow partial understanding</option>
-                        </select>
-                      </label>
-                    </div>
-                    <div className="mt-7 border-t border-border pt-5"><Button onClick={() => saveRoutingPolicy(concept.id)} type="button">Save policy</Button></div>
-                  </div>
-                );
-              })() : <div className="flex min-h-96 items-center justify-center text-sm text-muted-foreground">Review concepts before configuring routing.</div>}
-              inspector={(
-                <>
-                  <InspectorSection title="Policy effect"><p className="text-sm leading-6">Confidence and correctness determine whether the learner advances, reinforces this concept, or receives targeted remediation.</p></InspectorSection>
-                  <InspectorSection title="Safeguard"><p className="text-sm leading-6">When remediation attempts reach the configured limit, routing flags the instructor instead of repeating the same loop.</p></InspectorSection>
-                  <InspectorSection title="Coverage"><p className="text-sm"><strong>{routingPolicies.length}</strong> custom policies across <strong>{routingConcepts.length}</strong> reviewed concepts.</p></InspectorSection>
-                </>
-              )}
-            />
-          </ReviewWorkspace>
-        </div>
-      ) : null}
-
-      {questions.some((question) => question.review_status === "accepted" || question.review_status === "edited") ? (
-        <section className={`instructorOnly scroll-mt-20 border-b border-border bg-background ${instructorWorkspaceVisible("adapt") ? "" : "hidden"}`} id="routing-simulator">
-          <WorkspaceHeader
-            description="Test deterministic outcomes before publishing."
-            eyebrow="Policy validation"
-            title="Learner routing simulator"
-            toolbar={<Button onClick={createDemoLearner} type="button">
-              {demoLearnerId ? "Create new learner" : "Create demo learner"}
-            </Button>}
-          />
-          <div className="grid min-h-[480px] grid-cols-[248px_minmax(0,1fr)_304px]">
-            <aside className="border-r border-border bg-muted/20">
-              <div className="border-b border-border px-4 py-4"><p className="text-xs font-semibold uppercase text-muted-foreground">Test questions</p></div>
-              {simulatorQuestions.map((question) => <button className={`w-full border-b border-border px-4 py-3 text-left text-sm hover:bg-muted ${question.id === selectedSimulatorQuestion?.id ? "bg-background shadow-[inset_3px_0_0_var(--primary)]" : ""}`} data-slot="simulator-question" key={question.id} onClick={() => setSelectedSimulatorQuestionId(question.id)} type="button"><span className="block truncate font-medium">{topics.find((topic) => topic.id === question.topic_id)?.title ?? "Untitled topic"}</span><span className="mt-1 block text-xs capitalize text-muted-foreground">{question.type.replaceAll("_", " ")}</span></button>)}
-            </aside>
-            <div className="min-w-0 px-6 py-6 xl:px-7">
-              {selectedSimulatorQuestion ? (() => {
-                const question = selectedSimulatorQuestion;
-                const firstPattern = question.remediation_rules[0]?.wrong_answer_pattern ?? "incorrect";
-                return <div className="mx-auto max-w-2xl"><Badge variant="outline">{question.type.replaceAll("_", " ")}</Badge><h3 className="mt-4 text-lg font-semibold leading-7">{question.body}</h3><div className="mt-6 flex flex-wrap gap-2"><Button disabled={!demoLearnerId} onClick={() => submitLearnerAttempt(question.id, true, 4)} type="button">Correct + confident</Button><Button disabled={!demoLearnerId} onClick={() => submitLearnerAttempt(question.id, true, 2)} type="button" variant="outline">Correct + unsure</Button><Button disabled={!demoLearnerId} onClick={() => submitLearnerAttempt(question.id, false, 1, firstPattern)} type="button" variant="destructive">Incorrect</Button></div></div>;
-              })() : null}
-              {routingError ? <p className="mt-5 text-sm text-destructive" role="alert">{routingError}</p> : null}
-            </div>
-            <aside className="border-l border-border bg-muted/20 px-5 py-6">
-              <InspectorSection title="Simulator identity"><p className="break-all text-xs leading-5 text-muted-foreground">{demoLearnerId ? `Demo learner: ${demoLearnerId}` : "Create a demo learner to enable outcomes."}</p></InspectorSection>
-              <InspectorSection title="Latest decision">
-                {routeDecision ? <div role="status"><Badge className="capitalize" variant="secondary">{routeDecision.action.replaceAll("_", " ")}</Badge><p className="mt-3 text-sm leading-6">{routeDecision.why}</p><dl className="mt-3 space-y-2 text-xs text-muted-foreground"><div><dt className="font-medium text-foreground">Mastery state</dt><dd>{routeDecision.mastery_state}</dd></div>{routeDecision.target_concept_id ? <div><dt className="font-medium text-foreground">Target concept</dt><dd className="break-all">{routeDecision.target_concept_id}</dd></div> : null}{routeDecision.target_clip_id ? <div><dt className="font-medium text-foreground">Target clip</dt><dd className="break-all">{routeDecision.target_clip_id}</dd></div> : null}{routeDecision.dashboard_signal_id ? <div><dt className="font-medium text-foreground">Instructor signal</dt><dd className="break-all">{routeDecision.dashboard_signal_id}</dd></div> : null}</dl></div> : <p className="text-sm text-muted-foreground">No outcome recorded yet.</p>}
-              </InspectorSection>
-            </aside>
-          </div>
-        </section>
-      ) : null}
-
       {job?.course_id ? (
         <div className={instructorWorkspaceVisible("publish") ? "" : "hidden"}>
           <InstructorPublishReview
@@ -3041,7 +2938,21 @@ export default function HomePage() {
             courseStatus={course?.status}
             onOpenTask={openWorkflowTask}
             onPublish={() => void publishCourse()}
-            publishReady={publishReadiness?.ready ?? false}
+            publishReady={effectivePublishReady}
+            routingSettings={graph ? (
+              <RoutingPolicySettings
+                concepts={graph.concepts}
+                drafts={policyDrafts}
+                edges={graph.edges}
+                isConfirmed={routingConfirmed}
+                isSaving={bulkAction === "routing-policies"}
+                onConfirm={() => void applyAllRoutingPolicies()}
+                onDraftChange={(conceptId, draft) => setPolicyDrafts((current) => ({
+                  ...current,
+                  [conceptId]: draft,
+                }))}
+              />
+            ) : null}
             stages={workflow.stages}
             tasks={workflow.tasks}
           />
@@ -3151,6 +3062,7 @@ export default function HomePage() {
                     {isGradingAnswer ? "Checking answer" : "Submit answer"}
                   </Button>
                   {gradingFeedback ? <p aria-live="polite" className="mt-3 text-sm font-medium" role="status">{gradingFeedback}</p> : null}
+                  {routingError ? <p className="mt-3 text-sm text-destructive" role="alert">{routingError}</p> : null}
                 </form>
               ) : null}
               </section>

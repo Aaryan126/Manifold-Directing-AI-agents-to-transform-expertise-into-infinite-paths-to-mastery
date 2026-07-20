@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   defaultRoutingPolicyDraft,
   policyLabel,
+  recommendedRoutingProfile,
+  routingPolicyForProfile,
+  routingProfileForPolicy,
   routingPolicyValidationError,
 } from "../app/routingPolicy";
 
@@ -31,5 +34,18 @@ describe("routingPolicy", () => {
         advancement_mode: "allow_partial_understanding",
       }),
     ).toContain("allows partial");
+  });
+
+  it("recommends stricter foundations and flexible applied concepts", () => {
+    const foundation = { id: "foundation", name: "Core rule", description: null };
+    const applied = { id: "applied", name: "Worked example", description: "Apply the rule." };
+    const edges = [{
+      from_concept_id: "foundation",
+      review_status: "accepted" as const,
+    }];
+
+    expect(recommendedRoutingProfile(foundation, edges)).toBe("foundation");
+    expect(recommendedRoutingProfile(applied, edges)).toBe("applied");
+    expect(routingProfileForPolicy(routingPolicyForProfile("applied"))).toBe("applied");
   });
 });

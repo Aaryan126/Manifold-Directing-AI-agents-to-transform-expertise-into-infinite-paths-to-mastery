@@ -178,6 +178,34 @@ def test_boundary_snapper_rejects_mid_word_cleanliness_regressions() -> None:
     assert is_clean_boundary(snapped.start_seconds, snapped.end_seconds, words)
 
 
+def test_boundary_snapper_aligns_manual_topic_splits_inward() -> None:
+    concept_id = uuid4()
+    words = (
+        TranscriptWord(text="previous", start_seconds=14.0, end_seconds=16.0),
+        TranscriptWord(text="topic", start_seconds=16.2, end_seconds=20.0),
+        TranscriptWord(text="continues.", start_seconds=20.2, end_seconds=30.0),
+    )
+    snapped = snap_proposal_to_clean_boundaries(
+        ClipProposal(
+            title="Split topic",
+            start_seconds=15.0,
+            end_seconds=30.0,
+            type=ClipType.EXPLANATION,
+            difficulty="standard",
+            concept_ids=(concept_id,),
+            rationale="Topic starts at a manually entered split.",
+            confidence=0.9,
+        ),
+        words,
+        15.0,
+        30.0,
+    )
+
+    assert snapped.start_seconds == 16.0
+    assert snapped.end_seconds == 30.0
+    assert is_clean_boundary(snapped.start_seconds, snapped.end_seconds, words)
+
+
 def test_normalize_snapped_overlaps_moves_next_start_to_clean_previous_end() -> None:
     concept_id = uuid4()
     words = _words()
