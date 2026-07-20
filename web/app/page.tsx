@@ -23,9 +23,13 @@ import {
   topicsReadyForAutomaticAssessmentGeneration,
 } from "./assessmentReview";
 import {
+  addAssessmentChoice,
+  assessmentAnswerChoices,
   correctAnswerPayload,
   questionToAssessmentDraft,
+  removeAssessmentChoice,
   remediationPayload,
+  updateAssessmentChoice,
   type AssessmentEditorDraft,
 } from "./assessmentEditor";
 import {
@@ -1594,6 +1598,13 @@ export default function HomePage() {
       setMessage("Question, correct answer, and confidence prompt are required.");
       return;
     }
+    if (draft.type === "mcq") {
+      const choices = assessmentAnswerChoices(draft).map((choice) => choice.trim()).filter(Boolean);
+      if (choices.length < 2 || !choices.includes(draft.correct_answer.trim())) {
+        setMessage("Multiple-choice questions need at least two choices and one selected correct answer.");
+        return;
+      }
+    }
     if (draft.remediation_rules.some((rule) => !rule.wrong_answer_pattern.trim())) {
       setMessage("Each remediation rule needs a wrong-answer pattern.");
       return;
@@ -2834,36 +2845,65 @@ export default function HomePage() {
               editor={selectedQuestionReview ? (() => {
                 const question = selectedQuestionReview;
                 const draft = questionDrafts[question.id] ?? questionToDraft(question);
+                const answerChoices = assessmentAnswerChoices(draft);
                 return (
-                  <div className="mx-auto max-w-4xl">
-                    <div className="mb-6 flex items-start justify-between gap-4">
+                  <div className="mx-auto max-w-3xl">
+                    <div className="mb-5 flex items-start justify-between gap-4">
                       <div>
                         <p className="text-sm text-muted-foreground">{topics.find((topic) => topic.id === question.topic_id)?.title ?? "Untitled topic"}</p>
                         <h3 className="mt-1 text-lg font-semibold">Learner check</h3>
                       </div>
-                      <Badge className="capitalize" variant="outline">{question.review_status}</Badge>
+                      <div className="flex items-center gap-2">
+                        <label className="sr-only" htmlFor={`question-type-${question.id}`}>Question type</label>
+                        <select className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm" data-slot="question-type" id={`question-type-${question.id}`} value={draft.type} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, type: event.target.value as Question["type"] } }))}>
+                          <option value="mcq">Multiple choice</option><option value="short_answer">Short answer</option><option value="worked_problem">Worked problem</option>
+                        </select>
+                        <Badge className="capitalize" variant="outline">{question.review_status}</Badge>
+                      </div>
                     </div>
-                    <div className="space-y-5">
+                    <div className="space-y-6">
                       <label className="grid gap-2 text-sm font-medium" htmlFor={`question-body-${question.id}`}>Question
                         <Textarea className="min-h-24 text-base" id={`question-body-${question.id}`} value={draft.body} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, body: event.target.value } }))} />
                       </label>
-                      <div className="grid grid-cols-[180px_minmax(0,1fr)] gap-4">
-                        <label className="grid gap-2 text-sm font-medium" htmlFor={`question-type-${question.id}`}>Type
-                          <select className="h-10 rounded-lg border border-input bg-background px-3 text-sm" data-slot="question-type" id={`question-type-${question.id}`} value={draft.type} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, type: event.target.value as Question["type"] } }))}>
-                            <option value="mcq">Multiple choice</option><option value="short_answer">Short answer</option><option value="worked_problem">Worked problem</option>
-                          </select>
-                        </label>
-                        <label className="grid gap-2 text-sm font-medium" htmlFor={`question-answer-${question.id}`}>Correct answer
-                          <Textarea className="min-h-10" id={`question-answer-${question.id}`} value={draft.correct_answer} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, correct_answer: event.target.value } }))} />
-                        </label>
-                      </div>
                       {draft.type === "mcq" ? (
-                        <label className="grid gap-2 text-sm font-medium" htmlFor={`question-choices-${question.id}`}>Answer choices
-                          <Textarea className="min-h-32" id={`question-choices-${question.id}`} placeholder="One choice per line" value={draft.answer_choices} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, answer_choices: event.target.value } }))} />
+                        <fieldset className="rounded-lg border border-border bg-muted/15 p-4">
+                          <div className="mb-3 flex items-center justify-between gap-3">
+                            <div>
+                              <legend className="text-sm font-semibold">Answer choices</legend>
+                              <p className="mt-0.5 text-xs text-muted-foreground">Select the correct answer.</p>
+                            </div>
+                            <Button disabled={answerChoices.length >= 6} onClick={() => setQuestionDrafts((current) => ({ ...current, [question.id]: addAssessmentChoice(draft) }))} size="sm" type="button" variant="outline"><Plus data-icon="inline-start" /> Add choice</Button>
+                          </div>
+                          <div className="space-y-2">
+                            {answerChoices.map((choice, choiceIndex) => (
+                              <div className={`grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border bg-background p-2 ${draft.correct_answer === choice && choice ? "border-emerald-500/60 ring-1 ring-emerald-500/15" : "border-border"}`} key={`${question.id}-choice-${choiceIndex}`}>
+                                <input
+                                  aria-label={`Mark answer choice ${choiceIndex + 1} as correct`}
+                                  checked={Boolean(choice) && draft.correct_answer === choice}
+                                  className="size-4 accent-emerald-600"
+                                  name={`correct-answer-${question.id}`}
+                                  onChange={() => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, correct_answer: choice } }))}
+                                  type="radio"
+                                />
+                                <Input
+                                  aria-label={`Answer choice ${choiceIndex + 1}`}
+                                  className="h-9 border-0 bg-transparent px-1 shadow-none focus-visible:ring-0"
+                                  placeholder={`Choice ${choiceIndex + 1}`}
+                                  value={choice}
+                                  onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: updateAssessmentChoice(draft, choiceIndex, event.target.value) }))}
+                                />
+                                <Button aria-label={`Remove answer choice ${choiceIndex + 1}`} disabled={answerChoices.length <= 2} onClick={() => setQuestionDrafts((current) => ({ ...current, [question.id]: removeAssessmentChoice(draft, choiceIndex) }))} size="icon-sm" type="button" variant="ghost"><Trash2 /></Button>
+                              </div>
+                            ))}
+                          </div>
+                        </fieldset>
+                      ) : (
+                        <label className="grid gap-2 text-sm font-medium" htmlFor={`question-answer-${question.id}`}>Expected answer
+                          <Textarea className="min-h-24" id={`question-answer-${question.id}`} value={draft.correct_answer} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, correct_answer: event.target.value } }))} />
                         </label>
-                      ) : null}
+                      )}
                       <details className="border-t border-border pt-4">
-                        <summary className="cursor-pointer text-sm font-medium">Routing details <span className="font-normal text-muted-foreground">({draft.remediation_rules.length} rules)</span></summary>
+                        <summary className="cursor-pointer text-sm font-medium">Learning behavior <span className="font-normal text-muted-foreground">({draft.remediation_rules.length} remediation rules)</span></summary>
                         <div className="mt-4 space-y-4">
                           <label className="grid gap-2 text-sm font-medium" htmlFor={`question-confidence-${question.id}`}>Confidence prompt
                             <Input id={`question-confidence-${question.id}`} value={draft.confidence_prompt} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, confidence_prompt: event.target.value } }))} />

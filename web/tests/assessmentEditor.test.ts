@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  addAssessmentChoice,
+  assessmentAnswerChoices,
   correctAnswerPayload,
   questionToAssessmentDraft,
+  removeAssessmentChoice,
   remediationPayload,
+  updateAssessmentChoice,
 } from "../app/assessmentEditor";
 
 describe("assessmentEditor", () => {
@@ -55,5 +59,23 @@ describe("assessmentEditor", () => {
       target_concept_id: null,
       rationale: "Revisit the example.",
     }]);
+  });
+
+  it("edits structured multiple-choice options without losing the answer key", () => {
+    let draft = questionToAssessmentDraft({
+      body: "Question",
+      type: "mcq",
+      correct_answer: { answer: "B", choices: ["A", "B"] },
+      confidence_prompt: "Confidence?",
+      remediation_rules: [],
+    });
+
+    draft = updateAssessmentChoice(draft, 1, "Better answer");
+    expect(draft.correct_answer).toBe("Better answer");
+    draft = addAssessmentChoice(draft);
+    draft = updateAssessmentChoice(draft, 2, "C");
+    expect(assessmentAnswerChoices(draft)).toEqual(["A", "Better answer", "C"]);
+    draft = removeAssessmentChoice(draft, 0);
+    expect(assessmentAnswerChoices(draft)).toEqual(["Better answer", "C"]);
   });
 });

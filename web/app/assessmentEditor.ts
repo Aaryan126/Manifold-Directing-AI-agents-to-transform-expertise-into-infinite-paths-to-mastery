@@ -14,6 +14,48 @@ export type AssessmentEditorDraft = {
   remediation_rules: RemediationEditorDraft[];
 };
 
+export function assessmentAnswerChoices(draft: AssessmentEditorDraft): string[] {
+  const choices = draft.answer_choices.split("\n");
+  while (choices.length < 2) choices.push("");
+  return choices;
+}
+
+export function updateAssessmentChoice(
+  draft: AssessmentEditorDraft,
+  index: number,
+  value: string,
+): AssessmentEditorDraft {
+  const choices = assessmentAnswerChoices(draft);
+  const previous = choices[index] ?? "";
+  choices[index] = value;
+  return {
+    ...draft,
+    answer_choices: choices.join("\n"),
+    correct_answer: draft.correct_answer === previous ? value : draft.correct_answer,
+  };
+}
+
+export function addAssessmentChoice(draft: AssessmentEditorDraft): AssessmentEditorDraft {
+  return {
+    ...draft,
+    answer_choices: [...assessmentAnswerChoices(draft), ""].join("\n"),
+  };
+}
+
+export function removeAssessmentChoice(
+  draft: AssessmentEditorDraft,
+  index: number,
+): AssessmentEditorDraft {
+  const choices = assessmentAnswerChoices(draft);
+  if (choices.length <= 2) return draft;
+  const [removed] = choices.splice(index, 1);
+  return {
+    ...draft,
+    answer_choices: choices.join("\n"),
+    correct_answer: draft.correct_answer === removed ? "" : draft.correct_answer,
+  };
+}
+
 type EditableQuestion = {
   body: string;
   type: AssessmentEditorDraft["type"];
