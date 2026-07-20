@@ -2,9 +2,7 @@
 
 import Link from "next/link";
 import {
-  ArrowDown,
   ArrowRight,
-  ChevronDown,
   GitBranch,
   Menu,
   Play,
@@ -75,15 +73,8 @@ export default function LandingPage() {
         <div className={styles.navActions}>
           <Link className={styles.startButton} href="/manifold">
             Start building
-            <ChevronDown aria-hidden="true" />
-          </Link>
-          <a
-            className={styles.contactButton}
-            href="mailto:hello@manifold.education?subject=Manifold%20course%20platform"
-          >
-            Contact sales
             <ArrowRight aria-hidden="true" />
-          </a>
+          </Link>
           <button
             aria-expanded={menuOpen}
             aria-label={menuOpen ? "Close navigation" : "Open navigation"}
@@ -113,7 +104,6 @@ export default function LandingPage() {
 
       <section className={styles.hero} aria-labelledby="landing-title">
         <div className={styles.heroMain}>
-          <p className={styles.eyebrow}>Adaptive course infrastructure</p>
           <h1 id="landing-title">
             <span>Turn lectures</span>
             <span>into adaptive</span>
@@ -150,11 +140,6 @@ export default function LandingPage() {
         </div>
 
         <aside className={styles.newsRail}>
-          <div className={styles.scrollCue} aria-hidden="true">
-            <ArrowDown />
-            <ArrowDown />
-            <ArrowDown />
-          </div>
           <div className={styles.featuredNews}>
             <p>Featured</p>
             <Link href="/manifold">
