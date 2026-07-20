@@ -26,6 +26,7 @@ export type GraphNodeModel = {
   muted: boolean;
   status: ConceptReviewStatus;
   topicLabel: string;
+  topicColorIndex: number;
   x: number;
   y: number;
 };
@@ -68,6 +69,10 @@ export function graphNodeModels(
     .sort((first, second) =>
       first.groupIndex - second.groupIndex || first.concept.name.localeCompare(second.concept.name),
     );
+  const visibleGroupIndexes = [...new Set(grouped.map((item) => item.groupIndex))];
+  const displayIndexes = new Map(
+    visibleGroupIndexes.map((groupIndex, displayIndex) => [groupIndex, displayIndex]),
+  );
   const rowsByGroup = new Map<number, number>();
   return grouped.map(({ concept, groupIndex, topicLabel }) => {
     const row = rowsByGroup.get(groupIndex) ?? 0;
@@ -79,7 +84,8 @@ export function graphNodeModels(
       muted: concept.review_status === "dismissed",
       status: concept.review_status,
       topicLabel,
-      x: groupIndex * 260,
+      topicColorIndex: groupIndex === topics.length ? -1 : groupIndex,
+      x: displayIndexes.get(groupIndex)! * 260,
       y: row * 150,
     };
   });

@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   Background,
   Controls,
+  MarkerType,
   ReactFlow,
   type Connection,
   type Edge as FlowEdge,
@@ -375,8 +376,12 @@ export default function HomePage() {
     visibleGraphConceptIds.has(edge.from_concept_id) &&
     visibleGraphConceptIds.has(edge.to_concept_id),
   );
+  const visibleGraphNodeModels = graph ? graphNodeModels(visibleGraphConcepts, topics) : [];
+  const graphNodeModelById = new Map(visibleGraphNodeModels.map((node) => [node.id, node]));
   const flowNodes: FlowNode[] = graph
-    ? graphNodeModels(visibleGraphConcepts, topics).map((node) => ({
+    ? visibleGraphNodeModels.map((node) => {
+      const colors = graphTopicColors(node.topicColorIndex);
+      return {
       id: node.id,
       position: { x: node.x, y: node.y },
       data: {
@@ -396,21 +401,34 @@ export default function HomePage() {
       style: {
         width: 210,
         minHeight: 88,
-        borderColor: node.muted ? "var(--border)" : "var(--primary)",
+        background: node.muted ? "var(--muted)" : colors.background,
+        borderColor: node.muted ? "var(--border)" : colors.border,
+        borderWidth: 2,
         borderRadius: 6,
         padding: 12,
       },
-    }))
+    };
+    })
     : [];
   const flowEdges: FlowEdge[] = graph
-    ? graphEdgeModels(visibleGraphEdges).map((edge) => ({
+    ? graphEdgeModels(visibleGraphEdges).map((edge) => {
+      const sourceNode = graphNodeModelById.get(edge.source);
+      const colors = graphTopicColors(sourceNode?.topicColorIndex ?? -1);
+      const stroke = edge.muted ? "#9ca3af" : colors.edge;
+      return {
         id: edge.id,
         source: edge.source,
         target: edge.target,
-        animated: !edge.muted,
+        animated: edge.status === "proposed",
         className: edge.muted ? "graphEdge muted" : "graphEdge",
-        label: edge.status,
-      }))
+        markerEnd: { color: stroke, type: MarkerType.ArrowClosed },
+        style: {
+          stroke,
+          strokeDasharray: edge.status === "proposed" ? "6 5" : undefined,
+          strokeWidth: 2,
+        },
+      };
+    })
     : [];
   useEffect(() => {
     if (activeInstructorStage !== "structure" || flowNodes.length === 0) return;
@@ -1084,6 +1102,7 @@ export default function HomePage() {
       body: JSON.stringify(draft),
     })) as Concept | null;
     if (concept) upsertConcept(concept);
+    return concept;
   }
 
   async function acceptConcept(conceptId: string) {
@@ -1133,6 +1152,14 @@ export default function HomePage() {
       upsertConcept(concept);
       setMessage("Concept topic links updated. Clip and assessment readiness recalculated.");
     }
+    return concept;
+  }
+
+  async function saveConceptReview(conceptId: string, draft: ConceptDraft) {
+    const updated = await updateConcept(conceptId, draft);
+    if (!updated) return;
+    const linked = await updateConceptTopicLinks(conceptId);
+    if (linked) setMessage("Concept details and topic links saved.");
   }
 
   async function dismissConcept(conceptId: string) {
@@ -2277,18 +2304,20 @@ export default function HomePage() {
           ) : null}
           {graph && topicsWithoutReviewedConcepts.length ? (
             <div className="border-b border-amber-200 bg-amber-50 px-8 py-3 text-sm text-amber-900" role="alert">
-              <strong>{topicsWithoutReviewedConcepts.length} reviewed topic(s) have no reviewed concept link.</strong>{" "}
-              Select a concept, check its relevant topics under Linked topics, and save the links before generating clips.
+              <strong>{topicsWithoutReviewedConcepts.length} topic(s) need concept links.</strong>{" "}
+              Select a concept, open Edit concept and topics, then link them before generating clips.
             </div>
           ) : null}
 
           {graph ? (
-            <div className="grid grid-cols-[minmax(0,1fr)_304px]">
+            <div className="grid grid-cols-[minmax(0,1fr)_336px]">
               <div className="relative min-w-0 bg-muted/15">
                 <div className="absolute left-5 top-5 z-10 flex gap-2 rounded-lg border border-border bg-background p-2 shadow-sm">
                   <Badge variant="outline">{flowNodes.length} concepts</Badge>
                   <Badge variant="outline">{flowEdges.length} edges</Badge>
                   {graphTopicFocus !== "all" ? <Badge>Focused + neighbors</Badge> : null}
+                  <span className="flex items-center gap-1.5 border-l border-border pl-2 text-xs text-muted-foreground"><span className="size-2 rounded-full bg-blue-600" /><span className="size-2 rounded-full bg-emerald-600" /><span className="size-2 rounded-full bg-amber-600" />Topics</span>
+                  <span className="border-l border-border pl-2 text-xs text-muted-foreground">Arrows = requires</span>
                 </div>
                 <div className="h-[700px] min-w-0">
                   <ReactFlow
@@ -2319,91 +2348,110 @@ export default function HomePage() {
                 {selectedGraphEdge ? (
                   <>
                     <div className="flex items-start justify-between gap-3">
-                      <div><p className="text-xs font-semibold uppercase text-muted-foreground">Prerequisite edge</p><h3 className="mt-2 text-base font-semibold">{conceptName(graph, selectedGraphEdge.from_concept_id)} → {conceptName(graph, selectedGraphEdge.to_concept_id)}</h3></div>
+                      <div><p className="text-xs font-semibold uppercase text-muted-foreground">Prerequisite</p><h3 className="mt-2 text-base font-semibold">Learning dependency</h3></div>
                       <Badge className="capitalize" variant="outline">{selectedGraphEdge.review_status}</Badge>
                     </div>
+                    <div className="mt-5 grid gap-2 rounded-lg border border-border bg-background p-3 text-sm">
+                      <div><p className="text-xs font-medium text-muted-foreground">Required first</p><p className="mt-1 font-medium">{conceptName(graph, selectedGraphEdge.from_concept_id)}</p></div>
+                      <div className="border-t border-border pt-2"><p className="text-xs font-medium text-muted-foreground">Unlocks</p><p className="mt-1 font-medium">{conceptName(graph, selectedGraphEdge.to_concept_id)}</p></div>
+                    </div>
+                    {aiRationale(selectedGraphEdge) ? <p className="mt-4 text-sm leading-6 text-muted-foreground">{aiRationale(selectedGraphEdge)}</p> : null}
                     <div className="mt-5 flex gap-2 border-b border-border pb-5">
-                      <Button disabled={acceptButtonDisabled(selectedGraphEdge.review_status)} onClick={() => acceptEdge(selectedGraphEdge.id)} size="sm" type="button">{acceptButtonLabel(selectedGraphEdge.review_status)}</Button>
+                      {!acceptButtonDisabled(selectedGraphEdge.review_status) ? <Button onClick={() => acceptEdge(selectedGraphEdge.id)} size="sm" type="button">Accept</Button> : null}
                       <Button onClick={() => dismissEdge(selectedGraphEdge.id)} size="sm" type="button" variant="destructive">Dismiss</Button>
                     </div>
-                    <InspectorSection title="Traceability"><TraceabilityBlock artifact={selectedGraphEdge} /></InspectorSection>
+                    <details className="border-b border-border py-4">
+                      <summary className="cursor-pointer text-sm font-medium">AI context</summary>
+                      <div className="mt-3"><TraceabilityBlock artifact={selectedGraphEdge} /></div>
+                    </details>
                   </>
                 ) : selectedGraphConcept ? (() => {
                   const concept = selectedGraphConcept;
                   const draft = conceptDrafts[concept.id] ?? { name: concept.name, description: concept.description ?? "" };
+                  const linkedTopicIds = conceptTopicIds(concept);
+                  const linkedTopics = topics.filter((topic) => linkedTopicIds.includes(topic.id));
                   return (
                     <>
                       <div className="flex items-start justify-between gap-3">
                         <div><p className="text-xs font-semibold uppercase text-muted-foreground">Concept</p><h3 className="mt-2 text-base font-semibold">{concept.name}</h3></div>
                         <Badge className="capitalize" variant="outline">{concept.review_status}</Badge>
                       </div>
-                      <div className="mt-5 space-y-4">
-                        <label className="grid gap-2 text-sm font-medium">Name<Input aria-label={`Concept name ${concept.name}`} value={draft.name} onChange={(event) => setConceptDrafts((current) => ({ ...current, [concept.id]: { ...draft, name: event.target.value } }))} /></label>
-                        <label className="grid gap-2 text-sm font-medium">Description<Textarea aria-label={`Concept description ${concept.name}`} className="min-h-28" value={draft.description} onChange={(event) => setConceptDrafts((current) => ({ ...current, [concept.id]: { ...draft, description: event.target.value } }))} /></label>
-                        <fieldset className="grid gap-2 border-0 p-0" data-slot="concept-topic-links">
-                          <legend className="text-sm font-medium">Linked topics</legend>
-                          <p className="text-xs leading-5 text-muted-foreground">Every topic needs at least one reviewed concept link before clips can be generated.</p>
-                          <div className="max-h-44 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
-                            {topics.map((topic) => {
-                              const checked = (conceptTopicDrafts[concept.id] ?? []).includes(topic.id);
-                              return (
-                                <label className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-xs hover:bg-muted" key={topic.id}>
-                                  <input
-                                    checked={checked}
-                                    className="mt-0.5 size-3.5 accent-primary"
-                                    data-slot="concept-topic-checkbox"
-                                    onChange={(event) => setConceptTopicDrafts((current) => {
-                                      const existing = current[concept.id] ?? [];
-                                      return {
-                                        ...current,
-                                        [concept.id]: event.target.checked
-                                          ? [...existing, topic.id]
-                                          : existing.filter((topicId) => topicId !== topic.id),
-                                      };
-                                    })}
-                                    type="checkbox"
-                                  />
-                                  <span className="leading-5">{topic.title}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                          <Button onClick={() => void updateConceptTopicLinks(concept.id)} size="sm" type="button" variant="outline">Save topic links</Button>
-                        </fieldset>
+                      <p className="mt-4 text-sm leading-6 text-muted-foreground">{concept.description || "No description yet."}</p>
+                      <div className="mt-5">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Topics</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {linkedTopics.length ? linkedTopics.map((topic) => {
+                            const topicIndex = topics.findIndex((item) => item.id === topic.id);
+                            const colors = graphTopicColors(topicIndex);
+                            return <span className="inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-xs" key={topic.id} style={{ background: colors.background, borderColor: colors.border }}><span className="size-2 shrink-0 rounded-full" style={{ background: colors.border }} /><span className="truncate">{topic.title}</span></span>;
+                          }) : <Badge variant="outline">Unlinked</Badge>}
+                        </div>
                       </div>
-                      <div className="mt-5 flex flex-wrap gap-2 border-b border-border pb-5">
-                        <Button disabled={acceptButtonDisabled(concept.review_status)} onClick={() => acceptConcept(concept.id)} size="sm" type="button">{acceptButtonLabel(concept.review_status)}</Button>
-                        <Button onClick={() => updateConcept(concept.id, draft)} size="sm" type="button" variant="outline">Edit</Button>
+                      <div className="mt-5 flex flex-wrap gap-2 pb-5">
+                        {!acceptButtonDisabled(concept.review_status) ? <Button onClick={() => acceptConcept(concept.id)} size="sm" type="button">Accept</Button> : null}
                         <Button onClick={() => dismissConcept(concept.id)} size="sm" type="button" variant="destructive">Dismiss</Button>
                       </div>
-                      <InspectorSection title="Traceability"><TraceabilityBlock artifact={concept} /></InspectorSection>
+                      <details className="border-y border-border py-4">
+                        <summary className="cursor-pointer text-sm font-medium">Edit concept and topics</summary>
+                        <div className="mt-4 space-y-4">
+                          <label className="grid gap-2 text-sm font-medium">Name<Input aria-label={`Concept name ${concept.name}`} value={draft.name} onChange={(event) => setConceptDrafts((current) => ({ ...current, [concept.id]: { ...draft, name: event.target.value } }))} /></label>
+                          <label className="grid gap-2 text-sm font-medium">Description<Textarea aria-label={`Concept description ${concept.name}`} className="min-h-24" value={draft.description} onChange={(event) => setConceptDrafts((current) => ({ ...current, [concept.id]: { ...draft, description: event.target.value } }))} /></label>
+                          <fieldset className="grid gap-2 border-0 p-0" data-slot="concept-topic-links">
+                            <legend className="text-sm font-medium">Topics</legend>
+                            <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-border bg-background p-2">
+                              {topics.map((topic) => {
+                                const checked = (conceptTopicDrafts[concept.id] ?? []).includes(topic.id);
+                                return (
+                                  <label className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-xs hover:bg-muted" key={topic.id}>
+                                    <input
+                                      checked={checked}
+                                      className="mt-0.5 size-3.5 accent-primary"
+                                      data-slot="concept-topic-checkbox"
+                                      onChange={(event) => setConceptTopicDrafts((current) => {
+                                        const existing = current[concept.id] ?? [];
+                                        return {
+                                          ...current,
+                                          [concept.id]: event.target.checked
+                                            ? [...existing, topic.id]
+                                            : existing.filter((topicId) => topicId !== topic.id),
+                                        };
+                                      })}
+                                      type="checkbox"
+                                    />
+                                    <span className="leading-5">{topic.title}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </fieldset>
+                          <Button className="w-full" onClick={() => void saveConceptReview(concept.id, draft)} size="sm" type="button">Save changes</Button>
+                        </div>
+                      </details>
+                      <details className="border-b border-border py-4">
+                        <summary className="cursor-pointer text-sm font-medium">AI context</summary>
+                        <div className="mt-3"><TraceabilityBlock artifact={concept} /></div>
+                      </details>
                     </>
                   );
                 })() : <p className="text-sm text-muted-foreground">Select a concept or edge to inspect it.</p>}
 
-                <InspectorSection title="Browse artifacts">
-                  <div className="max-h-44 space-y-1 overflow-y-auto">
-                    {visibleGraphConcepts.map((concept) => <button className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted" data-slot="graph-artifact" key={concept.id} onClick={() => { setSelectedGraphConceptId(concept.id); setSelectedGraphEdgeId(""); }} type="button"><span className="truncate">{concept.name}</span><span className="text-xs capitalize text-muted-foreground">{concept.review_status}</span></button>)}
-                    {visibleGraphEdges.map((edge) => <button className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted" data-slot="graph-artifact" key={edge.id} onClick={() => { setSelectedGraphEdgeId(edge.id); setSelectedGraphConceptId(""); }} type="button"><span className="truncate">{conceptName(graph, edge.from_concept_id)} → {conceptName(graph, edge.to_concept_id)}</span><span className="text-xs capitalize text-muted-foreground">{edge.review_status}</span></button>)}
-                  </div>
-                </InspectorSection>
-
-                <details className="border-b border-border py-4">
-                  <summary className="cursor-pointer text-xs font-semibold uppercase text-muted-foreground">Merge duplicate concepts</summary>
-                  <form className="mt-3 grid gap-2" onSubmit={mergeConcepts}>
-                    <select className="h-9 rounded-lg border border-input bg-background px-2 text-sm" data-slot="merge-concept-source" value={mergeSourceId} onChange={(event) => setMergeSourceId(event.target.value)}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
-                    <select className="h-9 rounded-lg border border-input bg-background px-2 text-sm" data-slot="merge-concept-target" value={mergeTargetId} onChange={(event) => setMergeTargetId(event.target.value)}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
-                    <Button disabled={!mergeSourceId || !mergeTargetId} size="sm" type="submit">Merge duplicate</Button>
-                  </form>
-                </details>
                 <details className="py-4">
-                  <summary className="cursor-pointer text-xs font-semibold uppercase text-muted-foreground">Add prerequisite edge</summary>
-                  <form className="mt-3 grid gap-2" onSubmit={(event) => { event.preventDefault(); addGraphEdge(newEdge); }}>
-                    <select className="h-9 rounded-lg border border-input bg-background px-2 text-sm" data-slot="edge-source" value={newEdge.from_concept_id} onChange={(event) => setNewEdge((current) => ({ ...current, from_concept_id: event.target.value }))}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
-                    <select className="h-9 rounded-lg border border-input bg-background px-2 text-sm" data-slot="edge-target" value={newEdge.to_concept_id} onChange={(event) => setNewEdge((current) => ({ ...current, to_concept_id: event.target.value }))}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
-                    <Input aria-label="Edge rationale" placeholder="Rationale" value={newEdge.rationale} onChange={(event) => setNewEdge((current) => ({ ...current, rationale: event.target.value }))} />
-                    <Button size="sm" type="submit">Add edge</Button>
-                  </form>
+                  <summary className="cursor-pointer text-sm font-medium">Advanced graph tools</summary>
+                  <div className="mt-4 grid gap-5">
+                    <form className="grid gap-2" onSubmit={mergeConcepts}>
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Merge duplicate</p>
+                      <select aria-label="Concept to merge" className="h-9 rounded-lg border border-input bg-background px-2 text-sm" data-slot="merge-concept-source" value={mergeSourceId} onChange={(event) => setMergeSourceId(event.target.value)}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
+                      <select aria-label="Concept to keep" className="h-9 rounded-lg border border-input bg-background px-2 text-sm" data-slot="merge-concept-target" value={mergeTargetId} onChange={(event) => setMergeTargetId(event.target.value)}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
+                      <Button disabled={!mergeSourceId || !mergeTargetId} size="sm" type="submit" variant="outline">Merge</Button>
+                    </form>
+                    <form className="grid gap-2 border-t border-border pt-4" onSubmit={(event) => { event.preventDefault(); addGraphEdge(newEdge); }}>
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Add prerequisite</p>
+                      <select aria-label="Required concept" className="h-9 rounded-lg border border-input bg-background px-2 text-sm" data-slot="edge-source" value={newEdge.from_concept_id} onChange={(event) => setNewEdge((current) => ({ ...current, from_concept_id: event.target.value }))}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
+                      <select aria-label="Unlocked concept" className="h-9 rounded-lg border border-input bg-background px-2 text-sm" data-slot="edge-target" value={newEdge.to_concept_id} onChange={(event) => setNewEdge((current) => ({ ...current, to_concept_id: event.target.value }))}>{graph.concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select>
+                      <Input aria-label="Edge rationale" placeholder="Why is it required?" value={newEdge.rationale} onChange={(event) => setNewEdge((current) => ({ ...current, rationale: event.target.value }))} />
+                      <Button size="sm" type="submit" variant="outline">Add prerequisite</Button>
+                    </form>
+                  </div>
                 </details>
               </aside>
             </div>
@@ -3231,6 +3279,22 @@ function formatDuration(seconds: number) {
   const remainingSeconds = rounded % 60;
   if (minutes === 0) return `${remainingSeconds}s`;
   return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+}
+
+const graphTopicPalette = [
+  { background: "#eff6ff", border: "#2563eb", edge: "#3b82f6" },
+  { background: "#ecfdf5", border: "#059669", edge: "#10b981" },
+  { background: "#fffbeb", border: "#d97706", edge: "#f59e0b" },
+  { background: "#fff1f2", border: "#e11d48", edge: "#f43f5e" },
+  { background: "#f5f3ff", border: "#7c3aed", edge: "#8b5cf6" },
+  { background: "#ecfeff", border: "#0891b2", edge: "#06b6d4" },
+] as const;
+
+function graphTopicColors(topicIndex: number) {
+  if (topicIndex < 0) {
+    return { background: "#f4f4f5", border: "#71717a", edge: "#71717a" };
+  }
+  return graphTopicPalette[topicIndex % graphTopicPalette.length];
 }
 
 function conceptName(graph: GraphResponse, conceptId: string) {

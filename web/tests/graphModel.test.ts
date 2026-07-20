@@ -95,6 +95,31 @@ describe("graphModel", () => {
 
     expect([...focused]).toEqual(["a", "b"]);
   });
+
+  it("compresses empty topic columns and keeps unlinked concepts adjacent", () => {
+    const nodes = graphNodeModels(
+      [
+        concept("first", "First", "topic-1"),
+        concept("fourth", "Fourth", "topic-4"),
+        {
+          ...concept("unlinked", "Unlinked", "missing"),
+          ai_proposal: { topic_ids: [] },
+        },
+      ],
+      [
+        { id: "topic-1", title: "One" },
+        { id: "topic-2", title: "Two" },
+        { id: "topic-3", title: "Three" },
+        { id: "topic-4", title: "Four" },
+      ],
+    );
+
+    expect(nodes.map((node) => [node.id, node.x])).toEqual([
+      ["first", 0],
+      ["fourth", 260],
+      ["unlinked", 520],
+    ]);
+  });
 });
 
 function concept(id: string, name: string, topicId: string) {
