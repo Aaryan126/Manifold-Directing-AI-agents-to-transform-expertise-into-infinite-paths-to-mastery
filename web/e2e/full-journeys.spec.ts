@@ -368,6 +368,11 @@ test("guided production shows exactly one stage at a time", async ({ page }) => 
   await expect(page.locator('[data-stage="structure"][aria-current="step"]')).toBeVisible();
   await expect(page.locator("#outline")).toBeVisible();
   await expect(page.locator("#concept-graph")).toBeVisible();
+  await expect(page.getByText("Why AI suggested this")).toHaveCount(0);
+  await page.getByRole("button", { name: "Add topic", exact: true }).click();
+  await expect(page.locator("#manual-topic-form")).toBeVisible();
+  await page.locator("#manual-topic-form").getByRole("button", { name: "Cancel" }).click();
+  await expect(page.locator("#manual-topic-form")).toHaveCount(0);
   await expect(page.locator("#course-setup")).toBeHidden();
   await expect(page.locator("#clips")).toBeHidden();
 

@@ -324,6 +324,7 @@ export default function HomePage() {
     start_seconds: 0,
     end_seconds: 600,
   });
+  const [showManualTopicForm, setShowManualTopicForm] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSegmenting, setIsSegmenting] = useState(false);
@@ -952,6 +953,7 @@ export default function HomePage() {
     });
     if (topic) {
       upsertTopic(topic);
+      setShowManualTopicForm(false);
       setManualTopic({
         title: "",
         summary: "",
@@ -2002,6 +2004,15 @@ export default function HomePage() {
                   <RefreshCw data-icon="inline-start" /> Refresh
                 </Button>
                 <Button
+                  aria-controls="manual-topic-form"
+                  aria-expanded={showManualTopicForm}
+                  onClick={() => setShowManualTopicForm((current) => !current)}
+                  type="button"
+                  variant="outline"
+                >
+                  <Plus data-icon="inline-start" /> Add topic
+                </Button>
+                <Button
                   disabled={!topics.some((topic) => topic.review_status === "proposed")}
                   onClick={() => void acceptAllTopics()}
                   type="button"
@@ -2016,6 +2027,31 @@ export default function HomePage() {
               </>
             )}
           >
+            {showManualTopicForm ? (
+              <form className="border-b border-border bg-muted/10 px-6 py-5 xl:px-7" id="manual-topic-form" onSubmit={addManualTopic}>
+                <div className="mx-auto max-w-5xl">
+                  <div className="mb-4 flex items-center justify-between gap-4">
+                    <h3 className="text-sm font-semibold">Add topic</h3>
+                    <Button onClick={() => setShowManualTopicForm(false)} size="sm" type="button" variant="ghost">Cancel</Button>
+                  </div>
+                  <div className="grid grid-cols-[minmax(0,1fr)_180px_180px] items-start gap-3">
+                    <label className="grid gap-2 text-sm font-medium">
+                      Title
+                      <Input placeholder="Topic title" value={manualTopic.title} onChange={(event) => setManualTopic((current) => ({ ...current, title: event.target.value }))} />
+                    </label>
+                    <TimecodeInput id="manual-topic-start" label="Start time" onChange={(seconds) => setManualTopic((current) => ({ ...current, start_seconds: seconds }))} value={manualTopic.start_seconds} />
+                    <TimecodeInput id="manual-topic-end" label="End time" onChange={(seconds) => setManualTopic((current) => ({ ...current, end_seconds: seconds }))} value={manualTopic.end_seconds} />
+                  </div>
+                  <label className="mt-3 grid gap-2 text-sm font-medium">
+                    Summary
+                    <Textarea className="min-h-20" placeholder="What this topic covers" value={manualTopic.summary} onChange={(event) => setManualTopic((current) => ({ ...current, summary: event.target.value }))} />
+                  </label>
+                  <div className="mt-4 flex justify-end">
+                    <Button disabled={!manualTopic.title.trim()} type="submit">Add topic</Button>
+                  </div>
+                </div>
+              </form>
+            ) : null}
             {topics.length === 0 ? (
               <div className="px-8 py-16 text-center" role={isSegmenting ? "status" : undefined}>
                 <p className="text-sm font-medium">{isSegmenting ? "Generating topic outline" : "No topics yet"}</p>
@@ -2133,27 +2169,6 @@ export default function HomePage() {
                         <Button className="w-full" onClick={() => splitTopic(topic)} type="button" variant="outline">Split topic</Button>
                         <Button className="w-full" disabled={!nextTopic} onClick={() => mergeTopicWithNext(index)} type="button" variant="outline">Merge next</Button>
                       </div>
-                      {aiRationale(topic) || instructorTrace(topic) ? (
-                        <details className="mt-7 border-t border-border pt-4">
-                          <summary className="cursor-pointer text-sm font-medium">Why AI suggested this</summary>
-                          <div className="mt-3 max-w-3xl space-y-2 text-sm leading-6 text-muted-foreground">
-                            {aiRationale(topic) ? <p>{aiRationale(topic)}</p> : null}
-                            {instructorTrace(topic) ? <p>Instructor revision: {instructorTrace(topic)}</p> : null}
-                          </div>
-                        </details>
-                      ) : null}
-                      <details className="mt-4 border-t border-border pt-4">
-                        <summary className="cursor-pointer text-sm font-medium">Add topic</summary>
-                        <form className="mt-4 grid gap-3" onSubmit={addManualTopic}>
-                          <Input aria-label="Manual topic title" placeholder="Title" value={manualTopic.title} onChange={(event) => setManualTopic((current) => ({ ...current, title: event.target.value }))} />
-                          <Textarea aria-label="Manual topic summary" placeholder="Summary" value={manualTopic.summary} onChange={(event) => setManualTopic((current) => ({ ...current, summary: event.target.value }))} />
-                          <div className="grid grid-cols-2 gap-3">
-                            <TimecodeInput id="manual-topic-start" label="Start time" onChange={(seconds) => setManualTopic((current) => ({ ...current, start_seconds: seconds }))} value={manualTopic.start_seconds} />
-                            <TimecodeInput id="manual-topic-end" label="End time" onChange={(seconds) => setManualTopic((current) => ({ ...current, end_seconds: seconds }))} value={manualTopic.end_seconds} />
-                          </div>
-                          <Button className="w-fit" disabled={!manualTopic.title} type="submit">Add topic</Button>
-                        </form>
-                      </details>
                     </div>
                   )}
                 />
