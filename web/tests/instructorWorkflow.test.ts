@@ -117,5 +117,11 @@ describe("instructor workflow", () => {
       clips: 0,
       staleClips: 2,
     })).toBe("Regenerate clips");
+
+    expect(topicProductionLabel({
+      ...topic,
+      reviewedConcepts: 0,
+      clips: 0,
+    })).toBe("Connect concept");
   });
 });

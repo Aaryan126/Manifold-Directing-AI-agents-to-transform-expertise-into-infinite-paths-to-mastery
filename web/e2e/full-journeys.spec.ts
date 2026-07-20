@@ -369,6 +369,15 @@ test("guided production shows exactly one stage at a time", async ({ page }) => 
   await expect(page.locator("#outline")).toBeVisible();
   await expect(page.locator("#concept-graph")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Learning clips", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Topic details", exact: true })).toBeVisible();
+  const clipsHeadingBox = await page.getByRole("heading", { name: "Learning clips", exact: true }).boundingBox();
+  const topicDetailsBox = await page.getByRole("heading", { name: "Topic details", exact: true }).boundingBox();
+  expect(clipsHeadingBox).not.toBeNull();
+  expect(topicDetailsBox).not.toBeNull();
+  expect(clipsHeadingBox!.y).toBeLessThan(topicDetailsBox!.y);
+  const clipPreview = page.locator("#outline video, #outline mux-player").first();
+  await expect(clipPreview).toBeVisible();
+  expect((await clipPreview.boundingBox())!.width).toBeLessThanOrEqual(560);
   await expect(page.getByText("Why AI suggested this")).toHaveCount(0);
   await page.getByRole("button", { name: "Add concept", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Add to graph" })).toBeVisible();
@@ -394,6 +403,58 @@ test("guided production shows exactly one stage at a time", async ({ page }) => 
   await expect(page.locator("#routing")).toBeVisible();
   await expect(page.locator("#assessments")).toBeHidden();
   await expect(page.locator("#course-setup")).toBeHidden();
+});
+
+test("topic production repairs missing concept coverage inline", async ({ page }) => {
+  const repairTopic = {
+    ...topic,
+    id: "50000000-0000-4000-8000-000000000002",
+    title: "Vector applications",
+    summary: "Applies vectors to a practical problem.",
+    start_seconds: 60,
+    end_seconds: 120,
+  };
+  const unlinkedConcept = {
+    ...graph.concepts[0],
+    id: "70000000-0000-4000-8000-000000000002",
+    name: "Vector applications",
+    description: "Using vector direction and magnitude in context.",
+    ai_proposal: { rationale: "Supported by the application example.", topic_ids: [] },
+  };
+
+  await routeDevelopmentContext(page);
+  await routeReviewedCourse(page);
+  await page.route(`${pipeline}/videos/${videoId}/topics`, (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify([topic, repairTopic]) }),
+  );
+  await page.route(`${pipeline}/courses/${courseId}/graph`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ...graph, concepts: [...graph.concepts, unlinkedConcept] }),
+    }),
+  );
+  await page.route(`${pipeline}/courses/graph/concepts/${unlinkedConcept.id}/topics`, async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ topic_ids: [repairTopic.id] });
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...unlinkedConcept,
+        ai_proposal: { ...unlinkedConcept.ai_proposal, topic_ids: [repairTopic.id] },
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByLabel("Direct audio/video URL").fill("https://example.com/lecture.mp4");
+  await page.getByRole("button", { name: "Ingest URL" }).click();
+  await page.locator('[data-stage="structure"]').click();
+  await page.getByRole("button", { name: /Vector applications/ }).click();
+
+  await expect(page.getByText("Connect a reviewed concept to generate clips")).toBeVisible();
+  await expect(page.getByLabel(`Concept for ${repairTopic.title}`)).toHaveValue(unlinkedConcept.id);
+  await page.getByRole("button", { name: "Connect concept", exact: true }).click();
+  await expect(page.getByText("Connect a reviewed concept to generate clips")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Generate clips", exact: true })).toBeEnabled();
 });
 
 test("instructor workspaces match approved desktop visual system", async ({ page }) => {

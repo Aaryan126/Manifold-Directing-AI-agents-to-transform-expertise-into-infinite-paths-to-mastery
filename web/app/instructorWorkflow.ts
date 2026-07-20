@@ -153,7 +153,7 @@ export function topicReadinessLabel(topic: TopicReadiness): string {
 export function topicProductionLabel(topic: TopicReadiness): string {
   if (topic.reviewStatus === "dismissed") return "Dismissed";
   if (topic.reviewStatus === "proposed") return "Review topic";
-  if (topic.reviewedConcepts === 0) return "Needs concept";
+  if (topic.reviewedConcepts === 0) return "Connect concept";
   if (topic.clips === 0) return topic.staleClips > 0 ? "Regenerate clips" : "Generate clips";
   if (topic.flaggedClips > 0) return "Clip flagged";
   return "Ready";

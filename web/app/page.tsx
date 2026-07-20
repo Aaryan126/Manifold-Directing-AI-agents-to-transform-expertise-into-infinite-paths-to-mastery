@@ -319,6 +319,7 @@ export default function HomePage() {
   const [activeLearnerTopicId, setActiveLearnerTopicId] = useState<string | null>(null);
   const [conceptDrafts, setConceptDrafts] = useState<Record<string, ConceptDraft>>({});
   const [conceptTopicDrafts, setConceptTopicDrafts] = useState<Record<string, string[]>>({});
+  const [topicConceptSelections, setTopicConceptSelections] = useState<Record<string, string>>({});
   const [mergeTargetId, setMergeTargetId] = useState("");
   const [topicDrafts, setTopicDrafts] = useState<Record<string, TopicDraft>>({});
   const [manualTopic, setManualTopic] = useState<TopicDraft>({
@@ -1199,6 +1200,42 @@ export default function HomePage() {
       setMessage("Concept links updated. Affected clips must be regenerated before learner use.");
     }
     return concept;
+  }
+
+  async function linkConceptToTopic(conceptId: string, topicId: string) {
+    const existing = graph?.concepts.find((concept) => concept.id === conceptId);
+    if (!existing) return;
+    const concept = (await graphRequest(
+      `${pipelineBaseUrl}/courses/graph/concepts/${conceptId}/topics`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic_ids: [...new Set([...conceptTopicIds(existing), topicId])],
+        }),
+      },
+    )) as Concept | null;
+    if (!concept) return;
+    upsertConcept(concept);
+    setTopicConceptSelections((current) => ({ ...current, [topicId]: "" }));
+    if (job?.video_id) await loadClips(job.video_id);
+    setMessage("Concept connected. This topic can now generate learner clips.");
+  }
+
+  function openConceptRepairForTopic(topic: Topic) {
+    setGraphReviewFilter("active");
+    setGraphTopicFocus(topic.id);
+    setSelectedGraphConceptId("");
+    setSelectedGraphEdgeId("");
+    setNewGraphConcept({
+      name: "",
+      description: topic.summary ?? "",
+      topic_id: topic.id,
+    });
+    setShowGraphConceptForm(true);
+    window.setTimeout(() => {
+      document.getElementById("concept-graph")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   }
 
   async function dismissConcept(conceptId: string) {
@@ -2223,6 +2260,24 @@ export default function HomePage() {
               const index = selectedTopicReviewIndex;
               const draft = topicDrafts[topic.id] ?? topicToDraft(topic);
               const nextTopic = topics[index + 1];
+              const reviewedConceptCount = reviewedConceptCountForTopic(
+                topic.id,
+                graph?.concepts ?? [],
+              );
+              const clipBlockReason = topicClipGenerationBlockReason(
+                topic,
+                graph?.concepts ?? [],
+              );
+              const needsConcept = isTopicReviewedForClipGeneration(topic) && reviewedConceptCount === 0;
+              const conceptCandidates = (graph?.concepts ?? []).filter(
+                (concept) =>
+                  (concept.review_status === "accepted" || concept.review_status === "edited") &&
+                  !conceptTopicIds(concept).includes(topic.id),
+              ).sort(
+                (first, second) => conceptTopicIds(first).length - conceptTopicIds(second).length,
+              );
+              const selectedConceptCandidate =
+                topicConceptSelections[topic.id] || conceptCandidates[0]?.id || "";
               return (
                 <ReviewWorkspaceGrid
                   queue={(
@@ -2255,8 +2310,8 @@ export default function HomePage() {
                   )}
                   queueWidth="wide"
                   editor={(
-                    <div className="mx-auto max-w-4xl">
-                      <div className="mb-6 flex items-start justify-between gap-4">
+                    <div className="mx-auto flex max-w-4xl flex-col">
+                      <div className="order-1 mb-5 flex items-start justify-between gap-4">
                         <div>
                           <p className="text-sm font-medium">Topic {index + 1} of {topics.length}</p>
                           <p className="mt-1 text-sm text-muted-foreground">
@@ -2265,7 +2320,8 @@ export default function HomePage() {
                         </div>
                         <Badge className="capitalize" variant="outline">{topic.review_status}</Badge>
                       </div>
-                      <div className="space-y-5">
+                      <div className="order-3 mt-8 space-y-5 border-t border-border pt-6">
+                        <h4 className="text-base font-semibold">Topic details</h4>
                         <label className="grid gap-2 text-sm font-medium" htmlFor={`title-${topic.id}`}>
                           Title
                           <Input
@@ -2332,7 +2388,7 @@ export default function HomePage() {
                           </label>
                         ) : null}
                       </div>
-                      <div className="mt-8 grid grid-cols-5 gap-2 border-t border-border pt-5">
+                      <div className="order-4 mt-6 grid grid-cols-5 gap-2 border-t border-border pt-5">
                         <Button className="w-full" disabled={acceptButtonDisabled(topic.review_status)} onClick={() => acceptTopic(topic.id)} type="button" variant="outline">
                           {acceptButtonLabel(topic.review_status)}
                         </Button>
@@ -2341,18 +2397,18 @@ export default function HomePage() {
                         <Button className="w-full" onClick={() => splitTopic(topic)} type="button" variant="outline">Split topic</Button>
                         <Button className="w-full" disabled={!nextTopic} onClick={() => mergeTopicWithNext(index)} type="button" variant="outline">Merge next</Button>
                       </div>
-                      <section className="mt-8 border-t border-border pt-6" aria-labelledby={`topic-clips-${topic.id}`}>
+                      <section className="order-2" aria-labelledby={`topic-clips-${topic.id}`}>
                         <div className="flex flex-wrap items-start justify-between gap-4">
                           <div>
                             <h4 className="text-base font-semibold" id={`topic-clips-${topic.id}`}>Learning clips</h4>
                             <p className="mt-1 text-sm text-muted-foreground">
-                              {reviewedConceptCountForTopic(topic.id, graph?.concepts ?? [])} reviewed concept{reviewedConceptCountForTopic(topic.id, graph?.concepts ?? []) === 1 ? "" : "s"}
+                              {reviewedConceptCount} reviewed concept{reviewedConceptCount === 1 ? "" : "s"}
                               <span className="mx-2 text-border">·</span>
                               {selectedTopicActiveClips.length} active clip{selectedTopicActiveClips.length === 1 ? "" : "s"}
                             </p>
                           </div>
                           <Button
-                            disabled={topicClipGenerationBlockReason(topic, graph?.concepts ?? []) !== null || generationAction !== null || bulkAction !== null}
+                            disabled={clipBlockReason !== null || generationAction !== null || bulkAction !== null}
                             onClick={() => generateClipsForTopic(topic.id)}
                             type="button"
                           >
@@ -2361,10 +2417,36 @@ export default function HomePage() {
                           </Button>
                         </div>
 
-                        {topicClipGenerationBlockReason(topic, graph?.concepts ?? []) ? (
-                          <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                            {topicClipGenerationBlockReason(topic, graph?.concepts ?? [])}
-                          </p>
+                        {needsConcept ? (
+                          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-4 text-amber-950">
+                            <p className="text-sm font-semibold">Connect a reviewed concept to generate clips</p>
+                            <p className="mt-1 text-sm text-amber-900">This keeps clip tags, routing, and assessment remediation traceable.</p>
+                            {conceptCandidates.length ? (
+                              <div className="mt-4 flex flex-wrap items-center gap-2">
+                                <select
+                                  aria-label={`Concept for ${topic.title}`}
+                                  className="h-9 min-w-64 flex-1 rounded-md border border-amber-300 bg-background px-3 text-sm"
+                                  onChange={(event) => setTopicConceptSelections((current) => ({ ...current, [topic.id]: event.target.value }))}
+                                  value={selectedConceptCandidate}
+                                >
+                                  {conceptCandidates.map((concept) => {
+                                    const linkedTopicCount = conceptTopicIds(concept).length;
+                                    return (
+                                      <option key={concept.id} value={concept.id}>
+                                        {concept.name}{linkedTopicCount === 0 ? " (unlinked)" : ` (${linkedTopicCount} topic${linkedTopicCount === 1 ? "" : "s"})`}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                                <Button disabled={!selectedConceptCandidate} onClick={() => void linkConceptToTopic(selectedConceptCandidate, topic.id)} size="sm" type="button">Connect concept</Button>
+                                <Button onClick={() => openConceptRepairForTopic(topic)} size="sm" type="button" variant="outline">Open graph</Button>
+                              </div>
+                            ) : (
+                              <Button className="mt-4" onClick={() => openConceptRepairForTopic(topic)} size="sm" type="button" variant="outline">Add concept in graph</Button>
+                            )}
+                          </div>
+                        ) : clipBlockReason ? (
+                          <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{clipBlockReason}</p>
                         ) : selectedTopicClips.some((clip) => clip.status === "superseded") && selectedTopicActiveClips.length === 0 ? (
                           <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                             These clips are out of date after a structure change. Regenerate them before learners can use this topic.
@@ -2389,7 +2471,7 @@ export default function HomePage() {
                               ))}
                             </div>
                             {selectedClipReview ? (
-                              <div className="mt-3 grid grid-cols-[minmax(0,1fr)_240px] gap-5">
+                              <div className="mt-3 grid grid-cols-[minmax(0,560px)_220px] justify-between gap-5">
                                 <div>
                                   {job.video_id && playback ? (
                                     <ProviderVideo
@@ -2429,12 +2511,12 @@ export default function HomePage() {
                               </div>
                             ) : null}
                           </div>
-                        ) : (
+                        ) : !clipBlockReason ? (
                           <div className="mt-5 rounded-md border border-dashed border-border px-5 py-8 text-center">
                             <p className="text-sm font-medium">No learner clips yet</p>
                             <p className="mt-1 text-sm text-muted-foreground">Generate clips after this topic and its concept coverage are reviewed.</p>
                           </div>
-                        )}
+                        ) : null}
                       </section>
                     </div>
                   )}
