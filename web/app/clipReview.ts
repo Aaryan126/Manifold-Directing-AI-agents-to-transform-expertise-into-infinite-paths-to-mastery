@@ -4,6 +4,7 @@ export type ClipReviewTopic = {
 };
 
 export type ClipReviewClip = {
+  topic_id?: string;
   status: string;
 };
 
@@ -40,6 +41,20 @@ export function topicClipGenerationBlockReason(
     return "Accept or edit at least one graph concept linked to this topic first.";
   }
   return null;
+}
+
+export function topicsReadyForAutomaticClipGeneration(
+  topics: ClipReviewTopic[],
+  concepts: ClipReviewConcept[],
+  clips: ClipReviewClip[],
+): string[] {
+  return topics.flatMap((topic) => {
+    if (!topic.id || topicClipGenerationBlockReason(topic, concepts) !== null) return [];
+    const hasCurrentClip = clips.some(
+      (clip) => clip.topic_id === topic.id && clip.status !== "superseded",
+    );
+    return hasCurrentClip ? [] : [topic.id];
+  });
 }
 
 export function clipSpotCheckActionsDisabled(clip: ClipReviewClip): boolean {

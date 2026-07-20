@@ -20,10 +20,7 @@ import {
   graphNodeModels,
 } from "./graphModel";
 import {
-  assessmentGenerationBlockReason,
-  learnerAccessBlockedReason,
-  reviewedConceptCountForAssessment,
-  usableClipCountForAssessment,
+  topicsReadyForAutomaticAssessmentGeneration,
 } from "./assessmentReview";
 import {
   correctAnswerPayload,
@@ -37,6 +34,7 @@ import {
   reviewedConceptCountForTopic,
   isTopicReviewedForClipGeneration,
   topicClipGenerationBlockReason,
+  topicsReadyForAutomaticClipGeneration,
 } from "./clipReview";
 import {
   clipDisplayTitle,
@@ -332,8 +330,9 @@ export default function HomePage() {
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSegmenting, setIsSegmenting] = useState(false);
-  const [bulkAction, setBulkAction] = useState<"clips" | "questions" | "accept-questions" | null>(null);
+  const [bulkAction, setBulkAction] = useState<"accept-questions" | null>(null);
   const [generationAction, setGenerationAction] = useState<string | null>(null);
+  const [preparationFailures, setPreparationFailures] = useState<Record<string, string>>({});
   const [isAcceptingGraph, setIsAcceptingGraph] = useState(false);
   const [learnerAnswer, setLearnerAnswer] = useState("");
   const [learnerConfidence, setLearnerConfidence] = useState<number | null>(null);
@@ -345,6 +344,10 @@ export default function HomePage() {
   const graphFlowRef = useRef<ReactFlowInstance<FlowNode, FlowEdge> | null>(null);
   const refreshJobRef = useRef<() => Promise<void>>(async () => undefined);
   const hydrateCompletedJobRef = useRef<(nextJob: Job) => Promise<void>>(async () => undefined);
+  const automaticPreparationRef = useRef<() => void>(() => undefined);
+  const automaticPreparationJob = useRef<string | null>(null);
+  const automaticClipAttempts = useRef(new Map<string, string>());
+  const automaticQuestionAttempts = useRef(new Set<string>());
   const selectedIdentity =
     identities.find((identity) => identity.id === selectedIdentityId) ?? null;
   const isLearnerContext = selectedIdentity?.role === "learner";
@@ -539,6 +542,14 @@ export default function HomePage() {
   ]
     .sort()
     .join("|");
+  const artifactPreparationRevision = [
+    ...topics.map((topic) => `topic:${topic.id}:${topic.review_status}:${topic.start_seconds}:${topic.end_seconds}`),
+    ...(graph?.concepts.map((concept) =>
+      `concept:${concept.id}:${concept.review_status}:${conceptTopicIds(concept).sort().join(",")}`,
+    ) ?? []),
+    ...clips.map((clip) => `clip:${clip.id}:${clip.topic_id}:${clip.status}:${clip.materialization_status}`),
+    ...questions.map((question) => `question:${question.id}:${question.topic_id}:${question.review_status}`),
+  ].sort().join("|");
 
   useEffect(() => {
     setLearnerAnswer("");
@@ -1413,8 +1424,13 @@ export default function HomePage() {
     setClips((await response.json()) as Clip[]);
   }
 
-  async function generateClipsForTopic(topicId: string) {
-    setMessage(null);
+  async function generateClipsForTopic(topicId: string, automatic = false): Promise<boolean> {
+    if (!automatic) setMessage(null);
+    setPreparationFailures((current) => {
+      const next = { ...current };
+      delete next[`clips:${topicId}`];
+      return next;
+    });
     setGenerationAction(`clips:${topicId}`);
     try {
       const response = await fetch(`${pipelineBaseUrl}/topics/${topicId}/clips/generate`, {
@@ -1422,64 +1438,16 @@ export default function HomePage() {
       });
       if (!response.ok) {
         const body = await response.json().catch(() => null);
-        setMessage(body?.detail ?? `Clip generation failed with ${response.status}.`);
-        return;
+        const detail = body?.detail ?? `Clip generation failed with ${response.status}.`;
+        setPreparationFailures((current) => ({ ...current, [`clips:${topicId}`]: detail }));
+        if (!automatic) setMessage(detail);
+        return false;
       }
       if (job?.video_id) await loadClips(job.video_id);
+      return true;
     } finally {
       setGenerationAction(null);
     }
-  }
-
-  async function generateAllMissingClips() {
-    if (!job?.video_id || !graph) return;
-    const eligible = topics.filter(
-      (topic) =>
-        isTopicReviewedForClipGeneration(topic) &&
-        topicClipGenerationBlockReason(topic, graph.concepts) === null &&
-        !clips.some((clip) => clip.topic_id === topic.id && clip.status !== "superseded"),
-    );
-    const usesLocalDelivery = deliveryCapacity?.provider === "local";
-    const needsMaterialization = usesLocalDelivery && clips.some(
-      (clip) => clip.status !== "superseded" && clip.materialization_status !== "ready",
-    );
-    if (!eligible.length && !needsMaterialization) {
-      setMessage("Every eligible topic already has clips, or still needs reviewed concept links.");
-      return;
-    }
-    setBulkAction("clips");
-    setMessage(eligible.length
-      ? `Generating clips for ${eligible.length} eligible topic(s).`
-      : "Rendering existing timestamp references as independent local clips.");
-    const failures: string[] = [];
-    for (const topic of eligible) {
-      const response = await fetch(`${pipelineBaseUrl}/topics/${topic.id}/clips/generate`, { method: "POST" });
-      if (!response.ok) failures.push(topic.title);
-    }
-    if (usesLocalDelivery) {
-      const materialized = await fetch(
-        `${pipelineBaseUrl}/videos/${job.video_id}/clips/materialize`,
-        { method: "POST" },
-      );
-      if (!materialized.ok) {
-        failures.push("local clip rendering");
-      } else {
-        const renderedClips = (await materialized.json()) as Clip[];
-        const renderFailureCount = renderedClips.filter(
-          (clip) => clip.status !== "superseded" && clip.materialization_status === "failed",
-        ).length;
-        if (renderFailureCount) failures.push(`${renderFailureCount} local clip render(s)`);
-      }
-    }
-    await loadClips(job.video_id);
-    setBulkAction(null);
-    setMessage(failures.length
-      ? `Clip generation failed for: ${failures.join(", ")}.`
-      : eligible.length
-        ? usesLocalDelivery
-          ? `Generated and rendered clips for ${eligible.length} topic(s).`
-          : `Generated clips for ${eligible.length} topic(s).`
-        : "Rendered existing clips as independent local videos.");
   }
 
   async function flagClip(clipId: string) {
@@ -1541,45 +1509,29 @@ export default function HomePage() {
     setQuestionsState((await response.json()) as Question[]);
   }
 
-  async function generateQuestionForTopic(topicId: string) {
+  async function generateQuestionForTopic(topicId: string, automatic = false): Promise<boolean> {
+    setPreparationFailures((current) => {
+      const next = { ...current };
+      delete next[`question:${topicId}`];
+      return next;
+    });
     setGenerationAction(`question:${topicId}`);
     try {
-      const question = await questionRequest(
-        `${pipelineBaseUrl}/topics/${topicId}/questions/generate`,
-        { method: "POST" },
-      );
-      if (question) upsertQuestion(question);
+      const response = await fetch(`${pipelineBaseUrl}/topics/${topicId}/questions/generate`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const detail = body?.detail ?? `Question generation failed with ${response.status}.`;
+        setPreparationFailures((current) => ({ ...current, [`question:${topicId}`]: detail }));
+        if (!automatic) setMessage(detail);
+        return false;
+      }
+      upsertQuestion((await response.json()) as Question);
+      return true;
     } finally {
       setGenerationAction(null);
     }
-  }
-
-  async function generateAllMissingQuestions() {
-    if (!job?.video_id || !graph) return;
-    const eligible = topics.filter(
-      (topic) =>
-        (topic.review_status === "accepted" || topic.review_status === "edited") &&
-        assessmentGenerationBlockReason(topic, graph.concepts, clips) === null &&
-        !questions.some(
-          (question) => question.topic_id === topic.id && question.review_status !== "dismissed",
-        ),
-    );
-    if (!eligible.length) {
-      setMessage("Every eligible topic already has a question, or still needs reviewed concepts and clips.");
-      return;
-    }
-    setBulkAction("questions");
-    setMessage(`Generating questions for ${eligible.length} eligible topic(s).`);
-    const failures: string[] = [];
-    for (const topic of eligible) {
-      const response = await fetch(`${pipelineBaseUrl}/topics/${topic.id}/questions/generate`, { method: "POST" });
-      if (!response.ok) failures.push(topic.title);
-    }
-    await loadQuestions(job.video_id);
-    setBulkAction(null);
-    setMessage(failures.length
-      ? `Question generation failed for: ${failures.join(", ")}.`
-      : `Generated questions for ${eligible.length} topic(s).`);
   }
 
   async function acceptAllQuestions() {
@@ -2021,6 +1973,12 @@ export default function HomePage() {
     null;
   const selectedQuestionReview =
     questions.find((question) => question.id === selectedQuestionReviewId) ?? questions[0] ?? null;
+  const missingAssessmentProposalTopicIds = graph
+    ? topicsReadyForAutomaticAssessmentGeneration(topics, graph.concepts, clips, questions)
+    : [];
+  const questionPreparationFailures = Object.entries(preparationFailures).filter(([key]) =>
+    key.startsWith("question:"),
+  );
   const selectedGraphConcept =
     graph?.concepts.find((concept) => concept.id === selectedGraphConceptId) ?? graph?.concepts[0] ?? null;
   const selectedGraphEdge =
@@ -2094,6 +2052,66 @@ export default function HomePage() {
     publishReady: publishReadiness?.ready ?? false,
     published: course?.status === "published",
   });
+
+  automaticPreparationRef.current = () => {
+    if (!job?.id || !job.video_id || !graph || isLearnerContext) return;
+    if (automaticPreparationJob.current !== job.id) {
+      automaticPreparationJob.current = job.id;
+      automaticClipAttempts.current.clear();
+      automaticQuestionAttempts.current.clear();
+      setPreparationFailures({});
+    }
+    if (bulkAction !== null || generationAction !== null) return;
+
+    const missingClipTopicIds = topicsReadyForAutomaticClipGeneration(
+      topics,
+      graph.concepts,
+      clips,
+    );
+    for (const nextClipTopic of topics.filter((topic) => missingClipTopicIds.includes(topic.id))) {
+      const linkedConceptIds = graph.concepts
+        .filter((concept) =>
+          (concept.review_status === "accepted" || concept.review_status === "edited") &&
+          conceptTopicIds(concept).includes(nextClipTopic.id),
+        )
+        .map((concept) => concept.id)
+        .sort();
+      const attemptKey = [
+        nextClipTopic.review_status,
+        nextClipTopic.start_seconds,
+        nextClipTopic.end_seconds,
+        linkedConceptIds.join(","),
+      ].join(":");
+      if (automaticClipAttempts.current.get(nextClipTopic.id) !== attemptKey) {
+        automaticClipAttempts.current.set(nextClipTopic.id, attemptKey);
+        void generateClipsForTopic(nextClipTopic.id, true);
+        return;
+      }
+    }
+
+    const nextQuestionTopicId = topicsReadyForAutomaticAssessmentGeneration(
+      topics,
+      graph.concepts,
+      clips,
+      questions,
+    ).find((topicId) => !automaticQuestionAttempts.current.has(topicId));
+    if (nextQuestionTopicId) {
+      automaticQuestionAttempts.current.add(nextQuestionTopicId);
+      void generateQuestionForTopic(nextQuestionTopicId, true);
+    }
+  };
+
+  useEffect(() => {
+    if (!workflowHydratedJobId || workflowHydratedJobId !== job?.id || isLearnerContext) return;
+    automaticPreparationRef.current();
+  }, [
+    artifactPreparationRevision,
+    bulkAction,
+    generationAction,
+    isLearnerContext,
+    job?.id,
+    workflowHydratedJobId,
+  ]);
 
   useEffect(() => {
     if (!workflowHydratedJobId || workflowHydratedJobId !== job?.id || isLearnerContext) return;
@@ -2208,15 +2226,6 @@ export default function HomePage() {
                   variant="outline"
                 >
                   Accept all
-                </Button>
-                <Button
-                  disabled={bulkAction !== null || generationAction !== null || !topics.some((topic) => topicClipGenerationBlockReason(topic, graph?.concepts ?? []) === null)}
-                  onClick={() => void generateAllMissingClips()}
-                  type="button"
-                  variant="outline"
-                >
-                  {bulkAction === "clips" ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />}
-                  {bulkAction === "clips" ? "Generating clips" : "Generate missing clips"}
                 </Button>
                 <Button disabled={isSegmenting} onClick={() => void segmentTranscript()} type="button">
                   <Sparkles data-icon="inline-start" />
@@ -2408,12 +2417,23 @@ export default function HomePage() {
                             </p>
                           </div>
                           <Button
-                            disabled={clipBlockReason !== null || generationAction !== null || bulkAction !== null}
-                            onClick={() => generateClipsForTopic(topic.id)}
+                            disabled={
+                              clipBlockReason !== null ||
+                              generationAction !== null ||
+                              bulkAction !== null ||
+                              (selectedTopicActiveClips.length === 0 && !preparationFailures[`clips:${topic.id}`])
+                            }
+                            onClick={() => void generateClipsForTopic(topic.id)}
                             type="button"
                           >
-                            {generationAction === `clips:${topic.id}` ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />}
-                            {generationAction === `clips:${topic.id}` ? "Generating clips" : selectedTopicActiveClips.length ? "Regenerate clips" : "Generate clips"}
+                            {generationAction === `clips:${topic.id}` || (selectedTopicActiveClips.length === 0 && !preparationFailures[`clips:${topic.id}`]) ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />}
+                            {generationAction === `clips:${topic.id}`
+                              ? "Preparing clips"
+                              : selectedTopicActiveClips.length
+                                ? "Regenerate clips"
+                                : preparationFailures[`clips:${topic.id}`]
+                                  ? "Retry clips"
+                                  : "Preparing clips"}
                           </Button>
                         </div>
 
@@ -2447,6 +2467,10 @@ export default function HomePage() {
                           </div>
                         ) : clipBlockReason ? (
                           <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{clipBlockReason}</p>
+                        ) : preparationFailures[`clips:${topic.id}`] ? (
+                          <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                            Clip preparation failed. Retry when ready.
+                          </p>
                         ) : selectedTopicClips.some((clip) => clip.status === "superseded") && selectedTopicActiveClips.length === 0 ? (
                           <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                             These clips are out of date after a structure change. Regenerate them before learners can use this topic.
@@ -2511,10 +2535,11 @@ export default function HomePage() {
                               </div>
                             ) : null}
                           </div>
-                        ) : !clipBlockReason ? (
+                        ) : !clipBlockReason && !preparationFailures[`clips:${topic.id}`] ? (
                           <div className="mt-5 rounded-md border border-dashed border-border px-5 py-8 text-center">
-                            <p className="text-sm font-medium">No learner clips yet</p>
-                            <p className="mt-1 text-sm text-muted-foreground">Generate clips after this topic and its concept coverage are reviewed.</p>
+                            <LoaderCircle className="mx-auto size-5 animate-spin text-primary motion-reduce:animate-none" />
+                            <p className="mt-3 text-sm font-medium">Preparing learner clips</p>
+                            <p className="mt-1 text-sm text-muted-foreground">This starts automatically after topic and concept review.</p>
                           </div>
                         ) : null}
                       </section>
@@ -2620,7 +2645,7 @@ export default function HomePage() {
                   <span aria-hidden="true">·</span>
                   <span><strong className="font-semibold text-foreground">{flowEdges.length}</strong> {flowEdges.length === 1 ? "prerequisite" : "prerequisites"}</span>
                   {graphTopicFocus !== "all" ? <><span aria-hidden="true">·</span><span className="font-medium text-primary">Focused view</span></> : null}
-                  <span aria-label="Node colors identify topics" className="ml-1 flex gap-1" title="Node colors identify topics"><span className="size-2 rounded-full bg-blue-600" /><span className="size-2 rounded-full bg-emerald-600" /><span className="size-2 rounded-full bg-amber-600" /></span>
+                  <span aria-label="Node colors identify topics" className="ml-1 flex gap-1" role="img" title="Node colors identify topics"><span className="size-2 rounded-full bg-blue-600" /><span className="size-2 rounded-full bg-emerald-600" /><span className="size-2 rounded-full bg-amber-600" /></span>
                 </div>
                 <div className="h-[700px] min-w-0">
                   <ReactFlow
@@ -2776,26 +2801,18 @@ export default function HomePage() {
       {job?.video_id && topics.length > 0 ? (
         <div className={`scroll-mt-20 ${instructorWorkspaceVisible("assessments") ? "" : "hidden"}`} id="assessments">
           <ReviewWorkspace
-            description="Approve learner-facing checks and verify that remediation maps to reviewed content."
+            description="Approve each learner check before it goes live."
             eyebrow="Assessment review"
-            title="Comprehension checks"
+            title="Assessment review"
             toolbar={(
-              <>
-                <Button onClick={() => loadQuestions(job.video_id!)} type="button" variant="outline">
-                  <RefreshCw data-icon="inline-start" /> Refresh
-                </Button>
-                <Button disabled={bulkAction !== null || generationAction !== null} onClick={() => void generateAllMissingQuestions()} type="button" variant="outline">
-                  {bulkAction === "questions" ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />} {bulkAction === "questions" ? "Generating questions" : "Generate all missing"}
-                </Button>
-                <Button
-                  disabled={bulkAction !== null || generationAction !== null || !questions.some((question) => question.review_status === "proposed")}
-                  onClick={() => void acceptAllQuestions()}
-                  type="button"
-                >
-                  {bulkAction === "accept-questions" ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : null}
-                  {bulkAction === "accept-questions" ? "Accepting proposals" : "Accept all proposals"}
-                </Button>
-              </>
+              <Button
+                disabled={bulkAction !== null || generationAction !== null || !questions.some((question) => question.review_status === "proposed")}
+                onClick={() => void acceptAllQuestions()}
+                type="button"
+              >
+                {bulkAction === "accept-questions" ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : null}
+                {bulkAction === "accept-questions" ? "Approving" : "Approve all"}
+              </Button>
             )}
           >
             <ReviewWorkspaceGrid
@@ -2818,62 +2835,79 @@ export default function HomePage() {
                         />
                       ))}
                     </nav>
-                  ) : <p className="px-4 py-6 text-sm text-muted-foreground">No assessment proposals yet.</p>}
+                  ) : missingAssessmentProposalTopicIds.length || generationAction?.startsWith("question:") ? (
+                    <div className="px-4 py-6 text-sm text-muted-foreground">
+                      <LoaderCircle className="mb-3 size-5 animate-spin text-primary motion-reduce:animate-none" />
+                      Preparing checks automatically.
+                    </div>
+                  ) : <p className="px-4 py-6 text-sm text-muted-foreground">Checks appear after reviewed clips are ready.</p>}
                 </>
               )}
+              queueWidth="wide"
               editor={selectedQuestionReview ? (() => {
                 const question = selectedQuestionReview;
                 const draft = questionDrafts[question.id] ?? questionToDraft(question);
                 return (
-                  <div className="mx-auto max-w-2xl">
+                  <div className="mx-auto max-w-4xl">
                     <div className="mb-6 flex items-start justify-between gap-4">
                       <div>
-                        <p className="text-xs font-medium text-muted-foreground">{topics.find((topic) => topic.id === question.topic_id)?.title ?? "Untitled topic"}</p>
-                        <h3 className="mt-1 text-lg font-semibold">Review question</h3>
+                        <p className="text-sm text-muted-foreground">{topics.find((topic) => topic.id === question.topic_id)?.title ?? "Untitled topic"}</p>
+                        <h3 className="mt-1 text-lg font-semibold">Learner check</h3>
                       </div>
                       <Badge className="capitalize" variant="outline">{question.review_status}</Badge>
                     </div>
-                    <div className="space-y-4">
+                    <div className="space-y-5">
                       <label className="grid gap-2 text-sm font-medium" htmlFor={`question-body-${question.id}`}>Question
-                        <Textarea className="min-h-28" id={`question-body-${question.id}`} value={draft.body} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, body: event.target.value } }))} />
+                        <Textarea className="min-h-24 text-base" id={`question-body-${question.id}`} value={draft.body} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, body: event.target.value } }))} />
                       </label>
-                      <label className="grid gap-2 text-sm font-medium" htmlFor={`question-type-${question.id}`}>Type
-                        <select className="h-10 rounded-lg border border-input bg-background px-3 text-sm" data-slot="question-type" id={`question-type-${question.id}`} value={draft.type} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, type: event.target.value as Question["type"] } }))}>
-                          <option value="mcq">Multiple choice</option><option value="short_answer">Short answer</option><option value="worked_problem">Worked problem</option>
-                        </select>
-                      </label>
-                      <label className="grid gap-2 text-sm font-medium" htmlFor={`question-answer-${question.id}`}>Correct answer
-                        <Textarea className="min-h-20" id={`question-answer-${question.id}`} value={draft.correct_answer} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, correct_answer: event.target.value } }))} />
-                      </label>
+                      <div className="grid grid-cols-[180px_minmax(0,1fr)] gap-4">
+                        <label className="grid gap-2 text-sm font-medium" htmlFor={`question-type-${question.id}`}>Type
+                          <select className="h-10 rounded-lg border border-input bg-background px-3 text-sm" data-slot="question-type" id={`question-type-${question.id}`} value={draft.type} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, type: event.target.value as Question["type"] } }))}>
+                            <option value="mcq">Multiple choice</option><option value="short_answer">Short answer</option><option value="worked_problem">Worked problem</option>
+                          </select>
+                        </label>
+                        <label className="grid gap-2 text-sm font-medium" htmlFor={`question-answer-${question.id}`}>Correct answer
+                          <Textarea className="min-h-10" id={`question-answer-${question.id}`} value={draft.correct_answer} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, correct_answer: event.target.value } }))} />
+                        </label>
+                      </div>
                       {draft.type === "mcq" ? (
-                        <label className="grid gap-2 text-sm font-medium" htmlFor={`question-choices-${question.id}`}>Answer choices <span className="font-normal text-muted-foreground">One choice per line</span>
-                          <Textarea className="min-h-28" id={`question-choices-${question.id}`} value={draft.answer_choices} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, answer_choices: event.target.value } }))} />
+                        <label className="grid gap-2 text-sm font-medium" htmlFor={`question-choices-${question.id}`}>Answer choices
+                          <Textarea className="min-h-32" id={`question-choices-${question.id}`} placeholder="One choice per line" value={draft.answer_choices} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, answer_choices: event.target.value } }))} />
                         </label>
                       ) : null}
-                      <label className="grid gap-2 text-sm font-medium" htmlFor={`question-confidence-${question.id}`}>Confidence prompt
-                        <Input id={`question-confidence-${question.id}`} value={draft.confidence_prompt} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, confidence_prompt: event.target.value } }))} />
-                      </label>
-                      <fieldset className="space-y-3 border-t border-border pt-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <legend className="text-sm font-medium">Remediation rules</legend>
-                          <Button onClick={() => addRemediationRule(question.id)} size="sm" type="button" variant="outline"><Plus data-icon="inline-start" /> Add rule</Button>
-                        </div>
-                        {draft.remediation_rules.length ? draft.remediation_rules.map((rule, ruleIndex) => (
-                          <div className="space-y-3 border border-border bg-muted/20 p-4" key={`${question.id}-rule-${ruleIndex}`}>
-                            <div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Rule {ruleIndex + 1}</p><Button aria-label={`Remove remediation rule ${ruleIndex + 1}`} onClick={() => removeRemediationRule(question.id, ruleIndex)} size="icon-sm" type="button" variant="ghost"><Trash2 /></Button></div>
-                            <label className="grid gap-1.5 text-xs font-medium">When the learner answers like this<Input value={rule.wrong_answer_pattern} onChange={(event) => updateRemediationRule(question.id, ruleIndex, "wrong_answer_pattern", event.target.value)} /></label>
-                            <div className="grid grid-cols-2 gap-3">
-                              <label className="grid min-w-0 gap-1.5 text-xs font-medium">Send to clip<select className="h-10 min-w-0 rounded-lg border border-input bg-background px-3 text-sm" value={rule.target_clip_id} onChange={(event) => updateRemediationRule(question.id, ruleIndex, "target_clip_id", event.target.value)}><option value="">No specific clip</option>{clips.filter((clip) => clip.status !== "superseded").map((clip, index) => <option key={clip.id} value={clip.id}>Clip {index + 1}: {clip.type.replaceAll("_", " ")}</option>)}</select></label>
-                              <label className="grid min-w-0 gap-1.5 text-xs font-medium">Reinforce concept<select className="h-10 min-w-0 rounded-lg border border-input bg-background px-3 text-sm" value={rule.target_concept_id} onChange={(event) => updateRemediationRule(question.id, ruleIndex, "target_concept_id", event.target.value)}><option value="">No specific concept</option>{graph?.concepts.filter((concept) => concept.review_status === "accepted" || concept.review_status === "edited").map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select></label>
+                      <details className="border-t border-border pt-4">
+                        <summary className="cursor-pointer text-sm font-medium">Routing details <span className="font-normal text-muted-foreground">({draft.remediation_rules.length} rules)</span></summary>
+                        <div className="mt-4 space-y-4">
+                          <label className="grid gap-2 text-sm font-medium" htmlFor={`question-confidence-${question.id}`}>Confidence prompt
+                            <Input id={`question-confidence-${question.id}`} value={draft.confidence_prompt} onChange={(event) => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, confidence_prompt: event.target.value } }))} />
+                          </label>
+                          <fieldset className="space-y-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <legend className="text-sm font-medium">Wrong-answer routing</legend>
+                              <Button onClick={() => addRemediationRule(question.id)} size="sm" type="button" variant="outline"><Plus data-icon="inline-start" /> Add rule</Button>
                             </div>
-                            <label className="grid gap-1.5 text-xs font-medium">Why this remediation helps<Textarea className="min-h-20" value={rule.rationale} onChange={(event) => updateRemediationRule(question.id, ruleIndex, "rationale", event.target.value)} /></label>
-                          </div>
-                        )) : <p className="text-sm text-muted-foreground">No targeted remediation rules. Add one to route a recognizable wrong answer to a clip or concept.</p>}
-                      </fieldset>
+                            {draft.remediation_rules.length ? draft.remediation_rules.map((rule, ruleIndex) => (
+                              <div className="space-y-3 rounded-md border border-border bg-muted/20 p-4" key={`${question.id}-rule-${ruleIndex}`}>
+                                <div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Rule {ruleIndex + 1}</p><Button aria-label={`Remove remediation rule ${ruleIndex + 1}`} onClick={() => removeRemediationRule(question.id, ruleIndex)} size="icon-sm" type="button" variant="ghost"><Trash2 /></Button></div>
+                                <label className="grid gap-1.5 text-xs font-medium">Answer pattern<Input value={rule.wrong_answer_pattern} onChange={(event) => updateRemediationRule(question.id, ruleIndex, "wrong_answer_pattern", event.target.value)} /></label>
+                                <div className="grid grid-cols-2 gap-3">
+                                  <label className="grid min-w-0 gap-1.5 text-xs font-medium">Clip<select className="h-10 min-w-0 rounded-lg border border-input bg-background px-3 text-sm" value={rule.target_clip_id} onChange={(event) => updateRemediationRule(question.id, ruleIndex, "target_clip_id", event.target.value)}><option value="">Automatic</option>{clips.filter((clip) => clip.status !== "superseded").map((clip, index) => <option key={clip.id} value={clip.id}>Clip {index + 1}: {clip.type.replaceAll("_", " ")}</option>)}</select></label>
+                                  <label className="grid min-w-0 gap-1.5 text-xs font-medium">Concept<select className="h-10 min-w-0 rounded-lg border border-input bg-background px-3 text-sm" value={rule.target_concept_id} onChange={(event) => updateRemediationRule(question.id, ruleIndex, "target_concept_id", event.target.value)}><option value="">Automatic</option>{graph?.concepts.filter((concept) => concept.review_status === "accepted" || concept.review_status === "edited").map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select></label>
+                                </div>
+                                <label className="grid gap-1.5 text-xs font-medium">Reason<Textarea className="min-h-16" value={rule.rationale} onChange={(event) => updateRemediationRule(question.id, ruleIndex, "rationale", event.target.value)} /></label>
+                              </div>
+                            )) : <p className="text-sm text-muted-foreground">No custom routing rules.</p>}
+                          </fieldset>
+                        </div>
+                      </details>
+                      <details className="border-t border-border pt-4">
+                        <summary className="cursor-pointer text-sm font-medium">AI context</summary>
+                        <div className="mt-3"><TraceabilityBlock artifact={question} /></div>
+                      </details>
                     </div>
                     <div className="mt-7 flex flex-wrap gap-2 border-t border-border pt-5">
                       <Button disabled={acceptButtonDisabled(question.review_status)} onClick={() => acceptQuestion(question.id)} type="button">{acceptButtonLabel(question.review_status)}</Button>
-                      <Button onClick={() => editQuestion(question.id)} type="button" variant="outline">Edit manually</Button>
+                      <Button onClick={() => editQuestion(question.id)} type="button" variant="outline">Save edits</Button>
                       <Button disabled={generationAction !== null} onClick={() => regenerateQuestion(question.id)} type="button" variant="outline">
                         {generationAction === `regenerate:${question.id}` ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : null}
                         {generationAction === `regenerate:${question.id}` ? "Regenerating" : "Regenerate"}
@@ -2884,43 +2918,26 @@ export default function HomePage() {
                 );
               })() : (
                 <div className="flex min-h-96 items-center justify-center text-center">
-                  <div><p className="text-sm font-medium">No question selected</p><p className="mt-1 text-sm text-muted-foreground">Generate a question after reviewed concepts and clips are available.</p></div>
+                  <div className="max-w-sm">
+                    {missingAssessmentProposalTopicIds.length || generationAction?.startsWith("question:") ? <LoaderCircle className="mx-auto size-6 animate-spin text-primary motion-reduce:animate-none" /> : null}
+                    <p className="mt-3 text-sm font-medium">
+                      {questionPreparationFailures.length
+                        ? "Assessment preparation paused"
+                        : missingAssessmentProposalTopicIds.length || generationAction?.startsWith("question:")
+                          ? "Preparing learner checks"
+                          : "Waiting for reviewed clips"}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {questionPreparationFailures.length
+                        ? "Retry the failed check when ready."
+                        : "Questions appear here automatically when clips are ready."}
+                    </p>
+                    {questionPreparationFailures.map(([key]) => {
+                      const topicId = key.slice("question:".length);
+                      return <Button className="mt-4" key={key} onClick={() => void generateQuestionForTopic(topicId)} type="button" variant="outline">Retry preparation</Button>;
+                    })}
+                  </div>
                 </div>
-              )}
-              inspector={(
-                <>
-                  <InspectorSection title="Generate by topic">
-                    <div className="space-y-3">
-                      {topics.filter((topic) => topic.review_status === "accepted" || topic.review_status === "edited").map((topic) => {
-                        const concepts = graph?.concepts ?? [];
-                        const blockReason = assessmentGenerationBlockReason(topic, concepts, clips);
-                        const accessBlockReason = learnerAccessBlockedReason(topic.id, questions);
-                        return (
-                          <div className="border-b border-border pb-3 last:border-0" key={topic.id}>
-                            <div className="flex items-start justify-between gap-2">
-                              <p className="truncate text-sm font-medium">{topic.title}</p>
-                              <Badge variant={accessBlockReason ? "outline" : "secondary"}>{accessBlockReason ? "blocked" : "ready"}</Badge>
-                            </div>
-                            <p className="mt-1 text-xs text-muted-foreground">{reviewedConceptCountForAssessment(topic.id, concepts)} concepts · {usableClipCountForAssessment(topic.id, clips)} clips</p>
-                            {blockReason ? <p className="mt-1 text-xs leading-5 text-amber-700">{blockReason}</p> : null}
-                            <Button className="mt-2" disabled={blockReason !== null || generationAction !== null || bulkAction !== null} onClick={() => generateQuestionForTopic(topic.id)} size="sm" type="button" variant="outline">
-                              {generationAction === `question:${topic.id}` ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : null}
-                              {generationAction === `question:${topic.id}` ? "Generating question" : "Generate question"}
-                            </Button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </InspectorSection>
-                  {selectedQuestionReview ? (
-                    <>
-                      <InspectorSection title="Learner gate">
-                        <p className="text-sm leading-6">{learnerAccessBlockedReason(selectedQuestionReview.topic_id, questions) ?? "Topic is ready for learner access."}</p>
-                      </InspectorSection>
-                      <InspectorSection title="Traceability"><TraceabilityBlock artifact={selectedQuestionReview} /></InspectorSection>
-                    </>
-                  ) : null}
-                </>
               )}
             />
           </ReviewWorkspace>
@@ -3141,7 +3158,7 @@ export default function HomePage() {
 
             <aside aria-labelledby="learner-topics" className="border-l border-border bg-muted/20">
               <div className="border-b border-border px-5 py-5"><p className="text-xs font-semibold uppercase text-muted-foreground">Course outline</p><h3 className="mt-1 text-base font-semibold" id="learner-topics">Topics</h3></div>
-              <div role="list" aria-labelledby="learner-topics">
+              <nav aria-labelledby="learner-topics">
                 {topics.filter((topic) => topic.review_status === "accepted" || topic.review_status === "edited").map((topic, index) => {
                   const lessonDuration = topicClipDurationLabel(clips, topic.id);
                   return <button
@@ -3156,7 +3173,7 @@ export default function HomePage() {
                     <span className="min-w-0"><span className="block text-sm font-medium leading-5">{topic.title}</span><span className="mt-1 block text-xs text-muted-foreground">{lessonDuration}</span></span>
                   </button>
                 })}
-              </div>
+              </nav>
             </aside>
           </div>
 

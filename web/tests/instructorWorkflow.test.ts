@@ -116,7 +116,7 @@ describe("instructor workflow", () => {
       ...topic,
       clips: 0,
       staleClips: 2,
-    })).toBe("Regenerate clips");
+    })).toBe("Refreshing clips");
 
     expect(topicProductionLabel({
       ...topic,

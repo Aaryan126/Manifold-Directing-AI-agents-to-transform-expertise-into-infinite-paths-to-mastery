@@ -68,6 +68,20 @@ export function learnerAccessBlockedReason(
   return approved ? null : "Topic has no accepted or edited assessment question.";
 }
 
+export function topicsReadyForAutomaticAssessmentGeneration(
+  topics: AssessmentReviewTopic[],
+  concepts: AssessmentReviewConcept[],
+  clips: AssessmentReviewClip[],
+  questions: AssessmentReviewQuestion[],
+): string[] {
+  return topics.flatMap((topic) => {
+    if (!topic.id || assessmentGenerationBlockReason(topic, concepts, clips) !== null) return [];
+    // A dismissed proposal is an instructor decision. Never silently replace it.
+    const hasQuestionHistory = questions.some((question) => question.topic_id === topic.id);
+    return hasQuestionHistory ? [] : [topic.id];
+  });
+}
+
 function isReviewed(status: AssessmentReviewStatus) {
   return status === "accepted" || status === "edited";
 }

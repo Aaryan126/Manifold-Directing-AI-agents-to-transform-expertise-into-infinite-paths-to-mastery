@@ -4,6 +4,7 @@ import {
   reviewedConceptCountForTopic,
   isTopicReviewedForClipGeneration,
   topicClipGenerationBlockReason,
+  topicsReadyForAutomaticClipGeneration,
 } from "../app/clipReview";
 
 describe("clipReview", () => {
@@ -44,5 +45,21 @@ describe("clipReview", () => {
 
     expect(reviewedConceptCountForTopic("topic-1", concepts)).toBe(0);
     expect(reviewedConceptCountForTopic("topic-2", concepts)).toBe(1);
+  });
+
+  it("automatically prepares clips only for reviewed, uncovered topics", () => {
+    const topics = [
+      { id: "topic-1", review_status: "accepted" },
+      { id: "topic-2", review_status: "edited" },
+      { id: "topic-3", review_status: "proposed" },
+    ];
+    const concepts = [
+      { review_status: "accepted", ai_proposal: { topic_ids: ["topic-1", "topic-2"] } },
+    ];
+
+    expect(topicsReadyForAutomaticClipGeneration(topics, concepts, [
+      { topic_id: "topic-1", status: "active" },
+      { topic_id: "topic-2", status: "superseded" },
+    ])).toEqual(["topic-2"]);
   });
 });

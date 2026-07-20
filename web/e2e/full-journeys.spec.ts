@@ -312,11 +312,15 @@ test("instructor publishes, learner enrolls, and dashboard correction closes the
 });
 
 test("instructor and learner surfaces have no WCAG 2.2 A/AA axe violations", async ({ page }) => {
-  await routeDevelopmentContext(page);
-  await routeReviewedCourse(page);
-  await page.goto("/");
+  await loadReviewedWorkspace(page);
 
   let results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(results.violations).toEqual([]);
+
+  await page.locator('[data-stage="assessments"]').click();
+  results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
     .analyze();
   expect(results.violations).toEqual([]);
@@ -406,6 +410,8 @@ test("guided production shows exactly one stage at a time", async ({ page }) => 
 });
 
 test("topic production repairs missing concept coverage inline", async ({ page }) => {
+  let repairClipGenerated = false;
+  let repairQuestionGenerated = false;
   const repairTopic = {
     ...topic,
     id: "50000000-0000-4000-8000-000000000002",
@@ -421,6 +427,22 @@ test("topic production repairs missing concept coverage inline", async ({ page }
     description: "Using vector direction and magnitude in context.",
     ai_proposal: { rationale: "Supported by the application example.", topic_ids: [] },
   };
+  const repairClip = {
+    ...clip,
+    id: "60000000-0000-4000-8000-000000000002",
+    topic_id: repairTopic.id,
+    start_seconds: 60,
+    end_seconds: 90,
+    concept_ids: [unlinkedConcept.id],
+  };
+  const repairQuestion = {
+    ...question,
+    id: "80000000-0000-4000-8000-000000000002",
+    topic_id: repairTopic.id,
+    body: "How are vectors applied?",
+    review_status: "proposed",
+    approved_at: null,
+  };
 
   await routeDevelopmentContext(page);
   await routeReviewedCourse(page);
@@ -433,6 +455,26 @@ test("topic production repairs missing concept coverage inline", async ({ page }
       body: JSON.stringify({ ...graph, concepts: [...graph.concepts, unlinkedConcept] }),
     }),
   );
+  await page.route(`${pipeline}/videos/${videoId}/clips`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(repairClipGenerated ? [clip, repairClip] : [clip]),
+    }),
+  );
+  await page.route(`${pipeline}/topics/${repairTopic.id}/clips/generate`, (route) => {
+    repairClipGenerated = true;
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify([repairClip]) });
+  });
+  await page.route(`${pipeline}/videos/${videoId}/questions`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(repairQuestionGenerated ? [question, repairQuestion] : [question]),
+    }),
+  );
+  await page.route(`${pipeline}/topics/${repairTopic.id}/questions/generate`, (route) => {
+    repairQuestionGenerated = true;
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(repairQuestion) });
+  });
   await page.route(`${pipeline}/courses/graph/concepts/${unlinkedConcept.id}/topics`, async (route) => {
     expect(route.request().postDataJSON()).toEqual({ topic_ids: [repairTopic.id] });
     await route.fulfill({
@@ -454,7 +496,9 @@ test("topic production repairs missing concept coverage inline", async ({ page }
   await expect(page.getByLabel(`Concept for ${repairTopic.title}`)).toHaveValue(unlinkedConcept.id);
   await page.getByRole("button", { name: "Connect concept", exact: true }).click();
   await expect(page.getByText("Connect a reviewed concept to generate clips")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Generate clips", exact: true })).toBeEnabled();
+  await expect.poll(() => repairClipGenerated).toBe(true);
+  await expect(page.getByRole("button", { name: "Regenerate clips", exact: true })).toBeEnabled();
+  await expect.poll(() => repairQuestionGenerated).toBe(true);
 });
 
 test("instructor workspaces match approved desktop visual system", async ({ page }) => {

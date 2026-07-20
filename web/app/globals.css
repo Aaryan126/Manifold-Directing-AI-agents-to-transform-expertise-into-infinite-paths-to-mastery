@@ -529,6 +529,17 @@ dd {
   max-width: 16px;
 }
 
+#concept-graph .react-flow__attribution,
+#mastery-map .react-flow__attribution {
+  background: color-mix(in srgb, var(--background) 92%, transparent);
+  color: var(--foreground);
+}
+
+#concept-graph .react-flow__attribution a,
+#mastery-map .react-flow__attribution a {
+  color: inherit;
+}
+
 .progressList {
   display: grid;
   gap: 0.5rem;

@@ -143,9 +143,9 @@ export function topicReadinessLabel(topic: TopicReadiness): string {
   if (topic.reviewStatus === "dismissed") return "Dismissed";
   if (topic.reviewStatus === "proposed") return "Review outline";
   if (topic.reviewedConcepts === 0) return "Link a concept";
-  if (topic.clips === 0) return topic.staleClips > 0 ? "Regenerate clips" : "Generate clips";
+  if (topic.clips === 0) return topic.staleClips > 0 ? "Refreshing clips" : "Preparing clips";
   if (topic.approvedQuestions === 0) {
-    return topic.proposedQuestions > 0 ? "Review question" : "Generate question";
+    return topic.proposedQuestions > 0 ? "Review question" : "Preparing question";
   }
   return "Ready";
 }
@@ -154,7 +154,7 @@ export function topicProductionLabel(topic: TopicReadiness): string {
   if (topic.reviewStatus === "dismissed") return "Dismissed";
   if (topic.reviewStatus === "proposed") return "Review topic";
   if (topic.reviewedConcepts === 0) return "Connect concept";
-  if (topic.clips === 0) return topic.staleClips > 0 ? "Regenerate clips" : "Generate clips";
+  if (topic.clips === 0) return topic.staleClips > 0 ? "Refreshing clips" : "Preparing clips";
   if (topic.flaggedClips > 0) return "Clip flagged";
   return "Ready";
 }
@@ -244,8 +244,8 @@ function buildTasks(snapshot: WorkflowSnapshot): WorkflowTask[] {
     tasks.push({
       id: "prepare-clips",
       stage: "structure",
-      title: "Prepare topic clips",
-      detail: "Generate and spot-check concise learning clips for uncovered topics.",
+      title: "Preparing topic clips",
+      detail: "Manifold is creating concise learning clips for spot-checking.",
       target: "outline",
       count: snapshot.topicsMissingClips,
     });
@@ -254,8 +254,8 @@ function buildTasks(snapshot: WorkflowSnapshot): WorkflowTask[] {
     tasks.push({
       id: "prepare-questions",
       stage: "assessments",
-      title: "Prepare comprehension checks",
-      detail: "Generate a learner check for each reviewed topic that is still uncovered.",
+      title: "Preparing comprehension checks",
+      detail: "Manifold is creating a learner check for each reviewed topic.",
       target: "assessments",
       count: snapshot.topicsMissingQuestions,
     });

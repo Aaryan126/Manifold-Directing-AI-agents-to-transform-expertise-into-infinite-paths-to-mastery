@@ -4,6 +4,7 @@ import {
   assessmentGenerationBlockReason,
   learnerAccessBlockedReason,
   reviewedConceptCountForAssessment,
+  topicsReadyForAutomaticAssessmentGeneration,
   usableClipCountForAssessment,
 } from "../app/assessmentReview";
 
@@ -52,5 +53,23 @@ describe("assessmentReview", () => {
 
     expect(reviewedConceptCountForAssessment("topic-1", concepts)).toBe(0);
     expect(reviewedConceptCountForAssessment("topic-2", concepts)).toBe(1);
+  });
+
+  it("automatically prepares only missing first assessment proposals", () => {
+    const topics = [
+      { id: "topic-1", review_status: "accepted" },
+      { id: "topic-2", review_status: "edited" },
+    ];
+    const concepts = [
+      { review_status: "accepted", ai_proposal: { topic_ids: ["topic-1", "topic-2"] } },
+    ];
+    const clips = [
+      { topic_id: "topic-1", status: "active" },
+      { topic_id: "topic-2", status: "active" },
+    ];
+
+    expect(topicsReadyForAutomaticAssessmentGeneration(topics, concepts, clips, [
+      { topic_id: "topic-1", review_status: "dismissed" },
+    ])).toEqual(["topic-2"]);
   });
 });
