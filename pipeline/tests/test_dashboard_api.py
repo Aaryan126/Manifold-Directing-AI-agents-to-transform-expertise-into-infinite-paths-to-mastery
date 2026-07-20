@@ -27,6 +27,13 @@ async def test_dashboard_api_refresh_accept_and_override_flow() -> None:
             assert body["concept_performance"][0]["struggling_learners"] == 3
             assert body["question_performance"] == []
             assert body["clip_performance"] == []
+            assert body["activity_history"][0]["attempts"] == 5
+            assert body["mastery_distribution"] == {
+                "mastered": 1,
+                "practiced": 1,
+                "struggling": 1,
+                "not_started": 2,
+            }
             signal_id = body["signals"][0]["id"]
 
             accepted = await client.post(

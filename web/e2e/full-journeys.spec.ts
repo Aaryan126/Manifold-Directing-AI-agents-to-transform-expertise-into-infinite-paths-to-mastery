@@ -237,6 +237,26 @@ export async function routeReviewedCourse(
         attempt_count: 80,
         not_enough_data: false,
         signals: signalOpen ? [dashboardSignal] : [],
+        concept_performance: [
+          { concept_id: "concept-1", concept_name: "Core model", touched_learners: 10, struggling_learners: 2, mastered_prerequisite_struggling_learners: 0 },
+          { concept_id: "concept-2", concept_name: "Applied decision", touched_learners: 7, struggling_learners: 1, mastered_prerequisite_struggling_learners: 0 },
+          { concept_id: "concept-3", concept_name: "Advanced transfer", touched_learners: 4, struggling_learners: 2, mastered_prerequisite_struggling_learners: 1 },
+        ],
+        question_performance: [
+          { question_id: "question-1", topic_id: "topic-1", prompt: "Which principle should be applied first?", attempts: 42, incorrect_attempts: 8, low_confidence_correct_attempts: 6 },
+          { question_id: "question-2", topic_id: "topic-2", prompt: "How does the example change the decision?", attempts: 25, incorrect_attempts: 3, low_confidence_correct_attempts: 4 },
+          { question_id: "question-3", topic_id: "topic-3", prompt: "What evidence supports the final step?", attempts: 13, incorrect_attempts: 1, low_confidence_correct_attempts: 2 },
+        ],
+        clip_performance: [],
+        activity_history: [
+          { date: "2026-07-15", attempts: 4, active_learners: 2 },
+          { date: "2026-07-16", attempts: 9, active_learners: 4 },
+          { date: "2026-07-17", attempts: 6, active_learners: 3 },
+          { date: "2026-07-18", attempts: 15, active_learners: 7 },
+          { date: "2026-07-19", attempts: 18, active_learners: 8 },
+          { date: "2026-07-20", attempts: 28, active_learners: 10 },
+        ],
+        mastery_distribution: { mastered: 18, practiced: 11, struggling: 5, not_started: 14 },
       }),
     }),
   );

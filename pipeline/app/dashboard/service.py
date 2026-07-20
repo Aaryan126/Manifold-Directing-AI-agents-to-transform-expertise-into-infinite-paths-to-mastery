@@ -4,6 +4,7 @@ from uuid import UUID
 from app.audit.models import AuditEventCreate
 from app.audit.service import AuditService, rationale_from_state, snapshot
 from app.dashboard.models import (
+    ActivityPoint,
     ClipSignalStats,
     ConceptSignalStats,
     DashboardAction,
@@ -11,6 +12,7 @@ from app.dashboard.models import (
     DashboardSignalStatus,
     DashboardSummary,
     LearnerOverride,
+    MasteryDistribution,
     QuestionSignalStats,
 )
 from app.dashboard.repository import DashboardRepository
@@ -51,10 +53,22 @@ class DashboardService:
         concept_stats: tuple[ConceptSignalStats, ...] = ()
         question_stats: tuple[QuestionSignalStats, ...] = ()
         clip_stats: tuple[ClipSignalStats, ...] = ()
+        activity_history: tuple[ActivityPoint, ...] = ()
+        mastery_distribution = MasteryDistribution()
         if learner_count > 0 or attempt_count > 0:
-            concept_stats = await self._repository.concept_stats(course_id)
-            question_stats = await self._repository.question_stats(course_id)
-            clip_stats = await self._repository.clip_stats(course_id)
+            (
+                concept_stats,
+                question_stats,
+                clip_stats,
+                activity_history,
+                mastery_distribution,
+            ) = await asyncio.gather(
+                self._repository.concept_stats(course_id),
+                self._repository.question_stats(course_id),
+                self._repository.clip_stats(course_id),
+                self._repository.activity_history(course_id),
+                self._repository.mastery_distribution(course_id),
+            )
             proposals = generate_signal_proposals(
                 concept_stats=concept_stats,
                 question_stats=question_stats,
@@ -70,6 +84,8 @@ class DashboardService:
             concept_stats=concept_stats,
             question_stats=question_stats,
             clip_stats=clip_stats,
+            activity_history=activity_history,
+            mastery_distribution=mastery_distribution,
         )
 
     async def accept_signal(

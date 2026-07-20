@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   Background,
   Controls,
@@ -33,7 +34,6 @@ import {
   type AssessmentEditorDraft,
 } from "./assessmentEditor";
 import {
-  clipSpotCheckActionsDisabled,
   conceptTopicIds,
   reviewedConceptCountForTopic,
   isTopicReviewedForClipGeneration,
@@ -43,7 +43,6 @@ import {
 import {
   clipDisplayTitle,
   clipDurationLabel,
-  sourceRangeLabel,
   topicClipDurationLabel,
 } from "./clipPresentation";
 import { ProviderVideo, type PlaybackInfo } from "./ProviderVideo";
@@ -56,8 +55,6 @@ import {
 } from "./dashboardReview";
 import {
   answerOutcomeSummary,
-  percentage,
-  rankedClipPerformance,
   rankedConceptPerformance,
   rankedQuestionPerformance,
   type ClipPerformance,
@@ -111,7 +108,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Flag, LoaderCircle, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { LoaderCircle, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 
 type Job = {
   id: string;
@@ -240,6 +237,17 @@ type DashboardSummary = {
   concept_performance: ConceptPerformance[];
   question_performance: QuestionPerformance[];
   clip_performance: ClipPerformance[];
+  activity_history?: Array<{
+    date: string;
+    attempts: number;
+    active_learners: number;
+  }>;
+  mastery_distribution?: {
+    mastered: number;
+    practiced: number;
+    struggling: number;
+    not_started: number;
+  };
 };
 
 type DevelopmentIdentity = {
@@ -275,6 +283,14 @@ type PublishReadiness = {
 const pipelineBaseUrl =
   process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localhost:8000";
 
+const InsightsCharts = dynamic(
+  () => import("@/components/insights-charts").then((module) => module.InsightsCharts),
+  {
+    ssr: false,
+    loading: () => <div className="h-64 animate-pulse bg-muted/30 motion-reduce:animate-none" aria-label="Loading insights charts" />,
+  },
+);
+
 export default function HomePage() {
   const [identities, setIdentities] = useState<DevelopmentIdentity[]>([]);
   const [selectedIdentityId, setSelectedIdentityId] = useState("");
@@ -304,7 +320,6 @@ export default function HomePage() {
   const [clips, setClips] = useState<Clip[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [routingPolicies, setRoutingPolicies] = useState<RoutingPolicy[]>([]);
-  const [clipNotes, setClipNotes] = useState<Record<string, string>>({});
   const [questionDrafts, setQuestionDrafts] = useState<Record<string, QuestionDraft>>({});
   const [policyDrafts, setPolicyDrafts] = useState<Record<string, RoutingPolicyDraft>>({});
   const [demoLearnerId, setDemoLearnerId] = useState<string | null>(null);
@@ -526,19 +541,7 @@ export default function HomePage() {
   const questionPerformance = rankedQuestionPerformance(
     dashboardSummary?.question_performance ?? [],
   );
-  const clipPerformance = rankedClipPerformance(
-    dashboardSummary?.clip_performance ?? [],
-  );
   const answerOutcomes = answerOutcomeSummary(dashboardSummary?.question_performance ?? []);
-  const answerOutcomeRates = {
-    confident: percentage(answerOutcomes.confident_correct, answerOutcomes.attempts),
-    unsure: percentage(answerOutcomes.unsure_correct, answerOutcomes.attempts),
-    incorrect: percentage(answerOutcomes.incorrect, answerOutcomes.attempts),
-  };
-  const maxRemediationDemand = Math.max(
-    1,
-    ...clipPerformance.map((item) => item.remediation_attempts + item.struggling_learners),
-  );
   const publishReadinessRevision = [
     ...topics.map((topic) => `topic:${topic.id}:${topic.review_status}`),
     ...(graph?.concepts.map(
@@ -1468,56 +1471,6 @@ export default function HomePage() {
     }
   }
 
-  async function flagClip(clipId: string) {
-    const note = clipNotes[clipId]?.trim();
-    if (!note) {
-      setMessage("Add a flag note before flagging a clip.");
-      return;
-    }
-    const clip = await clipRequest(`${pipelineBaseUrl}/clips/${clipId}/flag`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ note }),
-    });
-    if (clip) upsertClip(clip);
-  }
-
-  async function recutClip(clipId: string) {
-    const note = clipNotes[clipId]?.trim();
-    if (!note) {
-      setMessage("Add instructor notes before re-cutting a clip.");
-      return;
-    }
-    const clip = await clipRequest(`${pipelineBaseUrl}/clips/${clipId}/recut`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ note }),
-    });
-    if (clip && job?.video_id) {
-      setClipNotes((current) => ({ ...current, [clipId]: "" }));
-      await loadClips(job.video_id);
-    }
-  }
-
-  async function clipRequest(endpoint: string, init: RequestInit) {
-    setMessage(null);
-    const response = await fetch(endpoint, init);
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      setMessage(body?.detail ?? `Clip request failed with ${response.status}.`);
-      return null;
-    }
-    return (await response.json()) as Clip;
-  }
-
-  function upsertClip(clip: Clip) {
-    setClips((current) =>
-      [...current.filter((item) => item.id !== clip.id), clip].sort(
-        (first, second) => first.start_seconds - second.start_seconds,
-      ),
-    );
-  }
-
   async function loadQuestions(videoId: string) {
     const response = await fetch(`${pipelineBaseUrl}/videos/${videoId}/questions`);
     if (!response.ok) {
@@ -1974,11 +1927,7 @@ export default function HomePage() {
     ? clips.filter((clip) => clip.topic_id === selectedTopicReview.id)
     : [];
   const selectedTopicActiveClips = selectedTopicClips
-    .filter((clip) => clip.status !== "superseded")
-    .sort((first, second) => {
-      if (first.status === second.status) return 0;
-      return first.status === "active" ? -1 : 1;
-    });
+    .filter((clip) => clip.status === "active");
   const selectedClipReview =
     selectedTopicActiveClips.find((clip) => clip.id === selectedClipReviewId) ??
     selectedTopicActiveClips[0] ??
@@ -2497,12 +2446,11 @@ export default function HomePage() {
                                   variant={selectedClipReview?.id === clip.id ? "default" : "outline"}
                                 >
                                   Clip {clipIndex + 1}
-                                  {clip.status === "flagged" ? <span aria-label="Flagged" className="size-1.5 rounded-full bg-red-600" /> : null}
                                 </Button>
                               ))}
                             </div>
                             {selectedClipReview ? (
-                              <div className="mt-3 grid grid-cols-[minmax(0,560px)_220px] justify-between gap-5">
+                              <div className="mx-auto mt-3 max-w-4xl">
                                 <div>
                                   {job.video_id && playback ? (
                                     <ProviderVideo
@@ -2521,37 +2469,6 @@ export default function HomePage() {
                                     <span className="text-muted-foreground">{clipDurationLabel(selectedClipReview)}</span>
                                     <Badge className="capitalize" variant="outline">{selectedClipReview.type.replaceAll("_", " ")}</Badge>
                                   </div>
-                                </div>
-                                <div className="self-start">
-                                  {selectedClipReview.status === "flagged" ? (
-                                    <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
-                                      <p className="font-semibold">Flagged for review</p>
-                                      <p className="mt-1 leading-5">This record is kept for audit history and is not the preferred learner clip.</p>
-                                    </div>
-                                  ) : null}
-                                  <details className="group rounded-lg border border-border bg-background">
-                                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-sm font-medium">
-                                      <span className="flex items-center gap-2"><Flag aria-hidden="true" className="size-4 text-muted-foreground" /> Report clip issue</span>
-                                      <span className="text-xs font-normal text-muted-foreground">Optional</span>
-                                    </summary>
-                                    <div className="border-t border-border p-3">
-                                      <label className="grid gap-2 text-xs font-medium">
-                                        What needs fixing?
-                                        <Textarea
-                                          aria-label={`Flag note for clip ${selectedClipReview.id}`}
-                                          className="min-h-24"
-                                          placeholder="Boundary, audio, or playback issue"
-                                          value={clipNotes[selectedClipReview.id] ?? ""}
-                                          onChange={(event) => setClipNotes((current) => ({ ...current, [selectedClipReview.id]: event.target.value }))}
-                                        />
-                                      </label>
-                                      <div className="mt-3 grid gap-2">
-                                        <Button disabled={clipSpotCheckActionsDisabled(selectedClipReview)} onClick={() => recutClip(selectedClipReview.id)} size="sm" type="button" variant="outline">Re-cut from note</Button>
-                                        <Button disabled={clipSpotCheckActionsDisabled(selectedClipReview)} onClick={() => flagClip(selectedClipReview.id)} size="sm" type="button" variant="destructive">Flag without re-cut</Button>
-                                      </div>
-                                      <p className="mt-3 text-xs leading-5 text-muted-foreground">Source: {sourceRangeLabel(selectedClipReview)}</p>
-                                    </div>
-                                  </details>
                                 </div>
                               </div>
                             ) : null}
@@ -3205,66 +3122,16 @@ export default function HomePage() {
                 <section aria-labelledby="performance-evidence-title" className="border-b border-border">
                   <header className="flex items-center justify-between gap-6 border-b border-border px-6 py-4">
                     <h3 className="text-base font-semibold" id="performance-evidence-title">Learning health</h3>
-                    <p className="text-xs text-muted-foreground">{answerOutcomes.attempts} graded responses</p>
+                    <p className="text-xs text-muted-foreground">Live learner evidence</p>
                   </header>
-                  <div className="grid grid-cols-3">
-                    <div className="min-w-0 border-r border-border px-5 py-5">
-                      <p className="text-xs font-semibold uppercase text-muted-foreground">Answer outcomes</p>
-                      {answerOutcomes.attempts ? (
-                        <>
-                          <div aria-label={`${answerOutcomeRates.confident}% confident correct, ${answerOutcomeRates.unsure}% unsure correct, ${answerOutcomeRates.incorrect}% incorrect`} className="mt-5 flex h-3 overflow-hidden rounded-full bg-muted">
-                            <div className="bg-emerald-600" style={{ width: `${answerOutcomeRates.confident}%` }} />
-                            <div className="bg-amber-400" style={{ width: `${answerOutcomeRates.unsure}%` }} />
-                            <div className="bg-red-500" style={{ width: `${answerOutcomeRates.incorrect}%` }} />
-                          </div>
-                          <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                            <div><p className="text-lg font-semibold tabular-nums">{answerOutcomeRates.confident}%</p><p className="text-[11px] text-muted-foreground">Confident</p></div>
-                            <div><p className="text-lg font-semibold tabular-nums">{answerOutcomeRates.unsure}%</p><p className="text-[11px] text-muted-foreground">Unsure</p></div>
-                            <div><p className="text-lg font-semibold tabular-nums">{answerOutcomeRates.incorrect}%</p><p className="text-[11px] text-muted-foreground">Incorrect</p></div>
-                          </div>
-                          <div className="mt-5 space-y-3 border-t border-border pt-4">
-                            {questionPerformance.slice(0, 3).map((item) => {
-                              const incorrectRate = percentage(item.incorrect_attempts, item.attempts);
-                              const uncertainRate = percentage(item.low_confidence_correct_attempts, item.attempts);
-                              return <div key={item.question_id}>
-                                <div className="flex items-center justify-between gap-3 text-xs"><span className="min-w-0 truncate font-medium" title={item.prompt}>{item.prompt}</span><span className="shrink-0 tabular-nums text-muted-foreground">{item.attempts}</span></div>
-                                <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-muted"><div className="bg-amber-400" style={{ width: `${uncertainRate}%` }} /><div className="bg-red-500" style={{ width: `${incorrectRate}%` }} /></div>
-                              </div>;
-                            })}
-                          </div>
-                        </>
-                      ) : <p className="mt-5 text-sm text-muted-foreground">No responses yet.</p>}
-                    </div>
-
-                    <div className="min-w-0 border-r border-border px-5 py-5">
-                      <p className="text-xs font-semibold uppercase text-muted-foreground">Concept reach</p>
-                      <div className="mt-5 space-y-4">
-                        {conceptPerformance.length ? conceptPerformance.map((item) => {
-                          const learnerTotal = Math.max(1, dashboardSummary.learner_count);
-                          const stableRate = Math.min(100, percentage(Math.max(0, item.touched_learners - item.struggling_learners), learnerTotal));
-                          const strugglingRate = Math.min(100 - stableRate, percentage(item.struggling_learners, learnerTotal));
-                          return <div key={item.concept_id}>
-                            <div className="flex items-center justify-between gap-3 text-xs"><span className="min-w-0 truncate font-medium" title={item.concept_name}>{item.concept_name}</span><span className="shrink-0 tabular-nums text-muted-foreground">{item.touched_learners}/{dashboardSummary.learner_count}</span></div>
-                            <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-muted"><div className="bg-emerald-500" style={{ width: `${stableRate}%` }} /><div className="bg-amber-500" style={{ width: `${strugglingRate}%` }} /></div>
-                          </div>;
-                        }) : <p className="text-sm text-muted-foreground">No mastery activity yet.</p>}
-                      </div>
-                    </div>
-
-                    <div className="min-w-0 px-5 py-5">
-                      <p className="text-xs font-semibold uppercase text-muted-foreground">Remediation</p>
-                      <div className="mt-5 space-y-4">
-                        {clipPerformance.length ? clipPerformance.map((item) => {
-                          const clip = clips.find((candidate) => candidate.id === item.clip_id);
-                          const demand = item.remediation_attempts + item.struggling_learners;
-                          return <div key={item.clip_id}>
-                            <div className="flex items-center justify-between gap-3 text-xs"><p className="min-w-0 truncate font-medium" title={clip ? clipDisplayTitle(clip) : item.clip_id}>{clip ? clipDisplayTitle(clip) : "Remediation clip"}</p><span className="shrink-0 tabular-nums text-muted-foreground">{item.remediation_attempts}</span></div>
-                            <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary" style={{ width: `${(demand / maxRemediationDemand) * 100}%` }} /></div>
-                          </div>;
-                        }) : <div className="rounded-lg border border-dashed border-border px-5 py-8 text-center"><p className="text-3xl font-semibold tabular-nums">0</p><p className="mt-1 text-xs text-muted-foreground">remediation plays</p></div>}
-                      </div>
-                    </div>
-                  </div>
+                  <InsightsCharts
+                    activity={dashboardSummary.activity_history ?? []}
+                    answerOutcomes={answerOutcomes}
+                    conceptReach={conceptPerformance}
+                    learnerCount={dashboardSummary.learner_count}
+                    mastery={dashboardSummary.mastery_distribution ?? { mastered: 0, practiced: 0, struggling: 0, not_started: 0 }}
+                    questionRisk={questionPerformance}
+                  />
                 </section>
               ) : null}
 

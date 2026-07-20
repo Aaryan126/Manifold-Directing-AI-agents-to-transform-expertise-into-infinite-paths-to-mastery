@@ -2,12 +2,14 @@ from abc import ABC, abstractmethod
 from uuid import UUID
 
 from app.dashboard.models import (
+    ActivityPoint,
     ClipSignalStats,
     ConceptSignalStats,
     DashboardAction,
     DashboardSignal,
     DashboardSignalProposal,
     LearnerOverride,
+    MasteryDistribution,
     QuestionSignalStats,
 )
 
@@ -31,6 +33,14 @@ class DashboardRepository(ABC):
 
     @abstractmethod
     async def clip_stats(self, course_id: UUID) -> tuple[ClipSignalStats, ...]:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def activity_history(self, course_id: UUID) -> tuple[ActivityPoint, ...]:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def mastery_distribution(self, course_id: UUID) -> MasteryDistribution:
         raise NotImplementedError
 
     @abstractmethod

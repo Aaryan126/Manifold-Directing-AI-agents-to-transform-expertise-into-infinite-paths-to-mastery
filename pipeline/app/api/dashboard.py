@@ -61,6 +61,19 @@ class ClipPerformanceResponse(BaseModel):
     struggling_learners: int
 
 
+class ActivityPointResponse(BaseModel):
+    date: str
+    attempts: int
+    active_learners: int
+
+
+class MasteryDistributionResponse(BaseModel):
+    mastered: int
+    practiced: int
+    struggling: int
+    not_started: int
+
+
 class DashboardSummaryResponse(BaseModel):
     course_id: UUID
     learner_count: int
@@ -70,6 +83,8 @@ class DashboardSummaryResponse(BaseModel):
     concept_performance: list[ConceptPerformanceResponse]
     question_performance: list[QuestionPerformanceResponse]
     clip_performance: list[ClipPerformanceResponse]
+    activity_history: list[ActivityPointResponse]
+    mastery_distribution: MasteryDistributionResponse
 
 
 class LearnerOverrideResponse(BaseModel):
@@ -124,6 +139,20 @@ async def get_dashboard(
             )
             for stats in summary.clip_stats
         ],
+        activity_history=[
+            ActivityPointResponse(
+                date=point.date,
+                attempts=point.attempts,
+                active_learners=point.active_learners,
+            )
+            for point in summary.activity_history
+        ],
+        mastery_distribution=MasteryDistributionResponse(
+            mastered=summary.mastery_distribution.mastered,
+            practiced=summary.mastery_distribution.practiced,
+            struggling=summary.mastery_distribution.struggling,
+            not_started=summary.mastery_distribution.not_started,
+        ),
     )
 
 

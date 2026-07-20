@@ -45,6 +45,21 @@ class ClipSignalStats:
 
 
 @dataclass(frozen=True)
+class ActivityPoint:
+    date: str
+    attempts: int
+    active_learners: int
+
+
+@dataclass(frozen=True)
+class MasteryDistribution:
+    mastered: int = 0
+    practiced: int = 0
+    struggling: int = 0
+    not_started: int = 0
+
+
+@dataclass(frozen=True)
 class DashboardSignalProposal:
     type: DashboardSignalType
     related_entity_type: str
@@ -77,6 +92,8 @@ class DashboardSummary:
     concept_stats: tuple[ConceptSignalStats, ...] = ()
     question_stats: tuple[QuestionSignalStats, ...] = ()
     clip_stats: tuple[ClipSignalStats, ...] = ()
+    activity_history: tuple[ActivityPoint, ...] = ()
+    mastery_distribution: MasteryDistribution = MasteryDistribution()
 
 
 @dataclass(frozen=True)

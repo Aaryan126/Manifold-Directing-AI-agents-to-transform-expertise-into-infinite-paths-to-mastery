@@ -6,6 +6,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from app.dashboard.models import (
+    ActivityPoint,
     ClipSignalStats,
     ConceptSignalStats,
     DashboardAction,
@@ -14,6 +15,7 @@ from app.dashboard.models import (
     DashboardSignalStatus,
     DashboardSignalType,
     LearnerOverride,
+    MasteryDistribution,
     QuestionSignalStats,
 )
 from app.dashboard.repository import DashboardRepository
@@ -226,6 +228,103 @@ class PostgresDashboardRepository(DashboardRepository):
                     struggling_learners=int(row["struggling_learners"] or 0),
                 )
                 for row in rows
+            )
+
+    async def activity_history(self, course_id: UUID) -> tuple[ActivityPoint, ...]:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            rows = await (
+                await conn.execute(
+                    """
+                    with days as (
+                      select generate_series(
+                        (now() at time zone 'UTC')::date - interval '13 days',
+                        (now() at time zone 'UTC')::date,
+                        interval '1 day'
+                      )::date as activity_date
+                    ), daily_attempts as (
+                      select
+                        (a.created_at at time zone 'UTC')::date as activity_date,
+                        count(*) as attempts,
+                        count(distinct a.learner_id) as active_learners
+                      from attempts a
+                      join questions q on q.id = a.question_id
+                      join topics t on t.id = q.topic_id
+                      where t.course_id = %s
+                        and a.created_at >= (now() at time zone 'UTC')::date - interval '13 days'
+                      group by (a.created_at at time zone 'UTC')::date
+                    )
+                    select
+                      days.activity_date,
+                      coalesce(daily_attempts.attempts, 0) as attempts,
+                      coalesce(daily_attempts.active_learners, 0) as active_learners
+                    from days
+                    left join daily_attempts using (activity_date)
+                    order by days.activity_date
+                    """,
+                    (course_id,),
+                )
+            ).fetchall()
+            return tuple(
+                ActivityPoint(
+                    date=row["activity_date"].isoformat(),
+                    attempts=int(row["attempts"] or 0),
+                    active_learners=int(row["active_learners"] or 0),
+                )
+                for row in rows
+            )
+
+    async def mastery_distribution(self, course_id: UUID) -> MasteryDistribution:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            row = await (
+                await conn.execute(
+                    """
+                    with course_size as (
+                      select
+                        (select count(*) from enrollments where course_id = %s) as learners,
+                        (
+                          select count(*)
+                          from concepts
+                          where course_id = %s
+                            and review_status in ('accepted', 'edited')
+                        ) as concepts
+                    ), states as (
+                      select
+                        count(*) filter (where m.state = 'mastered') as mastered,
+                        count(*) filter (where m.state = 'practiced') as practiced,
+                        count(*) filter (where m.state = 'struggling') as struggling,
+                        count(*) filter (where m.state = 'not_started') as explicit_not_started
+                      from learner_concept_mastery m
+                      join concepts c on c.id = m.concept_id
+                      join enrollments e
+                        on e.learner_id = m.learner_id
+                       and e.course_id = c.course_id
+                      where c.course_id = %s
+                        and c.review_status in ('accepted', 'edited')
+                    )
+                    select
+                      coalesce(states.mastered, 0) as mastered,
+                      coalesce(states.practiced, 0) as practiced,
+                      coalesce(states.struggling, 0) as struggling,
+                      greatest(
+                        course_size.learners * course_size.concepts
+                          - coalesce(states.mastered, 0)
+                          - coalesce(states.practiced, 0)
+                          - coalesce(states.struggling, 0),
+                        coalesce(states.explicit_not_started, 0)
+                      ) as not_started
+                    from course_size
+                    cross join states
+                    """,
+                    (course_id, course_id, course_id),
+                )
+            ).fetchone()
+            if row is None:
+                return MasteryDistribution()
+            return MasteryDistribution(
+                mastered=int(row["mastered"] or 0),
+                practiced=int(row["practiced"] or 0),
+                struggling=int(row["struggling"] or 0),
+                not_started=int(row["not_started"] or 0),
             )
 
     async def open_signals(self, course_id: UUID) -> tuple[DashboardSignal, ...]:

@@ -3,6 +3,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.dashboard.models import (
+    ActivityPoint,
     ClipSignalStats,
     ConceptSignalStats,
     DashboardAction,
@@ -11,6 +12,7 @@ from app.dashboard.models import (
     DashboardSignalStatus,
     DashboardSignalType,
     LearnerOverride,
+    MasteryDistribution,
     QuestionSignalStats,
 )
 from app.dashboard.repository import DashboardRepository
@@ -56,6 +58,8 @@ async def test_refresh_returns_underlying_performance_evidence() -> None:
     assert summary.concept_stats == repository.concept_stats_value
     assert summary.question_stats == repository.question_stats_value
     assert summary.clip_stats == repository.clip_stats_value
+    assert summary.activity_history == repository.activity_history_value
+    assert summary.mastery_distribution == repository.mastery_distribution_value
 
 
 @pytest.mark.anyio
@@ -151,6 +155,15 @@ class MemoryDashboardRepository(DashboardRepository):
         )
         self.question_stats_value: tuple[QuestionSignalStats, ...] = ()
         self.clip_stats_value: tuple[ClipSignalStats, ...] = ()
+        self.activity_history_value = (
+            ActivityPoint(date="2026-07-20", attempts=attempt_count, active_learners=learner_count),
+        )
+        self.mastery_distribution_value = MasteryDistribution(
+            mastered=1,
+            practiced=1,
+            struggling=1,
+            not_started=2,
+        )
         self.signals: list[DashboardSignal] = []
         self.mutations: list[tuple[str, UUID]] = []
         self.mastery: dict[tuple[UUID, UUID], str] = {}
@@ -174,6 +187,14 @@ class MemoryDashboardRepository(DashboardRepository):
     async def clip_stats(self, course_id: UUID) -> tuple[ClipSignalStats, ...]:
         assert course_id == self.course_id
         return self.clip_stats_value
+
+    async def activity_history(self, course_id: UUID) -> tuple[ActivityPoint, ...]:
+        assert course_id == self.course_id
+        return self.activity_history_value
+
+    async def mastery_distribution(self, course_id: UUID) -> MasteryDistribution:
+        assert course_id == self.course_id
+        return self.mastery_distribution_value
 
     async def open_signals(self, course_id: UUID) -> tuple[DashboardSignal, ...]:
         assert course_id == self.course_id
