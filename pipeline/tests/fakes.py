@@ -569,6 +569,7 @@ class MemoryTopicRepository(TopicRepository):
             words=(),
         )
         self.topics: dict[UUID, Topic] = {}
+        self.concept_links: dict[UUID, set[UUID]] = {}
 
     async def get_video_transcript(self, video_id: UUID) -> VideoTranscript | None:
         if video_id != self.transcript.video_id:
@@ -676,6 +677,17 @@ class MemoryTopicRepository(TopicRepository):
         )
         self.topics[topic.id] = topic
         return topic
+
+    async def remap_concept_links(
+        self,
+        source_topic_ids: tuple[UUID, ...],
+        target_topic_ids: tuple[UUID, ...],
+    ) -> None:
+        source_ids = set(source_topic_ids)
+        for topic_ids in self.concept_links.values():
+            if topic_ids & source_ids:
+                topic_ids.difference_update(source_ids)
+                topic_ids.update(target_topic_ids)
 
     def _topic_from_proposal(
         self,

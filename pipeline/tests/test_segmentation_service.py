@@ -167,6 +167,8 @@ async def test_merge_and_split_are_stored_as_instructor_revisions() -> None:
         ),
     )
     topics = await service.propose_topics(video_id)
+    concept_id = uuid4()
+    repository.concept_links[concept_id] = {topics[0].id, topics[1].id}
 
     merged = await service.merge_topics(topics[0].id, topics[1].id)
 
@@ -176,6 +178,7 @@ async def test_merge_and_split_are_stored_as_instructor_revisions() -> None:
     assert merged.instructor_revision["action"] == "merge"
     visible_after_merge = await service.list_topics(video_id)
     assert len(visible_after_merge) == 1
+    assert repository.concept_links[concept_id] == {merged.id}
 
     split = await service.split_topic(merged.id, 600)
 
@@ -183,6 +186,7 @@ async def test_merge_and_split_are_stored_as_instructor_revisions() -> None:
     assert len(split) == 2
     assert all(topic.review_status == TopicReviewStatus.EDITED for topic in split)
     assert all(topic.instructor_revision is not None for topic in split)
+    assert repository.concept_links[concept_id] == {split[0].id, split[1].id}
 
 
 def _proposal(title: str, start: float, end: float) -> TopicProposal:

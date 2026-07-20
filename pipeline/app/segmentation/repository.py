@@ -46,3 +46,11 @@ class TopicRepository(ABC):
         edit: TopicEdit,
     ) -> Topic:
         """Create an instructor-authored topic."""
+
+    @abstractmethod
+    async def remap_concept_links(
+        self,
+        source_topic_ids: tuple[UUID, ...],
+        target_topic_ids: tuple[UUID, ...],
+    ) -> None:
+        """Move concept coverage from replaced topics onto their active replacements."""

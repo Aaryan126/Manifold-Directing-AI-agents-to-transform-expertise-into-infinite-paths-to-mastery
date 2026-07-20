@@ -249,6 +249,88 @@ class PostgresTopicRepository(TopicRepository):
                 raise RuntimeError("Failed to insert manual topic.")
             return _topic_from_row(row)
 
+    async def remap_concept_links(
+        self,
+        source_topic_ids: tuple[UUID, ...],
+        target_topic_ids: tuple[UUID, ...],
+    ) -> None:
+        if not source_topic_ids or not target_topic_ids:
+            return
+        all_topic_ids = tuple(dict.fromkeys((*source_topic_ids, *target_topic_ids)))
+        async with await psycopg.AsyncConnection.connect(
+            self._database_url,
+            row_factory=dict_row,
+        ) as conn:
+            topic_rows = await (
+                await conn.execute(
+                    "select id, course_id from topics where id = any(%s::uuid[])",
+                    (list(all_topic_ids),),
+                )
+            ).fetchall()
+            if len(topic_rows) != len(all_topic_ids) or len(
+                {UUID(str(row["course_id"])) for row in topic_rows}
+            ) != 1:
+                raise ValueError("Remapped topic links must belong to one course.")
+
+            concept_rows = await (
+                await conn.execute(
+                    """
+                    select distinct concept_id
+                    from topic_concepts
+                    where topic_id = any(%s::uuid[])
+                    """,
+                    (list(source_topic_ids),),
+                )
+            ).fetchall()
+            concept_ids = tuple(UUID(str(row["concept_id"])) for row in concept_rows)
+            if not concept_ids:
+                return
+
+            await conn.execute(
+                "delete from topic_concepts where topic_id = any(%s::uuid[])",
+                (list(source_topic_ids),),
+            )
+            for concept_id in concept_ids:
+                for topic_id in dict.fromkeys(target_topic_ids):
+                    await conn.execute(
+                        """
+                        insert into topic_concepts (topic_id, concept_id)
+                        values (%s, %s)
+                        on conflict do nothing
+                        """,
+                        (topic_id, concept_id),
+                    )
+                linked_rows = await (
+                    await conn.execute(
+                        """
+                        select topic_id
+                        from topic_concepts
+                        where concept_id = %s
+                        order by topic_id
+                        """,
+                        (concept_id,),
+                    )
+                ).fetchall()
+                linked_topic_ids = [str(row["topic_id"]) for row in linked_rows]
+                await conn.execute(
+                    """
+                    update concepts
+                    set instructor_revision = coalesce(instructor_revision, '{}'::jsonb)
+                          || %s::jsonb,
+                        updated_at = now()
+                    where id = %s
+                    """,
+                    (
+                        Jsonb(
+                            {
+                                "action": "inherit_topic_links",
+                                "topic_ids": linked_topic_ids,
+                            }
+                        ),
+                        concept_id,
+                    ),
+                )
+
 
 def _proposal_json(proposal: TopicProposal) -> dict[str, object]:
     return {

@@ -11,7 +11,6 @@ import {
   type WorkflowStage,
   type WorkflowTask,
 } from "@/app/instructorWorkflow";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -64,9 +63,6 @@ export function InstructorProductionStudio({
                 {stage.state === "complete" ? <Check aria-hidden="true" className="size-3.5" /> : isBlocked ? <LockKeyhole aria-hidden="true" className="size-3" /> : index + 1}
               </span>
               <span className={cn("min-w-0 truncate text-sm font-medium text-muted-foreground", isActive && "font-semibold text-foreground")}>{stage.label}</span>
-              {stage.taskCount > 0 && !isBlocked ? (
-                <Badge className="ml-auto" variant="outline">{stage.taskCount}</Badge>
-              ) : null}
             </button>
           );
         })}

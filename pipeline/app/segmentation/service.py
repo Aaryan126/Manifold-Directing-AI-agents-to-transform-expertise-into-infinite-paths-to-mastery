@@ -107,6 +107,11 @@ class SegmentationService:
         )
         updated = await self.edit_topic(ordered[0].id, merged)
         await self.dismiss_topic(ordered[1].id)
+        if updated is not None:
+            await self._repository.remap_concept_links(
+                (ordered[0].id, ordered[1].id),
+                (updated.id,),
+            )
         return updated
 
     async def split_topic(self, topic_id: UUID, split_seconds: float) -> tuple[Topic, Topic] | None:
@@ -138,6 +143,7 @@ class SegmentationService:
             ),
         )
         await self.dismiss_topic(topic.id)
+        await self._repository.remap_concept_links((topic.id,), (first.id, second.id))
         return (first, second)
 
     async def _audit(

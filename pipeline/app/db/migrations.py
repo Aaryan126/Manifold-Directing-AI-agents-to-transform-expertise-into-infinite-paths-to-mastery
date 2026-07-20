@@ -24,6 +24,13 @@ _LEGACY_MIGRATION_MARKERS: dict[str, tuple[tuple[str, str | None], ...]] = {
     "012_local_clip_materialization.sql": (("clips", "materialization_status"),),
 }
 
+_DATA_ONLY_MIGRATIONS = frozenset(
+    {
+        "013_inherit_split_topic_concepts.sql",
+        "014_backfill_renamed_split_topic_concepts.sql",
+    }
+)
+
 
 async def run_migrations(database_url: str, migrations_dir: Path) -> None:
     async with await psycopg.AsyncConnection.connect(database_url) as conn:

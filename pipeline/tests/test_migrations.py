@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.db.migrations import _LEGACY_MIGRATION_MARKERS
+from app.db.migrations import _DATA_ONLY_MIGRATIONS, _LEGACY_MIGRATION_MARKERS
 
 
 def test_initial_migration_contains_prd_phase_zero_entities() -> None:
@@ -79,7 +79,7 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
 def test_legacy_schema_baseline_covers_every_migration() -> None:
     migration_names = {path.name for path in Path("migrations").glob("*.sql")}
 
-    assert set(_LEGACY_MIGRATION_MARKERS) == migration_names
+    assert set(_LEGACY_MIGRATION_MARKERS) | _DATA_ONLY_MIGRATIONS == migration_names
 
 
 def test_compose_leaves_migration_ownership_to_pipeline() -> None:
