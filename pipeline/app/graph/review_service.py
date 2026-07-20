@@ -18,6 +18,7 @@ from app.graph.models import (
     EdgeEdit,
     GraphReviewStatus,
 )
+from app.graph.proposal_policy import normalize_graph_proposal
 from app.graph.review_repository import ConceptGraphRepository
 from app.graph.validator import GraphValidationError, validate_no_cycle
 
@@ -41,7 +42,13 @@ class ConceptGraphService:
         context = await self._repository.get_course_context(course_id)
         if context is None:
             raise ConceptGraphValidationError("No accepted or edited topics found for this course.")
-        proposal = await self._agent.propose_graph(context)
+        try:
+            proposal = normalize_graph_proposal(
+                context,
+                await self._agent.propose_graph(context),
+            )
+        except ValueError as exc:
+            raise ConceptGraphValidationError(str(exc)) from exc
         graph = await self._repository.replace_ai_graph(course_id, proposal)
         await self._audit_graph_proposal(course_id, graph)
         return graph
@@ -202,6 +209,7 @@ class ConceptGraphService:
                     ai_rationale=rationale_from_state(snapshot(concept)),
                 )
                 for concept in graph.concepts
+                if concept.review_status == GraphReviewStatus.PROPOSED
             ]
             + [
                 AuditEventCreate(
@@ -215,6 +223,7 @@ class ConceptGraphService:
                     ai_rationale=rationale_from_state(snapshot(edge)),
                 )
                 for edge in graph.edges
+                if edge.review_status == GraphReviewStatus.PROPOSED
             ],
         )
         await self._audit_service.record_many(events)
@@ -290,17 +299,6 @@ def graph_warnings(graph: ConceptGraph) -> list[str]:
         validate_no_cycle(active_edges)
     except GraphValidationError as exc:
         warnings.append(str(exc))
-
-    connected = {concept_id for edge in active_edges for concept_id in edge}
-    isolated = [
-        concept.name
-        for concept in graph.concepts
-        if concept.id in active_concepts and concept.id not in connected
-    ]
-    if isolated:
-        warnings.append(
-            "Active concepts with no prerequisite path: " + ", ".join(sorted(isolated))
-        )
 
     dismissed_edges = [
         edge

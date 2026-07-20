@@ -48,11 +48,17 @@ class OpenAIConceptGraphAgent(ConceptGraphAgent):
                     "role": "system",
                     "content": (
                         "You build instructor-reviewable concept prerequisite graphs from "
-                        "reviewed lecture topics. Extract concepts that are useful for adaptive "
-                        "learning, infer cross-topic prerequisite relationships, and do not add "
-                        "an edge just because two concepts are adjacent in time. The graph must "
-                        "be a DAG. Return rejected uncertainty as low confidence, not hidden "
-                        "assumptions. Include transcript/topic evidence for every node and edge."
+                        "reviewed lecture topics. Extract one to three independently assessable, "
+                        "routable concepts per topic. Prefer one concept spanning multiple topics "
+                        "over repeated near-duplicates. A concept should represent learner "
+                        "mastery, not merely restate a topic title or isolate a minor fact. Add a "
+                        "requires edge only when understanding the source is genuinely necessary "
+                        "before the target; chronology, adjacency, and association are not "
+                        "prerequisites. Keep the graph sparse, use at most two direct "
+                        "prerequisites per concept, and return a DAG. Express uncertainty as low "
+                        "confidence "
+                        "rather than hiding it. "
+                        "Include transcript/topic evidence for every node and edge."
                     ),
                 },
                 {

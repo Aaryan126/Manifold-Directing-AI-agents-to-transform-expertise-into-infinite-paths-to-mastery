@@ -16,6 +16,7 @@ from app.graph.models import (
     GraphReviewStatus,
     TopicContext,
 )
+from app.graph.proposal_policy import concept_names_match
 from app.graph.review_repository import ConceptGraphRepository
 from app.graph.validator import GraphValidationError, validate_no_cycle
 from app.ingestion.models import (
@@ -247,12 +248,19 @@ class MemoryConceptGraphRepository(ConceptGraphRepository):
         course_id: UUID,
         proposal: ConceptGraphProposal,
     ) -> ConceptGraph:
+        protected_concept_ids = {
+            concept_id
+            for edge in self.edges.values()
+            if edge.review_status != GraphReviewStatus.PROPOSED
+            for concept_id in (edge.from_concept_id, edge.to_concept_id)
+        }
         self.concepts = {
             concept_id: concept
             for concept_id, concept in self.concepts.items()
             if not (
                 concept.course_id == course_id
                 and concept.review_status == GraphReviewStatus.PROPOSED
+                and concept_id not in protected_concept_ids
             )
         }
         self.edges = {
@@ -260,8 +268,32 @@ class MemoryConceptGraphRepository(ConceptGraphRepository):
             for edge_id, edge in self.edges.items()
             if edge.review_status != GraphReviewStatus.PROPOSED
         }
+        preserved_concepts = [
+            concept
+            for concept in self.concepts.values()
+            if concept.course_id == course_id
+            and (
+                concept.review_status != GraphReviewStatus.PROPOSED
+                or concept.id in protected_concept_ids
+            )
+        ]
         key_to_id: dict[str, UUID] = {}
         for proposal_concept in proposal.concepts:
+            reviewed_match = next(
+                (
+                    concept
+                    for concept in preserved_concepts
+                    if concept_names_match(proposal_concept.name, concept.name)
+                ),
+                None,
+            )
+            if reviewed_match is not None:
+                if (
+                    reviewed_match.review_status != GraphReviewStatus.DISMISSED
+                    and reviewed_match.merged_into_concept_id is None
+                ):
+                    key_to_id[proposal_concept.key] = reviewed_match.id
+                continue
             concept = Concept(
                 id=uuid4(),
                 course_id=course_id,
@@ -284,9 +316,19 @@ class MemoryConceptGraphRepository(ConceptGraphRepository):
             self.concepts[concept.id] = concept
             key_to_id[proposal_concept.key] = concept.id
         for proposal_edge in proposal.edges:
-            from_id = key_to_id[proposal_edge.from_key]
-            to_id = key_to_id[proposal_edge.to_key]
-            validate_no_cycle(_active_edge_pairs(self.edges) | {(from_id, to_id)})
+            from_id = key_to_id.get(proposal_edge.from_key)
+            to_id = key_to_id.get(proposal_edge.to_key)
+            if from_id is None or to_id is None or from_id == to_id:
+                continue
+            if any(
+                edge.from_concept_id == from_id and edge.to_concept_id == to_id
+                for edge in self.edges.values()
+            ):
+                continue
+            try:
+                validate_no_cycle(_active_edge_pairs(self.edges) | {(from_id, to_id)})
+            except GraphValidationError:
+                continue
             edge = ConceptGraphEdge(
                 id=uuid4(),
                 from_concept_id=from_id,
@@ -416,9 +458,7 @@ class MemoryConceptGraphRepository(ConceptGraphRepository):
                 else edge.from_concept_id
             )
             to_id = (
-                target_concept_id
-                if edge.to_concept_id == source_concept_id
-                else edge.to_concept_id
+                target_concept_id if edge.to_concept_id == source_concept_id else edge.to_concept_id
             )
             if from_id == to_id:
                 self.edges[edge_id] = _replace_edge(
@@ -517,8 +557,7 @@ class MemoryTopicRepository(TopicRepository):
             topic_id: topic
             for topic_id, topic in self.topics.items()
             if not (
-                topic.video_id == video_id
-                and topic.review_status == TopicReviewStatus.PROPOSED
+                topic.video_id == video_id and topic.review_status == TopicReviewStatus.PROPOSED
             )
         }
         created = tuple(

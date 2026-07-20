@@ -8,10 +8,12 @@ import {
   type Connection,
   type Edge as FlowEdge,
   type Node as FlowNode,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import {
   type Concept,
   type ConceptEdge,
+  focusedConceptIds,
   graphEdgeModels,
   graphNodeModels,
 } from "./graphModel";
@@ -286,7 +288,8 @@ export default function HomePage() {
   const [selectedQuestionReviewId, setSelectedQuestionReviewId] = useState("");
   const [selectedGraphConceptId, setSelectedGraphConceptId] = useState("");
   const [selectedGraphEdgeId, setSelectedGraphEdgeId] = useState("");
-  const [graphReviewFilter, setGraphReviewFilter] = useState<"all" | "proposed" | "reviewed" | "dismissed">("all");
+  const [graphReviewFilter, setGraphReviewFilter] = useState<"active" | "all" | "proposed" | "reviewed" | "dismissed">("active");
+  const [graphTopicFocus, setGraphTopicFocus] = useState("all");
   const [selectedRoutingConceptId, setSelectedRoutingConceptId] = useState("");
   const [selectedSimulatorQuestionId, setSelectedSimulatorQuestionId] = useState("");
   const [selectedDashboardSignalId, setSelectedDashboardSignalId] = useState("");
@@ -338,6 +341,7 @@ export default function HomePage() {
   const [activeInstructorStage, setActiveInstructorStage] = useState<InstructorStageId>("source");
   const hydratedJobs = useRef(new Set<string>());
   const workflowAutoFocusedJob = useRef<string | null>(null);
+  const graphFlowRef = useRef<ReactFlowInstance<FlowNode, FlowEdge> | null>(null);
   const refreshJobRef = useRef<() => Promise<void>>(async () => undefined);
   const hydrateCompletedJobRef = useRef<(nextJob: Job) => Promise<void>>(async () => undefined);
   const selectedIdentity =
@@ -352,22 +356,46 @@ export default function HomePage() {
   );
   const graphStatusMatches = (status: Concept["review_status"]) =>
     graphReviewFilter === "all" ||
+    (graphReviewFilter === "active" && status !== "dismissed") ||
     status === graphReviewFilter ||
     (graphReviewFilter === "reviewed" && (status === "accepted" || status === "edited"));
-  const visibleGraphConceptIds = new Set(
-    graph?.concepts.filter((concept) => graphStatusMatches(concept.review_status)).map((concept) => concept.id) ?? [],
+  const statusMatchingGraphConcepts =
+    graph?.concepts.filter((concept) => graphStatusMatches(concept.review_status)) ?? [];
+  const statusMatchingGraphEdges =
+    graph?.edges.filter((edge) => graphStatusMatches(edge.review_status)) ?? [];
+  const visibleGraphConceptIds = focusedConceptIds(
+    statusMatchingGraphConcepts,
+    statusMatchingGraphEdges,
+    graphTopicFocus,
+  );
+  const visibleGraphConcepts = statusMatchingGraphConcepts.filter((concept) =>
+    visibleGraphConceptIds.has(concept.id),
+  );
+  const visibleGraphEdges = statusMatchingGraphEdges.filter((edge) =>
+    visibleGraphConceptIds.has(edge.from_concept_id) &&
+    visibleGraphConceptIds.has(edge.to_concept_id),
   );
   const flowNodes: FlowNode[] = graph
-    ? graphNodeModels(graph.concepts.filter((concept) => visibleGraphConceptIds.has(concept.id))).map((node) => ({
+    ? graphNodeModels(visibleGraphConcepts, topics).map((node) => ({
       id: node.id,
       position: { x: node.x, y: node.y },
-      data: { label: `${node.label}\n${node.status}` },
+      data: {
+        label: (
+          <div className="grid gap-1 text-left">
+            <span className="truncate text-[10px] font-semibold uppercase text-muted-foreground">
+              {node.topicLabel}
+            </span>
+            <span className="truncate text-sm font-semibold">{node.label}</span>
+            <span className="text-[10px] capitalize text-muted-foreground">{node.status}</span>
+          </div>
+        ),
+      },
       className: node.muted ? "graphNode muted" : "graphNode",
-      width: 190,
-      height: 72,
+      width: 210,
+      height: 88,
       style: {
-        width: 190,
-        minHeight: 72,
+        width: 210,
+        minHeight: 88,
         borderColor: node.muted ? "var(--border)" : "var(--primary)",
         borderRadius: 6,
         padding: 12,
@@ -375,11 +403,7 @@ export default function HomePage() {
     }))
     : [];
   const flowEdges: FlowEdge[] = graph
-    ? graphEdgeModels(graph.edges.filter((edge) =>
-        visibleGraphConceptIds.has(edge.from_concept_id) &&
-        visibleGraphConceptIds.has(edge.to_concept_id) &&
-        graphStatusMatches(edge.review_status),
-      )).map((edge) => ({
+    ? graphEdgeModels(visibleGraphEdges).map((edge) => ({
         id: edge.id,
         source: edge.source,
         target: edge.target,
@@ -388,6 +412,13 @@ export default function HomePage() {
         label: edge.status,
       }))
     : [];
+  useEffect(() => {
+    if (activeInstructorStage !== "structure" || flowNodes.length === 0) return;
+    const timeout = window.setTimeout(() => {
+      void graphFlowRef.current?.fitView({ padding: 0.25, maxZoom: 1 });
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [activeInstructorStage, flowNodes.length, graphReviewFilter, graphTopicFocus]);
   const learnerQuestions = questions.filter(
     (question) => question.review_status === "accepted" || question.review_status === "edited",
   );
@@ -2189,10 +2220,28 @@ export default function HomePage() {
                 aria-label="Graph review filter"
                 className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm"
                 data-slot="graph-filter"
-                onChange={(event) => setGraphReviewFilter(event.target.value as typeof graphReviewFilter)}
+                onChange={(event) => {
+                  setGraphReviewFilter(event.target.value as typeof graphReviewFilter);
+                  setSelectedGraphConceptId("");
+                  setSelectedGraphEdgeId("");
+                }}
                 value={graphReviewFilter}
               >
-                <option value="all">All artifacts</option><option value="proposed">Proposed</option><option value="reviewed">Reviewed</option><option value="dismissed">Dismissed</option>
+                <option value="active">Active concepts</option><option value="proposed">Needs review</option><option value="reviewed">Reviewed</option><option value="dismissed">Dismissed history</option><option value="all">All history</option>
+              </select>
+              <select
+                aria-label="Graph topic focus"
+                className="h-8 max-w-52 rounded-lg border border-input bg-background px-2.5 text-sm"
+                data-slot="graph-topic-focus"
+                onChange={(event) => {
+                  setGraphTopicFocus(event.target.value);
+                  setSelectedGraphConceptId("");
+                  setSelectedGraphEdgeId("");
+                }}
+                value={graphTopicFocus}
+              >
+                <option value="all">All topics</option>
+                {topics.map((topic, index) => <option key={topic.id} value={topic.id}>{index + 1}. {topic.title}</option>)}
               </select>
               <Button disabled={generationAction === "graph" || isAcceptingGraph} onClick={() => loadGraph(job.course_id!)} type="button" variant="outline"><RefreshCw data-icon="inline-start" /> Refresh</Button>
               <Button
@@ -2239,19 +2288,30 @@ export default function HomePage() {
                 <div className="absolute left-5 top-5 z-10 flex gap-2 rounded-lg border border-border bg-background p-2 shadow-sm">
                   <Badge variant="outline">{flowNodes.length} concepts</Badge>
                   <Badge variant="outline">{flowEdges.length} edges</Badge>
+                  {graphTopicFocus !== "all" ? <Badge>Focused + neighbors</Badge> : null}
                 </div>
                 <div className="h-[700px] min-w-0">
                   <ReactFlow
                     edges={flowEdges}
                     fitView
+                    fitViewOptions={{ maxZoom: 1, padding: 0.25 }}
                     nodes={flowNodes}
                     onConnect={handleConnect}
                     onEdgeClick={(_, edge) => { setSelectedGraphEdgeId(edge.id); setSelectedGraphConceptId(""); }}
+                    onInit={(instance) => { graphFlowRef.current = instance; }}
                     onNodeClick={(_, node) => { setSelectedGraphConceptId(node.id); setSelectedGraphEdgeId(""); }}
                   >
                     <Background gap={24} size={1} />
                     <Controls />
                   </ReactFlow>
+                  {flowNodes.length === 0 ? (
+                    <div className="pointer-events-none absolute inset-0 grid place-items-center">
+                      <div className="rounded-lg border border-border bg-background px-5 py-4 text-center shadow-sm">
+                        <p className="text-sm font-medium">No concepts in this view</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Change the topic or review filter.</p>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -2323,8 +2383,8 @@ export default function HomePage() {
 
                 <InspectorSection title="Browse artifacts">
                   <div className="max-h-44 space-y-1 overflow-y-auto">
-                    {graph.concepts.map((concept) => <button className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted" data-slot="graph-artifact" key={concept.id} onClick={() => { setSelectedGraphConceptId(concept.id); setSelectedGraphEdgeId(""); }} type="button"><span className="truncate">{concept.name}</span><span className="text-xs capitalize text-muted-foreground">{concept.review_status}</span></button>)}
-                    {graph.edges.map((edge) => <button className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted" data-slot="graph-artifact" key={edge.id} onClick={() => { setSelectedGraphEdgeId(edge.id); setSelectedGraphConceptId(""); }} type="button"><span className="truncate">{conceptName(graph, edge.from_concept_id)} → {conceptName(graph, edge.to_concept_id)}</span><span className="text-xs capitalize text-muted-foreground">{edge.review_status}</span></button>)}
+                    {visibleGraphConcepts.map((concept) => <button className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted" data-slot="graph-artifact" key={concept.id} onClick={() => { setSelectedGraphConceptId(concept.id); setSelectedGraphEdgeId(""); }} type="button"><span className="truncate">{concept.name}</span><span className="text-xs capitalize text-muted-foreground">{concept.review_status}</span></button>)}
+                    {visibleGraphEdges.map((edge) => <button className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted" data-slot="graph-artifact" key={edge.id} onClick={() => { setSelectedGraphEdgeId(edge.id); setSelectedGraphConceptId(""); }} type="button"><span className="truncate">{conceptName(graph, edge.from_concept_id)} → {conceptName(graph, edge.to_concept_id)}</span><span className="text-xs capitalize text-muted-foreground">{edge.review_status}</span></button>)}
                   </div>
                 </InspectorSection>
 

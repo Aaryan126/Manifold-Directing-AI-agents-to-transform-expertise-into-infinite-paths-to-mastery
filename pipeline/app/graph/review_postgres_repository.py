@@ -19,6 +19,7 @@ from app.graph.models import (
     GraphReviewStatus,
     TopicContext,
 )
+from app.graph.proposal_policy import concept_names_match
 from app.graph.review_repository import ConceptGraphRepository
 
 
@@ -65,20 +66,67 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
             self._database_url,
             row_factory=dict_row,
         ) as conn:
+            preserved_rows = await (
+                await conn.execute(
+                    """
+                    select c.id, c.name, c.review_status, c.merged_into_concept_id
+                    from concepts c
+                    where c.course_id = %s
+                      and (
+                        c.review_status <> 'proposed'
+                        or exists (
+                          select 1
+                          from concept_edges e
+                          where e.review_status <> 'proposed'
+                            and (e.from_concept_id = c.id or e.to_concept_id = c.id)
+                        )
+                      )
+                    """,
+                    (course_id,),
+                )
+            ).fetchall()
             await conn.execute(
                 """
                 delete from concept_edges
                 where review_status = 'proposed'
-                  and from_concept_id in (select id from concepts where course_id = %s)
+                  and (
+                    from_concept_id in (select id from concepts where course_id = %s)
+                    or to_concept_id in (select id from concepts where course_id = %s)
+                  )
                 """,
-                (course_id,),
+                (course_id, course_id),
             )
             await conn.execute(
-                "delete from concepts where course_id = %s and review_status = 'proposed'",
+                """
+                delete from concepts c
+                where c.course_id = %s
+                  and c.review_status = 'proposed'
+                  and not exists (
+                    select 1
+                    from concept_edges e
+                    where e.review_status <> 'proposed'
+                      and (e.from_concept_id = c.id or e.to_concept_id = c.id)
+                  )
+                """,
                 (course_id,),
             )
             key_to_id: dict[str, UUID] = {}
             for concept in proposal.concepts:
+                reviewed_match = next(
+                    (
+                        row
+                        for row in preserved_rows
+                        if concept_names_match(concept.name, str(row["name"]))
+                    ),
+                    None,
+                )
+                if reviewed_match is not None:
+                    if (
+                        str(reviewed_match["review_status"]) != GraphReviewStatus.DISMISSED.value
+                        and reviewed_match["merged_into_concept_id"] is None
+                    ):
+                        key_to_id[concept.key] = UUID(str(reviewed_match["id"]))
+                    continue
                 row = await (
                     await conn.execute(
                         """
@@ -86,13 +134,6 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
                           course_id, name, description, ai_proposal, review_status
                         )
                         values (%s, %s, %s, %s::jsonb, 'proposed')
-                        on conflict (course_id, name) do update
-                        set description = excluded.description,
-                            ai_proposal = excluded.ai_proposal,
-                            review_status = 'proposed',
-                            dismissed_at = null,
-                            merged_into_concept_id = null,
-                            updated_at = now()
                         returning id
                         """,
                         (
@@ -122,18 +163,31 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
                 to_id = key_to_id.get(edge.to_key)
                 if from_id is None or to_id is None or from_id == to_id:
                     continue
-                await self._raise_if_cycle(conn, from_id, to_id)
+                existing_edge = await (
+                    await conn.execute(
+                        """
+                        select id
+                        from concept_edges
+                        where from_concept_id = %s
+                          and to_concept_id = %s
+                          and relationship = 'requires'
+                        """,
+                        (from_id, to_id),
+                    )
+                ).fetchone()
+                if existing_edge is not None:
+                    continue
+                try:
+                    await self._raise_if_cycle(conn, from_id, to_id)
+                except ValueError:
+                    # Reviewed graph decisions win over a conflicting regenerated proposal.
+                    continue
                 await conn.execute(
                     """
                     insert into concept_edges (
                       from_concept_id, to_concept_id, relationship, ai_proposal, review_status
                     )
                     values (%s, %s, 'requires', %s::jsonb, 'proposed')
-                    on conflict (from_concept_id, to_concept_id, relationship) do update
-                    set ai_proposal = excluded.ai_proposal,
-                        review_status = 'proposed',
-                        dismissed_at = null,
-                        updated_at = now()
                     """,
                     (from_id, to_id, Jsonb(_edge_proposal_json(edge))),
                 )

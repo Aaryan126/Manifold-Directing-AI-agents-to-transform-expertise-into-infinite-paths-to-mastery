@@ -25,6 +25,7 @@ export type GraphNodeModel = {
   description: string;
   muted: boolean;
   status: ConceptReviewStatus;
+  topicLabel: string;
   x: number;
   y: number;
 };
@@ -37,16 +38,51 @@ export type GraphEdgeModel = {
   status: ConceptReviewStatus;
 };
 
-export function graphNodeModels(concepts: Concept[]): GraphNodeModel[] {
-  return concepts.map((concept, index) => ({
-    id: concept.id,
-    label: concept.name,
-    description: concept.description ?? "",
-    muted: concept.review_status === "dismissed",
-    status: concept.review_status,
-    x: (index % 3) * 260,
-    y: Math.floor(index / 3) * 150,
-  }));
+export type GraphTopic = {
+  id: string;
+  title: string;
+};
+
+export function graphNodeModels(
+  concepts: Concept[],
+  topics: GraphTopic[] = [],
+): GraphNodeModel[] {
+  const topicIndexes = new Map(topics.map((topic, index) => [topic.id, index]));
+  const topicTitles = new Map(topics.map((topic) => [topic.id, topic.title]));
+  const grouped = concepts
+    .map((concept) => {
+      const topicIds = conceptTopicIds(concept);
+      const primaryTopicId = topicIds
+        .filter((topicId) => topicIndexes.has(topicId))
+        .sort((first, second) => topicIndexes.get(first)! - topicIndexes.get(second)!)[0];
+      return {
+        concept,
+        groupIndex: primaryTopicId === undefined
+          ? topics.length
+          : topicIndexes.get(primaryTopicId)!,
+        topicLabel: primaryTopicId === undefined
+          ? "Unlinked"
+          : `${topicTitles.get(primaryTopicId)}${topicIds.length > 1 ? ` +${topicIds.length - 1}` : ""}`,
+      };
+    })
+    .sort((first, second) =>
+      first.groupIndex - second.groupIndex || first.concept.name.localeCompare(second.concept.name),
+    );
+  const rowsByGroup = new Map<number, number>();
+  return grouped.map(({ concept, groupIndex, topicLabel }) => {
+    const row = rowsByGroup.get(groupIndex) ?? 0;
+    rowsByGroup.set(groupIndex, row + 1);
+    return {
+      id: concept.id,
+      label: concept.name,
+      description: concept.description ?? "",
+      muted: concept.review_status === "dismissed",
+      status: concept.review_status,
+      topicLabel,
+      x: groupIndex * 260,
+      y: row * 150,
+    };
+  });
 }
 
 export function graphEdgeModels(edges: ConceptEdge[]): GraphEdgeModel[] {
@@ -57,4 +93,38 @@ export function graphEdgeModels(edges: ConceptEdge[]): GraphEdgeModel[] {
     muted: edge.review_status === "dismissed",
     status: edge.review_status,
   }));
+}
+
+export function focusedConceptIds(
+  concepts: Concept[],
+  edges: ConceptEdge[],
+  topicId: string,
+): Set<string> {
+  if (topicId === "all") return new Set(concepts.map((concept) => concept.id));
+  const availableIds = new Set(concepts.map((concept) => concept.id));
+  const focusedIds = new Set(
+    concepts
+      .filter((concept) => conceptTopicIds(concept).includes(topicId))
+      .map((concept) => concept.id),
+  );
+  const originalFocusedIds = new Set(focusedIds);
+  for (const edge of edges) {
+    if (originalFocusedIds.has(edge.from_concept_id) && availableIds.has(edge.to_concept_id)) {
+      focusedIds.add(edge.to_concept_id);
+    }
+    if (originalFocusedIds.has(edge.to_concept_id) && availableIds.has(edge.from_concept_id)) {
+      focusedIds.add(edge.from_concept_id);
+    }
+  }
+  return focusedIds;
+}
+
+function conceptTopicIds(concept: Concept): string[] {
+  const revisedTopicIds = concept.instructor_revision?.topic_ids;
+  const topicIds = Array.isArray(revisedTopicIds)
+    ? revisedTopicIds
+    : concept.ai_proposal?.topic_ids;
+  return Array.isArray(topicIds)
+    ? topicIds.filter((topicId): topicId is string => typeof topicId === "string")
+    : [];
 }
