@@ -4,6 +4,8 @@ from uuid import UUID
 from app.access.models import (
     CourseAccess,
     DevelopmentIdentity,
+    LearnerCourseExperience,
+    LearnerCourseSummary,
     PublishReadiness,
     WatchEventCreate,
 )
@@ -12,6 +14,18 @@ from app.access.models import (
 class AccessRepository(ABC):
     @abstractmethod
     async def development_identities(self) -> tuple[DevelopmentIdentity, ...]:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def learner_courses(self, learner_id: UUID) -> tuple[LearnerCourseSummary, ...]:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def learner_course_experience(
+        self,
+        learner_id: UUID,
+        course_id: UUID,
+    ) -> LearnerCourseExperience | None:
         raise NotImplementedError
 
     @abstractmethod

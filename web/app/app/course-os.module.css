@@ -16,6 +16,7 @@
 }
 
 .sidebarCollapsedShell { grid-template-columns: 76px minmax(0, 1fr); }
+.appShell:has(> .dashboardSidebar[data-collapsed]) { grid-template-columns: 76px minmax(0, 1fr); }
 
 .dashboardSidebar,
 .studioSidebar {
@@ -87,6 +88,7 @@
 .studioSidebar nav a,
 .studioSidebar nav > span,
 .sidebarFooter > a,
+.sidebarLogout,
 .sidebarToggle {
   align-items: center;
   border-radius: 8px;
@@ -126,6 +128,7 @@
 .dashboardSidebar nav a:hover,
 .studioSidebar nav a:hover,
 .sidebarFooter > a:hover,
+.sidebarLogout:hover,
 .sidebarToggle:hover,
 .activeNav {
   background: #dfdcd4;
@@ -165,7 +168,8 @@
 .profileChip strong { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .profileChip small { color: #85827b; font-size: 10px; }
 
-.sidebarToggle {
+.sidebarToggle,
+.sidebarLogout {
   background: transparent;
   border: 0;
   cursor: pointer;
@@ -194,6 +198,8 @@
 .studioSidebar[data-collapsed] nav > span > span,
 .dashboardSidebar[data-collapsed] .sidebarFooter > a > span,
 .studioSidebar[data-collapsed] .sidebarFooter > a > span,
+.dashboardSidebar[data-collapsed] .sidebarLogout > span,
+.studioSidebar[data-collapsed] .sidebarLogout > span,
 .dashboardSidebar[data-collapsed] .profileChip div,
 .studioSidebar[data-collapsed] .profileChip div,
 .dashboardSidebar[data-collapsed] .sidebarToggle span,
@@ -205,6 +211,8 @@
 .studioSidebar[data-collapsed] nav > span,
 .dashboardSidebar[data-collapsed] .sidebarFooter > a,
 .studioSidebar[data-collapsed] .sidebarFooter > a,
+.dashboardSidebar[data-collapsed] .sidebarLogout,
+.studioSidebar[data-collapsed] .sidebarLogout,
 .dashboardSidebar[data-collapsed] .sidebarToggle,
 .studioSidebar[data-collapsed] .sidebarToggle {
   justify-content: center;

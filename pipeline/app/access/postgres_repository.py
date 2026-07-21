@@ -7,6 +7,11 @@ from app.access.models import (
     CourseAccess,
     CourseStatus,
     DevelopmentIdentity,
+    LearnerClip,
+    LearnerCourseExperience,
+    LearnerCourseSummary,
+    LearnerQuestion,
+    LearnerTopic,
     PublishReadiness,
     UserRole,
     WatchEventCreate,
@@ -25,8 +30,8 @@ class PostgresAccessRepository(AccessRepository):
                 """
                 insert into users (email, display_name, role)
                 values
-                  ('dev-instructor@coursefoundry.local', 'Dev Instructor', 'instructor'),
-                  ('dev-learner@coursefoundry.local', 'Dev Learner', 'learner')
+                  ('dev-instructor@coursefoundry.local', 'David', 'instructor'),
+                  ('dev-learner@coursefoundry.local', 'Brian', 'learner')
                 on conflict (email) do update
                 set display_name = excluded.display_name,
                     role = excluded.role
@@ -46,6 +51,173 @@ class PostgresAccessRepository(AccessRepository):
                 )
             ).fetchall()
             return tuple(_identity_from_row(row) for row in rows)
+
+    async def learner_courses(self, learner_id: UUID) -> tuple[LearnerCourseSummary, ...]:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            rows = await (
+                await conn.execute(
+                    """
+                    select course.id, course.title, course.description,
+                           (enrollment.id is not null) as enrolled,
+                           (select count(*) from topics topic
+                            where topic.course_id = course.id
+                              and topic.revision_id = course.active_revision_id
+                              and topic.review_status in ('accepted', 'edited')) as topic_count,
+                           (select count(*) from concepts concept
+                            where concept.course_id = course.id
+                              and concept.revision_id = course.active_revision_id
+                              and concept.review_status in ('accepted', 'edited')) as concept_count,
+                           (select count(*) from learner_concept_mastery mastery
+                            join concepts concept on concept.id = mastery.concept_id
+                            where mastery.learner_id = %s
+                              and concept.course_id = course.id
+                              and concept.revision_id = coalesce(
+                                enrollment.revision_id, course.active_revision_id
+                              )
+                              and mastery.state = 'mastered') as mastered_concept_count
+                    from courses course
+                    left join enrollments enrollment
+                      on enrollment.course_id = course.id
+                     and enrollment.learner_id = %s
+                    where course.status = 'published'
+                      and course.active_revision_id is not null
+                    order by enrollment.created_at desc nulls last, course.updated_at desc
+                    """,
+                    (learner_id, learner_id),
+                )
+            ).fetchall()
+            return tuple(
+                LearnerCourseSummary(
+                    id=UUID(str(row["id"])),
+                    title=str(row["title"]),
+                    description=str(row["description"]) if row["description"] else None,
+                    enrolled=bool(row["enrolled"]),
+                    topic_count=int(row["topic_count"]),
+                    concept_count=int(row["concept_count"]),
+                    mastered_concept_count=int(row["mastered_concept_count"]),
+                )
+                for row in rows
+            )
+
+    async def learner_course_experience(
+        self,
+        learner_id: UUID,
+        course_id: UUID,
+    ) -> LearnerCourseExperience | None:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            course = await (
+                await conn.execute(
+                    """
+                    select course.id, course.title, course.description,
+                           coalesce(enrollment.revision_id, course.active_revision_id)
+                             as revision_id
+                    from courses course
+                    join enrollments enrollment
+                      on enrollment.course_id = course.id
+                     and enrollment.learner_id = %s
+                    where course.id = %s and course.status = 'published'
+                    """,
+                    (learner_id, course_id),
+                )
+            ).fetchone()
+            if course is None:
+                return None
+            revision_id = UUID(str(course["revision_id"]))
+            topic_rows = await (
+                await conn.execute(
+                    """
+                    select id, title, summary from topics
+                    where course_id = %s and revision_id = %s
+                      and review_status in ('accepted', 'edited')
+                    order by start_seconds, title
+                    """,
+                    (course_id, revision_id),
+                )
+            ).fetchall()
+            clip_rows = await (
+                await conn.execute(
+                    """
+                    select clip.id, clip.topic_id, topic.video_id,
+                           coalesce(clip.ai_proposal->>'title', topic.title) as title,
+                           clip.start_seconds, clip.end_seconds, clip.type, clip.difficulty,
+                           coalesce(video.playback_provider, 'local') as playback_provider,
+                           video.playback_id,
+                           coalesce(video.source_metadata->>'playback_url',
+                                    '/videos/' || video.id::text || '/media') as playback_url,
+                           video.source_metadata->>'delivery_asset_id' as delivery_asset_id,
+                           coalesce(clip.materialization_status, 'source_reference')
+                             as materialization_status
+                    from clips clip
+                    join topics topic on topic.id = clip.topic_id
+                    join videos video on video.id = topic.video_id
+                    where topic.course_id = %s and clip.revision_id = %s
+                      and topic.review_status in ('accepted', 'edited')
+                      and clip.status = 'active'
+                    order by topic.start_seconds, clip.start_seconds
+                    """,
+                    (course_id, revision_id),
+                )
+            ).fetchall()
+            question_rows = await (
+                await conn.execute(
+                    """
+                    select q.id, q.topic_id, q.body, q.type, q.correct_answer,
+                           q.confidence_prompt
+                    from questions q
+                    join topics topic on topic.id = q.topic_id
+                    where topic.course_id = %s and q.revision_id = %s
+                      and topic.review_status in ('accepted', 'edited')
+                      and q.review_status in ('accepted', 'edited')
+                    order by topic.start_seconds, q.created_at
+                    """,
+                    (course_id, revision_id),
+                )
+            ).fetchall()
+            return LearnerCourseExperience(
+                id=UUID(str(course["id"])),
+                title=str(course["title"]),
+                description=str(course["description"]) if course["description"] else None,
+                topics=tuple(
+                    LearnerTopic(
+                        id=UUID(str(row["id"])),
+                        title=str(row["title"]),
+                        summary=str(row["summary"]) if row["summary"] else None,
+                    )
+                    for row in topic_rows
+                ),
+                clips=tuple(
+                    LearnerClip(
+                        id=UUID(str(row["id"])),
+                        topic_id=UUID(str(row["topic_id"])),
+                        video_id=UUID(str(row["video_id"])),
+                        title=str(row["title"]),
+                        start_seconds=float(row["start_seconds"]),
+                        end_seconds=float(row["end_seconds"]),
+                        type=str(row["type"]),
+                        difficulty=str(row["difficulty"]) if row["difficulty"] else None,
+                        playback_provider=str(row["playback_provider"]),
+                        playback_id=str(row["playback_id"]) if row["playback_id"] else None,
+                        playback_url=str(row["playback_url"]),
+                        delivery_asset_id=(
+                            str(row["delivery_asset_id"])
+                            if row["delivery_asset_id"] else None
+                        ),
+                        materialization_status=str(row["materialization_status"]),
+                    )
+                    for row in clip_rows
+                ),
+                questions=tuple(
+                    LearnerQuestion(
+                        id=UUID(str(row["id"])),
+                        topic_id=UUID(str(row["topic_id"])),
+                        body=str(row["body"]),
+                        type=str(row["type"]),
+                        choices=_answer_choices(row["correct_answer"]),
+                        confidence_prompt=str(row["confidence_prompt"]),
+                    )
+                    for row in question_rows
+                ),
+            )
 
     async def get_course(self, course_id: UUID) -> CourseAccess | None:
         async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
@@ -241,3 +413,12 @@ def _course_from_row(row: dict[str, Any]) -> CourseAccess:
         status=CourseStatus(str(row["status"])),
         published_at=str(row["published_at"]) if row["published_at"] else None,
     )
+
+
+def _answer_choices(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, dict):
+        return ()
+    choices = value.get("choices")
+    if not isinstance(choices, list):
+        return ()
+    return tuple(str(choice) for choice in choices if str(choice).strip())

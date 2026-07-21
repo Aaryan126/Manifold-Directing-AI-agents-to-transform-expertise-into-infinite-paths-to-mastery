@@ -308,7 +308,7 @@ class PostgresIngestionRepository(IngestionRepository):
             await conn.execute(
                 """
                 insert into users (email, role, display_name)
-                values ('dev-instructor@coursefoundry.local', 'instructor', 'Dev Instructor')
+                values ('dev-instructor@coursefoundry.local', 'instructor', 'David')
                 on conflict (email) do update set display_name = excluded.display_name
                 returning id
                 """

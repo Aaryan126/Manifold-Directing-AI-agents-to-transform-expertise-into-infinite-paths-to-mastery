@@ -37,6 +37,7 @@
 .brand {
   font-size: 1.3rem;
   font-weight: 700;
+  gap: 12px;
   padding: 0 1.5rem;
 }
 

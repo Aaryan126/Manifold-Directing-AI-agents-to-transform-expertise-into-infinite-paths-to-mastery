@@ -3,6 +3,7 @@ import {
   clipPreviewUrl,
   materializedClipCaptionsUrl,
   materializedClipUrl,
+  muxClipPlaybackBounds,
 } from "../app/clipPreview";
 
 describe("clipPreviewUrl", () => {
@@ -22,5 +23,13 @@ describe("clipPreviewUrl", () => {
     expect(materializedClipCaptionsUrl("http://localhost:8000", "clip-1")).toBe(
       "http://localhost:8000/clips/clip-1/captions.vtt",
     );
+  });
+
+  it("turns a source range into a true bounded Mux asset duration", () => {
+    expect(muxClipPlaybackBounds({ start_seconds: 120, end_seconds: 180 })).toEqual({
+      assetStartTime: 120,
+      assetEndTime: 180,
+      defaultDuration: 60,
+    });
   });
 });

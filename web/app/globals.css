@@ -16,6 +16,36 @@ body {
   line-height: 1.5;
 }
 
+.manifoldBrandMark {
+  display: grid;
+  flex: none;
+  gap: 2px;
+  grid-template-columns: repeat(3, 5px);
+  height: 18px;
+  place-content: center;
+  transform: rotate(-30deg);
+  width: 21px;
+}
+
+.manifoldBrandMark i {
+  background: #222329;
+  border-radius: 2px;
+  display: block;
+  height: 17px;
+}
+
+.manifoldBrandMark i:nth-child(2) {
+  background: #d97a2b;
+  height: 11px;
+  margin-top: 3px;
+}
+
+.manifoldBrandMark i:nth-child(3) {
+  background: #8a8881;
+  height: 6px;
+  margin-top: 6px;
+}
+
 h1,
 h2,
 h3,

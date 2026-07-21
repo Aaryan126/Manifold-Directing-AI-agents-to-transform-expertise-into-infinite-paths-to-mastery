@@ -22,6 +22,61 @@ class DevelopmentIdentity:
 
 
 @dataclass(frozen=True)
+class LearnerCourseSummary:
+    id: UUID
+    title: str
+    description: str | None
+    enrolled: bool
+    topic_count: int
+    concept_count: int
+    mastered_concept_count: int
+
+
+@dataclass(frozen=True)
+class LearnerTopic:
+    id: UUID
+    title: str
+    summary: str | None
+
+
+@dataclass(frozen=True)
+class LearnerClip:
+    id: UUID
+    topic_id: UUID
+    video_id: UUID
+    title: str
+    start_seconds: float
+    end_seconds: float
+    type: str
+    difficulty: str | None
+    playback_provider: str
+    playback_id: str | None
+    playback_url: str
+    delivery_asset_id: str | None
+    materialization_status: str
+
+
+@dataclass(frozen=True)
+class LearnerQuestion:
+    id: UUID
+    topic_id: UUID
+    body: str
+    type: str
+    choices: tuple[str, ...]
+    confidence_prompt: str
+
+
+@dataclass(frozen=True)
+class LearnerCourseExperience:
+    id: UUID
+    title: str
+    description: str | None
+    topics: tuple[LearnerTopic, ...]
+    clips: tuple[LearnerClip, ...]
+    questions: tuple[LearnerQuestion, ...]
+
+
+@dataclass(frozen=True)
 class CourseAccess:
     id: UUID
     instructor_id: UUID

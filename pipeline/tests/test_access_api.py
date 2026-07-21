@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from app.access.service import AccessService
 from app.dependencies import get_access_service
 from app.main import app
-from tests.test_access_service import MemoryAccessRepository
+from tests.test_access_service import MemoryAccessRepository, learner_experience_fixture
 
 
 def test_publish_then_enroll_development_identity_flow() -> None:
@@ -48,5 +48,56 @@ def test_learner_cannot_publish_course() -> None:
 
         assert response.status_code == 400
         assert "Only an instructor" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_development_login_returns_role_specific_identity_without_exposing_password() -> None:
+    repository = MemoryAccessRepository()
+    service = AccessService(repository)
+    app.dependency_overrides[get_access_service] = lambda: service
+    client = TestClient(app)
+
+    try:
+        success = client.post(
+            "/development/login",
+            json={"username": "David", "password": "David1"},
+        )
+        rejected = client.post(
+            "/development/login",
+            json={"username": "David", "password": "incorrect"},
+        )
+
+        assert success.status_code == 200
+        assert success.json()["display_name"] == "David"
+        assert success.json()["role"] == "instructor"
+        assert "password" not in success.json()
+        assert rejected.status_code == 401
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_learner_course_api_returns_reviewed_payload_without_answer_key() -> None:
+    repository = MemoryAccessRepository()
+    repository.learner_experience = learner_experience_fixture(repository)
+    service = AccessService(repository)
+    app.dependency_overrides[get_access_service] = lambda: service
+    client = TestClient(app)
+
+    try:
+        learner = client.get(
+            f"/learners/me/courses/{repository.course.id}",
+            headers={"X-User-ID": str(repository.learner_id)},
+        )
+        instructor = client.get(
+            "/learners/me/courses",
+            headers={"X-User-ID": str(repository.instructor_id)},
+        )
+
+        assert learner.status_code == 200
+        assert learner.json()["clips"][0]["start_seconds"] == 12.0
+        assert learner.json()["questions"][0]["choices"] == ["A", "B"]
+        assert "correct_answer" not in learner.json()["questions"][0]
+        assert instructor.status_code == 403
     finally:
         app.dependency_overrides.clear()

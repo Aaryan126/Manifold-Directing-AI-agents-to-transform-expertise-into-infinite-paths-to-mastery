@@ -73,9 +73,9 @@ import {
 import styles from "../../course-os.module.css";
 import { TeacherSidebar, useTeacherSidebar } from "../../teacher-dashboard";
 import { ProviderVideo, type PlaybackInfo } from "../../../ProviderVideo";
+import { readDevelopmentSession } from "../../../developmentSession";
 
 const pipelineBase = process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localhost:8000";
-const instructorStorageKey = "manifold.teacher-id";
 type CanvasView = "overview" | "map" | "review" | "assessments" | "preview" | "settings";
 type Decision = "accepted" | "edited" | "dismissed";
 type AssessmentDraftPayload = {
@@ -179,14 +179,11 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     setLoading(true);
     setError(null);
     try {
-      const identitiesResponse = await fetch(`${pipelineBase}/development/identities`);
-      if (!identitiesResponse.ok) throw new Error("Could not load your teacher identity.");
-      const identities = (await identitiesResponse.json()) as DevelopmentIdentity[];
-      const instructors = identities.filter((candidate) => candidate.role === "instructor");
-      const remembered = window.localStorage.getItem(instructorStorageKey);
-      const user = instructors.find((candidate) => candidate.id === remembered) ?? instructors[0];
-      if (!user) throw new Error("No instructor identity is available.");
-      window.localStorage.setItem(instructorStorageKey, user.id);
+      const user = readDevelopmentSession(window.localStorage);
+      if (!user || user.role !== "instructor") {
+        router.replace("/login");
+        return;
+      }
       setIdentity(user);
       const [courseResult, messageResult] = await Promise.all([
         request<CourseSummary>(`/courses/${courseId}/studio`, user),
@@ -213,7 +210,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [courseId, refreshArtifacts, refreshStructuredWorkspace, refreshRevisionDiff, request]);
+  }, [courseId, refreshArtifacts, refreshStructuredWorkspace, refreshRevisionDiff, request, router]);
 
   useEffect(() => {
     void loadStudio();

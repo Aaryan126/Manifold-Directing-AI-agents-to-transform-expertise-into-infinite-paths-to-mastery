@@ -24,6 +24,14 @@ export function materializedClipCaptionsUrl(
   return `${pipelineBaseUrl}/clips/${clipId}/captions.vtt`;
 }
 
+export function muxClipPlaybackBounds(clip: ClipPreviewRange) {
+  return {
+    assetStartTime: Math.max(0, clip.start_seconds),
+    assetEndTime: Math.max(clip.start_seconds, clip.end_seconds),
+    defaultDuration: Math.max(0, clip.end_seconds - clip.start_seconds),
+  };
+}
+
 function formatSeconds(seconds: number): string {
   return Number.isInteger(seconds) ? String(seconds) : seconds.toFixed(3).replace(/0+$/, "");
 }

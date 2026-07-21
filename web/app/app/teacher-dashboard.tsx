@@ -15,6 +15,7 @@ import {
   LayoutDashboard,
   Library,
   LoaderCircle,
+  LogOut,
   MessageCircle,
   PanelLeftClose,
   PanelLeftOpen,
@@ -23,6 +24,9 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
+
+import { BrandMark } from "../../components/brand-mark";
+import { clearDevelopmentSession, readDevelopmentSession } from "../developmentSession";
 
 import {
   courseState,
@@ -33,7 +37,6 @@ import {
 import styles from "./course-os.module.css";
 
 const pipelineBase = process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localhost:8000";
-const instructorStorageKey = "manifold.teacher-id";
 const sidebarStorageKey = "manifold.sidebar-collapsed";
 
 export function TeacherDashboard() {
@@ -53,14 +56,11 @@ export function TeacherDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const identitiesResponse = await fetch(`${pipelineBase}/development/identities`);
-      if (!identitiesResponse.ok) throw new Error("Could not load your teacher workspace.");
-      const identities = (await identitiesResponse.json()) as DevelopmentIdentity[];
-      const instructors = identities.filter((candidate) => candidate.role === "instructor");
-      const remembered = window.localStorage.getItem(instructorStorageKey);
-      const selected = instructors.find((candidate) => candidate.id === remembered) ?? instructors[0];
-      if (!selected) throw new Error("No instructor identity is available.");
-      window.localStorage.setItem(instructorStorageKey, selected.id);
+      const selected = readDevelopmentSession(window.localStorage);
+      if (!selected || selected.role !== "instructor") {
+        router.replace("/login");
+        return;
+      }
       setIdentity(selected);
       const response = await fetch(`${pipelineBase}/instructors/me/dashboard`, {
         headers: { "X-User-ID": selected.id },
@@ -72,7 +72,7 @@ export function TeacherDashboard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     void loadDashboard();
@@ -255,7 +255,7 @@ export function TeacherSidebar({
   return (
     <aside className={compact ? styles.studioSidebar : styles.dashboardSidebar} data-collapsed={collapsed || undefined}>
       <Link className={styles.wordmark} href="/app" aria-label="Manifold teacher dashboard">
-        <span className={styles.brandMark} aria-hidden="true"><i /><i /><i /></span>
+        <BrandMark />
         <span>Manifold</span>
       </Link>
       <nav aria-label="Teacher workspace">
@@ -266,6 +266,15 @@ export function TeacherSidebar({
       </nav>
       <div className={styles.sidebarFooter}>
         <Link href="/manifold" title={collapsed ? "Legacy studio" : undefined}><CircleHelp aria-hidden="true" /><span>Legacy studio</span></Link>
+        <button
+          className={styles.sidebarLogout}
+          onClick={() => {
+            clearDevelopmentSession(window.localStorage);
+            window.location.assign("/login");
+          }}
+          title={collapsed ? "Log out" : undefined}
+          type="button"
+        ><LogOut aria-hidden="true" /><span>Log out</span></button>
         <div className={styles.profileChip}>
           <span>{initials(identity?.display_name ?? "Teacher")}</span>
           <div><strong>{identity?.display_name ?? "Teacher"}</strong><small>Instructor</small></div>

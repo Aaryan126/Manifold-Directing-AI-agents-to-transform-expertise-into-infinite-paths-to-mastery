@@ -5,6 +5,7 @@ import {
   clipPreviewUrl,
   materializedClipCaptionsUrl,
   materializedClipUrl,
+  muxClipPlaybackBounds,
 } from "./clipPreview";
 
 export type PlaybackInfo = {
@@ -48,8 +49,10 @@ export function ProviderVideo({
   const effectiveEndSeconds = usesMaterializedClip
     ? Math.max(0, endSeconds - startSeconds)
     : endSeconds;
-  const captions = usesMaterializedClip
-    ? materializedClipCaptionsUrl(pipelineBaseUrl, materializedClipId)
+  const usesMuxClip = playback.provider === "mux" && Boolean(playback.playback_id);
+  const captionClipId = materializedClipId ?? (usesMuxClip ? clipId : null);
+  const captions = captionClipId
+    ? materializedClipCaptionsUrl(pipelineBaseUrl, captionClipId)
     : `${pipelineBaseUrl}/videos/${videoId}/captions.vtt`;
   const stopAtBoundary = (player: HTMLVideoElement) => {
     if (player.currentTime < effectiveEndSeconds) return;
@@ -57,20 +60,27 @@ export function ProviderVideo({
     onClipComplete?.(Math.max(0, endSeconds - startSeconds));
   };
 
-  if (playback.provider === "mux" && playback.playback_id) {
+  if (usesMuxClip && playback.playback_id) {
+    const bounds = muxClipPlaybackBounds({
+      start_seconds: startSeconds,
+      end_seconds: endSeconds,
+    });
     return (
       <MuxPlayer
         aria-label={title}
+        assetEndTime={bounds.assetEndTime}
+        assetStartTime={bounds.assetStartTime}
         className="clipPreview"
+        data-clip-bounded="true"
+        defaultDuration={bounds.defaultDuration}
         metadata={{
           video_id: videoId,
           video_title: title,
           viewer_user_id: viewerId ?? "instructor-preview",
         }}
         playbackId={playback.playback_id}
-        startTime={startSeconds}
         streamType="on-demand"
-        onTimeUpdate={(event) => stopAtBoundary(event.currentTarget as HTMLVideoElement)}
+        onEnded={() => onClipComplete?.(bounds.defaultDuration)}
       >
         <track default kind="captions" label="English" src={captions} srcLang="en" />
       </MuxPlayer>
@@ -82,6 +92,7 @@ export function ProviderVideo({
       aria-label={title}
       className="clipPreview"
       controls
+      data-clip-bounded="true"
       data-materialized-clip={usesMaterializedClip ? "true" : "false"}
       preload="metadata"
       src={usesMaterializedClip

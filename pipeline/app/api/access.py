@@ -20,6 +20,61 @@ class IdentityResponse(BaseModel):
     role: str
 
 
+class DevelopmentLoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=80)
+    password: str = Field(min_length=1, max_length=200)
+
+
+class LearnerCourseSummaryResponse(BaseModel):
+    id: UUID
+    title: str
+    description: str | None
+    enrolled: bool
+    topic_count: int
+    concept_count: int
+    mastered_concept_count: int
+
+
+class LearnerTopicResponse(BaseModel):
+    id: UUID
+    title: str
+    summary: str | None
+
+
+class LearnerClipResponse(BaseModel):
+    id: UUID
+    topic_id: UUID
+    video_id: UUID
+    title: str
+    start_seconds: float
+    end_seconds: float
+    type: str
+    difficulty: str | None
+    playback_provider: str
+    playback_id: str | None
+    playback_url: str
+    delivery_asset_id: str | None
+    materialization_status: str
+
+
+class LearnerQuestionResponse(BaseModel):
+    id: UUID
+    topic_id: UUID
+    body: str
+    type: str
+    choices: list[str]
+    confidence_prompt: str
+
+
+class LearnerCourseExperienceResponse(BaseModel):
+    id: UUID
+    title: str
+    description: str | None
+    topics: list[LearnerTopicResponse]
+    clips: list[LearnerClipResponse]
+    questions: list[LearnerQuestionResponse]
+
+
 class CourseResponse(BaseModel):
     id: UUID
     instructor_id: UUID
@@ -62,6 +117,79 @@ async def development_identities(service: AccessServiceDependency) -> list[Ident
         )
         for identity in identities
     ]
+
+
+@router.post("/development/login", response_model=IdentityResponse)
+async def development_login(
+    request: DevelopmentLoginRequest,
+    service: AccessServiceDependency,
+) -> IdentityResponse:
+    try:
+        identity = await service.development_login(request.username, request.password)
+    except AccessValidationError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    return IdentityResponse(
+        id=identity.id,
+        email=identity.email,
+        display_name=identity.display_name,
+        role=identity.role.value,
+    )
+
+
+@router.get("/learners/me/courses", response_model=list[LearnerCourseSummaryResponse])
+async def learner_courses(
+    user_id: UserContext,
+    service: AccessServiceDependency,
+) -> list[LearnerCourseSummaryResponse]:
+    try:
+        courses = await service.learner_courses(user_id)
+    except AccessValidationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return [
+        LearnerCourseSummaryResponse(
+            id=course.id,
+            title=course.title,
+            description=course.description,
+            enrolled=course.enrolled,
+            topic_count=course.topic_count,
+            concept_count=course.concept_count,
+            mastered_concept_count=course.mastered_concept_count,
+        )
+        for course in courses
+    ]
+
+
+@router.get(
+    "/learners/me/courses/{course_id}",
+    response_model=LearnerCourseExperienceResponse,
+)
+async def learner_course_experience(
+    course_id: UUID,
+    user_id: UserContext,
+    service: AccessServiceDependency,
+) -> LearnerCourseExperienceResponse:
+    try:
+        course = await service.learner_course_experience(user_id, course_id)
+    except AccessValidationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return LearnerCourseExperienceResponse(
+        id=course.id,
+        title=course.title,
+        description=course.description,
+        topics=[LearnerTopicResponse(**topic.__dict__) for topic in course.topics],
+        clips=[LearnerClipResponse(**clip.__dict__) for clip in course.clips],
+        questions=[
+            LearnerQuestionResponse(
+                id=question.id,
+                topic_id=question.topic_id,
+                body=question.body,
+                type=question.type,
+                choices=list(question.choices),
+                confidence_prompt=question.confidence_prompt,
+            )
+            for question in course.questions
+        ],
+    )
 
 
 @router.get("/courses/{course_id}", response_model=CourseResponse)

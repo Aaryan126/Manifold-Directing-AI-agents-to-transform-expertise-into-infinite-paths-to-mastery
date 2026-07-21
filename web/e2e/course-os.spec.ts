@@ -29,6 +29,7 @@ const course = {
 };
 
 async function mockCourseOS(page: Page) {
+  await setInstructorSession(page);
   let deleted = false;
   await page.route("http://localhost:8000/**", async (route) => {
     const url = new URL(route.request().url());
@@ -146,6 +147,7 @@ async function mockCourseOS(page: Page) {
 }
 
 async function mockPublishedCourseOS(page: Page) {
+  await setInstructorSession(page);
   const published = {
     ...course,
     id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -233,6 +235,13 @@ async function mockPublishedCourseOS(page: Page) {
     return route.fulfill({ json: {} });
   });
   return published;
+}
+
+async function setInstructorSession(page: Page) {
+  await page.addInitScript((identity) => {
+    window.localStorage.setItem("manifold.development-session", JSON.stringify(identity));
+    window.localStorage.setItem("manifold.teacher-id", identity.id);
+  }, instructor);
 }
 
 test("teacher dashboard prioritizes review work and opens the studio", async ({ page }) => {

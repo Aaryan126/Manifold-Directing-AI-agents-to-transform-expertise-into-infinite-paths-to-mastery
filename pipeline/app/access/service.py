@@ -3,6 +3,8 @@ from uuid import UUID
 from app.access.models import (
     CourseAccess,
     DevelopmentIdentity,
+    LearnerCourseExperience,
+    LearnerCourseSummary,
     PublishReadiness,
     UserRole,
     WatchEventCreate,
@@ -20,6 +22,43 @@ class AccessService:
 
     async def development_identities(self) -> tuple[DevelopmentIdentity, ...]:
         return await self._repository.development_identities()
+
+    async def development_login(self, username: str, password: str) -> DevelopmentIdentity:
+        normalized = username.strip().casefold()
+        expected = {
+            "david": ("David1", UserRole.INSTRUCTOR),
+            "brian": ("Brian1", UserRole.LEARNER),
+        }.get(normalized)
+        if expected is None or password != expected[0]:
+            raise AccessValidationError("The username or password is incorrect.")
+        identity = next(
+            (
+                candidate
+                for candidate in await self._repository.development_identities()
+                if candidate.role == expected[1]
+            ),
+            None,
+        )
+        if identity is None:
+            raise AccessValidationError("The development identity is unavailable.")
+        return identity
+
+    async def learner_courses(self, learner_id: UUID) -> tuple[LearnerCourseSummary, ...]:
+        await self._require_learner(learner_id)
+        return await self._repository.learner_courses(learner_id)
+
+    async def learner_course_experience(
+        self,
+        learner_id: UUID,
+        course_id: UUID,
+    ) -> LearnerCourseExperience:
+        await self._require_learner(learner_id)
+        course = await self._repository.learner_course_experience(learner_id, course_id)
+        if course is None:
+            raise AccessValidationError(
+                "Enroll in this published course before opening its learner workspace."
+            )
+        return course
 
     async def course(self, course_id: UUID) -> CourseAccess | None:
         return await self._repository.get_course(course_id)
@@ -75,3 +114,7 @@ class AccessService:
         if course is None or course.instructor_id != instructor_id:
             raise AccessValidationError("Instructor does not own this course.")
         return course
+
+    async def _require_learner(self, learner_id: UUID) -> None:
+        if await self._repository.user_role(learner_id) != UserRole.LEARNER.value:
+            raise AccessValidationError("Only a learner identity can open the learner workspace.")

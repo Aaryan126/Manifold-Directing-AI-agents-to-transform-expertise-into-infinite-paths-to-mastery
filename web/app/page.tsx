@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRight, GitBranch } from "lucide-react";
+import { BrandMark } from "../components/brand-mark";
 import styles from "./landing.module.css";
 
 const geometricCells = [
@@ -16,11 +17,12 @@ export default function LandingPage() {
     <main className={styles.page}>
       <header className={styles.navbar}>
         <Link className={styles.brand} href="/" aria-label="Manifold home">
+          <BrandMark />
           Manifold
         </Link>
 
         <div className={styles.navActions}>
-          <Link className={styles.startButton} href="/app">
+          <Link className={styles.startButton} href="/login">
             Start building
             <ArrowRight aria-hidden="true" />
           </Link>
@@ -40,7 +42,7 @@ export default function LandingPage() {
             Transform existing lectures into personalized learning paths and
             mastery-based progression.
           </p>
-          <Link href="/app">
+          <Link href="/login">
             Build from a lecture
             <ArrowRight aria-hidden="true" />
           </Link>
@@ -67,7 +69,7 @@ export default function LandingPage() {
         <aside className={styles.newsRail}>
           <div className={styles.featuredNews}>
             <p>Featured</p>
-            <Link href="/app">
+            <Link href="/login">
               <span>
                 <strong>See a lecture become a course.</strong>
                 <small>Open the prepared Manifold demo</small>
