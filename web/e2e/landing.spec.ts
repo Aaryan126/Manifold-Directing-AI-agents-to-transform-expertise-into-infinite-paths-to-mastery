@@ -8,6 +8,9 @@ test("public landing page leads into the Manifold workspace", async ({ page }) =
   await expect(
     page.getByRole("heading", { name: "Turn lectures into adaptive learning journeys" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "From source recording to responsive course." }),
+  ).toHaveCount(0);
   const startBuilding = page.getByRole("link", { name: "Start building" }).first();
   await expect(startBuilding).toHaveAttribute("href", "/manifold");
   await startBuilding.click();

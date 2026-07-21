@@ -12,13 +12,13 @@ import { useState } from "react";
 import styles from "./landing.module.css";
 
 const navigation = [
-  { label: "Products", href: "#platform" },
-  { label: "Solutions", href: "#workflow" },
-  { label: "Models", href: "#intelligence" },
-  { label: "Developers", href: "#developers" },
-  { label: "Blog", href: "#notes" },
-  { label: "Customers", href: "#for-teams" },
-  { label: "Company", href: "#company" },
+  { label: "Products", href: "/manifold" },
+  { label: "Solutions", href: "/manifold" },
+  { label: "Models", href: "/manifold" },
+  { label: "Developers", href: "/manifold" },
+  { label: "Blog", href: "/manifold" },
+  { label: "Customers", href: "/manifold" },
+  { label: "Company", href: "/manifold" },
 ];
 
 const geometricCells = [
@@ -27,27 +27,6 @@ const geometricCells = [
   "signal", "signal", "crimson", "ember", "crimson", "signal", "ember", "signal",
   "crimson", "signal", "crimson", "crimson", "signal", "ember", "crimson", "signal",
 ] as const;
-
-const capabilities = [
-  {
-    id: "workflow",
-    index: "01",
-    title: "Structure the source",
-    copy: "Turn a lecture into reviewed topics, concepts, prerequisites, and clean learner clips.",
-  },
-  {
-    id: "intelligence",
-    index: "02",
-    title: "Keep judgment in the loop",
-    copy: "AI proposes every artifact. Instructors approve the material and policy that reach learners.",
-  },
-  {
-    id: "for-teams",
-    index: "03",
-    title: "Adapt with evidence",
-    copy: "Route each learner by correctness, confidence, prerequisites, and demonstrated mastery.",
-  },
-];
 
 export default function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -155,39 +134,6 @@ export default function LandingPage() {
           </div>
         </aside>
       </section>
-
-      <section className={styles.platform} id="platform">
-        <header>
-          <p>One system, accountable at every step</p>
-          <h2>From source recording to responsive course.</h2>
-        </header>
-        <div className={styles.capabilityGrid}>
-          {capabilities.map((capability) => (
-            <article id={capability.id} key={capability.id}>
-              <span>{capability.index}</span>
-              <h3>{capability.title}</h3>
-              <p>{capability.copy}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className={styles.developerBand} id="developers">
-        <p>Built for real teaching material, not synthetic courseware.</p>
-        <Link href="/manifold">
-          Explore the working product
-          <ArrowRight aria-hidden="true" />
-        </Link>
-      </section>
-
-      <footer className={styles.footer} id="company">
-        <div>
-          <span className={styles.footerMark} aria-hidden="true"><GitBranch /></span>
-          <strong>Manifold</strong>
-        </div>
-        <p id="notes">Directing AI agents to transform expertise into infinite paths to master.</p>
-        <a href="mailto:hello@manifold.education">hello@manifold.education</a>
-      </footer>
     </main>
   );
 }
