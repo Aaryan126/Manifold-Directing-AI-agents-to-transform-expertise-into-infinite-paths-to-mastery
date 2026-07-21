@@ -33,8 +33,13 @@ class AssessmentService:
         self._agent = agent
         self._audit_service = audit_service
 
-    async def generate_question(self, topic_id: UUID) -> Question:
-        context = await self._context(topic_id)
+    async def generate_question(
+        self,
+        topic_id: UUID,
+        *,
+        provisional: bool = False,
+    ) -> Question:
+        context = await self._context(topic_id, provisional=provisional)
         proposal = await self._agent.propose_question(context)
         validate_proposal(proposal, context)
         question = await self._repository.replace_proposed_question(topic_id, proposal)
@@ -121,8 +126,16 @@ class AssessmentService:
             raise AssessmentValidationError("Only reviewed questions can be answered by learners.")
         return await self._agent.grade_answer(question, learner_answer)
 
-    async def _context(self, topic_id: UUID) -> AssessmentContext:
-        context = await self._repository.get_context_for_topic(topic_id)
+    async def _context(
+        self,
+        topic_id: UUID,
+        *,
+        provisional: bool = False,
+    ) -> AssessmentContext:
+        context = await self._repository.get_context_for_topic(
+            topic_id,
+            include_proposed=provisional,
+        )
         if context is None:
             raise AssessmentValidationError("Reviewed topic context not found.")
         if not context.concepts:

@@ -64,9 +64,13 @@ class PostgresTopicRepository(TopicRepository):
                 delete from topics
                 where video_id = %s
                   and course_id = %s
+                  and revision_id = (
+                    select coalesce(working_revision_id, active_revision_id)
+                    from courses where id = %s
+                  )
                   and review_status = 'proposed'
                 """,
-                (video_id, course_id),
+                (video_id, course_id, course_id),
             )
             rows: list[dict[str, Any]] = []
             for proposal in proposals:
@@ -109,7 +113,12 @@ class PostgresTopicRepository(TopicRepository):
                     join videos v
                       on v.id = t.video_id
                      and v.course_id = t.course_id
+                    join courses c on c.id = t.course_id
                     where t.video_id = %s and t.review_status <> 'dismissed'
+                      and t.revision_id = coalesce(
+                        c.active_revision_id,
+                        c.working_revision_id
+                      )
                     order by t.start_seconds asc, t.created_at asc
                     """,
                     (video_id,),
@@ -267,9 +276,10 @@ class PostgresTopicRepository(TopicRepository):
                     (list(all_topic_ids),),
                 )
             ).fetchall()
-            if len(topic_rows) != len(all_topic_ids) or len(
-                {UUID(str(row["course_id"])) for row in topic_rows}
-            ) != 1:
+            if (
+                len(topic_rows) != len(all_topic_ids)
+                or len({UUID(str(row["course_id"])) for row in topic_rows}) != 1
+            ):
                 raise ValueError("Remapped topic links must belong to one course.")
 
             concept_rows = await (

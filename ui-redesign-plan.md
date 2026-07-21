@@ -1,15 +1,15 @@
 # Manifold UI/UX Redesign Plan
 
-**Status:** Guided production studio minimal-density refinement automated tests passing; awaiting human confirmation
-**Current stage:** Stage 8 - Desktop/laptop human retest pending
-**Last updated:** 2026-07-20
+**Status:** Agent-led Course OS redesign approved; implementation in progress with the guided studio retained as the rollback baseline
+**Current stage:** Stage 13 - Cutover and final hardening
+**Last updated:** 2026-07-21
 **Scope:** The instructor and learner application workspace targets desktop and laptop web only; tablet, mobile, and native-app layouts are not part of that redesign. The public landing page is a separate responsive marketing surface spanning mobile through wide desktop.
 
 This is the ground-truth execution document for the Phase 10 production UI/UX redesign. Update it whenever a stage starts, a deliverable is completed, a design decision is approved, or a blocker is found. Do not silently skip stages or change the approved visual direction.
 
 ## Product Constraint
 
-The redesign changes information architecture, presentation, component structure, and interaction ergonomics. It must not change backend contracts, pipeline behavior, review semantics, routing policy, enrollment, publishing rules, dashboard decisions, or learner mastery logic.
+The approved Course OS redesign changes information architecture and also adds durable server-side orchestration, course revisions, conversation/proposal persistence, a portfolio dashboard, and revision-aware learner routing. Existing review semantics, auditability, grading behavior, and mastery meaning remain non-regression requirements.
 
 ## Visual Thesis
 
@@ -29,9 +29,9 @@ Manifold is a calm instructional operating system: precise and information-dense
 
 ### Instructor workspace
 
-Course creation uses `Source -> Structure -> Assessments -> Publish`, with `Insights` as a separate post-publication operating workspace. `Structure` owns a unified topic-production queue: topic review, concept coverage, automatic clip preparation, and lightweight clip spot-checking appear in one focused topic workspace, while their persisted decisions and audit events remain distinct. Assessments are also prepared automatically, but remain learner-blocked until the instructor approves or edits them in a focused two-column review surface. Adaptive routing is a compact Publish-stage setting with graph-informed policy groups and collapsed per-concept overrides, not a standalone stage or simulator.
+The landing page enters a Teacher Command Center. New course creation opens a side-by-side conversation and dynamic artifact canvas; Manifold owns the durable generation sequence and returns a complete private draft with three review bundles. Published courses use Overview, Course Map, Assessments, Learner Preview, Insights, and Settings, with an always-available course copilot.
 
-The instructor experience uses a subdued collapsible navigation rail, a compact course header, one active production stage, and contextual inspectors. Review work is organized as stage-owned queues and focused editors instead of one long page. Stage selection is the only course-production navigation: there is no course-map overlay or all-workspaces document mode.
+The Course Map uses topic-centered semantic zoom rather than a universal pipeline graph. Chat commands create typed proposals and visible diffs; structured editors remain authoritative. The previous guided studio remains available only during the parallel rollout.
 
 ### Learner workspace
 
@@ -51,6 +51,11 @@ The learner experience prioritizes the current lesson, the next recommended acti
 | 6. Instructor insights | Automated paired gate passed; final visual regression Stage 8 | Summary, signal queue, problem inspector, dashboard actions, learner override | Dashboard correction journey and WCAG scan pass in the Stage 6+7 paired gate |
 | 7. Learner experience | Automated paired gate passed; final visual regression Stage 8 | Focused player, comprehension flow, route explanation, course path, mastery map | Production build and learner remediation/advancement plus role-switch Playwright journeys pass |
 | 8. Desktop/laptop hardening and rollout | Automated tests passing; awaiting human confirmation | WCAG 2.2 AA, desktop/laptop responsive constraints, loading/error/empty states, visual regression, performance | Human-test findings are remediated and automated verification passes; user retest and Phase 10 checklist confirmation remain |
+| 9. Course OS foundations | Implementation complete; browser gate pending | Documentation, revision/orchestration schema, durable worker, course portfolio APIs, parallel `/app` shell | Migrations 015-017, 103 backend tests, live migration/revision smoke checks, and healthy rollback workspace pass; browser restart journey remains pending |
+| 10. Command Center and Course Studio | Implementation complete; browser gate pending | Portfolio dashboard, one-source creation, persistent conversation, dynamic artifact canvas, complete-draft agent run | Empty/populated mocked Playwright coverage exists; execution awaits the in-app browser surface |
+| 11. Review Center and Course Map | Implementation complete; browser/WCAG gate pending | Three review bundles, semantic zoom map, accessible outline, direct artifact editors | Course/topic/artifact zoom, accessible outline, bundle review, and guarded prerequisite editing exist; browser behavior/WCAG execution remains pending |
+| 12. Published workspace and revisions | Implementation complete; browser regression pending | Course overview, preview, insights copilot, working revision, diff, Publish updates, mastery-safe activation | Grounded copilot, revision-scoped directives, exact diff, publish blockers, mastery mapping, and live API smoke checks pass; published browser journey remains pending |
+| 13. Cutover and final hardening | In progress | Landing handoff, demo deep link, parity, performance, deployment, rollback validation | Code/build/Compose/API gates pass; Course OS Playwright/WCAG/visual execution and user human confirmation remain |
 
 ## Stage 1 - Design Concepts and System
 
@@ -131,6 +136,7 @@ The learner experience prioritizes the current lesson, the next recommended acti
 
 ## Decisions Log
 
+- 2026-07-21: Course OS Stages 9-12 implementation is complete behind `/app`. The Postgres-leased worker now owns deferred transcription through review-bundle assembly; the Command Center and persistent Course Studio are live; Course Map uses bounded course/topic/artifact zoom plus an accessible outline; published workspaces include grounded evidence answers, revision-scoped chat proposals, an exact logical-identity diff, and mastery-safe activation. Stage 13 is active. Backend/frontend/build/Compose/API gates pass, while the new browser/WCAG/visual run remains explicitly pending because the in-app browser surface was unavailable.
 - 2026-07-20: Artifact proposal creation no longer consumes instructor attention. Reviewed topic/concept coverage automatically prepares clips, and usable clips automatically prepare proposed learner checks; failures expose retry and a dismissed question is not recreated. Assessments remains a required human checkpoint because question correctness and remediation directly affect mastery/routing, but the three-pane generation-heavy workspace is replaced by a wide review queue and one focused editor with advanced routing and AI context collapsed.
 - 2026-07-20: Production-stage task-count badges were removed because unresolved work is already represented inside each focused stage and the extra nav counters added unexplained visual noise. Concept coverage now follows topic identity changes automatically: split children inherit the parent's reviewed links and merges retain the union, leaving the inline connector as an exception-repair control rather than a normal instructor task.
 - 2026-07-20: Topic production now treats missing concept coverage as an inline repair task rather than a dead-end label. Reviewed but unlinked concepts are offered first, instructors can connect one without leaving the topic, and graph creation remains one click away when no suitable concept exists. The selected topic is media-first: a centered active clip preview appears before title, summary, timing, and structural actions. Topic-level regeneration is the only visible media correction action; flag/re-cut audit records stay backend-only.

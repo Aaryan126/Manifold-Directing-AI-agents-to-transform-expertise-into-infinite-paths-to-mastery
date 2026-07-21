@@ -48,6 +48,7 @@ class PostgresRoutingRepository(RoutingRepository):
                         join users learner on learner.id = e.learner_id
                         where e.learner_id = %s
                           and e.course_id = t.course_id
+                          and e.revision_id = q.revision_id
                           and (course.status = 'published' or learner.is_simulated)
                       )
                     """,
@@ -173,8 +174,13 @@ class PostgresRoutingRepository(RoutingRepository):
                     """
                     select c.id, c.name, min(tc.topic_id::text) as topic_id
                     from concepts c
+                    join courses course on course.id = c.course_id
                     left join topic_concepts tc on tc.concept_id = c.id
                     where c.course_id = %s
+                      and c.revision_id = coalesce(
+                        course.active_revision_id,
+                        course.working_revision_id
+                      )
                       and c.review_status in ('accepted', 'edited')
                       and not (c.id = any(%s::uuid[]))
                       and not exists (
@@ -295,7 +301,16 @@ class PostgresRoutingRepository(RoutingRepository):
         async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
             rows = await (
                 await conn.execute(
-                    "select concept_id, policy from routing_policies where course_id = %s",
+                    """
+                    select rp.concept_id, rp.policy
+                    from routing_policies rp
+                    join courses c on c.id = rp.course_id
+                    where rp.course_id = %s
+                      and rp.revision_id = coalesce(
+                        c.working_revision_id,
+                        c.active_revision_id
+                      )
+                    """,
                     (course_id,),
                 )
             ).fetchall()
@@ -317,7 +332,7 @@ class PostgresRoutingRepository(RoutingRepository):
                 """
                 insert into routing_policies (course_id, concept_id, policy)
                 values (%s, %s, %s::jsonb)
-                on conflict (course_id, concept_id) do update
+                on conflict (revision_id, concept_id) do update
                 set policy = excluded.policy,
                     updated_at = now()
                 """,
@@ -371,6 +386,7 @@ class PostgresRoutingRepository(RoutingRepository):
                       on m.concept_id = c.id and m.learner_id = %s
                     left join topic_concepts tc on tc.concept_id = c.id
                     where c.course_id = %s
+                      and c.revision_id = enrollment.revision_id
                       and c.review_status in ('accepted', 'edited')
                       and (course.status = 'published' or learner.is_simulated)
                     group by c.id, c.name, m.state
@@ -447,8 +463,11 @@ class PostgresRoutingRepository(RoutingRepository):
                 select m.concept_id
                 from learner_concept_mastery m
                 join concepts c on c.id = m.concept_id
+                join enrollments e
+                  on e.course_id = c.course_id and e.learner_id = m.learner_id
                 where m.learner_id = %s
                   and c.course_id = %s
+                  and c.revision_id = e.revision_id
                   and c.review_status in ('accepted', 'edited')
                   and m.state = 'mastered'
                 """,
@@ -500,11 +519,13 @@ class PostgresRoutingRepository(RoutingRepository):
                 """
                 select policy
                 from routing_policies
-                where course_id = %s and (concept_id = %s or concept_id is null)
+                where course_id = %s
+                  and revision_id = (select revision_id from concepts where id = %s)
+                  and (concept_id = %s or concept_id is null)
                 order by concept_id is null
                 limit 1
                 """,
-                (course_id, concept_id),
+                (course_id, concept_id, concept_id),
             )
         ).fetchone()
         return _policy_from_json(row["policy"]) if row else RoutingPolicy()

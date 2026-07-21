@@ -6,7 +6,11 @@ from app.assessments.models import AssessmentContext, Question, QuestionEdit, Qu
 
 class AssessmentRepository(ABC):
     @abstractmethod
-    async def get_context_for_topic(self, topic_id: UUID) -> AssessmentContext | None:
+    async def get_context_for_topic(
+        self,
+        topic_id: UUID,
+        include_proposed: bool = False,
+    ) -> AssessmentContext | None:
         pass
 
     @abstractmethod

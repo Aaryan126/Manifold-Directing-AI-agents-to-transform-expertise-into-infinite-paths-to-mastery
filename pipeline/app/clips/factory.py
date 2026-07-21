@@ -10,4 +10,3 @@ def build_clip_extraction_agent(settings: Settings) -> ClipExtractionAgent:
     if settings.clip_agent_provider == "openai":
         return OpenAIClipExtractionAgent(settings.openai_api_key, settings.llm_model)
     raise ValueError(f"Unsupported clip agent provider: {settings.clip_agent_provider}")
-

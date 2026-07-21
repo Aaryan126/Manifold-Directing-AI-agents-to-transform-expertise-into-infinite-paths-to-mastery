@@ -45,14 +45,45 @@ def test_upload_endpoint_processes_fixture_video_and_persists_transcript(tmp_pat
         app.dependency_overrides.clear()
 
 
+def test_upload_can_defer_transcription_to_the_generation_worker(tmp_path: Path) -> None:
+    media_path = tmp_path / "lecture.mp4"
+    media_path.write_bytes(b"fake media")
+    service = IngestionService(
+        repository=MemoryIngestionRepository(),
+        asr_provider=StaticASRProvider(),
+        upload_storage=MemoryUploadStorage(media_path),
+        url_fetcher=NoopUrlFetcher(media_path),
+    )
+    app.dependency_overrides[get_ingestion_service] = lambda: service
+    client = TestClient(app)
+
+    try:
+        response = client.post(
+            "/videos/upload",
+            data={"defer_processing": "true"},
+            files={"file": ("lecture.mp4", b"fake media", "video/mp4")},
+        )
+
+        assert response.status_code == 202
+        job = response.json()
+        assert job["status"] == "queued"
+        assert client.get(f"/videos/{job['video_id']}/transcript").status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_demo_endpoint_reuses_cached_transcript_without_asr(tmp_path: Path) -> None:
     media_path = tmp_path / "test_video.mp4"
     media_path.write_bytes(b"demo media")
     transcript_path = tmp_path / "transcript.json"
-    transcript_path.write_text(json.dumps({
-        "text": "Cached demo transcript.",
-        "words": [{"text": "Cached", "start_seconds": 0, "end_seconds": 1.5}],
-    }))
+    transcript_path.write_text(
+        json.dumps(
+            {
+                "text": "Cached demo transcript.",
+                "words": [{"text": "Cached", "start_seconds": 0, "end_seconds": 1.5}],
+            }
+        )
+    )
     repository = MemoryIngestionRepository()
     service = IngestionService(
         repository=repository,

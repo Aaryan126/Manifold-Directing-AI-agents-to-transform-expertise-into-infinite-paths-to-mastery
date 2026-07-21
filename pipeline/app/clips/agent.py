@@ -11,4 +11,3 @@ class ClipExtractionAgent(ABC):
         instructor_notes: str | None = None,
     ) -> tuple[ClipProposal, ...]:
         pass
-

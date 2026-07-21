@@ -47,8 +47,16 @@ class ClipService:
         self._audit_service = audit_service
         self._materializer = materializer
 
-    async def generate_clips_for_topic(self, topic_id: UUID) -> tuple[Clip, ...]:
-        context = await self._repository.get_context_for_topic(topic_id)
+    async def generate_clips_for_topic(
+        self,
+        topic_id: UUID,
+        *,
+        provisional: bool = False,
+    ) -> tuple[Clip, ...]:
+        context = await self._repository.get_context_for_topic(
+            topic_id,
+            include_proposed=provisional,
+        )
         if context is None:
             raise ClipValidationError("Reviewed topic with transcript not found.")
         proposals = await self._agent.propose_clips(context)

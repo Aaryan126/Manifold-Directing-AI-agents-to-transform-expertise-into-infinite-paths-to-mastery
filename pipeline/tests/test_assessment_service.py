@@ -137,7 +137,12 @@ class MemoryAssessmentRepository(AssessmentRepository):
         self.context = context
         self.questions: dict[UUID, Question] = {}
 
-    async def get_context_for_topic(self, topic_id: UUID) -> AssessmentContext | None:
+    async def get_context_for_topic(
+        self,
+        topic_id: UUID,
+        include_proposed: bool = False,
+    ) -> AssessmentContext | None:
+        del include_proposed
         return self.context if topic_id == self.context.topic.id else None
 
     async def replace_proposed_question(

@@ -282,7 +282,12 @@ class MemoryClipRepository(ClipRepository):
         self.context = context
         self.clips: dict[UUID, Clip] = {}
 
-    async def get_context_for_topic(self, topic_id: UUID) -> ClipContext | None:
+    async def get_context_for_topic(
+        self,
+        topic_id: UUID,
+        include_proposed: bool = False,
+    ) -> ClipContext | None:
+        del include_proposed
         if topic_id != self.context.topic.id:
             return None
         return self.context
@@ -475,9 +480,7 @@ def _replace_clip(
         flagged_at=clip.flagged_at if flagged_at is None else flagged_at,
         flag_note=clip.flag_note if flag_note is None else flag_note,
         superseded_by_clip_id=(
-            clip.superseded_by_clip_id
-            if superseded_by_clip_id is None
-            else superseded_by_clip_id
+            clip.superseded_by_clip_id if superseded_by_clip_id is None else superseded_by_clip_id
         ),
         source_clip_id=clip.source_clip_id,
         playback_provider=(
@@ -490,9 +493,7 @@ def _replace_clip(
             else materialization_status
         ),
         materialization_error=(
-            clip.materialization_error
-            if materialization_error is None
-            else materialization_error
+            clip.materialization_error if materialization_error is None else materialization_error
         ),
         created_at=clip.created_at,
     )

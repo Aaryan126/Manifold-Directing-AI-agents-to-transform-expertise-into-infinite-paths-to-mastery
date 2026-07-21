@@ -26,7 +26,11 @@ class PostgresAssessmentRepository(AssessmentRepository):
     def __init__(self, database_url: str) -> None:
         self._database_url = database_url
 
-    async def get_context_for_topic(self, topic_id: UUID) -> AssessmentContext | None:
+    async def get_context_for_topic(
+        self,
+        topic_id: UUID,
+        include_proposed: bool = False,
+    ) -> AssessmentContext | None:
         async with await psycopg.AsyncConnection.connect(
             self._database_url,
             row_factory=dict_row,
@@ -36,9 +40,11 @@ class PostgresAssessmentRepository(AssessmentRepository):
                     """
                     select id, course_id, title, summary
                     from topics
-                    where id = %s and review_status in ('accepted', 'edited')
+                    where id = %s
+                      and review_status <> 'dismissed'
+                      and (%s or review_status in ('accepted', 'edited'))
                     """,
-                    (topic_id,),
+                    (topic_id, include_proposed),
                 )
             ).fetchone()
             if topic is None:
@@ -49,10 +55,12 @@ class PostgresAssessmentRepository(AssessmentRepository):
                     select c.id, c.name, c.description
                     from topic_concepts tc
                     join concepts c on c.id = tc.concept_id
-                    where tc.topic_id = %s and c.review_status in ('accepted', 'edited')
+                    where tc.topic_id = %s
+                      and c.review_status <> 'dismissed'
+                      and (%s or c.review_status in ('accepted', 'edited'))
                     order by c.name
                     """,
-                    (topic_id,),
+                    (topic_id, include_proposed),
                 )
             ).fetchall()
             clip_rows = await (
@@ -131,7 +139,12 @@ class PostgresAssessmentRepository(AssessmentRepository):
                     join videos v
                       on v.id = t.video_id
                      and v.course_id = t.course_id
+                    join courses course on course.id = t.course_id
                     where t.video_id = %s
+                      and q.revision_id = coalesce(
+                        course.active_revision_id,
+                        course.working_revision_id
+                      )
                     order by t.start_seconds, q.created_at
                     """,
                     (video_id,),

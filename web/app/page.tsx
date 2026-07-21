@@ -20,7 +20,7 @@ export default function LandingPage() {
         </Link>
 
         <div className={styles.navActions}>
-          <Link className={styles.startButton} href="/manifold">
+          <Link className={styles.startButton} href="/app">
             Start building
             <ArrowRight aria-hidden="true" />
           </Link>
@@ -40,7 +40,7 @@ export default function LandingPage() {
             Transform existing lectures into personalized learning paths and
             mastery-based progression.
           </p>
-          <Link href="/manifold">
+          <Link href="/app">
             Build from a lecture
             <ArrowRight aria-hidden="true" />
           </Link>
@@ -67,7 +67,7 @@ export default function LandingPage() {
         <aside className={styles.newsRail}>
           <div className={styles.featuredNews}>
             <p>Featured</p>
-            <Link href="/manifold">
+            <Link href="/app">
               <span>
                 <strong>See a lecture become a course.</strong>
                 <small>Open the prepared Manifold demo</small>

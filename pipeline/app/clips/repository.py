@@ -12,7 +12,11 @@ from app.clips.models import (
 
 class ClipRepository(ABC):
     @abstractmethod
-    async def get_context_for_topic(self, topic_id: UUID) -> ClipContext | None:
+    async def get_context_for_topic(
+        self,
+        topic_id: UUID,
+        include_proposed: bool = False,
+    ) -> ClipContext | None:
         pass
 
     @abstractmethod

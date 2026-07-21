@@ -15,7 +15,11 @@ from app.graph.models import (
 
 class ConceptGraphRepository(ABC):
     @abstractmethod
-    async def get_course_context(self, course_id: UUID) -> CourseGraphContext | None:
+    async def get_course_context(
+        self,
+        course_id: UUID,
+        include_proposed: bool = False,
+    ) -> CourseGraphContext | None:
         """Return reviewed topic context for graph generation."""
 
     @abstractmethod

@@ -74,21 +74,31 @@ class PostgresAccessRepository(AccessRepository):
                     """
                     select
                       (select count(*) from videos
-                       where course_id = %s and transcript is not null) as ready_videos,
+                       where course_id = course.id and transcript is not null) as ready_videos,
                       (select count(*) from topics
-                       where course_id = %s and review_status <> 'dismissed') as active_topics,
+                       where revision_id = coalesce(
+                         course.working_revision_id, course.active_revision_id
+                       ) and review_status <> 'dismissed') as active_topics,
                       (select count(*) from topics
-                       where course_id = %s and review_status = 'proposed') as proposed_topics,
+                       where revision_id = coalesce(
+                         course.working_revision_id, course.active_revision_id
+                       ) and review_status = 'proposed') as proposed_topics,
                       (select count(*) from concepts
-                       where course_id = %s and review_status in ('accepted', 'edited'))
+                       where revision_id = coalesce(
+                         course.working_revision_id, course.active_revision_id
+                       ) and review_status in ('accepted', 'edited'))
                         as reviewed_concepts,
                       (select count(*) from concepts
-                       where course_id = %s and review_status = 'proposed') as proposed_concepts,
-                      (select count(*) from concept_edges e
-                       join concepts c on c.id = e.from_concept_id
-                       where c.course_id = %s and e.review_status = 'proposed') as proposed_edges,
+                       where revision_id = coalesce(
+                         course.working_revision_id, course.active_revision_id
+                       ) and review_status = 'proposed') as proposed_concepts,
+                      (select count(*) from concept_edges e where e.revision_id = coalesce(
+                         course.working_revision_id, course.active_revision_id
+                       ) and e.review_status = 'proposed') as proposed_edges,
                       (select count(*) from topics t
-                       where t.course_id = %s
+                       where t.revision_id = coalesce(
+                           course.working_revision_id, course.active_revision_id
+                         )
                          and t.review_status in ('accepted', 'edited')
                          and not exists (
                            select 1 from questions q
@@ -96,15 +106,20 @@ class PostgresAccessRepository(AccessRepository):
                              and q.review_status in ('accepted', 'edited')
                          )) as topics_without_question,
                       (select count(*) from concepts c
-                       where c.course_id = %s
+                       where c.revision_id = coalesce(
+                           course.working_revision_id, course.active_revision_id
+                         )
                          and c.review_status in ('accepted', 'edited')
                          and not exists (
                            select 1 from routing_policies rp
                            where rp.course_id = c.course_id
+                             and rp.revision_id = c.revision_id
                              and (rp.concept_id = c.id or rp.concept_id is null)
                          )) as concepts_without_policy
+                    from courses course
+                    where course.id = %s
                     """,
-                    (course_id,) * 8,
+                    (course_id,),
                 )
             ).fetchone()
             if row is None:

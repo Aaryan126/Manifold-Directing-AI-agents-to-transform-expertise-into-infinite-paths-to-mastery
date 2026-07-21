@@ -39,8 +39,16 @@ class ConceptGraphService:
         self._agent = agent
         self._audit_service = audit_service
 
-    async def propose_graph(self, course_id: UUID) -> ConceptGraph:
-        context = await self._repository.get_course_context(course_id)
+    async def propose_graph(
+        self,
+        course_id: UUID,
+        *,
+        provisional: bool = False,
+    ) -> ConceptGraph:
+        context = await self._repository.get_course_context(
+            course_id,
+            include_proposed=provisional,
+        )
         if context is None:
             raise ConceptGraphValidationError("No accepted or edited topics found for this course.")
         try:

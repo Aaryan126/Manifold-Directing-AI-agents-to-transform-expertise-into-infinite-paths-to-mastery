@@ -22,6 +22,16 @@ _LEGACY_MIGRATION_MARKERS: dict[str, tuple[tuple[str, str | None], ...]] = {
     "010_dashboard_fingerprint_index.sql": (("dashboard_signals_open_fingerprint_idx", None),),
     "011_simulated_learners.sql": (("users", "is_simulated"),),
     "012_local_clip_materialization.sql": (("clips", "materialization_status"),),
+    "015_agent_course_os.sql": (
+        ("course_revisions", None),
+        ("generation_runs", None),
+        ("course_conversations", None),
+    ),
+    "016_revision_scoped_uniqueness.sql": (
+        ("concepts_revision_name_idx", None),
+        ("routing_policies_revision_concept_idx", None),
+    ),
+    "017_revision_briefs.sql": (("course_revisions", "brief"),),
 }
 
 _DATA_ONLY_MIGRATIONS = frozenset(

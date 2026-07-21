@@ -5,7 +5,13 @@ from uuid import UUID
 from fastapi import UploadFile
 
 from app.asr.base import ASRProvider
-from app.ingestion.models import IngestionJob, SourceKind, StoredUpload, VideoMedia
+from app.ingestion.models import (
+    IngestionJob,
+    IngestionJobStatus,
+    SourceKind,
+    StoredUpload,
+    VideoMedia,
+)
 from app.ingestion.repository import IngestionRepository
 from app.ingestion.storage import LocalUploadStorage
 from app.ingestion.url_fetcher import DirectUrlFetcher
@@ -78,9 +84,7 @@ class IngestionService:
             raise ValueError("The bundled Manifold demo transcript has no timestamps.")
         final_word = words[-1]
         duration_seconds = (
-            float(final_word.get("end_seconds", 0))
-            if isinstance(final_word, dict)
-            else 0.0
+            float(final_word.get("end_seconds", 0)) if isinstance(final_word, dict) else 0.0
         )
         return await self._repository.get_or_create_demo_job(
             str(self._demo_video_path.resolve()),
@@ -91,6 +95,8 @@ class IngestionService:
     async def process_job(self, job_id: UUID) -> None:
         job = await self._repository.get_job(job_id)
         if job is None:
+            return
+        if job.status == IngestionJobStatus.COMPLETE:
             return
 
         try:

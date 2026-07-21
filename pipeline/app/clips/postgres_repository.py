@@ -26,7 +26,11 @@ class PostgresClipRepository(ClipRepository):
     def __init__(self, database_url: str) -> None:
         self._database_url = database_url
 
-    async def get_context_for_topic(self, topic_id: UUID) -> ClipContext | None:
+    async def get_context_for_topic(
+        self,
+        topic_id: UUID,
+        include_proposed: bool = False,
+    ) -> ClipContext | None:
         async with await psycopg.AsyncConnection.connect(
             self._database_url,
             row_factory=dict_row,
@@ -38,10 +42,11 @@ class PostgresClipRepository(ClipRepository):
                     from topics t
                     join videos v on v.id = t.video_id
                     where t.id = %s
-                      and t.review_status in ('accepted', 'edited')
+                      and t.review_status <> 'dismissed'
+                      and (%s or t.review_status in ('accepted', 'edited'))
                       and v.transcript is not null
                     """,
-                    (topic_id,),
+                    (topic_id, include_proposed),
                 )
             ).fetchone()
             if topic_row is None or not isinstance(topic_row["transcript"], dict):
@@ -53,10 +58,11 @@ class PostgresClipRepository(ClipRepository):
                     from topic_concepts tc
                     join concepts c on c.id = tc.concept_id
                     where tc.topic_id = %s
-                      and c.review_status in ('accepted', 'edited')
+                      and c.review_status <> 'dismissed'
+                      and (%s or c.review_status in ('accepted', 'edited'))
                     order by c.name asc
                     """,
-                    (topic_id,),
+                    (topic_id, include_proposed),
                 )
             ).fetchall()
             transcript = topic_row["transcript"]
@@ -82,7 +88,12 @@ class PostgresClipRepository(ClipRepository):
                     join videos v
                       on v.id = t.video_id
                      and v.course_id = t.course_id
+                    join courses course on course.id = t.course_id
                     where t.video_id = %s
+                      and t.revision_id = coalesce(
+                        course.active_revision_id,
+                        course.working_revision_id
+                      )
                     order by c.start_seconds asc, c.created_at asc
                     """,
                     (video_id,),
@@ -373,9 +384,7 @@ async def _clip_from_row_with_concepts(
             UUID(str(row["superseded_by_clip_id"])) if row["superseded_by_clip_id"] else None
         ),
         source_clip_id=UUID(str(row["source_clip_id"])) if row["source_clip_id"] else None,
-        playback_provider=(
-            str(row["playback_provider"]) if row.get("playback_provider") else None
-        ),
+        playback_provider=(str(row["playback_provider"]) if row.get("playback_provider") else None),
         playback_id=str(row["playback_id"]) if row.get("playback_id") else None,
         materialization_status=ClipMaterializationStatus(
             str(row.get("materialization_status", "source_reference"))

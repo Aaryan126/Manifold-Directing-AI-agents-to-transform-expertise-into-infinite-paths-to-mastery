@@ -28,7 +28,11 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
     def __init__(self, database_url: str) -> None:
         self._database_url = database_url
 
-    async def get_course_context(self, course_id: UUID) -> CourseGraphContext | None:
+    async def get_course_context(
+        self,
+        course_id: UUID,
+        include_proposed: bool = False,
+    ) -> CourseGraphContext | None:
         async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
             rows = await (
                 await conn.execute(
@@ -36,10 +40,15 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
                     select id, title, summary, start_seconds, end_seconds
                     from topics
                     where course_id = %s
-                      and review_status in ('accepted', 'edited')
+                      and revision_id = (
+                        select coalesce(working_revision_id, active_revision_id)
+                        from courses where id = %s
+                      )
+                      and review_status <> 'dismissed'
+                      and (%s or review_status in ('accepted', 'edited'))
                     order by start_seconds asc
                     """,
-                    (course_id,),
+                    (course_id, course_id, include_proposed),
                 )
             ).fetchall()
             if not rows:
@@ -73,6 +82,10 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
                     select c.id, c.name, c.review_status, c.merged_into_concept_id
                     from concepts c
                     where c.course_id = %s
+                      and c.revision_id = (
+                        select coalesce(working_revision_id, active_revision_id)
+                        from courses where id = %s
+                      )
                       and (
                         c.review_status <> 'proposed'
                         or exists (
@@ -83,24 +96,28 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
                         )
                       )
                     """,
-                    (course_id,),
+                    (course_id, course_id),
                 )
             ).fetchall()
             await conn.execute(
                 """
                 delete from concept_edges
                 where review_status = 'proposed'
-                  and (
-                    from_concept_id in (select id from concepts where course_id = %s)
-                    or to_concept_id in (select id from concepts where course_id = %s)
+                  and revision_id = (
+                    select coalesce(working_revision_id, active_revision_id)
+                    from courses where id = %s
                   )
                 """,
-                (course_id, course_id),
+                (course_id,),
             )
             await conn.execute(
                 """
                 delete from concepts c
                 where c.course_id = %s
+                  and c.revision_id = (
+                    select coalesce(working_revision_id, active_revision_id)
+                    from courses where id = %s
+                  )
                   and c.review_status = 'proposed'
                   and not exists (
                     select 1
@@ -109,7 +126,7 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
                       and (e.from_concept_id = c.id or e.to_concept_id = c.id)
                   )
                 """,
-                (course_id,),
+                (course_id, course_id),
             )
             key_to_id: dict[str, UUID] = {}
             for concept in proposal.concepts:
@@ -202,8 +219,16 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
         ) as conn:
             concepts = await (
                 await conn.execute(
-                    "select * from concepts where course_id = %s order by name asc",
-                    (course_id,),
+                    """
+                    select * from concepts
+                    where course_id = %s
+                      and revision_id = (
+                        select coalesce(working_revision_id, active_revision_id)
+                        from courses where id = %s
+                      )
+                    order by name asc
+                    """,
+                    (course_id, course_id),
                 )
             ).fetchall()
             edges = await (
@@ -213,9 +238,13 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
                     from concept_edges e
                     join concepts c on c.id = e.from_concept_id
                     where c.course_id = %s
+                      and e.revision_id = (
+                        select coalesce(working_revision_id, active_revision_id)
+                        from courses where id = %s
+                      )
                     order by e.created_at asc
                     """,
-                    (course_id,),
+                    (course_id, course_id),
                 )
             ).fetchall()
             return ConceptGraph(
@@ -231,8 +260,15 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
         ) as conn:
             topic_rows = await (
                 await conn.execute(
-                    "select id from topics where course_id = %s and id = any(%s)",
-                    (course_id, list(dict.fromkeys(create.topic_ids))),
+                    """
+                    select id from topics
+                    where course_id = %s and id = any(%s)
+                      and revision_id = (
+                        select coalesce(working_revision_id, active_revision_id)
+                        from courses where id = %s
+                      )
+                    """,
+                    (course_id, list(dict.fromkeys(create.topic_ids)), course_id),
                 )
             ).fetchall()
             if len(topic_rows) != len(set(create.topic_ids)):
@@ -329,10 +365,16 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
                         select t.id, %s
                         from topics t
                         where t.id = %s and t.course_id = %s
+                          and t.revision_id = %s
                         on conflict do nothing
                         returning topic_id
                         """,
-                        (concept_id, topic_id, concept["course_id"]),
+                        (
+                            concept_id,
+                            topic_id,
+                            concept["course_id"],
+                            concept["revision_id"],
+                        ),
                     )
                 ).fetchone()
                 if linked is None:

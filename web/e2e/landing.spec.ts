@@ -12,10 +12,10 @@ test("public landing page leads into the Manifold workspace", async ({ page }) =
     page.getByRole("heading", { name: "From source recording to responsive course." }),
   ).toHaveCount(0);
   const startBuilding = page.getByRole("link", { name: "Start building" }).first();
-  await expect(startBuilding).toHaveAttribute("href", "/manifold");
+  await expect(startBuilding).toHaveAttribute("href", "/app");
   await startBuilding.click();
-  await expect(page).toHaveURL(/\/manifold$/);
-  await expect(page.getByText("Course workspace", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/app$/);
+  await expect(page.getByText("Teacher command center", { exact: true })).toBeVisible();
 });
 
 test("public landing page is responsive and WCAG 2.2 AA clean", async ({ page }) => {

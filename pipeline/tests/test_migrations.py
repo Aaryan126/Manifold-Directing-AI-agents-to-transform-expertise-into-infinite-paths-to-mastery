@@ -27,6 +27,15 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     simulated_learner_migration = Path("migrations/011_simulated_learners.sql").read_text(
         encoding="utf-8",
     )
+    course_os_migration = Path("migrations/015_agent_course_os.sql").read_text(
+        encoding="utf-8",
+    )
+    revision_uniqueness_migration = Path("migrations/016_revision_scoped_uniqueness.sql").read_text(
+        encoding="utf-8"
+    )
+    revision_briefs_migration = Path("migrations/017_revision_briefs.sql").read_text(
+        encoding="utf-8"
+    )
 
     for table_name in [
         "users",
@@ -48,9 +57,8 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     ]:
         assert (
             f"create table {table_name}" in migration
-            or f"create table {table_name}" in Path("migrations/002_ingestion_jobs.sql").read_text(
-                encoding="utf-8"
-            )
+            or f"create table {table_name}"
+            in Path("migrations/002_ingestion_jobs.sql").read_text(encoding="utf-8")
             or f"create table if not exists {table_name}" in audit_migration
         )
 
@@ -74,6 +82,26 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     assert "dashboard_signals_open_fingerprint_idx" in dashboard_index_migration
     assert "is_simulated boolean not null default false" in simulated_learner_migration
     assert "demo-learner-%@coursefoundry.local" in simulated_learner_migration
+    for table_name in [
+        "course_revisions",
+        "generation_runs",
+        "generation_tasks",
+        "review_bundles",
+        "review_items",
+        "course_conversations",
+        "course_messages",
+        "course_proposals",
+    ]:
+        assert f"create table {table_name}" in course_os_migration
+    assert "active_revision_id" in course_os_migration
+    assert "working_revision_id" in course_os_migration
+    assert "logical_id" in course_os_migration
+    assert "lease_expires_at" in course_os_migration
+    assert "enrollments_revision_idx" in course_os_migration
+    assert "concepts_revision_name_idx" in revision_uniqueness_migration
+    assert "routing_policies_revision_concept_idx" in revision_uniqueness_migration
+    assert "add column brief jsonb" in revision_briefs_migration
+    assert "nulls not distinct" in revision_uniqueness_migration
 
 
 def test_legacy_schema_baseline_covers_every_migration() -> None:

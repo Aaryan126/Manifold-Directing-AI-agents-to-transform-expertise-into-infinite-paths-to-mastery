@@ -18,6 +18,7 @@ IngestionServiceDependency = Annotated[IngestionService, Depends(get_ingestion_s
 class UrlIngestRequest(BaseModel):
     url: HttpUrl
     course_id: UUID | None = None
+    defer_processing: bool = False
 
 
 class IngestionJobResponse(BaseModel):
@@ -67,6 +68,7 @@ async def upload_video(
     file: Annotated[UploadFile, File()],
     service: IngestionServiceDependency,
     course_id: Annotated[UUID | None, Form()] = None,
+    defer_processing: Annotated[bool, Form()] = False,
 ) -> IngestionJobResponse:
     try:
         stored = await service.store_upload(file)
@@ -77,7 +79,8 @@ async def upload_video(
         job = await service.create_upload_job(stored.source_uri, stored.content_type, course_id)
     except VideoCapacityError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    background_tasks.add_task(service.process_job, job.id)
+    if not defer_processing:
+        background_tasks.add_task(service.process_job, job.id)
     return _job_response(job)
 
 
@@ -91,7 +94,8 @@ async def ingest_url(
         job = await service.create_url_job(str(request.url), request.course_id)
     except VideoCapacityError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    background_tasks.add_task(service.process_job, job.id)
+    if not request.defer_processing:
+        background_tasks.add_task(service.process_job, job.id)
     return _job_response(job)
 
 

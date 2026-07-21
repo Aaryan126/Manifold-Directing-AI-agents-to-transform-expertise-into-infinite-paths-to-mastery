@@ -1,4 +1,5 @@
 from functools import lru_cache
+from socket import gethostname
 
 from app.access.postgres_repository import PostgresAccessRepository
 from app.access.service import AccessService
@@ -13,6 +14,9 @@ from app.clips.materializer import LocalFfmpegClipMaterializer
 from app.clips.postgres_repository import PostgresClipRepository
 from app.clips.service import ClipService
 from app.config import Settings, get_settings
+from app.course_os.postgres_repository import PostgresCourseOSRepository
+from app.course_os.service import CourseOSService
+from app.course_os.worker import CourseGenerationWorker
 from app.dashboard.postgres_repository import PostgresDashboardRepository
 from app.dashboard.service import DashboardService
 from app.graph.factory import build_concept_graph_agent
@@ -38,6 +42,32 @@ def get_access_service() -> AccessService:
 
 def build_access_service(settings: Settings) -> AccessService:
     return AccessService(repository=PostgresAccessRepository(settings.database_url))
+
+
+@lru_cache
+def get_course_os_service() -> CourseOSService:
+    settings = get_settings()
+    return build_course_os_service(settings)
+
+
+def build_course_os_service(settings: Settings) -> CourseOSService:
+    return CourseOSService(repository=PostgresCourseOSRepository(settings.database_url))
+
+
+@lru_cache
+def get_course_generation_worker() -> CourseGenerationWorker:
+    settings = get_settings()
+    return CourseGenerationWorker(
+        repository=PostgresCourseOSRepository(settings.database_url),
+        ingestion=build_ingestion_service(settings),
+        segmentation=build_segmentation_service(settings),
+        graph=build_concept_graph_service(settings),
+        clips=build_clip_service(settings),
+        assessments=build_assessment_service(settings),
+        worker_id=f"{gethostname()}-course-os",
+        poll_seconds=settings.generation_worker_poll_seconds,
+        lease_seconds=settings.generation_worker_lease_seconds,
+    )
 
 
 @lru_cache

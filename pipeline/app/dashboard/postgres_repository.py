@@ -669,7 +669,7 @@ class PostgresDashboardRepository(DashboardRepository):
                 """
                 insert into routing_policies (course_id, concept_id, policy)
                 values (%s, %s, %s::jsonb)
-                on conflict (course_id, concept_id) do update
+                on conflict (revision_id, concept_id) do update
                 set policy = excluded.policy,
                     updated_at = now()
                 """,
