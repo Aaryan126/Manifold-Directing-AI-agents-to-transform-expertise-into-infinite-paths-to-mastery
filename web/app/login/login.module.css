@@ -28,7 +28,7 @@
   flex-direction: column;
   justify-content: center;
   margin: 0 auto;
-  max-width: 650px;
+  max-width: 460px;
   min-height: calc(100dvh - 72px);
   padding: 36px 28px 54px;
 }

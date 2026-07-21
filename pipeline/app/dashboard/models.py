@@ -23,6 +23,14 @@ class ConceptSignalStats:
     touched_learners: int
     struggling_learners: int
     mastered_prerequisite_struggling_learners: int = 0
+    attempts: int = 0
+    correct_attempts: int = 0
+    confidence_1: int = 0
+    confidence_2: int = 0
+    confidence_3: int = 0
+    confidence_4: int = 0
+    mastered_learners: int = 0
+    practiced_learners: int = 0
 
 
 @dataclass(frozen=True)
@@ -60,6 +68,45 @@ class MasteryDistribution:
 
 
 @dataclass(frozen=True)
+class TopicHealth:
+    topic_id: UUID
+    logical_id: UUID
+    title: str
+    learner_reach: int
+    attempts: int
+    correct_attempts: int
+    confidence_1: int
+    confidence_2: int
+    confidence_3: int
+    confidence_4: int
+    mastered_learners: int
+    practiced_learners: int
+    struggling_learners: int
+    remediation_attempts: int
+    active_clips: int
+    clip_duration_seconds: float
+    assessment_count: int
+    concept_count: int
+
+
+@dataclass(frozen=True)
+class DashboardPriority:
+    id: str
+    title: str
+    summary: str
+    severity: str
+    score: int
+    specialist_role: str
+    target_artifact_type: str | None
+    target_artifact_id: UUID | None
+    target_logical_artifact_id: UUID | None
+    affected_learners: int
+    evidence_count: int
+    evidence: dict[str, object]
+    recommended_action: str
+
+
+@dataclass(frozen=True)
 class DashboardSignalProposal:
     type: DashboardSignalType
     related_entity_type: str
@@ -94,6 +141,8 @@ class DashboardSummary:
     clip_stats: tuple[ClipSignalStats, ...] = ()
     activity_history: tuple[ActivityPoint, ...] = ()
     mastery_distribution: MasteryDistribution = MasteryDistribution()
+    topic_health: tuple[TopicHealth, ...] = ()
+    priorities: tuple[DashboardPriority, ...] = ()
 
 
 @dataclass(frozen=True)

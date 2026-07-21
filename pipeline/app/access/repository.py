@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from pathlib import Path
 from uuid import UUID
 
 from app.access.models import (
@@ -27,6 +28,14 @@ class AccessRepository(ABC):
         course_id: UUID,
     ) -> LearnerCourseExperience | None:
         raise NotImplementedError
+
+    async def learner_resource_path(
+        self,
+        learner_id: UUID,
+        course_id: UUID,
+        source_id: UUID,
+    ) -> tuple[Path, str, str] | None:
+        return None
 
     @abstractmethod
     async def get_course(self, course_id: UUID) -> CourseAccess | None:

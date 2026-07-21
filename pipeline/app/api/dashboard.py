@@ -42,6 +42,14 @@ class ConceptPerformanceResponse(BaseModel):
     touched_learners: int
     struggling_learners: int
     mastered_prerequisite_struggling_learners: int
+    attempts: int
+    correct_attempts: int
+    confidence_1: int
+    confidence_2: int
+    confidence_3: int
+    confidence_4: int
+    mastered_learners: int
+    practiced_learners: int
 
 
 class QuestionPerformanceResponse(BaseModel):
@@ -74,6 +82,43 @@ class MasteryDistributionResponse(BaseModel):
     not_started: int
 
 
+class TopicHealthResponse(BaseModel):
+    topic_id: UUID
+    logical_id: UUID
+    title: str
+    learner_reach: int
+    attempts: int
+    correct_attempts: int
+    confidence_1: int
+    confidence_2: int
+    confidence_3: int
+    confidence_4: int
+    mastered_learners: int
+    practiced_learners: int
+    struggling_learners: int
+    remediation_attempts: int
+    active_clips: int
+    clip_duration_seconds: float
+    assessment_count: int
+    concept_count: int
+
+
+class DashboardPriorityResponse(BaseModel):
+    id: str
+    title: str
+    summary: str
+    severity: str
+    score: int
+    specialist_role: str
+    target_artifact_type: str | None
+    target_artifact_id: UUID | None
+    target_logical_artifact_id: UUID | None
+    affected_learners: int
+    evidence_count: int
+    evidence: dict[str, object]
+    recommended_action: str
+
+
 class DashboardSummaryResponse(BaseModel):
     course_id: UUID
     learner_count: int
@@ -85,6 +130,8 @@ class DashboardSummaryResponse(BaseModel):
     clip_performance: list[ClipPerformanceResponse]
     activity_history: list[ActivityPointResponse]
     mastery_distribution: MasteryDistributionResponse
+    topic_health: list[TopicHealthResponse]
+    priorities: list[DashboardPriorityResponse]
 
 
 class LearnerOverrideResponse(BaseModel):
@@ -115,6 +162,14 @@ async def get_dashboard(
                 mastered_prerequisite_struggling_learners=(
                     stats.mastered_prerequisite_struggling_learners
                 ),
+                attempts=stats.attempts,
+                correct_attempts=stats.correct_attempts,
+                confidence_1=stats.confidence_1,
+                confidence_2=stats.confidence_2,
+                confidence_3=stats.confidence_3,
+                confidence_4=stats.confidence_4,
+                mastered_learners=stats.mastered_learners,
+                practiced_learners=stats.practiced_learners,
             )
             for stats in summary.concept_stats
         ],
@@ -153,6 +208,47 @@ async def get_dashboard(
             struggling=summary.mastery_distribution.struggling,
             not_started=summary.mastery_distribution.not_started,
         ),
+        topic_health=[
+            TopicHealthResponse(
+                topic_id=topic.topic_id,
+                logical_id=topic.logical_id,
+                title=topic.title,
+                learner_reach=topic.learner_reach,
+                attempts=topic.attempts,
+                correct_attempts=topic.correct_attempts,
+                confidence_1=topic.confidence_1,
+                confidence_2=topic.confidence_2,
+                confidence_3=topic.confidence_3,
+                confidence_4=topic.confidence_4,
+                mastered_learners=topic.mastered_learners,
+                practiced_learners=topic.practiced_learners,
+                struggling_learners=topic.struggling_learners,
+                remediation_attempts=topic.remediation_attempts,
+                active_clips=topic.active_clips,
+                clip_duration_seconds=topic.clip_duration_seconds,
+                assessment_count=topic.assessment_count,
+                concept_count=topic.concept_count,
+            )
+            for topic in summary.topic_health
+        ],
+        priorities=[
+            DashboardPriorityResponse(
+                id=priority.id,
+                title=priority.title,
+                summary=priority.summary,
+                severity=priority.severity,
+                score=priority.score,
+                specialist_role=priority.specialist_role,
+                target_artifact_type=priority.target_artifact_type,
+                target_artifact_id=priority.target_artifact_id,
+                target_logical_artifact_id=priority.target_logical_artifact_id,
+                affected_learners=priority.affected_learners,
+                evidence_count=priority.evidence_count,
+                evidence=priority.evidence,
+                recommended_action=priority.recommended_action,
+            )
+            for priority in summary.priorities
+        ],
     )
 
 

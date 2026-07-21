@@ -46,6 +46,12 @@ export type LearnerCourseExperience = {
   topics: LearnerTopic[];
   clips: LearnerClip[];
   questions: LearnerQuestion[];
+  resources: Array<{
+    id: string;
+    filename: string;
+    source_type: "pdf" | "pptx";
+    size_bytes: number;
+  }>;
 };
 
 export type LearnerProgress = {

@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     generation_worker_enabled: bool = True
     generation_worker_poll_seconds: float = 1.0
     generation_worker_lease_seconds: int = 900
+    intelligence_worker_enabled: bool = True
+    intelligence_worker_poll_seconds: float = 1.0
+    intelligence_worker_lease_seconds: int = 900
+    document_max_bytes: int = 50_000_000
+    document_max_pages: int = 200
 
 
 @lru_cache

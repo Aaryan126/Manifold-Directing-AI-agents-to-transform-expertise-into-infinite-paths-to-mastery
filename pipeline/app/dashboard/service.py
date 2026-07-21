@@ -14,7 +14,9 @@ from app.dashboard.models import (
     LearnerOverride,
     MasteryDistribution,
     QuestionSignalStats,
+    TopicHealth,
 )
+from app.dashboard.priority_generation import generate_priorities
 from app.dashboard.repository import DashboardRepository
 from app.dashboard.signal_generation import generate_signal_proposals
 
@@ -56,6 +58,7 @@ class DashboardService:
         clip_stats: tuple[ClipSignalStats, ...] = ()
         activity_history: tuple[ActivityPoint, ...] = ()
         mastery_distribution = MasteryDistribution()
+        topic_health: tuple[TopicHealth, ...] = await self._repository.topic_health(course_id)
         if learner_count > 0 or attempt_count > 0:
             (
                 concept_stats,
@@ -77,6 +80,7 @@ class DashboardService:
             )
             await self._repository.upsert_signals(course_id, proposals)
         signals = await self._repository.open_signals(course_id)
+        priorities = generate_priorities(signals, topic_health)
         return DashboardSummary(
             course_id=course_id,
             learner_count=learner_count,
@@ -87,6 +91,8 @@ class DashboardService:
             clip_stats=clip_stats,
             activity_history=activity_history,
             mastery_distribution=mastery_distribution,
+            topic_health=topic_health,
+            priorities=priorities,
         )
 
     async def accept_signal(
@@ -180,8 +186,6 @@ def not_enough_data(summary: DashboardSummary) -> bool:
 
 def action_result_label(status: DashboardSignalStatus, retroactive: bool) -> str:
     scope = (
-        "retroactively reprocessed in-progress learners"
-        if retroactive
-        else "applies going forward"
+        "retroactively reprocessed in-progress learners" if retroactive else "applies going forward"
     )
     return f"{status.value}; {scope}"

@@ -1,6 +1,6 @@
 const targets = [
-  ["web", "http://127.0.0.1:3000/api/health"],
-  ["pipeline", "http://127.0.0.1:8000/health"],
+  ["web", process.env.WEB_HEALTH_URL ?? "http://localhost:3000/api/health"],
+  ["pipeline", process.env.PIPELINE_HEALTH_URL ?? "http://localhost:8000/health"],
 ];
 
 for (const [name, url] of targets) {

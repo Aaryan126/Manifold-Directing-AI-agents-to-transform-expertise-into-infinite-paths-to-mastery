@@ -26,6 +26,11 @@ from app.ingestion.postgres_repository import PostgresIngestionRepository
 from app.ingestion.service import IngestionService
 from app.ingestion.storage import LocalUploadStorage
 from app.ingestion.url_fetcher import DirectUrlFetcher
+from app.intelligence.factory import build_document_extractor, build_improvement_agent
+from app.intelligence.postgres_repository import PostgresIntelligenceRepository
+from app.intelligence.service import CourseIntelligenceService
+from app.intelligence.storage import SupplementalSourceStorage
+from app.intelligence.worker import CourseIntelligenceWorker
 from app.routing.postgres_repository import PostgresRoutingRepository
 from app.routing.service import RoutingService
 from app.segmentation.factory import build_segmentation_agent
@@ -52,6 +57,32 @@ def get_course_os_service() -> CourseOSService:
 
 def build_course_os_service(settings: Settings) -> CourseOSService:
     return CourseOSService(repository=PostgresCourseOSRepository(settings.database_url))
+
+
+@lru_cache
+def get_course_intelligence_service() -> CourseIntelligenceService:
+    settings = get_settings()
+    return CourseIntelligenceService(
+        repository=PostgresIntelligenceRepository(settings.database_url),
+        course_os=build_course_os_service(settings),
+        storage=SupplementalSourceStorage(
+            settings.local_video_storage_path,
+            settings.document_max_bytes,
+        ),
+    )
+
+
+@lru_cache
+def get_course_intelligence_worker() -> CourseIntelligenceWorker:
+    settings = get_settings()
+    return CourseIntelligenceWorker(
+        repository=PostgresIntelligenceRepository(settings.database_url),
+        extractor=build_document_extractor(settings),
+        improvement_agent=build_improvement_agent(settings),
+        worker_id=f"{gethostname()}-course-intelligence",
+        poll_seconds=settings.intelligence_worker_poll_seconds,
+        lease_seconds=settings.intelligence_worker_lease_seconds,
+    )
 
 
 @lru_cache

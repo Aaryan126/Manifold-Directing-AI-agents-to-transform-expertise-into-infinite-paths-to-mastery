@@ -1,3 +1,4 @@
+from pathlib import Path
 from uuid import UUID
 
 from app.access.models import (
@@ -59,6 +60,22 @@ class AccessService:
                 "Enroll in this published course before opening its learner workspace."
             )
         return course
+
+    async def learner_resource(
+        self,
+        learner_id: UUID,
+        course_id: UUID,
+        source_id: UUID,
+    ) -> tuple[Path, str, str]:
+        await self._require_learner(learner_id)
+        resource = await self._repository.learner_resource_path(
+            learner_id,
+            course_id,
+            source_id,
+        )
+        if resource is None:
+            raise AccessValidationError("This reviewed course resource is unavailable.")
+        return resource
 
     async def course(self, course_id: UUID) -> CourseAccess | None:
         return await self._repository.get_course(course_id)

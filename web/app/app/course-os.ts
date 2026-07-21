@@ -149,6 +149,15 @@ export type DashboardSummary = {
     concept_name: string;
     touched_learners: number;
     struggling_learners: number;
+    mastered_prerequisite_struggling_learners: number;
+    attempts: number;
+    correct_attempts: number;
+    confidence_1: number;
+    confidence_2: number;
+    confidence_3: number;
+    confidence_4: number;
+    mastered_learners: number;
+    practiced_learners: number;
   }>;
   question_performance: Array<{
     question_id: string;
@@ -173,7 +182,101 @@ export type DashboardSummary = {
     struggling: number;
     not_started: number;
   };
+  topic_health: TopicHealth[];
+  priorities: CoursePriority[];
 };
+
+export type TopicHealth = {
+  topic_id: string;
+  logical_id: string;
+  title: string;
+  learner_reach: number;
+  attempts: number;
+  correct_attempts: number;
+  confidence_1: number;
+  confidence_2: number;
+  confidence_3: number;
+  confidence_4: number;
+  mastered_learners: number;
+  practiced_learners: number;
+  struggling_learners: number;
+  remediation_attempts: number;
+  active_clips: number;
+  clip_duration_seconds: number;
+  assessment_count: number;
+  concept_count: number;
+};
+
+export type CoursePriority = {
+  id: string;
+  title: string;
+  summary: string;
+  severity: "high" | "medium" | "low";
+  score: number;
+  specialist_role: SpecialistRole;
+  target_artifact_type: string | null;
+  target_artifact_id: string | null;
+  target_logical_artifact_id: string | null;
+  affected_learners: number;
+  evidence_count: number;
+  evidence: Record<string, unknown>;
+  recommended_action: string;
+};
+
+export type SpecialistRole =
+  | "learning_analyst"
+  | "curriculum_architect"
+  | "clip_editor"
+  | "assessment_designer";
+
+export type CourseSource = {
+  id: string;
+  logical_id: string;
+  filename: string;
+  source_type: "lecture_video" | "lecture_audio" | "pdf" | "pptx";
+  mime_type: string;
+  size_bytes: number;
+  extraction_status: "queued" | "processing" | "ready" | "failed";
+  extraction_error: string | null;
+  purpose: "ai_context" | "learner_resource" | "both";
+  review_status: "proposed" | "accepted" | "edited" | "dismissed";
+  learner_visible: boolean;
+  section_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CourseAgentTask = {
+  id: string;
+  specialist_role: SpecialistRole;
+  task_type: string;
+  target_artifact_type: string | null;
+  target_logical_artifact_id: string | null;
+  request_context: Record<string, unknown>;
+  evidence_snapshot: Record<string, unknown>;
+  status: "queued" | "running" | "waiting_review" | "complete" | "failed" | "cancelled";
+  result: Record<string, unknown> | null;
+  proposal_ids: string[];
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export function performancePercent(part: number, total: number): number {
+  return total > 0 ? Math.round((part / total) * 100) : 0;
+}
+
+export function canPrepareImprovement(
+  priority: CoursePriority,
+  tasks: CourseAgentTask[],
+): boolean {
+  if (!priority.target_artifact_type || !priority.target_logical_artifact_id) return false;
+  return !tasks.some((task) => (
+    task.task_type === "prepare_improvement"
+    && task.target_logical_artifact_id === priority.target_logical_artifact_id
+    && ["queued", "running"].includes(task.status)
+  ));
+}
 
 export type AssessmentRule = {
   id?: string;

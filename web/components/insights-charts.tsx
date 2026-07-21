@@ -62,13 +62,13 @@ type InsightsChartsProps = {
 };
 
 const COLORS = {
-  blue: "#2563eb",
-  green: "#059669",
-  mint: "#34d399",
+  blue: "#4b4c52",
+  green: "#5f8055",
+  mint: "#a8b89f",
   amber: "#f59e0b",
-  red: "#ef4444",
-  gray: "#d1d5db",
-  ink: "#111827",
+  red: "#bd5a4f",
+  gray: "#d9d6cf",
+  ink: "#222329",
 };
 
 const tooltipStyle = {

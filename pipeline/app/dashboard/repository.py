@@ -11,6 +11,7 @@ from app.dashboard.models import (
     LearnerOverride,
     MasteryDistribution,
     QuestionSignalStats,
+    TopicHealth,
 )
 
 
@@ -46,6 +47,9 @@ class DashboardRepository(ABC):
     @abstractmethod
     async def mastery_distribution(self, course_id: UUID) -> MasteryDistribution:
         raise NotImplementedError
+
+    async def topic_health(self, course_id: UUID) -> tuple[TopicHealth, ...]:
+        return ()
 
     @abstractmethod
     async def open_signals(self, course_id: UUID) -> tuple[DashboardSignal, ...]:

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, LoaderCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Download, FileText, LoaderCircle } from "lucide-react";
 
 import { ProviderVideo } from "../../../ProviderVideo";
 import { readDevelopmentSession, type DevelopmentSession } from "../../../developmentSession";
@@ -162,6 +162,24 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
     }
   }
 
+  async function downloadResource(resource: LearnerCourseExperience["resources"][number]) {
+    if (!session) return;
+    const response = await fetch(
+      `${pipelineBase}/learners/me/courses/${courseId}/resources/${resource.id}`,
+      { headers: { "X-User-ID": session.id } },
+    );
+    if (!response.ok) {
+      setError("This course resource could not be downloaded.");
+      return;
+    }
+    const href = URL.createObjectURL(await response.blob());
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = resource.filename;
+    anchor.click();
+    URL.revokeObjectURL(href);
+  }
+
   if (!session || loading) return <div className={styles.fullLoader}><LoaderCircle /><span>Preparing your course</span></div>;
   if (error && !course) return <div className={styles.fullLoader}><span>{error}</span></div>;
   if (!course || !activeTopic) return <div className={styles.fullLoader}><span>This course has no reviewed learner topics yet.</span></div>;
@@ -231,6 +249,7 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
               const state = topicState(topic.id, progress);
               return <button aria-current={topic.id === activeTopic.id ? "true" : undefined} key={topic.id} onClick={() => setActiveTopicId(topic.id)} type="button"><span>{String(index + 1).padStart(2, "0")}</span><span><strong>{topic.title}</strong><em>{state.replace("_", " ")}</em></span></button>;
             })}</nav>
+            {course.resources.length ? <section className={styles.learnerResources}><header><small>From your instructor</small><h3>Course resources</h3></header>{course.resources.map((resource) => <button key={resource.id} onClick={() => void downloadResource(resource)} type="button"><FileText /><span><strong>{resource.filename}</strong><small>{resource.source_type.toUpperCase()}</small></span><Download /></button>)}</section> : null}
           </aside>
         </div>
       </main>

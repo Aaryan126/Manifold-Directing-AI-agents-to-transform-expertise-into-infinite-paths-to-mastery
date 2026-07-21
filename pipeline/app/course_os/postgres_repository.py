@@ -397,6 +397,27 @@ class PostgresCourseOSRepository(CourseOSRepository):
                 (working_revision_id, working_revision_id, active_revision_id),
             )
             await conn.execute(
+                """
+                insert into course_revision_sources (
+                  revision_id, source_id, purpose, review_status, learner_visible
+                )
+                select %s, source_id, purpose, review_status, learner_visible
+                from course_revision_sources
+                where revision_id = %s and removed_at is null
+                on conflict (revision_id, source_id) do nothing
+                """,
+                (working_revision_id, active_revision_id),
+            )
+            await conn.execute(
+                """
+                insert into course_map_layouts (revision_id, logical_artifact_id, x, y)
+                select %s, logical_artifact_id, x, y
+                from course_map_layouts where revision_id = %s
+                on conflict (revision_id, logical_artifact_id) do nothing
+                """,
+                (working_revision_id, active_revision_id),
+            )
+            await conn.execute(
                 "update courses set working_revision_id = %s, updated_at = now() where id = %s",
                 (working_revision_id, course_id),
             )
@@ -1360,8 +1381,22 @@ class PostgresCourseOSRepository(CourseOSRepository):
                 )
             ).fetchone()
             if decision in {ReviewDecision.ACCEPTED, ReviewDecision.EDITED}:
-                directive = str(resolved_state.get("instruction", "")).strip()
-                if directive:
+                artifact_type = str(proposal["artifact_type"] or "")
+                logical_artifact_id = proposal["logical_artifact_id"]
+                if artifact_type and logical_artifact_id:
+                    await _apply_typed_proposal(
+                        conn,
+                        artifact_type=artifact_type,
+                        logical_artifact_id=UUID(str(logical_artifact_id)),
+                        revision_id=UUID(str(proposal["revision_id"])),
+                        resolved_state=resolved_state,
+                    )
+                else:
+                    directive = str(resolved_state.get("instruction", "")).strip()
+                    if not directive:
+                        raise ValueError(
+                            "This proposal does not contain an applicable course change."
+                        )
                     await conn.execute(
                         """
                         update course_revisions
@@ -1435,6 +1470,22 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     (revision_id,),
                 )
             ).fetchall()
+            layout_rows = await (
+                await conn.execute(
+                    """
+                    select logical_artifact_id, x, y
+                    from course_map_layouts where revision_id = %s
+                    """,
+                    (revision_id,),
+                )
+            ).fetchall()
+        layout = {
+            UUID(str(row["logical_artifact_id"])): {
+                "x": float(row["x"]),
+                "y": float(row["y"]),
+            }
+            for row in layout_rows
+        }
         nodes = [
             CourseMapNode(
                 id=UUID(str(row["id"])),
@@ -1447,6 +1498,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     "summary": str(row["summary"] or ""),
                     "start_seconds": float(row["start_seconds"]),
                     "end_seconds": float(row["end_seconds"]),
+                    "layout": layout.get(UUID(str(row["logical_id"]))),
                 },
             )
             for row in topics
@@ -1459,7 +1511,10 @@ class PostgresCourseOSRepository(CourseOSRepository):
                 title=str(row["name"]),
                 status=str(row["review_status"]),
                 topic_id=UUID(str(row["topic_id"])) if row["topic_id"] else None,
-                metadata={"description": str(row["description"] or "")},
+                metadata={
+                    "description": str(row["description"] or ""),
+                    "layout": layout.get(UUID(str(row["logical_id"]))),
+                },
             )
             for row in concepts
         )
@@ -1768,9 +1823,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     status=str(row["status"]),
                     playback_provider=str(row["playback_provider"]),
                     playback_id=(
-                        str(row["playback_id"])
-                        if row["playback_id"] is not None
-                        else None
+                        str(row["playback_id"]) if row["playback_id"] is not None else None
                     ),
                     playback_url=str(row["playback_url"]),
                     delivery_asset_id=(
@@ -2200,13 +2253,9 @@ async def _course_assessment_from_row(
             {
                 "id": str(rule["id"]),
                 "wrong_answer_pattern": str(rule["wrong_answer_pattern"]),
-                "target_clip_id": (
-                    str(rule["target_clip_id"]) if rule["target_clip_id"] else None
-                ),
+                "target_clip_id": (str(rule["target_clip_id"]) if rule["target_clip_id"] else None),
                 "target_concept_id": (
-                    str(rule["target_concept_id"])
-                    if rule["target_concept_id"]
-                    else None
+                    str(rule["target_concept_id"]) if rule["target_concept_id"] else None
                 ),
             }
             for rule in rule_rows
@@ -2396,9 +2445,7 @@ def _course_routing_policy(row: dict[str, Any]) -> CourseRoutingPolicy:
         concept_name=str(row["concept_name"]) if row.get("concept_name") else None,
         policy=RoutingPolicyDraft(
             confidence_threshold=int(policy.get("confidence_threshold", 3)),
-            correct_attempts_for_mastery=int(
-                policy.get("correct_attempts_for_mastery", 1)
-            ),
+            correct_attempts_for_mastery=int(policy.get("correct_attempts_for_mastery", 1)),
             advancement_mode=str(policy.get("advancement_mode", "require_mastery")),
             max_remediation_attempts=int(policy.get("max_remediation_attempts", 2)),
         ),
@@ -2483,11 +2530,10 @@ def _is_portfolio_course(course: CourseSummary) -> bool:
         return False
     if course.status == "published":
         return True
-    return (
-        course.source_count > 0
-        and course.generation_status
-        in {GenerationRunStatus.WAITING_REVIEW.value, GenerationRunStatus.COMPLETE.value}
-    )
+    return course.source_count > 0 and course.generation_status in {
+        GenerationRunStatus.WAITING_REVIEW.value,
+        GenerationRunStatus.COMPLETE.value,
+    }
 
 
 async def _apply_artifact_review(
@@ -3091,6 +3137,72 @@ def _review_bundle(row: dict[str, Any], items: tuple[ReviewItem, ...]) -> Review
         status=str(row["status"]),
         items=items,
     )
+
+
+_TYPED_PROPOSAL_FIELDS: dict[str, tuple[str, frozenset[str], frozenset[str]]] = {
+    "topic": (
+        "topics",
+        frozenset({"title", "summary", "start_seconds", "end_seconds"}),
+        frozenset(),
+    ),
+    "concept": (
+        "concepts",
+        frozenset({"name", "description"}),
+        frozenset(),
+    ),
+    "concept_edge": (
+        "concept_edges",
+        frozenset({"relationship"}),
+        frozenset(),
+    ),
+    "clip": (
+        "clips",
+        frozenset({"start_seconds", "end_seconds", "type", "difficulty"}),
+        frozenset(),
+    ),
+    "question": (
+        "questions",
+        frozenset({"body", "type", "correct_answer", "confidence_prompt"}),
+        frozenset({"correct_answer"}),
+    ),
+    "routing_policy": (
+        "routing_policies",
+        frozenset({"policy"}),
+        frozenset({"policy"}),
+    ),
+}
+
+
+async def _apply_typed_proposal(
+    conn: Any,
+    *,
+    artifact_type: str,
+    logical_artifact_id: UUID,
+    revision_id: UUID,
+    resolved_state: dict[str, Any],
+) -> None:
+    specification = _TYPED_PROPOSAL_FIELDS.get(artifact_type)
+    if specification is None:
+        raise ValueError(f"Unsupported course proposal target: {artifact_type}.")
+    table, allowed_fields, json_fields = specification
+    fields = [field for field in sorted(allowed_fields) if field in resolved_state]
+    if not fields:
+        raise ValueError("The proposal does not change any editable artifact fields.")
+    values = [
+        Jsonb(resolved_state[field]) if field in json_fields else resolved_state[field]
+        for field in fields
+    ]
+    assignments = ", ".join(f"{field} = %s" for field in fields)
+    result = await conn.execute(
+        f"""
+        update {table}
+        set {assignments}, instructor_revision = %s::jsonb
+        where revision_id = %s and logical_id = %s
+        """,  # noqa: S608 - table and columns come exclusively from the allowlist above.
+        (*values, Jsonb(resolved_state), revision_id, logical_artifact_id),
+    )
+    if result.rowcount == 0:
+        raise ValueError("The proposed artifact is no longer present in the working revision.")
 
 
 def _json_dict(value: object) -> dict[str, Any]:

@@ -17,6 +17,7 @@ from app.dashboard.models import (
     LearnerOverride,
     MasteryDistribution,
     QuestionSignalStats,
+    TopicHealth,
 )
 from app.dashboard.repository import DashboardRepository
 from app.db.pool import pooled_connection
@@ -74,6 +75,7 @@ class PostgresDashboardRepository(DashboardRepository):
                       and q.review_status in ('accepted', 'edited')
                     join attempts a on a.question_id = q.id
                     where c.course_id = %s
+                      and c.revision_id = (select active_revision_id from courses where id = %s)
                       and c.review_status in ('accepted', 'edited')
                     group by c.id
                     having count(distinct a.learner_id) >= 2
@@ -137,14 +139,18 @@ class PostgresDashboardRepository(DashboardRepository):
             rows = await (
                 await conn.execute(
                     """
-                    with touched as (
+                    with revision as (
+                      select id as course_id, active_revision_id
+                      from courses where id = %s
+                    ), touched as (
                       select tc.concept_id, count(distinct a.learner_id) as learner_count
                       from topic_concepts tc
                       join topics t on t.id = tc.topic_id
+                      join revision r on t.revision_id = r.active_revision_id
                       join questions q on q.topic_id = t.id
                         and q.review_status in ('accepted', 'edited')
                       join attempts a on a.question_id = q.id
-                      where t.course_id = %s
+                      where t.course_id = r.course_id
                       group by tc.concept_id
                     ), mastery as (
                       select
@@ -152,13 +158,15 @@ class PostgresDashboardRepository(DashboardRepository):
                         count(*) filter (where m.state = 'struggling') as struggling_count
                       from learner_concept_mastery m
                       join concepts mc on mc.id = m.concept_id
-                      where mc.course_id = %s
+                      join revision r on mc.revision_id = r.active_revision_id
+                      where mc.course_id = r.course_id
                       group by m.concept_id
                     ), prereq_ready as (
                       select m.concept_id, count(*) as learner_count
                       from learner_concept_mastery m
                       join concepts mc on mc.id = m.concept_id
-                      where mc.course_id = %s
+                      join revision r on mc.revision_id = r.active_revision_id
+                      where mc.course_id = r.course_id
                         and m.state = 'struggling'
                         and exists (
                           select 1 from concept_edges e
@@ -179,6 +187,33 @@ class PostgresDashboardRepository(DashboardRepository):
                             )
                         )
                       group by m.concept_id
+                    ), attempt_stats as (
+                      select
+                        tc.concept_id,
+                        count(a.id) as attempts,
+                        count(a.id) filter (where a.correctness) as correct_attempts,
+                        count(a.id) filter (where a.confidence = 1) as confidence_1,
+                        count(a.id) filter (where a.confidence = 2) as confidence_2,
+                        count(a.id) filter (where a.confidence = 3) as confidence_3,
+                        count(a.id) filter (where a.confidence = 4) as confidence_4
+                      from topic_concepts tc
+                      join topics t on t.id = tc.topic_id
+                      join revision r on t.revision_id = r.active_revision_id
+                      join questions q on q.topic_id = t.id
+                      left join attempts a on a.question_id = q.id
+                      where t.course_id = r.course_id
+                        and q.review_status in ('accepted', 'edited')
+                      group by tc.concept_id
+                    ), mastery_all as (
+                      select
+                        m.concept_id,
+                        count(*) filter (where m.state = 'mastered') as mastered_learners,
+                        count(*) filter (where m.state = 'practiced') as practiced_learners
+                      from learner_concept_mastery m
+                      join concepts mc on mc.id = m.concept_id
+                      join revision r on mc.revision_id = r.active_revision_id
+                      where mc.course_id = r.course_id
+                      group by m.concept_id
                     )
                     select
                       c.id,
@@ -186,16 +221,27 @@ class PostgresDashboardRepository(DashboardRepository):
                       coalesce(touched.learner_count, 0) as touched_learners,
                       coalesce(mastery.struggling_count, 0) as struggling_learners,
                       coalesce(prereq_ready.learner_count, 0)
-                        as mastered_prerequisite_struggling_learners
+                        as mastered_prerequisite_struggling_learners,
+                      coalesce(attempt_stats.attempts, 0) as attempts,
+                      coalesce(attempt_stats.correct_attempts, 0) as correct_attempts,
+                      coalesce(attempt_stats.confidence_1, 0) as confidence_1,
+                      coalesce(attempt_stats.confidence_2, 0) as confidence_2,
+                      coalesce(attempt_stats.confidence_3, 0) as confidence_3,
+                      coalesce(attempt_stats.confidence_4, 0) as confidence_4,
+                      coalesce(mastery_all.mastered_learners, 0) as mastered_learners,
+                      coalesce(mastery_all.practiced_learners, 0) as practiced_learners
                     from concepts c
+                    join revision r on c.revision_id = r.active_revision_id
                     left join touched on touched.concept_id = c.id
                     left join mastery on mastery.concept_id = c.id
                     left join prereq_ready on prereq_ready.concept_id = c.id
-                    where c.course_id = %s
+                    left join attempt_stats on attempt_stats.concept_id = c.id
+                    left join mastery_all on mastery_all.concept_id = c.id
+                    where c.course_id = r.course_id
                       and c.review_status in ('accepted', 'edited')
                     order by c.name
                     """,
-                    (course_id, course_id, course_id, course_id),
+                    (course_id,),
                 )
             ).fetchall()
             return tuple(
@@ -207,9 +253,136 @@ class PostgresDashboardRepository(DashboardRepository):
                     mastered_prerequisite_struggling_learners=int(
                         row["mastered_prerequisite_struggling_learners"] or 0,
                     ),
+                    attempts=int(row["attempts"] or 0),
+                    correct_attempts=int(row["correct_attempts"] or 0),
+                    confidence_1=int(row["confidence_1"] or 0),
+                    confidence_2=int(row["confidence_2"] or 0),
+                    confidence_3=int(row["confidence_3"] or 0),
+                    confidence_4=int(row["confidence_4"] or 0),
+                    mastered_learners=int(row["mastered_learners"] or 0),
+                    practiced_learners=int(row["practiced_learners"] or 0),
                 )
                 for row in rows
             )
+
+    async def topic_health(self, course_id: UUID) -> tuple[TopicHealth, ...]:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            rows = await (
+                await conn.execute(
+                    """
+                    with revision as (
+                      select active_revision_id, coalesce(working_revision_id, active_revision_id)
+                        as design_revision_id
+                      from courses where id = %s
+                    ), design_topics as (
+                      select t.* from topics t, revision r
+                      where t.course_id = %s and t.revision_id = r.design_revision_id
+                        and t.review_status in ('accepted', 'edited')
+                    ), active_attempts as (
+                      select
+                        t.logical_id as topic_logical_id,
+                        count(a.id) as attempts,
+                        count(a.id) filter (where a.correctness) as correct_attempts,
+                        count(a.id) filter (where a.confidence = 1) as confidence_1,
+                        count(a.id) filter (where a.confidence = 2) as confidence_2,
+                        count(a.id) filter (where a.confidence = 3) as confidence_3,
+                        count(a.id) filter (where a.confidence = 4) as confidence_4,
+                        count(distinct a.learner_id) as learner_reach
+                      from topics t
+                      join revision r on t.revision_id = r.active_revision_id
+                      left join questions q on q.topic_id = t.id
+                      left join attempts a on a.question_id = q.id
+                      group by t.logical_id
+                    ), active_mastery as (
+                      select
+                        t.logical_id as topic_logical_id,
+                        count(distinct m.learner_id) filter (where m.state = 'mastered')
+                          as mastered_learners,
+                        count(distinct m.learner_id) filter (where m.state = 'practiced')
+                          as practiced_learners,
+                        count(distinct m.learner_id) filter (where m.state = 'struggling')
+                          as struggling_learners
+                      from topics t
+                      join revision r on t.revision_id = r.active_revision_id
+                      join topic_concepts tc on tc.topic_id = t.id
+                      left join learner_concept_mastery m on m.concept_id = tc.concept_id
+                      group by t.logical_id
+                    ), design_counts as (
+                      select
+                        t.id as topic_id,
+                        count(distinct tc.concept_id) as concept_count,
+                        count(distinct q.id) filter (
+                          where q.review_status in ('accepted', 'edited')
+                        ) as assessment_count,
+                        count(distinct clip.id) filter (
+                          where clip.status = 'active'
+                        ) as active_clips,
+                        coalesce(sum(distinct clip.end_seconds - clip.start_seconds)
+                          filter (where clip.status = 'active'), 0) as clip_duration_seconds
+                      from design_topics t
+                      left join topic_concepts tc on tc.topic_id = t.id
+                      left join questions q on q.topic_id = t.id
+                      left join clips clip on clip.topic_id = t.id
+                      group by t.id
+                    ), remediation as (
+                      select t.logical_id as topic_logical_id, count(distinct a.id) as attempts
+                      from topics t
+                      join revision r on t.revision_id = r.active_revision_id
+                      join questions q on q.topic_id = t.id
+                      join remediation_rules rr on rr.question_id = q.id
+                      join attempts a on a.question_id = q.id and not a.correctness
+                      group by t.logical_id
+                    )
+                    select
+                      t.id, t.logical_id, t.title,
+                      coalesce(a.learner_reach, 0) as learner_reach,
+                      coalesce(a.attempts, 0) as attempts,
+                      coalesce(a.correct_attempts, 0) as correct_attempts,
+                      coalesce(a.confidence_1, 0) as confidence_1,
+                      coalesce(a.confidence_2, 0) as confidence_2,
+                      coalesce(a.confidence_3, 0) as confidence_3,
+                      coalesce(a.confidence_4, 0) as confidence_4,
+                      coalesce(m.mastered_learners, 0) as mastered_learners,
+                      coalesce(m.practiced_learners, 0) as practiced_learners,
+                      coalesce(m.struggling_learners, 0) as struggling_learners,
+                      coalesce(rem.attempts, 0) as remediation_attempts,
+                      coalesce(c.active_clips, 0) as active_clips,
+                      coalesce(c.clip_duration_seconds, 0) as clip_duration_seconds,
+                      coalesce(c.assessment_count, 0) as assessment_count,
+                      coalesce(c.concept_count, 0) as concept_count
+                    from design_topics t
+                    left join active_attempts a on a.topic_logical_id = t.logical_id
+                    left join active_mastery m on m.topic_logical_id = t.logical_id
+                    left join design_counts c on c.topic_id = t.id
+                    left join remediation rem on rem.topic_logical_id = t.logical_id
+                    order by t.start_seconds
+                    """,
+                    (course_id, course_id),
+                )
+            ).fetchall()
+        return tuple(
+            TopicHealth(
+                topic_id=UUID(str(row["id"])),
+                logical_id=UUID(str(row["logical_id"])),
+                title=str(row["title"]),
+                learner_reach=int(row["learner_reach"] or 0),
+                attempts=int(row["attempts"] or 0),
+                correct_attempts=int(row["correct_attempts"] or 0),
+                confidence_1=int(row["confidence_1"] or 0),
+                confidence_2=int(row["confidence_2"] or 0),
+                confidence_3=int(row["confidence_3"] or 0),
+                confidence_4=int(row["confidence_4"] or 0),
+                mastered_learners=int(row["mastered_learners"] or 0),
+                practiced_learners=int(row["practiced_learners"] or 0),
+                struggling_learners=int(row["struggling_learners"] or 0),
+                remediation_attempts=int(row["remediation_attempts"] or 0),
+                active_clips=int(row["active_clips"] or 0),
+                clip_duration_seconds=float(row["clip_duration_seconds"] or 0),
+                assessment_count=int(row["assessment_count"] or 0),
+                concept_count=int(row["concept_count"] or 0),
+            )
+            for row in rows
+        )
 
     async def question_stats(self, course_id: UUID) -> tuple[QuestionSignalStats, ...]:
         async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
@@ -228,12 +401,13 @@ class PostgresDashboardRepository(DashboardRepository):
                     join topics t on t.id = q.topic_id
                     left join attempts a on a.question_id = q.id
                     where t.course_id = %s
+                      and t.revision_id = (select active_revision_id from courses where id = %s)
                       and q.review_status in ('accepted', 'edited')
                       and t.review_status in ('accepted', 'edited')
                     group by q.id, q.topic_id, q.body
                     order by q.created_at
                     """,
-                    (course_id,),
+                    (course_id, course_id),
                 )
             ).fetchall()
             return tuple(
@@ -293,10 +467,11 @@ class PostgresDashboardRepository(DashboardRepository):
                     left join struggling on struggling.concept_id = cc.concept_id
                     left join remediation on remediation.clip_id = clip.id
                     where t.course_id = %s
+                      and t.revision_id = (select active_revision_id from courses where id = %s)
                       and clip.status = 'active'
                     order by clip.start_seconds
                     """,
-                    (course_id,),
+                    (course_id, course_id),
                 )
             ).fetchall()
             return tuple(
@@ -365,6 +540,7 @@ class PostgresDashboardRepository(DashboardRepository):
                           select count(*)
                           from concepts
                           where course_id = %s
+                            and revision_id = (select active_revision_id from courses where id = %s)
                             and review_status in ('accepted', 'edited')
                         ) as concepts
                     ), states as (
@@ -379,6 +555,7 @@ class PostgresDashboardRepository(DashboardRepository):
                         on e.learner_id = m.learner_id
                        and e.course_id = c.course_id
                       where c.course_id = %s
+                        and c.revision_id = (select active_revision_id from courses where id = %s)
                         and c.review_status in ('accepted', 'edited')
                     )
                     select
@@ -395,7 +572,7 @@ class PostgresDashboardRepository(DashboardRepository):
                     from course_size
                     cross join states
                     """,
-                    (course_id, course_id, course_id),
+                    (course_id, course_id, course_id, course_id, course_id),
                 )
             ).fetchone()
             if row is None:

@@ -2,6 +2,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.access.models import WatchEventCreate
@@ -66,6 +67,13 @@ class LearnerQuestionResponse(BaseModel):
     confidence_prompt: str
 
 
+class LearnerResourceResponse(BaseModel):
+    id: UUID
+    filename: str
+    source_type: str
+    size_bytes: int
+
+
 class LearnerCourseExperienceResponse(BaseModel):
     id: UUID
     title: str
@@ -73,6 +81,7 @@ class LearnerCourseExperienceResponse(BaseModel):
     topics: list[LearnerTopicResponse]
     clips: list[LearnerClipResponse]
     questions: list[LearnerQuestionResponse]
+    resources: list[LearnerResourceResponse]
 
 
 class CourseResponse(BaseModel):
@@ -189,7 +198,26 @@ async def learner_course_experience(
             )
             for question in course.questions
         ],
+        resources=[LearnerResourceResponse(**resource.__dict__) for resource in course.resources],
     )
+
+
+@router.get("/learners/me/courses/{course_id}/resources/{source_id}")
+async def learner_course_resource(
+    course_id: UUID,
+    source_id: UUID,
+    user_id: UserContext,
+    service: AccessServiceDependency,
+) -> FileResponse:
+    try:
+        path, filename, mime_type = await service.learner_resource(
+            user_id,
+            course_id,
+            source_id,
+        )
+    except AccessValidationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return FileResponse(path, media_type=mime_type, filename=filename)
 
 
 @router.get("/courses/{course_id}", response_model=CourseResponse)

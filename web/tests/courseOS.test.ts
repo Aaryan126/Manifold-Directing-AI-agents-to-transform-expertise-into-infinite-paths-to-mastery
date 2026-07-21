@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   answerOutcomeSummary,
+  canPrepareImprovement,
   courseState,
   evidenceTitle,
   generationPhaseLabel,
   orderedGenerationTasks,
+  performancePercent,
   shouldHydrateGenerationRun,
   shouldCenterCreationComposer,
   studioPresentationMode,
   type CourseSummary,
+  type CourseAgentTask,
+  type CoursePriority,
   type GenerationTask,
 } from "../app/app/course-os";
 
@@ -115,6 +119,8 @@ describe("Course OS presentation", () => {
       clip_performance: [],
       activity_history: [],
       mastery_distribution: { mastered: 0, practiced: 0, struggling: 0, not_started: 0 },
+      topic_health: [],
+      priorities: [],
       question_performance: [{
         question_id: "question",
         prompt: "Prompt",
@@ -128,5 +134,43 @@ describe("Course OS presentation", () => {
       unsure_correct: 2,
       incorrect: 3,
     });
+  });
+
+  it("keeps evidence percentages honest and prevents duplicate specialist work", () => {
+    const priority: CoursePriority = {
+      id: "priority",
+      title: "Clarify the learning curve",
+      summary: "Confidence remains low.",
+      severity: "high",
+      score: 100,
+      specialist_role: "learning_analyst",
+      target_artifact_type: "topic",
+      target_artifact_id: "topic-row",
+      target_logical_artifact_id: "topic-logical",
+      affected_learners: 2,
+      evidence_count: 5,
+      evidence: {},
+      recommended_action: "Prepare a focused change.",
+    };
+    const task: CourseAgentTask = {
+      id: "task",
+      specialist_role: "learning_analyst",
+      task_type: "prepare_improvement",
+      target_artifact_type: "topic",
+      target_logical_artifact_id: "topic-logical",
+      request_context: {},
+      evidence_snapshot: {},
+      status: "running",
+      result: null,
+      proposal_ids: [],
+      error_message: null,
+      created_at: "2026-07-21T00:00:00Z",
+      updated_at: "2026-07-21T00:00:00Z",
+    };
+
+    expect(performancePercent(3, 5)).toBe(60);
+    expect(performancePercent(1, 0)).toBe(0);
+    expect(canPrepareImprovement(priority, [])).toBe(true);
+    expect(canPrepareImprovement(priority, [task])).toBe(false);
   });
 });

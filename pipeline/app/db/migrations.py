@@ -32,6 +32,11 @@ _LEGACY_MIGRATION_MARKERS: dict[str, tuple[tuple[str, str | None], ...]] = {
         ("routing_policies_revision_concept_idx", None),
     ),
     "017_revision_briefs.sql": (("course_revisions", "brief"),),
+    "019_course_intelligence_and_sources.sql": (
+        ("course_sources", None),
+        ("course_agent_tasks", None),
+        ("course_map_layouts", None),
+    ),
 }
 
 _DATA_ONLY_MIGRATIONS = frozenset(

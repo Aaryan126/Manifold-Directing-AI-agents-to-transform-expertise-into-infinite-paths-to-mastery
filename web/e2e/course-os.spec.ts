@@ -124,6 +124,10 @@ async function mockCourseOS(page: Page) {
       });
       return;
     }
+    if (path.endsWith("/sources") || path.endsWith("/agent-tasks")) {
+      await route.fulfill({ json: [] });
+      return;
+    }
     if (path.includes("/generation-runs/")) {
       await route.fulfill({
         json: {
@@ -167,7 +171,56 @@ async function mockPublishedCourseOS(page: Page) {
     if (path === "/development/identities") return route.fulfill({ json: [instructor] });
     if (path.endsWith("/studio")) return route.fulfill({ json: published });
     if (path.endsWith("/messages") || path.endsWith("/review-bundles")) return route.fulfill({ json: [] });
-    if (path.endsWith("/map")) return route.fulfill({ json: { course_id: published.id, revision_id: published.active_revision_id, nodes: [], edges: [] } });
+    if (path.endsWith("/sources")) return route.fulfill({
+      json: [{
+        id: "source-1",
+        logical_id: "source-logical",
+        filename: "Force diagrams.pdf",
+        source_type: "pdf",
+        mime_type: "application/pdf",
+        size_bytes: 12000,
+        extraction_status: "ready",
+        extraction_error: null,
+        purpose: "ai_context",
+        review_status: "accepted",
+        learner_visible: false,
+        section_count: 6,
+        created_at: "2026-07-21T00:00:00Z",
+        updated_at: "2026-07-21T00:00:00Z",
+      }],
+    });
+    if (path.endsWith("/agent-tasks")) return route.fulfill({
+      json: [{
+        id: "task-1",
+        specialist_role: "learning_analyst",
+        task_type: "prepare_improvement",
+        target_artifact_type: "topic",
+        target_logical_artifact_id: "topic-logical",
+        request_context: { instruction: "Clarify vector addition." },
+        evidence_snapshot: { incorrect_attempts: 4 },
+        status: "waiting_review",
+        result: {
+          rationale: "Learner uncertainty is concentrated in vector direction.",
+          before_state: { summary: "Combine forces." },
+          proposed_state: { summary: "Combine force vectors by magnitude and direction." },
+        },
+        proposal_ids: ["proposal-1"],
+        error_message: null,
+        created_at: "2026-07-21T00:00:00Z",
+        updated_at: "2026-07-21T00:00:00Z",
+      }],
+    });
+    if (path.endsWith("/map")) return route.fulfill({
+      json: {
+        course_id: published.id,
+        revision_id: published.active_revision_id,
+        nodes: [
+          { id: "topic-1", logical_id: "topic-logical", kind: "topic", title: "Force systems", status: "accepted", topic_id: null, metadata: {} },
+          { id: "concept-1", logical_id: "concept-logical", kind: "concept", title: "Net force", status: "accepted", topic_id: "topic-1", metadata: {} },
+        ],
+        edges: [],
+      },
+    });
     if (path.endsWith("/assessment-workspace")) return route.fulfill({
       json: {
         revision_id: published.active_revision_id,
@@ -230,6 +283,41 @@ async function mockPublishedCourseOS(page: Page) {
         clip_performance: [],
         activity_history: [{ date: "2026-07-21", attempts: 8, active_learners: 4 }],
         mastery_distribution: { mastered: 2, practiced: 1, struggling: 1, not_started: 0 },
+        topic_health: [{
+          topic_id: "topic-1",
+          logical_id: "topic-logical",
+          title: "Force systems",
+          learner_reach: 4,
+          attempts: 8,
+          correct_attempts: 4,
+          confidence_1: 1,
+          confidence_2: 3,
+          confidence_3: 2,
+          confidence_4: 2,
+          mastered_learners: 2,
+          practiced_learners: 1,
+          struggling_learners: 1,
+          remediation_attempts: 3,
+          active_clips: 1,
+          clip_duration_seconds: 60,
+          assessment_count: 1,
+          concept_count: 1,
+        }],
+        priorities: [{
+          id: "learning:topic-logical",
+          title: "Learners need support in Force systems",
+          summary: "Four of eight attempts were incorrect and four carried low confidence.",
+          severity: "high",
+          score: 98,
+          specialist_role: "learning_analyst",
+          target_artifact_type: "topic",
+          target_artifact_id: "topic-1",
+          target_logical_artifact_id: "topic-logical",
+          affected_learners: 4,
+          evidence_count: 8,
+          evidence: { attempts: 8, incorrect_attempts: 4, low_confidence_attempts: 4 },
+          recommended_action: "Clarify vector addition.",
+        }],
       },
     });
     return route.fulfill({ json: {} });
@@ -273,8 +361,8 @@ test("course studio exposes map, review decisions, and a mobile-safe layout", as
   await expect(page.getByRole("button", { name: "Course map" })).toBeVisible();
   await page.getByRole("button", { name: "Course map" }).click();
   await page.getByRole("button", { name: /Net force accepted/ }).click();
-  await expect(page.getByText("Vector addition", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Review" }).click();
+  await expect(page.getByRole("button", { name: "Vector addition", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /^Review/ }).click();
   await expect(page.getByRole("heading", { name: "Course structure" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Accept" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -309,12 +397,26 @@ test("published course combines insights with overview and exposes durable asses
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto(`/app/courses/${published.id}`);
 
-  await expect(page.getByRole("heading", { name: "Learning health" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Teaching decisions" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Priority brief" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your course team" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Evidence inspector" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Course structure × performance" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Topic health" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Learning patterns" })).toBeVisible();
+  await expect(page.getByText("Learner uncertainty is concentrated in vector direction.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Accept" })).toBeVisible();
+  await page.getByRole("button", { name: /Course sources/ }).click();
+  await expect(page.getByRole("heading", { name: "Sources & materials" })).toBeVisible();
+  await expect(page.getByText("Force diagrams.pdf")).toBeVisible();
+  await page.getByRole("button", { name: "Close course sources" }).click();
+  const overviewAccessibility = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(overviewAccessibility.violations).toEqual([]);
   await expect(page.getByRole("button", { name: "Insights" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Edit course" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Changes" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Review" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Review", exact: true })).toHaveCount(0);
   await expect(page.getByText("Live revision", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Human checkpoint", { exact: true })).toHaveCount(0);
 
@@ -329,7 +431,7 @@ test("published course combines insights with overview and exposes durable asses
   await expect(page.getByRole("heading", { name: "Edit assessment" })).toBeVisible();
   await expect(page.getByText("Editing private revision", { exact: true })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Preview" }).click();
+  await page.getByRole("button", { name: "Preview", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Learner clip preview" })).toBeVisible();
   await expect(page.getByLabel("Force systems clip")).toBeVisible();
 

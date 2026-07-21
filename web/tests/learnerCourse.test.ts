@@ -32,6 +32,7 @@ const course: LearnerCourseExperience = {
     materialization_status: "ready",
   }],
   questions: [],
+  resources: [],
 };
 
 const progress: LearnerProgress[] = [

@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -11,6 +12,7 @@ from app.access.models import (
     LearnerCourseExperience,
     LearnerCourseSummary,
     LearnerQuestion,
+    LearnerResource,
     LearnerTopic,
     PublishReadiness,
     UserRole,
@@ -173,6 +175,23 @@ class PostgresAccessRepository(AccessRepository):
                     (course_id, revision_id),
                 )
             ).fetchall()
+            resource_rows = await (
+                await conn.execute(
+                    """
+                    select source.id, source.filename, source.source_type, source.size_bytes
+                    from course_revision_sources membership
+                    join course_sources source on source.id = membership.source_id
+                    where membership.revision_id = %s
+                      and membership.learner_visible
+                      and membership.review_status in ('accepted', 'edited')
+                      and membership.purpose in ('learner_resource', 'both')
+                      and membership.removed_at is null
+                      and source.extraction_status = 'ready'
+                    order by source.filename
+                    """,
+                    (revision_id,),
+                )
+            ).fetchall()
             return LearnerCourseExperience(
                 id=UUID(str(course["id"])),
                 title=str(course["title"]),
@@ -199,8 +218,7 @@ class PostgresAccessRepository(AccessRepository):
                         playback_id=str(row["playback_id"]) if row["playback_id"] else None,
                         playback_url=str(row["playback_url"]),
                         delivery_asset_id=(
-                            str(row["delivery_asset_id"])
-                            if row["delivery_asset_id"] else None
+                            str(row["delivery_asset_id"]) if row["delivery_asset_id"] else None
                         ),
                         materialization_status=str(row["materialization_status"]),
                     )
@@ -217,7 +235,49 @@ class PostgresAccessRepository(AccessRepository):
                     )
                     for row in question_rows
                 ),
+                resources=tuple(
+                    LearnerResource(
+                        id=UUID(str(row["id"])),
+                        filename=str(row["filename"]),
+                        source_type=str(row["source_type"]),
+                        size_bytes=int(row["size_bytes"] or 0),
+                    )
+                    for row in resource_rows
+                ),
             )
+
+    async def learner_resource_path(
+        self,
+        learner_id: UUID,
+        course_id: UUID,
+        source_id: UUID,
+    ) -> tuple[Path, str, str] | None:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            row = await (
+                await conn.execute(
+                    """
+                    select source.storage_uri, source.filename, source.mime_type
+                    from enrollments enrollment
+                    join courses course on course.id = enrollment.course_id
+                    join course_revision_sources membership
+                      on membership.revision_id = coalesce(
+                        enrollment.revision_id,
+                        course.active_revision_id
+                      )
+                    join course_sources source on source.id = membership.source_id
+                    where enrollment.learner_id = %s and enrollment.course_id = %s
+                      and source.id = %s and membership.learner_visible
+                      and membership.review_status in ('accepted', 'edited')
+                      and membership.purpose in ('learner_resource', 'both')
+                      and membership.removed_at is null
+                      and source.extraction_status = 'ready'
+                    """,
+                    (learner_id, course_id, source_id),
+                )
+            ).fetchone()
+        if row is None:
+            return None
+        return Path(str(row["storage_uri"])), str(row["filename"]), str(row["mime_type"])
 
     async def get_course(self, course_id: UUID) -> CourseAccess | None:
         async with pooled_connection(self._database_url, row_factory=dict_row) as conn:

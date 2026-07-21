@@ -26,9 +26,13 @@ import {
   Check,
   ChevronDown,
   CircleAlert,
+  BarChart3,
+  BookOpenCheck,
+  BrainCircuit,
   ClipboardCheck,
   ClipboardList,
   Eye,
+  FileText,
   FilePenLine,
   FileVideo,
   GitFork,
@@ -36,28 +40,38 @@ import {
   Map as MapIcon,
   MessageCircleMore,
   MessageSquareText,
+  Network,
   Paperclip,
   Pencil,
   Play,
   Plus,
   RotateCcw,
+  Scissors,
+  Search,
   Settings2,
   SunMedium,
   Trash2,
+  Upload,
+  Wand2,
   X,
 } from "lucide-react";
 
 import {
   answerOutcomeSummary,
+  canPrepareImprovement,
   evidenceTitle,
   generationPhaseLabel,
   orderedGenerationTasks,
+  performancePercent,
   shouldHydrateGenerationRun,
   shouldCenterCreationComposer,
   studioPresentationMode,
   type CourseMap,
   type CourseAssessment,
   type CourseMessage,
+  type CourseAgentTask,
+  type CoursePriority,
+  type CourseSource,
   type CourseSummary,
   type DashboardSummary,
   type DevelopmentIdentity,
@@ -96,6 +110,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   const router = useRouter();
   const { sidebarCollapsed, toggleSidebar } = useTeacherSidebar();
   const fileInput = useRef<HTMLInputElement>(null);
+  const sourceInput = useRef<HTMLInputElement>(null);
   const [identity, setIdentity] = useState<DevelopmentIdentity | null>(null);
   const [course, setCourse] = useState<CourseSummary | null>(null);
   const [messages, setMessages] = useState<CourseMessage[]>([]);
@@ -106,6 +121,8 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   const [assessmentWorkspace, setAssessmentWorkspace] = useState<AssessmentWorkspace | null>(null);
   const [routingWorkspace, setRoutingWorkspace] = useState<RoutingWorkspace | null>(null);
   const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary | null>(null);
+  const [sources, setSources] = useState<CourseSource[]>([]);
+  const [agentTasks, setAgentTasks] = useState<CourseAgentTask[]>([]);
   const [canvasView, setCanvasView] = useState<CanvasView>("map");
   const [composer, setComposer] = useState("");
   const [sending, setSending] = useState(false);
@@ -114,6 +131,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [proposalStates, setProposalStates] = useState<Record<string, string>>({});
   const [directorOpen, setDirectorOpen] = useState(false);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
 
   const isBuilding = Boolean(
     (run && ["queued", "running"].includes(run.status))
@@ -175,6 +193,15 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     setRevisionDiff(await request<RevisionDiff>(`/courses/${courseId}/revision-diff`, user));
   }, [courseId, request]);
 
+  const refreshIntelligence = useCallback(async (user: DevelopmentIdentity) => {
+    const [sourceResult, taskResult] = await Promise.all([
+      request<CourseSource[]>(`/courses/${courseId}/sources`, user),
+      request<CourseAgentTask[]>(`/courses/${courseId}/agent-tasks`, user),
+    ]);
+    setSources(sourceResult);
+    setAgentTasks(taskResult);
+  }, [courseId, request]);
+
   const loadStudio = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -200,6 +227,9 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       }
       await refreshArtifacts(user);
       await refreshRevisionDiff(user, courseResult);
+      if (courseResult.active_revision_id || courseResult.working_revision_id) {
+        await refreshIntelligence(user);
+      }
       if (courseResult.topic_count > 0) {
         await refreshStructuredWorkspace(user, courseResult.status === "published");
       }
@@ -210,7 +240,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [courseId, refreshArtifacts, refreshStructuredWorkspace, refreshRevisionDiff, request, router]);
+  }, [courseId, refreshArtifacts, refreshIntelligence, refreshStructuredWorkspace, refreshRevisionDiff, request, router]);
 
   useEffect(() => {
     void loadStudio();
@@ -235,6 +265,16 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     }, 2200);
     return () => window.clearInterval(interval);
   }, [courseId, identity, refreshArtifacts, refreshStructuredWorkspace, refreshRevisionDiff, request, run]);
+
+  useEffect(() => {
+    if (!identity || !agentTasks.some((task) => ["queued", "running"].includes(task.status))) return;
+    const interval = window.setInterval(() => {
+      void refreshIntelligence(identity).catch((caught: unknown) => {
+        setError(caught instanceof Error ? caught.message : "Could not refresh the course team.");
+      });
+    }, 2200);
+    return () => window.clearInterval(interval);
+  }, [agentTasks, identity, refreshIntelligence]);
 
   async function submitMessage(event: FormEvent) {
     event.preventDefault();
@@ -543,6 +583,157 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     }
   }
 
+  async function uploadSupplementalSource(file: File, purpose: CourseSource["purpose"]) {
+    if (!identity) return;
+    setSending(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.set("file", file);
+      form.set("purpose", purpose);
+      const response = await fetch(`${pipelineBase}/courses/${courseId}/sources`, {
+        method: "POST",
+        headers: { "X-User-ID": identity.id },
+        body: form,
+      });
+      if (!response.ok) throw new Error(await responseDetail(response, "Could not add this source."));
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
+      await Promise.all([
+        refreshIntelligence(identity),
+        refreshArtifacts(identity),
+        refreshStructuredWorkspace(identity),
+        refreshRevisionDiff(identity, nextCourse),
+      ]);
+      setSourcesOpen(true);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not add this source.");
+    } finally {
+      setSending(false);
+      if (sourceInput.current) sourceInput.current.value = "";
+    }
+  }
+
+  async function updateSupplementalSource(
+    source: CourseSource,
+    update: Partial<Pick<CourseSource, "purpose" | "review_status" | "learner_visible">>,
+  ) {
+    if (!identity) return;
+    setSending(true);
+    try {
+      await request(`/courses/${courseId}/sources/${source.id}`, identity, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          purpose: update.purpose ?? source.purpose,
+          review_status: update.review_status ?? source.review_status,
+          learner_visible: update.learner_visible ?? source.learner_visible,
+        }),
+      });
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
+      await Promise.all([
+        refreshIntelligence(identity),
+        refreshArtifacts(identity),
+        refreshRevisionDiff(identity, nextCourse),
+      ]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not update this source.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function retrySupplementalSource(source: CourseSource) {
+    if (!identity) return;
+    try {
+      await request(`/courses/${courseId}/sources/${source.id}/retry`, identity, { method: "POST" });
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
+      await Promise.all([
+        refreshIntelligence(identity),
+        refreshRevisionDiff(identity, nextCourse),
+      ]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not retry source analysis.");
+    }
+  }
+
+  async function requestSpecialist(priority: CoursePriority) {
+    if (!identity || !priority.target_artifact_type || !priority.target_logical_artifact_id) return;
+    setSending(true);
+    setError(null);
+    try {
+      await request(`/courses/${courseId}/agent-tasks`, identity, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          specialist_role: priority.specialist_role,
+          task_type: "prepare_improvement",
+          target_artifact_type: priority.target_artifact_type,
+          target_logical_artifact_id: priority.target_logical_artifact_id,
+          instruction: priority.recommended_action,
+          evidence: priority.evidence,
+        }),
+      });
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
+      await Promise.all([
+        refreshIntelligence(identity),
+        refreshArtifacts(identity),
+        refreshRevisionDiff(identity, nextCourse),
+      ]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not brief the specialist.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function askDirectorAbout(priority: CoursePriority) {
+    setComposer(
+      `Help me evaluate “${priority.title}”. Use the evidence (${priority.evidence_count} observations) and recommend the smallest effective private course change.`,
+    );
+    setDirectorOpen(true);
+  }
+
+  async function resolveSpecialistProposal(
+    task: CourseAgentTask,
+    decision: Decision,
+    instructorRevision?: Record<string, unknown>,
+  ) {
+    const proposalId = task.proposal_ids[0];
+    if (!proposalId || !identity) return;
+    await resolveProposal(proposalId, decision, instructorRevision);
+    await Promise.all([
+      refreshIntelligence(identity),
+      refreshArtifacts(identity),
+      refreshStructuredWorkspace(identity),
+    ]);
+    const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+    setCourse(nextCourse);
+    await refreshRevisionDiff(identity, nextCourse);
+  }
+
+  async function saveCourseMapPosition(logicalId: string, x: number, y: number) {
+    if (!identity) return;
+    try {
+      await request(`/courses/${courseId}/map/layout`, identity, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ positions: [{ logical_artifact_id: logicalId, x, y }] }),
+      });
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
+      await Promise.all([
+        refreshArtifacts(identity),
+        refreshRevisionDiff(identity, nextCourse),
+      ]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not save the course map layout.");
+    }
+  }
+
   async function leaveStudio() {
     if (identity && course?.status === "draft" && course.source_count === 0) {
       setSending(true);
@@ -657,6 +848,16 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     <div className={`${styles.appShell} ${styles.studioApp} ${sidebarCollapsed ? styles.sidebarCollapsedShell : ""}`}>
       <TeacherSidebar collapsed={sidebarCollapsed} compact identity={identity} onToggle={toggleSidebar} />
       <main className={styles.studioMain}>
+        <input
+          accept="application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,.pdf,.pptx"
+          className={styles.hiddenInput}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void uploadSupplementalSource(file, "ai_context");
+          }}
+          ref={sourceInput}
+          type="file"
+        />
         <header className={styles.studioHeader}>
           <div className={styles.studioTitle}>
             <button aria-label="Back to courses" disabled={sending} onClick={() => void leaveStudio()} type="button"><ArrowLeft /></button>
@@ -693,10 +894,29 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                 {course?.status === "published" ? <CanvasTab active={canvasView === "assessments"} icon={<Check />} label="Assessments" onClick={() => setCanvasView("assessments")} /> : null}
                 <CanvasTab active={canvasView === "preview"} icon={<Eye />} label="Preview" onClick={() => setCanvasView("preview")} />
                 {course?.status === "published" ? <CanvasTab active={canvasView === "settings"} icon={<Settings2 />} label="Settings" onClick={() => setCanvasView("settings")} /> : null}
+                {course?.status === "published" ? (
+                  <button className={styles.sourceLibraryButton} onClick={() => setSourcesOpen(true)} type="button">
+                    <FileText />Sources<span>{sources.length}</span>
+                  </button>
+                ) : null}
               </nav>
               <div className={styles.canvasBody}>
-                {canvasView === "overview" ? <OverviewCanvas course={course} dashboard={dashboardSummary} onSignal={resolveDashboardSignal} revisionDiff={revisionDiff} /> : null}
-                {canvasView === "map" ? <CourseMapCanvas courseMap={courseMap} run={run} /> : null}
+                {canvasView === "overview" ? (
+                  <OverviewCanvas
+                    agentTasks={agentTasks}
+                    course={course}
+                    courseMap={courseMap}
+                    dashboard={dashboardSummary}
+                    onAskDirector={askDirectorAbout}
+                    onPrepare={requestSpecialist}
+                    onResolveProposal={resolveSpecialistProposal}
+                    onSignal={resolveDashboardSignal}
+                    onSources={() => setSourcesOpen(true)}
+                    revisionDiff={revisionDiff}
+                    sources={sources}
+                  />
+                ) : null}
+                {canvasView === "map" ? <CourseMapCanvas courseMap={courseMap} onLayout={saveCourseMapPosition} run={run} /> : null}
                 {canvasView === "review" && course?.status !== "published" ? <ReviewCanvas bundles={bundles} onBundle={decideBundle} onItem={decideItem} /> : null}
                 {canvasView === "assessments" ? <AssessmentsCanvas disabled={sending} onRemove={removeAssessment} onSave={saveAssessment} workspace={assessmentWorkspace} /> : null}
                 {canvasView === "preview" ? <PreviewCanvas course={course} workspace={assessmentWorkspace} /> : null}
@@ -708,6 +928,16 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                 <span>Course Director</span>
               </button>
               {directorOpen ? <aside className={styles.directorDock}>{courseDirector}</aside> : null}
+              {sourcesOpen ? (
+                <SourcesDrawer
+                  disabled={sending}
+                  onClose={() => setSourcesOpen(false)}
+                  onRetry={retrySupplementalSource}
+                  onUpdate={updateSupplementalSource}
+                  onUpload={() => sourceInput.current?.click()}
+                  sources={sources}
+                />
+              ) : null}
             </div>
           )
         )}
@@ -863,7 +1093,11 @@ function CanvasTab({ active, badge, icon, label, onClick }: { active: boolean; b
   return <button aria-pressed={active} onClick={onClick} type="button">{icon}<span>{label}</span>{badge ? <i>{badge}</i> : null}</button>;
 }
 
-function CourseMapCanvas({ courseMap, run }: { courseMap: CourseMap | null; run: GenerationRun | null }) {
+function CourseMapCanvas({ courseMap, onLayout, run }: {
+  courseMap: CourseMap | null;
+  onLayout: (logicalId: string, x: number, y: number) => Promise<void>;
+  run: GenerationRun | null;
+}) {
   const [topicId, setTopicId] = useState<string | null>(null);
   const [artifactId, setArtifactId] = useState<string | null>(null);
   const graph = useMemo(() => mapToFlow(courseMap, topicId, artifactId), [artifactId, courseMap, topicId]);
@@ -913,7 +1147,10 @@ function CourseMapCanvas({ courseMap, run }: { courseMap: CourseMap | null; run:
           {activeArtifact ? <aside><span>{activeArtifact.kind}</span><strong>{activeArtifact.title}</strong><p>{String(activeArtifact.metadata.description ?? activeArtifact.metadata.summary ?? "No description")}</p><small>{activeArtifact.status}</small></aside> : null}
         </nav>
         <div className={styles.flowSurface}>
-          <ReactFlow edges={graph.edges} fitView fitViewOptions={{ padding: 0.25 }} nodes={graph.nodes} nodesConnectable={false} nodesDraggable onNodeClick={(_, node) => selectNode(node.id)} panOnScroll proOptions={{ hideAttribution: true }}>
+          <ReactFlow edges={graph.edges} fitView fitViewOptions={{ padding: 0.25 }} nodes={graph.nodes} nodesConnectable={false} nodesDraggable onNodeClick={(_, node) => selectNode(node.id)} onNodeDragStop={(_, node) => {
+            const artifact = courseMap.nodes.find((item) => item.id === node.id);
+            if (artifact) void onLayout(artifact.logical_id, node.position.x, node.position.y);
+          }} panOnScroll proOptions={{ hideAttribution: true }}>
             <Background color="#deddd7" gap={22} size={1} />
             <Controls showInteractive={false} />
           </ReactFlow>
@@ -972,30 +1209,168 @@ function EvidenceSummary({ item }: { item: ReviewItem }) {
   return <dl>{entries.map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd>{String(value)}</dd></div>)}</dl>;
 }
 
-function OverviewCanvas({ course, dashboard, revisionDiff, onSignal }: {
+function OverviewCanvas({
+  agentTasks,
+  course,
+  courseMap,
+  dashboard,
+  onAskDirector,
+  onPrepare,
+  onResolveProposal,
+  onSignal,
+  onSources,
+  revisionDiff,
+  sources,
+}: {
+  agentTasks: CourseAgentTask[];
   course: CourseSummary | null;
+  courseMap: CourseMap | null;
   dashboard: DashboardSummary | null;
+  onAskDirector: (priority: CoursePriority) => void;
+  onPrepare: (priority: CoursePriority) => Promise<void>;
+  onResolveProposal: (
+    task: CourseAgentTask,
+    decision: Decision,
+    instructorRevision?: Record<string, unknown>,
+  ) => Promise<void>;
   revisionDiff: RevisionDiff | null;
   onSignal: (signalId: string, decision: Decision, note?: string) => Promise<void>;
+  onSources: () => void;
+  sources: CourseSource[];
 }) {
-  const [editingSignal, setEditingSignal] = useState<string | null>(null);
-  const [signalNote, setSignalNote] = useState("");
+  const [selectedPriorityId, setSelectedPriorityId] = useState<string | null>(null);
+  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const answerOutcomes = answerOutcomeSummary(dashboard);
+  const priorities = dashboard?.priorities ?? [];
+  const selectedPriority = priorities.find((item) => item.id === selectedPriorityId)
+    ?? priorities[0]
+    ?? null;
+  const selectedTopic = dashboard?.topic_health?.find((topic) => (
+    topic.logical_id === selectedTopicId
+    || topic.logical_id === selectedPriority?.target_logical_artifact_id
+  )) ?? null;
+  const activeTasks = agentTasks.filter((task) => task.task_type !== "extract_source").slice(0, 8);
+  const readySources = sources.filter((source) => source.extraction_status === "ready");
   return (
     <div className={styles.overviewCanvas}>
       <header className={styles.overviewHeader}>
-        <div><h2>{course?.title}</h2><p>Course health, learner evidence, and review-worthy insights in one workspace.</p></div>
+        <div><h2>{course?.title}</h2><p>A live teaching brief: what learners need, what the course team is doing, and what still needs your judgment.</p></div>
+        <button onClick={onSources} type="button"><FileText />Course sources<span>{readySources.length}/{sources.length} ready</span></button>
       </header>
       <section className={styles.overviewMetrics}>
         <article><small>Learners</small><strong>{dashboard?.learner_count ?? 0}</strong><p>Enrolled in this published revision</p></article>
         <article><small>Assessment attempts</small><strong>{dashboard?.attempt_count ?? 0}</strong><p>{dashboard?.learner_count ? `${(dashboard.attempt_count / dashboard.learner_count).toFixed(1)} per learner` : "Waiting for learner evidence"}</p></article>
-        <article><small>Need attention</small><strong>{dashboard?.signals.length ?? 0}</strong><p>Evidence-backed decisions awaiting review</p></article>
-        <article><small>Course structure</small><strong>{course?.topic_count ?? 0} topics</strong><p>{course?.concept_count ?? 0} mapped concepts</p></article>
+        <article><small>Priority brief</small><strong>{priorities.length}</strong><p>Ranked from persisted learner and design evidence</p></article>
+        <article><small>Course team</small><strong>{activeTasks.filter((task) => ["queued", "running", "waiting_review"].includes(task.status)).length}</strong><p>Specialist tasks active or awaiting review</p></article>
         <article><small>Unpublished changes</small><strong>{revisionDiff?.changes.length ?? 0}</strong><p>{revisionDiff ? "Visible in the private revision" : "Live course is unchanged"}</p></article>
       </section>
       {dashboard?.not_enough_data ? <div className={styles.evidenceNotice}><CircleAlert /><p><strong>Early evidence only.</strong> The charts stay honest and will fill in as learners complete assessments.</p></div> : null}
+
+      <div className={styles.intelligenceGrid}>
+        <section className={styles.priorityBrief}>
+          <header><div><h3>Priority brief</h3><p>Ranked issues that can change learning, not a generic notification feed.</p></div><span>{priorities.length} open</span></header>
+          <div>
+            {priorities.map((priority, index) => {
+              const matchingTask = agentTasks.find((task) => (
+                task.target_logical_artifact_id === priority.target_logical_artifact_id
+                && task.task_type === "prepare_improvement"
+              ));
+              return (
+                <article aria-current={selectedPriority?.id === priority.id ? "true" : undefined} key={priority.id}>
+                  <button className={styles.priorityEvidenceButton} onClick={() => {
+                    setSelectedPriorityId(priority.id);
+                    setSelectedTopicId(priority.target_logical_artifact_id);
+                  }} type="button">
+                    <span>{String(index + 1).padStart(2, "0")}</span>
+                    <div><small>{specialistLabel(priority.specialist_role)} · {priority.severity} priority</small><h4>{priority.title}</h4><p>{priority.summary}</p><em>{priority.affected_learners ? `${priority.affected_learners} learners` : `${priority.evidence_count} design checks`}</em></div>
+                    <BarChart3 />
+                  </button>
+                  <footer>
+                    <button onClick={() => onAskDirector(priority)} type="button"><MessageCircleMore />Ask Director</button>
+                    <button disabled={!canPrepareImprovement(priority, agentTasks)} onClick={() => void onPrepare(priority)} type="button">
+                      {matchingTask && ["queued", "running"].includes(matchingTask.status) ? <LoaderCircle className={styles.spin} /> : <Wand2 />}
+                      {matchingTask && ["queued", "running"].includes(matchingTask.status) ? "Specialist working" : "Prepare improvement"}
+                    </button>
+                  </footer>
+                </article>
+              );
+            })}
+            {!priorities.length ? <div className={styles.inlineEmpty}><Check /><div><strong>No urgent course changes</strong><p>The team will surface a priority when evidence or course coverage crosses a meaningful threshold.</p></div></div> : null}
+          </div>
+        </section>
+
+        <section className={styles.courseTeam}>
+          <header><div><h3>Your course team</h3><p>Specialists prepare private work. You decide what enters the course.</p></div><Network /></header>
+          <div>
+            {activeTasks.map((task) => (
+              <article data-status={task.status} key={task.id}>
+                <span>{specialistIcon(task.specialist_role)}</span>
+                <div><strong>{specialistLabel(task.specialist_role)}</strong><p>{taskDescription(task)}</p><small>{taskStatusLabel(task.status)}</small></div>
+                {task.status === "running" || task.status === "queued" ? <LoaderCircle className={styles.spin} /> : task.status === "failed" ? <CircleAlert /> : <Check />}
+                {task.status === "waiting_review" ? <SpecialistProposalCard onResolve={onResolveProposal} task={task} /> : null}
+              </article>
+            ))}
+            {!activeTasks.length ? <div className={styles.teamEmpty}><BrainCircuit /><p><strong>The team is listening.</strong> Choose Prepare improvement on a priority to brief the right specialist.</p></div> : null}
+          </div>
+        </section>
+      </div>
+
+      <section className={styles.evidenceWorkspace}>
+        <header><div><h3>Evidence inspector</h3><p>Trace a recommendation to actual learner behavior and course coverage.</p></div><span>{selectedTopic ? selectedTopic.title : "Choose a priority or topic"}</span></header>
+        <div>
+          <article>
+            <small>Selected evidence</small>
+            <h4>{selectedPriority?.title ?? selectedTopic?.title ?? "No evidence selected"}</h4>
+            <p>{selectedPriority?.summary ?? "Select a topic below to inspect its confidence, correctness, mastery, clips, and checks."}</p>
+            {selectedPriority ? <dl>{Object.entries(selectedPriority.evidence).slice(0, 6).map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd>{String(value)}</dd></div>)}</dl> : null}
+            {selectedPriority?.id.startsWith("signal:") ? (
+              <div className={styles.evidenceDecisionActions}>
+                <button onClick={() => void onSignal(selectedPriority.id.slice(7), "accepted")} type="button"><Check />Accept diagnosis</button>
+                <button onClick={() => void onSignal(selectedPriority.id.slice(7), "dismissed")} type="button"><X />Dismiss</button>
+              </div>
+            ) : null}
+          </article>
+          <article>
+            <small>Topic pulse</small>
+            {selectedTopic ? (
+              <>
+                <h4>{topicHealthLabel(selectedTopic)}</h4>
+                <div className={styles.topicPulseBars}>
+                  <HealthBar label="Correct" value={performancePercent(selectedTopic.correct_attempts, selectedTopic.attempts)} />
+                  <HealthBar label="Confident" value={performancePercent(selectedTopic.confidence_3 + selectedTopic.confidence_4, selectedTopic.attempts)} />
+                  <HealthBar label="Mastered" value={performancePercent(selectedTopic.mastered_learners, Math.max(1, dashboard?.learner_count ?? 0))} />
+                </div>
+                <p>{selectedTopic.active_clips} active clips · {selectedTopic.assessment_count} assessments · {selectedTopic.concept_count} concepts</p>
+              </>
+            ) : <div className={styles.inspectorEmpty}><Search /><p>No topic is selected yet.</p></div>}
+          </article>
+        </div>
+      </section>
+
+      <section className={styles.overviewMapSection}>
+        <header><div><h3>Course structure × performance</h3><p>The live structure with learning risk overlaid. Open Course map for detailed editing.</p></div><span>{course?.topic_count ?? 0} topics · {course?.concept_count ?? 0} concepts</span></header>
+        <OverviewCourseMap courseMap={courseMap} dashboard={dashboard} onSelect={setSelectedTopicId} selectedTopicId={selectedTopic?.logical_id ?? null} />
+      </section>
+
+      <section className={styles.topicHealthSection}>
+        <header><div><h3>Topic health</h3><p>Compare correctness, confidence, mastery, remediation, and course coverage in one scan.</p></div><span>{dashboard?.topic_health?.length ?? 0} topics</span></header>
+        <div className={styles.topicHealthTable}>
+          <div aria-hidden="true"><span>Topic</span><span>Correct</span><span>Confidence</span><span>Struggling</span><span>Clips</span><span>Checks</span></div>
+          {dashboard?.topic_health?.map((topic) => (
+            <button aria-current={selectedTopic?.logical_id === topic.logical_id ? "true" : undefined} aria-label={`Inspect ${topic.title} topic evidence`} key={topic.logical_id} onClick={() => setSelectedTopicId(topic.logical_id)} type="button">
+              <strong>{topic.title}</strong>
+              <span>{performancePercent(topic.correct_attempts, topic.attempts)}%</span>
+              <span>{performancePercent(topic.confidence_3 + topic.confidence_4, topic.attempts)}%</span>
+              <span>{topic.struggling_learners}</span>
+              <span>{topic.active_clips}</span>
+              <span>{topic.assessment_count}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
       <section className={styles.learningHealth} aria-labelledby="learning-health-title">
-        <header><div><h3 id="learning-health-title">Learning health</h3></div><span>Last 14 days</span></header>
+        <header><div><h3 id="learning-health-title">Learning patterns</h3><p>Supporting trends for the priorities above.</p></div><span>Last 14 days</span></header>
         <InsightsCharts
           activity={dashboard?.activity_history ?? []}
           answerOutcomes={answerOutcomes}
@@ -1005,23 +1380,137 @@ function OverviewCanvas({ course, dashboard, revisionDiff, onSignal }: {
           questionRisk={dashboard?.question_performance ?? []}
         />
       </section>
-      <section className={styles.overviewSignals}>
-        <header><div><h3>Teaching decisions</h3></div><span>{dashboard?.signals.length ?? 0} open</span></header>
-        {dashboard?.signals.length ? dashboard.signals.map((signal) => (
-          <article key={signal.id}>
-            <div><span>{signal.type.replaceAll("_", " ")}</span><h4>{signalText(signal.ai_diagnosis, "title", "Evidence-backed teaching insight")}</h4><p>{signalText(signal.ai_diagnosis, "summary", "Learner evidence suggests this area deserves your judgment.")}</p></div>
-            {editingSignal === signal.id ? (
-              <div className={styles.signalEdit}>
-                <label>How should this insight change?<textarea onChange={(event) => setSignalNote(event.target.value)} rows={3} value={signalNote} /></label>
-                <div><button onClick={() => { setEditingSignal(null); setSignalNote(""); }} type="button">Cancel</button><button disabled={!signalNote.trim()} onClick={() => void onSignal(signal.id, "edited", signalNote).then(() => { setEditingSignal(null); setSignalNote(""); })} type="button"><Check />Save edit</button></div>
-              </div>
-            ) : (
-              <div className={styles.reviewActions}><button onClick={() => void onSignal(signal.id, "accepted")} type="button"><Check />Accept</button><button onClick={() => setEditingSignal(signal.id)} type="button"><Pencil />Edit</button><button onClick={() => void onSignal(signal.id, "dismissed")} type="button"><X />Dismiss</button></div>
-            )}
-          </article>
-        )) : <div className={styles.inlineEmpty}><Check /><div><strong>No open teaching decisions</strong><p>New items appear only when learner evidence crosses a meaningful threshold.</p></div></div>}
-      </section>
     </div>
+  );
+}
+
+function SpecialistProposalCard({ task, onResolve }: {
+  task: CourseAgentTask;
+  onResolve: (task: CourseAgentTask, decision: Decision, revision?: Record<string, unknown>) => Promise<void>;
+}) {
+  const proposed = task.result?.proposed_state;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(() => JSON.stringify(proposed ?? {}, null, 2));
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className={styles.specialistProposal}>
+      <p>{String(task.result?.rationale ?? task.result?.summary ?? "A private change is ready for your review.")}</p>
+      {editing ? <textarea aria-label="Edit specialist proposal JSON" onChange={(event) => setDraft(event.target.value)} rows={7} value={draft} /> : <ProposalDiff before={task.result?.before_state} after={proposed} />}
+      {error ? <small>{error}</small> : null}
+      <footer>
+        <button onClick={() => void onResolve(task, "dismissed")} type="button"><X />Dismiss</button>
+        <button onClick={() => { setEditing((current) => !current); setError(null); }} type="button"><Pencil />{editing ? "Cancel edit" : "Edit"}</button>
+        <button onClick={() => {
+          if (!editing) { void onResolve(task, "accepted"); return; }
+          try {
+            const parsed = JSON.parse(draft) as Record<string, unknown>;
+            void onResolve(task, "edited", parsed);
+          } catch { setError("Enter valid JSON before saving the edit."); }
+        }} type="button"><Check />{editing ? "Save edit" : "Accept"}</button>
+      </footer>
+    </div>
+  );
+}
+
+function ProposalDiff({ before, after }: { before: unknown; after: unknown }) {
+  const previous = isRecord(before) ? before : {};
+  const next = isRecord(after) ? after : {};
+  const changed = Object.keys(next).filter((key) => JSON.stringify(previous[key]) !== JSON.stringify(next[key])).slice(0, 5);
+  return <dl>{changed.map((key) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd><del>{shortValue(previous[key])}</del><ins>{shortValue(next[key])}</ins></dd></div>)}</dl>;
+}
+
+function OverviewCourseMap({ courseMap, dashboard, onSelect, selectedTopicId }: {
+  courseMap: CourseMap | null;
+  dashboard: DashboardSummary | null;
+  onSelect: (logicalId: string) => void;
+  selectedTopicId: string | null;
+}) {
+  const topics = courseMap?.nodes.filter((node) => node.kind === "topic" && node.status !== "dismissed") ?? [];
+  const nodes: Node[] = topics.map((topic, index) => {
+    const health = dashboard?.topic_health?.find((item) => item.logical_id === topic.logical_id);
+    const risk = health && health.attempts ? 100 - performancePercent(health.correct_attempts, health.attempts) : 0;
+    const stored = isRecord(topic.metadata.layout) ? topic.metadata.layout : null;
+    return {
+      id: topic.id,
+      position: {
+        x: typeof stored?.x === "number" ? stored.x : 40 + (index % 3) * 280,
+        y: typeof stored?.y === "number" ? stored.y : 40 + Math.floor(index / 3) * 130,
+      },
+      data: { label: <div><small>{health?.attempts ?? 0} attempts · {health?.struggling_learners ?? 0} struggling</small><strong>{topic.title}</strong><span>{health?.attempts ? `${100 - risk}% correct` : "Awaiting learner evidence"}</span></div> },
+      style: {
+        background: selectedTopicId === topic.logical_id ? "#24252b" : risk >= 45 ? "#fff6eb" : "#fff",
+        border: selectedTopicId === topic.logical_id ? "1px solid #24252b" : risk >= 45 ? "1px solid #e0aa72" : "1px solid #d8d5ce",
+        borderRadius: 10,
+        color: selectedTopicId === topic.logical_id ? "#fff" : "#24252b",
+        padding: 14,
+        width: 230,
+      },
+    };
+  });
+  if (!nodes.length) return <div className={styles.inlineEmpty}><Network /><div><strong>No reviewed course structure</strong><p>Topics will appear here when the course map is ready.</p></div></div>;
+  return (
+    <div className={styles.overviewMap}>
+      <ReactFlow
+        edges={[]}
+        fitView
+        fitViewOptions={{ padding: 0.2 }}
+        nodes={nodes}
+        nodesConnectable={false}
+        nodesDraggable={false}
+        onNodeClick={(_, node) => {
+          const topic = topics.find((item) => item.id === node.id);
+          if (topic) onSelect(topic.logical_id);
+        }}
+        panOnDrag
+        proOptions={{ hideAttribution: true }}
+        zoomOnDoubleClick={false}
+      ><Background color="#e6e2da" gap={20} size={1} /></ReactFlow>
+    </div>
+  );
+}
+
+function HealthBar({ label, value }: { label: string; value: number }) {
+  return <div><span>{label}<strong>{value}%</strong></span><i><b style={{ width: `${value}%` }} /></i></div>;
+}
+
+function SourcesDrawer({ disabled, onClose, onRetry, onUpdate, onUpload, sources }: {
+  disabled: boolean;
+  onClose: () => void;
+  onRetry: (source: CourseSource) => Promise<void>;
+  onUpdate: (
+    source: CourseSource,
+    update: Partial<Pick<CourseSource, "purpose" | "review_status" | "learner_visible">>,
+  ) => Promise<void>;
+  onUpload: () => void;
+  sources: CourseSource[];
+}) {
+  return (
+    <aside className={styles.sourcesDrawer} aria-label="Course sources">
+      <header><div><FileText /><span><h2>Sources &amp; materials</h2><small>Context for the team and reviewed resources for learners</small></span></div><button aria-label="Close course sources" onClick={onClose} type="button"><X /></button></header>
+      <button className={styles.sourceUpload} disabled={disabled} onClick={onUpload} type="button"><Upload /><span><strong>Add PDF or PowerPoint</strong><small>Native text, speaker notes, and visual content are analyzed privately.</small></span></button>
+      <div className={styles.sourceList}>
+        {sources.map((source) => (
+          <article key={source.id}>
+            <header><span><FileText /></span><div><strong>{source.filename}</strong><small>{source.source_type.toUpperCase()} · {formatBytes(source.size_bytes)}</small></div><em data-status={source.extraction_status}>{source.extraction_status}</em></header>
+            <label>Use this source for
+              <select disabled={disabled} onChange={(event) => void onUpdate(source, { purpose: event.target.value as CourseSource["purpose"], learner_visible: event.target.value === "ai_context" ? false : source.learner_visible })} value={source.purpose}>
+                <option value="ai_context">AI context only</option>
+                <option value="learner_resource">Learner resource</option>
+                <option value="both">AI context + learner resource</option>
+              </select>
+            </label>
+            {source.purpose !== "ai_context" ? <label className={styles.sourceVisibility}><input checked={source.learner_visible} disabled={disabled || source.extraction_status !== "ready"} onChange={(event) => void onUpdate(source, { learner_visible: event.target.checked, review_status: event.target.checked ? "edited" : source.review_status })} type="checkbox" /><span>Make available to learners after publish</span></label> : null}
+            <p>{source.extraction_status === "ready" ? `${source.section_count} cited ${source.source_type === "pptx" ? "slides" : "pages"} available to the course team.` : source.extraction_status === "failed" ? source.extraction_error : "The Curriculum Architect is extracting this source."}</p>
+            <footer>
+              {source.extraction_status === "failed" ? <button onClick={() => void onRetry(source)} type="button"><RotateCcw />Retry</button> : null}
+              <button onClick={() => void onUpdate(source, { review_status: "dismissed", learner_visible: false })} type="button"><Trash2 />Remove</button>
+            </footer>
+          </article>
+        ))}
+        {!sources.length ? <div className={styles.teamEmpty}><BookOpenCheck /><p><strong>No supplemental sources yet.</strong> Add slides or a document to give the team more teaching context.</p></div> : null}
+      </div>
+      <footer><Check /><p>Sources are private by default. Learners only receive items you explicitly mark visible and then publish.</p></footer>
+    </aside>
   );
 }
 
@@ -1371,17 +1860,17 @@ export function mapToFlow(
       const originY = rowOffsets.get(row) ?? 0;
       nodes.push({
         id: topic.id,
-        position: { x: originX, y: originY },
+        position: mapPosition(topic, { x: originX, y: originY }),
         data: { label: topic.title },
         style: { background: "#202126", border: "0", borderRadius: 10, color: "#fff", fontSize: 14, fontWeight: 650, lineHeight: 1.35, padding: 15, width: 380 },
       });
       concepts.filter((concept) => concept.topic_id === topic.id).forEach((concept, conceptIndex) => {
         nodes.push({
           id: concept.id,
-          position: {
+          position: mapPosition(concept, {
             x: originX + (conceptIndex % 2) * 194,
             y: originY + 104 + Math.floor(conceptIndex / 2) * 82,
-          },
+          }),
           data: { label: concept.title },
           style: { background: "#fff", border: "1px solid #d6d2c9", borderRadius: 9, color: "#292930", fontSize: 12, lineHeight: 1.35, padding: 12, width: 180 },
         });
@@ -1391,7 +1880,7 @@ export function mapToFlow(
     unlinked.forEach((concept, index) => {
       nodes.push({
         id: concept.id,
-        position: { x: (index % columns) * 210, y: nextOffset + Math.floor(index / columns) * 76 },
+        position: mapPosition(concept, { x: (index % columns) * 210, y: nextOffset + Math.floor(index / columns) * 76 }),
         data: { label: concept.title },
         style: { background: "#fff8f0", border: "1px dashed #ce8a4e", borderRadius: 9, color: "#292930", fontSize: 12, padding: 12, width: 190 },
       });
@@ -1442,7 +1931,7 @@ export function mapToFlow(
   const topics = allTopics.filter((topic) => visibleTopicIds.has(topic.id));
   const nodes: Node[] = topics.map((topic, index) => ({
     id: topic.id,
-    position: { x: 30, y: 40 + index * 170 },
+    position: mapPosition(topic, { x: 30, y: 40 + index * 170 }),
     data: { label: topic.title },
     style: { background: "#202126", border: "0", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 650, padding: 13, width: 210 },
   }));
@@ -1453,7 +1942,7 @@ export function mapToFlow(
     conceptRows.set(concept.topic_id ?? "none", current + 1);
     nodes.push({
       id: concept.id,
-      position: { x: 340 + (current % 2) * 210, y: 28 + topicIndex * 170 + Math.floor(current / 2) * 62 },
+      position: mapPosition(concept, { x: 340 + (current % 2) * 210, y: 28 + topicIndex * 170 + Math.floor(current / 2) * 62 }),
       data: { label: concept.title },
       style: { background: concept.status === "dismissed" ? "#f3f1ed" : "#fff", border: "1px solid #d9d7d0", borderRadius: 9, color: "#292930", fontSize: 12, padding: 11, width: 190 },
     });
@@ -1463,14 +1952,71 @@ export function mapToFlow(
   return { nodes, edges: [...containment, ...prerequisite] };
 }
 
+function mapPosition(
+  artifact: CourseMap["nodes"][number],
+  fallback: { x: number; y: number },
+): { x: number; y: number } {
+  const layout = isRecord(artifact.metadata.layout) ? artifact.metadata.layout : null;
+  return typeof layout?.x === "number" && typeof layout?.y === "number"
+    ? { x: layout.x, y: layout.y }
+    : fallback;
+}
+
 function artifactLabel(value: string) { return value.replaceAll("_", " "); }
 function answerLabel(value: Record<string, unknown>) {
   const answer = value.answer ?? value.correct ?? value.value;
   if (typeof answer === "string" || typeof answer === "number" || typeof answer === "boolean") return String(answer);
   return JSON.stringify(value);
 }
-function signalText(value: Record<string, unknown>, key: string, fallback: string) {
-  return typeof value[key] === "string" && value[key] ? String(value[key]) : fallback;
+function specialistLabel(role: CourseAgentTask["specialist_role"]): string {
+  return {
+    learning_analyst: "Learning Analyst",
+    curriculum_architect: "Curriculum Architect",
+    clip_editor: "Clip Editor",
+    assessment_designer: "Assessment Designer",
+  }[role];
+}
+function specialistIcon(role: CourseAgentTask["specialist_role"]): ReactNode {
+  if (role === "learning_analyst") return <BarChart3 />;
+  if (role === "curriculum_architect") return <Network />;
+  if (role === "clip_editor") return <Scissors />;
+  return <ClipboardList />;
+}
+function taskDescription(task: CourseAgentTask): string {
+  if (task.status === "waiting_review") return "Prepared an exact private course change for your review.";
+  if (task.status === "failed") return task.error_message ?? "The specialist could not finish this task.";
+  const instruction = task.request_context.instruction;
+  return typeof instruction === "string" && instruction.trim()
+    ? instruction
+    : task.task_type.replaceAll("_", " ");
+}
+function taskStatusLabel(status: CourseAgentTask["status"]): string {
+  return {
+    queued: "Brief received",
+    running: "Working from course evidence",
+    waiting_review: "Your review is required",
+    complete: "Complete",
+    failed: "Needs attention",
+    cancelled: "Cancelled",
+  }[status];
+}
+function topicHealthLabel(topic: DashboardSummary["topic_health"][number]): string {
+  if (!topic.attempts) return "Awaiting learner evidence";
+  const accuracy = performancePercent(topic.correct_attempts, topic.attempts);
+  const confident = performancePercent(topic.confidence_3 + topic.confidence_4, topic.attempts);
+  if (accuracy < 55) return "Learners are struggling with this topic";
+  if (confident < 60) return "Correct answers still carry uncertainty";
+  return "Learners are progressing with confidence";
+}
+function shortValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  return text.length > 90 ? `${text.slice(0, 87)}…` : text;
+}
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 function simulatePolicy(
   policy: RoutingPolicy,

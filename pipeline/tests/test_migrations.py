@@ -40,9 +40,12 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     revision_briefs_migration = Path("migrations/017_revision_briefs.sql").read_text(
         encoding="utf-8"
     )
-    course_delete_migration = Path(
-        "migrations/018_course_delete_fk_lifecycle.sql"
-    ).read_text(encoding="utf-8")
+    course_delete_migration = Path("migrations/018_course_delete_fk_lifecycle.sql").read_text(
+        encoding="utf-8"
+    )
+    intelligence_migration = Path("migrations/019_course_intelligence_and_sources.sql").read_text(
+        encoding="utf-8"
+    )
 
     for table_name in [
         "users",
@@ -113,15 +116,23 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     assert "remediation_rules_target_clip_id_fkey" in course_delete_migration
     assert "enrollments_revision_id_fkey" in course_delete_migration
     assert course_delete_migration.count("deferrable initially deferred") == 6
+    for table_name in [
+        "course_sources",
+        "course_revision_sources",
+        "source_sections",
+        "source_citations",
+        "course_agent_tasks",
+        "course_map_layouts",
+    ]:
+        assert f"create table {table_name}" in intelligence_migration
+    assert "revision_source_visibility_reviewed" in intelligence_migration
 
 
 def test_legacy_schema_baseline_covers_every_migration() -> None:
     migration_names = {path.name for path in Path("migrations").glob("*.sql")}
 
     assert (
-        set(_LEGACY_MIGRATION_MARKERS)
-        | _DATA_ONLY_MIGRATIONS
-        | _POST_BASELINE_MIGRATIONS
+        set(_LEGACY_MIGRATION_MARKERS) | _DATA_ONLY_MIGRATIONS | _POST_BASELINE_MIGRATIONS
     ) == migration_names
 
 

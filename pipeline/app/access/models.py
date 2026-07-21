@@ -67,6 +67,14 @@ class LearnerQuestion:
 
 
 @dataclass(frozen=True)
+class LearnerResource:
+    id: UUID
+    filename: str
+    source_type: str
+    size_bytes: int
+
+
+@dataclass(frozen=True)
 class LearnerCourseExperience:
     id: UUID
     title: str
@@ -74,6 +82,7 @@ class LearnerCourseExperience:
     topics: tuple[LearnerTopic, ...]
     clips: tuple[LearnerClip, ...]
     questions: tuple[LearnerQuestion, ...]
+    resources: tuple[LearnerResource, ...] = ()
 
 
 @dataclass(frozen=True)
