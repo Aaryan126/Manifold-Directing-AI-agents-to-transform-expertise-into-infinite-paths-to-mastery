@@ -2,10 +2,14 @@ from typing import Any
 from uuid import UUID
 
 from app.course_os.models import (
+    AssessmentDraft,
+    AssessmentWorkspace,
     ConversationMessage,
+    CourseAssessment,
     CourseCreate,
     CourseMap,
     CourseProposal,
+    CourseRoutingPolicy,
     CourseSummary,
     DashboardSnapshot,
     GenerationRun,
@@ -13,6 +17,8 @@ from app.course_os.models import (
     ReviewDecision,
     ReviewItem,
     RevisionDiff,
+    RoutingPolicyDraft,
+    RoutingWorkspace,
 )
 from app.course_os.repository import CourseOSRepository
 
@@ -54,6 +60,123 @@ class CourseOSService:
         await self._require_owned_course(course_id, instructor_id)
         if not await self._repository.delete_course(course_id, instructor_id):
             raise CourseOSValidationError("Course not found.")
+
+    async def assessment_workspace(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+    ) -> AssessmentWorkspace:
+        course = await self._require_owned_course(course_id, instructor_id)
+        return await self._repository.assessment_workspace(
+            course_id,
+            _current_revision(course),
+            course.working_revision_id is not None,
+        )
+
+    async def create_assessment(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        draft: AssessmentDraft,
+    ) -> CourseAssessment:
+        course = await self._require_editable_course(course_id, instructor_id)
+        _validate_assessment_draft(draft)
+        try:
+            return await self._repository.create_assessment(
+                course_id,
+                _current_revision(course),
+                instructor_id,
+                draft,
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+
+    async def update_assessment(
+        self,
+        course_id: UUID,
+        question_id: UUID,
+        instructor_id: UUID,
+        draft: AssessmentDraft,
+    ) -> CourseAssessment:
+        course = await self._require_editable_course(course_id, instructor_id)
+        _validate_assessment_draft(draft)
+        try:
+            question = await self._repository.update_assessment(
+                course_id,
+                _current_revision(course),
+                instructor_id,
+                question_id,
+                draft,
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        if question is None:
+            raise CourseOSValidationError("Assessment not found in the working revision.")
+        return question
+
+    async def dismiss_assessment(
+        self,
+        course_id: UUID,
+        question_id: UUID,
+        instructor_id: UUID,
+    ) -> CourseAssessment:
+        course = await self._require_editable_course(course_id, instructor_id)
+        question = await self._repository.dismiss_assessment(
+            course_id,
+            _current_revision(course),
+            instructor_id,
+            question_id,
+        )
+        if question is None:
+            raise CourseOSValidationError("Assessment not found in the working revision.")
+        return question
+
+    async def routing_workspace(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+    ) -> RoutingWorkspace:
+        course = await self._require_owned_course(course_id, instructor_id)
+        return await self._repository.routing_workspace(
+            course_id,
+            _current_revision(course),
+            course.working_revision_id is not None,
+        )
+
+    async def upsert_routing_policy(
+        self,
+        course_id: UUID,
+        concept_id: UUID | None,
+        instructor_id: UUID,
+        policy: RoutingPolicyDraft,
+    ) -> CourseRoutingPolicy:
+        course = await self._require_editable_course(course_id, instructor_id)
+        _validate_routing_policy(policy)
+        try:
+            return await self._repository.upsert_routing_policy(
+                course_id,
+                _current_revision(course),
+                instructor_id,
+                concept_id,
+                policy,
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+
+    async def delete_routing_policy(
+        self,
+        course_id: UUID,
+        concept_id: UUID,
+        instructor_id: UUID,
+    ) -> None:
+        course = await self._require_editable_course(course_id, instructor_id)
+        if not await self._repository.delete_routing_policy(
+            course_id,
+            _current_revision(course),
+            instructor_id,
+            concept_id,
+        ):
+            raise CourseOSValidationError("Concept policy not found in the working revision.")
 
     async def open_working_revision(
         self,
@@ -320,12 +443,62 @@ class CourseOSService:
             raise CourseOSValidationError("Instructor does not own this course.")
         return course
 
+    async def _require_editable_course(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+    ) -> CourseSummary:
+        course = await self._require_owned_course(course_id, instructor_id)
+        if course.working_revision_id is None and course.status == "published":
+            try:
+                course = await self._repository.create_working_revision(
+                    course_id,
+                    instructor_id,
+                )
+            except ValueError as exc:
+                raise CourseOSValidationError(str(exc)) from exc
+        if course.working_revision_id is None:
+            raise CourseOSValidationError("Course has no editable working revision.")
+        return course
+
 
 def _current_revision(course: CourseSummary) -> UUID:
     revision_id = course.working_revision_id or course.active_revision_id
     if revision_id is None:
         raise CourseOSValidationError("Course has no active or working revision.")
     return revision_id
+
+
+def _validate_assessment_draft(draft: AssessmentDraft) -> None:
+    if not draft.body.strip():
+        raise CourseOSValidationError("Assessment prompt is required.")
+    if draft.type not in {"mcq", "short_answer", "worked_problem"}:
+        raise CourseOSValidationError("Assessment type is not supported.")
+    if not draft.correct_answer:
+        raise CourseOSValidationError("A correct answer is required.")
+    if not draft.confidence_prompt.strip():
+        raise CourseOSValidationError("A confidence prompt is required.")
+    if not draft.remediation_rules:
+        raise CourseOSValidationError("At least one remediation route is required.")
+    for rule in draft.remediation_rules:
+        if not rule.wrong_answer_pattern.strip():
+            raise CourseOSValidationError("Every remediation route needs a trigger pattern.")
+        if rule.target_clip_id is None and rule.target_concept_id is None:
+            raise CourseOSValidationError("Every remediation route needs a target.")
+
+
+def _validate_routing_policy(policy: RoutingPolicyDraft) -> None:
+    if policy.confidence_threshold < 1 or policy.confidence_threshold > 4:
+        raise CourseOSValidationError("Confidence threshold must be between 1 and 4.")
+    if policy.correct_attempts_for_mastery < 1:
+        raise CourseOSValidationError("Correct attempts for mastery must be at least 1.")
+    if policy.max_remediation_attempts < 0:
+        raise CourseOSValidationError("Remediation attempts cannot be negative.")
+    if policy.advancement_mode not in {
+        "require_mastery",
+        "allow_partial_understanding",
+    }:
+        raise CourseOSValidationError("Advancement mode is not supported.")
 
 
 def _is_evidence_question(content: str) -> bool:

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  answerOutcomeSummary,
   courseState,
   evidenceTitle,
   generationPhaseLabel,
@@ -101,5 +102,31 @@ describe("Course OS presentation", () => {
       risk_level: "high",
       evidence: { body: "Why does this force act here?" },
     })).toBe("Why does this force act here?");
+  });
+
+  it("derives answer outcomes from persisted question performance without inventing data", () => {
+    expect(answerOutcomeSummary({
+      course_id: "course",
+      learner_count: 3,
+      attempt_count: 10,
+      not_enough_data: false,
+      signals: [],
+      concept_performance: [],
+      clip_performance: [],
+      activity_history: [],
+      mastery_distribution: { mastered: 0, practiced: 0, struggling: 0, not_started: 0 },
+      question_performance: [{
+        question_id: "question",
+        prompt: "Prompt",
+        attempts: 10,
+        incorrect_attempts: 3,
+        low_confidence_correct_attempts: 2,
+      }],
+    })).toEqual({
+      attempts: 10,
+      confident_correct: 5,
+      unsure_correct: 2,
+      incorrect: 3,
+    });
   });
 });

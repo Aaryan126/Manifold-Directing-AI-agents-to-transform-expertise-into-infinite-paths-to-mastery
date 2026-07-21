@@ -6,11 +6,15 @@ from uuid import uuid4
 import pytest
 
 from app.course_os.models import (
+    AssessmentDraft,
+    AssessmentRuleDraft,
     ConversationMessage,
+    CourseAssessment,
     CourseCreate,
     CourseProposal,
     CourseSummary,
     RevisionDiff,
+    RoutingPolicyDraft,
 )
 from app.course_os.repository import CourseOSRepository
 from app.course_os.service import CourseOSService, CourseOSValidationError
@@ -310,3 +314,93 @@ async def test_draft_course_cannot_open_second_revision() -> None:
 
     with pytest.raises(CourseOSValidationError, match="already has a working revision"):
         await service.open_working_revision(course.id, course.instructor_id)
+
+
+@pytest.mark.anyio
+async def test_first_published_assessment_edit_opens_private_revision() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    course = replace(
+        _course(),
+        status="published",
+        active_revision_id=uuid4(),
+        working_revision_id=None,
+        revision_status="published",
+    )
+    working = replace(course, working_revision_id=uuid4(), revision_status="building")
+    question_id = uuid4()
+    topic_id = uuid4()
+    concept_id = uuid4()
+    draft = AssessmentDraft(
+        topic_id=topic_id,
+        body="What changes first?",
+        type="short_answer",
+        correct_answer={"answer": "velocity"},
+        confidence_prompt="How confident are you?",
+        remediation_rules=(
+            AssessmentRuleDraft(
+                wrong_answer_pattern="Confuses speed and velocity",
+                target_concept_id=concept_id,
+            ),
+        ),
+    )
+    saved = CourseAssessment(
+        id=question_id,
+        logical_id=uuid4(),
+        topic_id=topic_id,
+        topic_title="Motion",
+        body=draft.body,
+        type=draft.type,
+        correct_answer=draft.correct_answer,
+        confidence_prompt=draft.confidence_prompt,
+        review_status="edited",
+        remediation_rules=(),
+    )
+    repository.user_role = AsyncMock(return_value="instructor")
+    repository.get_course = AsyncMock(return_value=course)
+    repository.create_working_revision = AsyncMock(return_value=working)
+    repository.update_assessment = AsyncMock(return_value=saved)
+    service = CourseOSService(repository)
+
+    result = await service.update_assessment(
+        course.id,
+        question_id,
+        course.instructor_id,
+        draft,
+    )
+
+    assert result == saved
+    repository.create_working_revision.assert_awaited_once_with(
+        course.id,
+        course.instructor_id,
+    )
+    repository.update_assessment.assert_awaited_once_with(
+        course.id,
+        working.working_revision_id,
+        course.instructor_id,
+        question_id,
+        draft,
+    )
+
+
+@pytest.mark.anyio
+async def test_routing_policy_rejects_invalid_threshold_before_persistence() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    course = _course()
+    repository.user_role = AsyncMock(return_value="instructor")
+    repository.get_course = AsyncMock(return_value=course)
+    service = CourseOSService(repository)
+
+    with pytest.raises(CourseOSValidationError, match="between 1 and 4"):
+        await service.upsert_routing_policy(
+            course.id,
+            None,
+            course.instructor_id,
+            RoutingPolicyDraft(
+                confidence_threshold=5,
+                correct_attempts_for_mastery=1,
+                advancement_mode="require_mastery",
+                max_remediation_attempts=2,
+            ),
+        )
+
+    repository.upsert_routing_policy.assert_not_awaited()

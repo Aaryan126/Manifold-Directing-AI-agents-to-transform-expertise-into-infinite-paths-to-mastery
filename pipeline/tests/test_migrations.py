@@ -1,6 +1,10 @@
 from pathlib import Path
 
-from app.db.migrations import _DATA_ONLY_MIGRATIONS, _LEGACY_MIGRATION_MARKERS
+from app.db.migrations import (
+    _DATA_ONLY_MIGRATIONS,
+    _LEGACY_MIGRATION_MARKERS,
+    _POST_BASELINE_MIGRATIONS,
+)
 
 
 def test_initial_migration_contains_prd_phase_zero_entities() -> None:
@@ -36,6 +40,9 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     revision_briefs_migration = Path("migrations/017_revision_briefs.sql").read_text(
         encoding="utf-8"
     )
+    course_delete_migration = Path(
+        "migrations/018_course_delete_fk_lifecycle.sql"
+    ).read_text(encoding="utf-8")
 
     for table_name in [
         "users",
@@ -102,12 +109,20 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     assert "routing_policies_revision_concept_idx" in revision_uniqueness_migration
     assert "add column brief jsonb" in revision_briefs_migration
     assert "nulls not distinct" in revision_uniqueness_migration
+    assert "remediation_rules_target_concept_id_fkey" in course_delete_migration
+    assert "remediation_rules_target_clip_id_fkey" in course_delete_migration
+    assert "enrollments_revision_id_fkey" in course_delete_migration
+    assert course_delete_migration.count("deferrable initially deferred") == 6
 
 
 def test_legacy_schema_baseline_covers_every_migration() -> None:
     migration_names = {path.name for path in Path("migrations").glob("*.sql")}
 
-    assert set(_LEGACY_MIGRATION_MARKERS) | _DATA_ONLY_MIGRATIONS == migration_names
+    assert (
+        set(_LEGACY_MIGRATION_MARKERS)
+        | _DATA_ONLY_MIGRATIONS
+        | _POST_BASELINE_MIGRATIONS
+    ) == migration_names
 
 
 def test_compose_leaves_migration_ownership_to_pipeline() -> None:

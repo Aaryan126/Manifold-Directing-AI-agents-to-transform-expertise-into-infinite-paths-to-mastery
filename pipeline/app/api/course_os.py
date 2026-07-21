@@ -6,10 +6,15 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from app.course_os.models import (
+    AssessmentDraft,
+    AssessmentRuleDraft,
+    AssessmentWorkspace,
     ConversationMessage,
+    CourseAssessment,
     CourseCreate,
     CourseMap,
     CourseProposal,
+    CourseRoutingPolicy,
     CourseSummary,
     DashboardSnapshot,
     GenerationRun,
@@ -17,6 +22,8 @@ from app.course_os.models import (
     ReviewDecision,
     ReviewItem,
     RevisionDiff,
+    RoutingPolicyDraft,
+    RoutingWorkspace,
 )
 from app.course_os.service import CourseOSService, CourseOSValidationError
 from app.dependencies import get_course_os_service
@@ -202,6 +209,81 @@ class CourseMapResponse(BaseModel):
     revision_id: UUID
     nodes: list[MapNodeResponse]
     edges: list[MapEdgeResponse]
+
+
+class AssessmentRuleRequest(BaseModel):
+    wrong_answer_pattern: str = Field(min_length=1, max_length=500)
+    target_clip_id: UUID | None = None
+    target_concept_id: UUID | None = None
+
+
+class AssessmentDraftRequest(BaseModel):
+    topic_id: UUID
+    body: str = Field(min_length=1, max_length=4000)
+    type: Literal["mcq", "short_answer", "worked_problem"]
+    correct_answer: dict[str, Any]
+    confidence_prompt: str = Field(min_length=1, max_length=1000)
+    remediation_rules: list[AssessmentRuleRequest] = Field(min_length=1)
+
+
+class CourseAssessmentResponse(BaseModel):
+    id: UUID
+    logical_id: UUID
+    topic_id: UUID
+    topic_title: str
+    body: str
+    type: str
+    correct_answer: dict[str, Any]
+    confidence_prompt: str
+    review_status: str
+    remediation_rules: list[dict[str, Any]]
+
+
+class AssessmentTopicOptionResponse(BaseModel):
+    id: UUID
+    title: str
+
+
+class AssessmentConceptOptionResponse(BaseModel):
+    id: UUID
+    name: str
+    topic_ids: list[UUID]
+
+
+class AssessmentClipOptionResponse(BaseModel):
+    id: UUID
+    topic_id: UUID
+    label: str
+
+
+class AssessmentWorkspaceResponse(BaseModel):
+    revision_id: UUID
+    is_working_revision: bool
+    topics: list[AssessmentTopicOptionResponse]
+    concepts: list[AssessmentConceptOptionResponse]
+    clips: list[AssessmentClipOptionResponse]
+    questions: list[CourseAssessmentResponse]
+
+
+class RoutingPolicyRequest(BaseModel):
+    confidence_threshold: int = Field(ge=1, le=4)
+    correct_attempts_for_mastery: int = Field(ge=1, le=20)
+    advancement_mode: Literal["require_mastery", "allow_partial_understanding"]
+    max_remediation_attempts: int = Field(ge=0, le=20)
+
+
+class CourseRoutingPolicyResponse(BaseModel):
+    id: UUID | None
+    concept_id: UUID | None
+    concept_name: str | None
+    policy: RoutingPolicyRequest
+
+
+class RoutingWorkspaceResponse(BaseModel):
+    revision_id: UUID
+    is_working_revision: bool
+    concepts: list[AssessmentConceptOptionResponse]
+    policies: list[CourseRoutingPolicyResponse]
 
 
 @router.get("/instructors/me/dashboard", response_model=DashboardResponse)
@@ -404,6 +486,147 @@ async def course_map(
     return _map_response(await _call(service.course_map(course_id, user_id)))
 
 
+@router.get(
+    "/courses/{course_id}/assessment-workspace",
+    response_model=AssessmentWorkspaceResponse,
+)
+async def assessment_workspace(
+    course_id: UUID,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> AssessmentWorkspaceResponse:
+    return _assessment_workspace_response(
+        await _call(service.assessment_workspace(course_id, user_id))
+    )
+
+
+@router.post(
+    "/courses/{course_id}/assessments",
+    response_model=CourseAssessmentResponse,
+    status_code=201,
+)
+async def create_assessment(
+    course_id: UUID,
+    request: AssessmentDraftRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseAssessmentResponse:
+    return _assessment_response(
+        await _call(service.create_assessment(course_id, user_id, _assessment_draft(request)))
+    )
+
+
+@router.put(
+    "/courses/{course_id}/assessments/{question_id}",
+    response_model=CourseAssessmentResponse,
+)
+async def update_assessment(
+    course_id: UUID,
+    question_id: UUID,
+    request: AssessmentDraftRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseAssessmentResponse:
+    return _assessment_response(
+        await _call(
+            service.update_assessment(
+                course_id,
+                question_id,
+                user_id,
+                _assessment_draft(request),
+            )
+        )
+    )
+
+
+@router.delete(
+    "/courses/{course_id}/assessments/{question_id}",
+    response_model=CourseAssessmentResponse,
+)
+async def dismiss_assessment(
+    course_id: UUID,
+    question_id: UUID,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseAssessmentResponse:
+    return _assessment_response(
+        await _call(service.dismiss_assessment(course_id, question_id, user_id))
+    )
+
+
+@router.get(
+    "/courses/{course_id}/routing-workspace",
+    response_model=RoutingWorkspaceResponse,
+)
+async def routing_workspace(
+    course_id: UUID,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> RoutingWorkspaceResponse:
+    return _routing_workspace_response(
+        await _call(service.routing_workspace(course_id, user_id))
+    )
+
+
+@router.put(
+    "/courses/{course_id}/routing-workspace/default",
+    response_model=CourseRoutingPolicyResponse,
+)
+async def update_default_routing_policy(
+    course_id: UUID,
+    request: RoutingPolicyRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseRoutingPolicyResponse:
+    return _routing_policy_response(
+        await _call(
+            service.upsert_routing_policy(
+                course_id,
+                None,
+                user_id,
+                _routing_policy_draft(request),
+            )
+        )
+    )
+
+
+@router.put(
+    "/courses/{course_id}/routing-workspace/{concept_id}",
+    response_model=CourseRoutingPolicyResponse,
+)
+async def update_concept_routing_policy(
+    course_id: UUID,
+    concept_id: UUID,
+    request: RoutingPolicyRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseRoutingPolicyResponse:
+    return _routing_policy_response(
+        await _call(
+            service.upsert_routing_policy(
+                course_id,
+                concept_id,
+                user_id,
+                _routing_policy_draft(request),
+            )
+        )
+    )
+
+
+@router.delete(
+    "/courses/{course_id}/routing-workspace/{concept_id}",
+    status_code=204,
+)
+async def delete_concept_routing_policy(
+    course_id: UUID,
+    concept_id: UUID,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> Response:
+    await _call(service.delete_routing_policy(course_id, concept_id, user_id))
+    return Response(status_code=204)
+
+
 @router.get("/courses/{course_id}/revision-diff", response_model=RevisionDiffResponse)
 async def revision_diff(
     course_id: UUID,
@@ -560,6 +783,84 @@ def _map_response(course_map: CourseMap) -> CourseMapResponse:
         revision_id=course_map.revision_id,
         nodes=[MapNodeResponse(**node.__dict__) for node in course_map.nodes],
         edges=[MapEdgeResponse(**edge.__dict__) for edge in course_map.edges],
+    )
+
+
+def _assessment_draft(request: AssessmentDraftRequest) -> AssessmentDraft:
+    return AssessmentDraft(
+        topic_id=request.topic_id,
+        body=request.body,
+        type=request.type,
+        correct_answer=request.correct_answer,
+        confidence_prompt=request.confidence_prompt,
+        remediation_rules=tuple(
+            AssessmentRuleDraft(
+                wrong_answer_pattern=rule.wrong_answer_pattern,
+                target_clip_id=rule.target_clip_id,
+                target_concept_id=rule.target_concept_id,
+            )
+            for rule in request.remediation_rules
+        ),
+    )
+
+
+def _assessment_response(question: CourseAssessment) -> CourseAssessmentResponse:
+    return CourseAssessmentResponse(
+        **{
+            **question.__dict__,
+            "remediation_rules": list(question.remediation_rules),
+        }
+    )
+
+
+def _assessment_workspace_response(
+    workspace: AssessmentWorkspace,
+) -> AssessmentWorkspaceResponse:
+    return AssessmentWorkspaceResponse(
+        revision_id=workspace.revision_id,
+        is_working_revision=workspace.is_working_revision,
+        topics=[AssessmentTopicOptionResponse(**topic.__dict__) for topic in workspace.topics],
+        concepts=[
+            AssessmentConceptOptionResponse(
+                id=concept.id,
+                name=concept.name,
+                topic_ids=list(concept.topic_ids),
+            )
+            for concept in workspace.concepts
+        ],
+        clips=[AssessmentClipOptionResponse(**clip.__dict__) for clip in workspace.clips],
+        questions=[_assessment_response(question) for question in workspace.questions],
+    )
+
+
+def _routing_policy_draft(request: RoutingPolicyRequest) -> RoutingPolicyDraft:
+    return RoutingPolicyDraft(**request.model_dump())
+
+
+def _routing_policy_response(
+    policy: CourseRoutingPolicy,
+) -> CourseRoutingPolicyResponse:
+    return CourseRoutingPolicyResponse(
+        id=policy.id,
+        concept_id=policy.concept_id,
+        concept_name=policy.concept_name,
+        policy=RoutingPolicyRequest(**policy.policy.__dict__),
+    )
+
+
+def _routing_workspace_response(workspace: RoutingWorkspace) -> RoutingWorkspaceResponse:
+    return RoutingWorkspaceResponse(
+        revision_id=workspace.revision_id,
+        is_working_revision=workspace.is_working_revision,
+        concepts=[
+            AssessmentConceptOptionResponse(
+                id=concept.id,
+                name=concept.name,
+                topic_ids=list(concept.topic_ids),
+            )
+            for concept in workspace.concepts
+        ],
+        policies=[_routing_policy_response(policy) for policy in workspace.policies],
     )
 
 

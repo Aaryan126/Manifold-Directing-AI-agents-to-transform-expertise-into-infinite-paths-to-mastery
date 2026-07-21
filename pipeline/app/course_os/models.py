@@ -207,3 +207,88 @@ class RevisionDiff:
     active_revision_id: UUID | None
     working_revision_id: UUID
     changes: tuple[RevisionChange, ...]
+
+
+@dataclass(frozen=True)
+class AssessmentTopicOption:
+    id: UUID
+    title: str
+
+
+@dataclass(frozen=True)
+class AssessmentConceptOption:
+    id: UUID
+    name: str
+    topic_ids: tuple[UUID, ...]
+
+
+@dataclass(frozen=True)
+class AssessmentClipOption:
+    id: UUID
+    topic_id: UUID
+    label: str
+
+
+@dataclass(frozen=True)
+class AssessmentRuleDraft:
+    wrong_answer_pattern: str
+    target_clip_id: UUID | None = None
+    target_concept_id: UUID | None = None
+
+
+@dataclass(frozen=True)
+class AssessmentDraft:
+    topic_id: UUID
+    body: str
+    type: str
+    correct_answer: dict[str, Any]
+    confidence_prompt: str
+    remediation_rules: tuple[AssessmentRuleDraft, ...]
+
+
+@dataclass(frozen=True)
+class CourseAssessment:
+    id: UUID
+    logical_id: UUID
+    topic_id: UUID
+    topic_title: str
+    body: str
+    type: str
+    correct_answer: dict[str, Any]
+    confidence_prompt: str
+    review_status: str
+    remediation_rules: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class AssessmentWorkspace:
+    revision_id: UUID
+    is_working_revision: bool
+    topics: tuple[AssessmentTopicOption, ...]
+    concepts: tuple[AssessmentConceptOption, ...]
+    clips: tuple[AssessmentClipOption, ...]
+    questions: tuple[CourseAssessment, ...]
+
+
+@dataclass(frozen=True)
+class RoutingPolicyDraft:
+    confidence_threshold: int
+    correct_attempts_for_mastery: int
+    advancement_mode: str
+    max_remediation_attempts: int
+
+
+@dataclass(frozen=True)
+class CourseRoutingPolicy:
+    id: UUID | None
+    concept_id: UUID | None
+    concept_name: str | None
+    policy: RoutingPolicyDraft
+
+
+@dataclass(frozen=True)
+class RoutingWorkspace:
+    revision_id: UUID
+    is_working_revision: bool
+    concepts: tuple[AssessmentConceptOption, ...]
+    policies: tuple[CourseRoutingPolicy, ...]

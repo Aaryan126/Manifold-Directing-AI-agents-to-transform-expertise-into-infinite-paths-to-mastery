@@ -133,6 +133,112 @@ export type RevisionDiff = {
   }>;
 };
 
+export type DashboardSummary = {
+  course_id: string;
+  learner_count: number;
+  attempt_count: number;
+  not_enough_data: boolean;
+  signals: Array<{
+    id: string;
+    type: string;
+    status: string;
+    ai_diagnosis: Record<string, unknown>;
+  }>;
+  concept_performance: Array<{
+    concept_id: string;
+    concept_name: string;
+    touched_learners: number;
+    struggling_learners: number;
+  }>;
+  question_performance: Array<{
+    question_id: string;
+    prompt: string;
+    attempts: number;
+    incorrect_attempts: number;
+    low_confidence_correct_attempts: number;
+  }>;
+  clip_performance: Array<{
+    clip_id: string;
+    remediation_attempts: number;
+    struggling_learners: number;
+  }>;
+  activity_history: Array<{
+    date: string;
+    attempts: number;
+    active_learners: number;
+  }>;
+  mastery_distribution: {
+    mastered: number;
+    practiced: number;
+    struggling: number;
+    not_started: number;
+  };
+};
+
+export type AssessmentRule = {
+  id?: string;
+  wrong_answer_pattern: string;
+  target_clip_id: string | null;
+  target_concept_id: string | null;
+};
+
+export type CourseAssessment = {
+  id: string;
+  logical_id: string;
+  topic_id: string;
+  topic_title: string;
+  body: string;
+  type: "mcq" | "short_answer" | "worked_problem";
+  correct_answer: Record<string, unknown>;
+  confidence_prompt: string;
+  review_status: "proposed" | "accepted" | "edited" | "dismissed";
+  remediation_rules: AssessmentRule[];
+};
+
+export type AssessmentWorkspace = {
+  revision_id: string;
+  is_working_revision: boolean;
+  topics: Array<{ id: string; title: string }>;
+  concepts: Array<{ id: string; name: string; topic_ids: string[] }>;
+  clips: Array<{ id: string; topic_id: string; label: string }>;
+  questions: CourseAssessment[];
+};
+
+export type RoutingPolicy = {
+  confidence_threshold: number;
+  correct_attempts_for_mastery: number;
+  advancement_mode: "require_mastery" | "allow_partial_understanding";
+  max_remediation_attempts: number;
+};
+
+export type RoutingWorkspace = {
+  revision_id: string;
+  is_working_revision: boolean;
+  concepts: Array<{ id: string; name: string; topic_ids: string[] }>;
+  policies: Array<{
+    id: string | null;
+    concept_id: string | null;
+    concept_name: string | null;
+    policy: RoutingPolicy;
+  }>;
+};
+
+export function answerOutcomeSummary(summary: DashboardSummary | null) {
+  const questions = summary?.question_performance ?? [];
+  const attempts = questions.reduce((total, item) => total + item.attempts, 0);
+  const incorrect = questions.reduce((total, item) => total + item.incorrect_attempts, 0);
+  const unsure = questions.reduce(
+    (total, item) => total + item.low_confidence_correct_attempts,
+    0,
+  );
+  return {
+    attempts,
+    confident_correct: Math.max(0, attempts - incorrect - unsure),
+    unsure_correct: unsure,
+    incorrect,
+  };
+}
+
 export function courseState(course: CourseSummary): {
   label: string;
   tone: "neutral" | "building" | "review" | "live" | "danger";

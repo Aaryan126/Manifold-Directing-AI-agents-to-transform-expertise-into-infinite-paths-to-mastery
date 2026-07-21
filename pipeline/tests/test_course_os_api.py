@@ -4,7 +4,17 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from app.course_os.models import CourseSummary, DashboardSnapshot
+from app.course_os.models import (
+    AssessmentClipOption,
+    AssessmentConceptOption,
+    AssessmentTopicOption,
+    AssessmentWorkspace,
+    CourseAssessment,
+    CourseRoutingPolicy,
+    CourseSummary,
+    DashboardSnapshot,
+    RoutingPolicyDraft,
+)
 from app.dependencies import get_course_os_service
 from app.main import app
 
@@ -104,5 +114,142 @@ def test_delete_course_returns_no_content_after_confirmation_request() -> None:
         assert response.status_code == 204
         assert response.content == b""
         service.delete_course.assert_awaited_once_with(course_id, instructor_id)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_assessment_workspace_returns_current_revision_questions_and_targets() -> None:
+    instructor_id = uuid4()
+    course_id = uuid4()
+    revision_id = uuid4()
+    topic_id = uuid4()
+    concept_id = uuid4()
+    clip_id = uuid4()
+    question_id = uuid4()
+    service = AsyncMock()
+    service.assessment_workspace.return_value = AssessmentWorkspace(
+        revision_id=revision_id,
+        is_working_revision=False,
+        topics=(AssessmentTopicOption(id=topic_id, title="Foundations"),),
+        concepts=(
+            AssessmentConceptOption(
+                id=concept_id,
+                name="Core idea",
+                topic_ids=(topic_id,),
+            ),
+        ),
+        clips=(AssessmentClipOption(id=clip_id, topic_id=topic_id, label="Recap"),),
+        questions=(
+            CourseAssessment(
+                id=question_id,
+                logical_id=uuid4(),
+                topic_id=topic_id,
+                topic_title="Foundations",
+                body="Explain the core idea.",
+                type="short_answer",
+                correct_answer={"text": "A grounded explanation"},
+                confidence_prompt="How confident are you?",
+                review_status="accepted",
+                remediation_rules=(
+                    {
+                        "wrong_answer_pattern": "missing evidence",
+                        "target_clip_id": str(clip_id),
+                        "target_concept_id": str(concept_id),
+                    },
+                ),
+            ),
+        ),
+    )
+    app.dependency_overrides[get_course_os_service] = lambda: service
+    client = TestClient(app)
+
+    try:
+        response = client.get(
+            f"/courses/{course_id}/assessment-workspace",
+            headers={"X-User-ID": str(instructor_id)},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["revision_id"] == str(revision_id)
+        assert payload["is_working_revision"] is False
+        assert payload["questions"][0]["body"] == "Explain the core idea."
+        assert payload["questions"][0]["remediation_rules"][0][
+            "target_concept_id"
+        ] == str(concept_id)
+        service.assessment_workspace.assert_awaited_once_with(course_id, instructor_id)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_update_default_routing_policy_validates_and_forwards_structured_policy() -> None:
+    instructor_id = uuid4()
+    course_id = uuid4()
+    service = AsyncMock()
+    expected = RoutingPolicyDraft(
+        confidence_threshold=3,
+        correct_attempts_for_mastery=2,
+        advancement_mode="require_mastery",
+        max_remediation_attempts=2,
+    )
+    service.upsert_routing_policy.return_value = CourseRoutingPolicy(
+        id=uuid4(),
+        concept_id=None,
+        concept_name=None,
+        policy=expected,
+    )
+    app.dependency_overrides[get_course_os_service] = lambda: service
+    client = TestClient(app)
+
+    try:
+        response = client.put(
+            f"/courses/{course_id}/routing-workspace/default",
+            headers={"X-User-ID": str(instructor_id)},
+            json={
+                "confidence_threshold": 3,
+                "correct_attempts_for_mastery": 2,
+                "advancement_mode": "require_mastery",
+                "max_remediation_attempts": 2,
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["policy"] == {
+            "confidence_threshold": 3,
+            "correct_attempts_for_mastery": 2,
+            "advancement_mode": "require_mastery",
+            "max_remediation_attempts": 2,
+        }
+        service.upsert_routing_policy.assert_awaited_once_with(
+            course_id,
+            None,
+            instructor_id,
+            expected,
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_delete_concept_routing_policy_returns_no_content() -> None:
+    instructor_id = uuid4()
+    course_id = uuid4()
+    concept_id = uuid4()
+    service = AsyncMock()
+    app.dependency_overrides[get_course_os_service] = lambda: service
+    client = TestClient(app)
+
+    try:
+        response = client.delete(
+            f"/courses/{course_id}/routing-workspace/{concept_id}",
+            headers={"X-User-ID": str(instructor_id)},
+        )
+
+        assert response.status_code == 204
+        assert response.content == b""
+        service.delete_routing_policy.assert_awaited_once_with(
+            course_id,
+            concept_id,
+            instructor_id,
+        )
     finally:
         app.dependency_overrides.clear()

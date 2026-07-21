@@ -3,10 +3,14 @@ from typing import Any
 from uuid import UUID
 
 from app.course_os.models import (
+    AssessmentDraft,
+    AssessmentWorkspace,
     ConversationMessage,
+    CourseAssessment,
     CourseCreate,
     CourseMap,
     CourseProposal,
+    CourseRoutingPolicy,
     CourseSummary,
     DashboardSnapshot,
     GenerationRun,
@@ -15,6 +19,8 @@ from app.course_os.models import (
     ReviewDecision,
     ReviewItem,
     RevisionDiff,
+    RoutingPolicyDraft,
+    RoutingWorkspace,
 )
 
 
@@ -183,3 +189,66 @@ class CourseOSRepository(ABC):
         instructor_id: UUID,
         decision: ReviewDecision,
     ) -> ReviewBundle | None: ...
+
+    @abstractmethod
+    async def assessment_workspace(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        is_working_revision: bool,
+    ) -> AssessmentWorkspace: ...
+
+    @abstractmethod
+    async def create_assessment(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        draft: AssessmentDraft,
+    ) -> CourseAssessment: ...
+
+    @abstractmethod
+    async def update_assessment(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        question_id: UUID,
+        draft: AssessmentDraft,
+    ) -> CourseAssessment | None: ...
+
+    @abstractmethod
+    async def dismiss_assessment(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        question_id: UUID,
+    ) -> CourseAssessment | None: ...
+
+    @abstractmethod
+    async def routing_workspace(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        is_working_revision: bool,
+    ) -> RoutingWorkspace: ...
+
+    @abstractmethod
+    async def upsert_routing_policy(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        concept_id: UUID | None,
+        policy: RoutingPolicyDraft,
+    ) -> CourseRoutingPolicy: ...
+
+    @abstractmethod
+    async def delete_routing_policy(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        concept_id: UUID,
+    ) -> bool: ...

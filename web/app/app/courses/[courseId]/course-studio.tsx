@@ -9,6 +9,7 @@ import {
   type Node,
 } from "@xyflow/react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import {
   useCallback,
   useEffect,
@@ -31,7 +32,6 @@ import {
   FilePenLine,
   FileVideo,
   GitFork,
-  Lightbulb,
   LoaderCircle,
   Map as MapIcon,
   MessageCircleMore,
@@ -41,12 +41,14 @@ import {
   Plus,
   RotateCcw,
   Send,
+  Settings2,
   SunMedium,
   Trash2,
   X,
 } from "lucide-react";
 
 import {
+  answerOutcomeSummary,
   evidenceTitle,
   generationPhaseLabel,
   orderedGenerationTasks,
@@ -54,21 +56,40 @@ import {
   shouldCenterCreationComposer,
   studioPresentationMode,
   type CourseMap,
+  type CourseAssessment,
   type CourseMessage,
   type CourseSummary,
+  type DashboardSummary,
   type DevelopmentIdentity,
   type GenerationRun,
   type ReviewBundle,
   type ReviewItem,
   type RevisionDiff,
+  type AssessmentWorkspace,
+  type AssessmentRule,
+  type RoutingPolicy,
+  type RoutingWorkspace,
 } from "../../course-os";
 import styles from "../../course-os.module.css";
 import { TeacherSidebar, useTeacherSidebar } from "../../teacher-dashboard";
 
 const pipelineBase = process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localhost:8000";
 const instructorStorageKey = "manifold.teacher-id";
-type CanvasView = "overview" | "map" | "review" | "assessments" | "insights" | "preview" | "settings" | "changes";
+type CanvasView = "overview" | "map" | "review" | "assessments" | "preview" | "settings" | "changes";
 type Decision = "accepted" | "edited" | "dismissed";
+type AssessmentDraftPayload = {
+  topic_id: string;
+  body: string;
+  type: CourseAssessment["type"];
+  correct_answer: Record<string, unknown>;
+  confidence_prompt: string;
+  remediation_rules: Omit<AssessmentRule, "id">[];
+};
+
+const InsightsCharts = dynamic(
+  () => import("@/components/insights-charts").then((module) => module.InsightsCharts),
+  { ssr: false },
+);
 
 export function CourseStudio({ courseId }: { courseId: string }) {
   const router = useRouter();
@@ -81,6 +102,9 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   const [courseMap, setCourseMap] = useState<CourseMap | null>(null);
   const [bundles, setBundles] = useState<ReviewBundle[]>([]);
   const [revisionDiff, setRevisionDiff] = useState<RevisionDiff | null>(null);
+  const [assessmentWorkspace, setAssessmentWorkspace] = useState<AssessmentWorkspace | null>(null);
+  const [routingWorkspace, setRoutingWorkspace] = useState<RoutingWorkspace | null>(null);
+  const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary | null>(null);
   const [canvasView, setCanvasView] = useState<CanvasView>("map");
   const [composer, setComposer] = useState("");
   const [sending, setSending] = useState(false);
@@ -111,8 +135,20 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
       throw new Error(payload?.detail ?? `Request failed (${response.status}).`);
     }
+    if (response.status === 204) return undefined as T;
     return (await response.json()) as T;
   }, []);
+
+  const refreshPublishedWorkspace = useCallback(async (user: DevelopmentIdentity) => {
+    const [assessments, routing, dashboard] = await Promise.all([
+      request<AssessmentWorkspace>(`/courses/${courseId}/assessment-workspace`, user),
+      request<RoutingWorkspace>(`/courses/${courseId}/routing-workspace`, user),
+      request<DashboardSummary>(`/courses/${courseId}/dashboard`, user),
+    ]);
+    setAssessmentWorkspace(assessments);
+    setRoutingWorkspace(routing);
+    setDashboardSummary(dashboard);
+  }, [courseId, request]);
 
   const refreshArtifacts = useCallback(async (user: DevelopmentIdentity) => {
     const [mapResult, bundleResult] = await Promise.all([
@@ -162,6 +198,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       }
       await refreshArtifacts(user);
       await refreshRevisionDiff(user, courseResult);
+      if (courseResult.status === "published") await refreshPublishedWorkspace(user);
       if (courseResult.pending_review_count > 0) setCanvasView("review");
       else if (courseResult.status === "published") setCanvasView("overview");
     } catch (caught) {
@@ -169,7 +206,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [courseId, refreshArtifacts, refreshRevisionDiff, request]);
+  }, [courseId, refreshArtifacts, refreshPublishedWorkspace, refreshRevisionDiff, request]);
 
   useEffect(() => {
     void loadStudio();
@@ -337,6 +374,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       setMessages(await request<CourseMessage[]>(`/courses/${courseId}/messages`, identity));
       await refreshArtifacts(identity);
       await refreshRevisionDiff(identity, nextCourse);
+      await refreshPublishedWorkspace(identity);
       setCanvasView("changes");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not open an update revision.");
@@ -359,6 +397,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       setRun(null);
       setRevisionDiff(null);
       await refreshArtifacts(identity);
+      await refreshPublishedWorkspace(identity);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not publish this revision.");
     } finally {
@@ -397,6 +436,127 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       await refreshRevisionDiff(identity, nextCourse);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not approve this review bundle.");
+    }
+  }
+
+  async function refreshAfterStructuredEdit() {
+    if (!identity) return;
+    const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+    setCourse(nextCourse);
+    await Promise.all([
+      refreshArtifacts(identity),
+      refreshPublishedWorkspace(identity),
+      refreshRevisionDiff(identity, nextCourse),
+    ]);
+  }
+
+  async function saveAssessment(
+    draft: AssessmentDraftPayload,
+    question?: CourseAssessment,
+  ) {
+    if (!identity) return;
+    setSending(true);
+    setError(null);
+    try {
+      await request(
+        question
+          ? `/courses/${courseId}/assessments/${question.id}`
+          : `/courses/${courseId}/assessments`,
+        identity,
+        {
+          method: question ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(draft),
+        },
+      );
+      await refreshAfterStructuredEdit();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not save the assessment.");
+      throw caught;
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function removeAssessment(question: CourseAssessment) {
+    if (!identity) return;
+    setSending(true);
+    setError(null);
+    try {
+      await request(`/courses/${courseId}/assessments/${question.id}`, identity, {
+        method: "DELETE",
+      });
+      await refreshAfterStructuredEdit();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not remove the assessment.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function saveRoutingPolicy(conceptId: string | null, policy: RoutingPolicy) {
+    if (!identity) return;
+    setSending(true);
+    setError(null);
+    try {
+      await request(
+        `/courses/${courseId}/routing-workspace/${conceptId ?? "default"}`,
+        identity,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(policy),
+        },
+      );
+      await refreshAfterStructuredEdit();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not save the routing policy.");
+      throw caught;
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function removeRoutingPolicy(conceptId: string) {
+    if (!identity) return;
+    setSending(true);
+    setError(null);
+    try {
+      await request(`/courses/${courseId}/routing-workspace/${conceptId}`, identity, {
+        method: "DELETE",
+      });
+      await refreshAfterStructuredEdit();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not remove the policy override.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function resolveDashboardSignal(
+    signalId: string,
+    decision: Decision,
+    note?: string,
+  ) {
+    if (!identity) return;
+    const path = decision === "accepted"
+      ? `/dashboard/signals/${signalId}/accept`
+      : decision === "dismissed"
+        ? `/dashboard/signals/${signalId}/dismiss`
+        : `/dashboard/signals/${signalId}`;
+    try {
+      await request(path, identity, {
+        method: decision === "edited" ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: decision === "edited" ? "manual_edit" : `${decision}_ai_suggestion`,
+          note: note ?? null,
+          retroactive: false,
+        }),
+      });
+      setDashboardSummary(await request<DashboardSummary>(`/courses/${courseId}/dashboard`, identity));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not save the insight decision.");
     }
   }
 
@@ -550,19 +710,17 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                 <CanvasTab active={canvasView === "map"} icon={<MapIcon />} label="Course map" onClick={() => setCanvasView("map")} />
                 {course?.status !== "published" || course.working_revision_id ? <CanvasTab active={canvasView === "review"} badge={course?.pending_review_count || undefined} icon={<ClipboardCheck />} label="Review" onClick={() => setCanvasView("review")} /> : null}
                 {course?.status === "published" ? <CanvasTab active={canvasView === "assessments"} icon={<Check />} label="Assessments" onClick={() => setCanvasView("assessments")} /> : null}
-                <CanvasTab active={canvasView === "insights"} badge={course?.open_signal_count || undefined} icon={<Lightbulb />} label="Insights" onClick={() => setCanvasView("insights")} />
                 <CanvasTab active={canvasView === "preview"} icon={<Eye />} label="Preview" onClick={() => setCanvasView("preview")} />
-                {course?.status === "published" ? <CanvasTab active={canvasView === "settings"} icon={<GitFork />} label="Settings" onClick={() => setCanvasView("settings")} /> : null}
+                {course?.status === "published" ? <CanvasTab active={canvasView === "settings"} icon={<Settings2 />} label="Settings" onClick={() => setCanvasView("settings")} /> : null}
                 {course?.active_revision_id && course.working_revision_id ? <CanvasTab active={canvasView === "changes"} badge={revisionDiff?.changes.length || undefined} icon={<Pencil />} label="Changes" onClick={() => setCanvasView("changes")} /> : null}
               </nav>
               <div className={styles.canvasBody}>
-                {canvasView === "overview" ? <OverviewCanvas course={course} revisionDiff={revisionDiff} /> : null}
+                {canvasView === "overview" ? <OverviewCanvas course={course} dashboard={dashboardSummary} onSignal={resolveDashboardSignal} revisionDiff={revisionDiff} /> : null}
                 {canvasView === "map" ? <CourseMapCanvas courseMap={courseMap} run={run} /> : null}
                 {canvasView === "review" ? <ReviewCanvas bundles={bundles} onBundle={decideBundle} onItem={decideItem} /> : null}
-                {canvasView === "assessments" ? <FocusedBundleCanvas artifactTypes={["question"]} bundles={bundles} empty="No assessment decisions are available." onItem={decideItem} /> : null}
-                {canvasView === "insights" ? <InsightsCanvas course={course} /> : null}
+                {canvasView === "assessments" ? <AssessmentsCanvas disabled={sending} onRemove={removeAssessment} onSave={saveAssessment} workspace={assessmentWorkspace} /> : null}
                 {canvasView === "preview" ? <PreviewCanvas course={course} /> : null}
-                {canvasView === "settings" ? <FocusedBundleCanvas artifactTypes={["routing_policy"]} bundles={bundles} empty="No routing settings are available." onItem={decideItem} /> : null}
+                {canvasView === "settings" ? <SettingsCanvas disabled={sending} onRemove={removeRoutingPolicy} onSave={saveRoutingPolicy} workspace={routingWorkspace} /> : null}
                 {canvasView === "changes" ? <ChangesCanvas revisionDiff={revisionDiff} /> : null}
               </div>
               </section>
@@ -836,61 +994,226 @@ function EvidenceSummary({ item }: { item: ReviewItem }) {
   return <dl>{entries.map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd>{String(value)}</dd></div>)}</dl>;
 }
 
-function OverviewCanvas({ course, revisionDiff }: {
+function OverviewCanvas({ course, dashboard, revisionDiff, onSignal }: {
   course: CourseSummary | null;
+  dashboard: DashboardSummary | null;
   revisionDiff: RevisionDiff | null;
+  onSignal: (signalId: string, decision: Decision, note?: string) => Promise<void>;
 }) {
+  const [editingSignal, setEditingSignal] = useState<string | null>(null);
+  const [signalNote, setSignalNote] = useState("");
+  const answerOutcomes = answerOutcomeSummary(dashboard);
   return (
     <div className={styles.overviewCanvas}>
-      <div>
-        <p className={styles.eyebrow}>Published course workspace</p>
-        <h2>{course?.title}</h2>
-        <p>The live revision stays stable while Manifold and your edits accumulate privately.</p>
-      </div>
-      <section>
+      <header className={styles.overviewHeader}>
+        <div><p className={styles.eyebrow}>Course overview</p><h2>{course?.title}</h2><p>Course health, learner evidence, and review-worthy insights in one workspace.</p></div>
+        <span data-working={course?.working_revision_id ? "true" : undefined}>{course?.working_revision_id ? "Private update open" : "Live revision"}</span>
+      </header>
+      <section className={styles.overviewMetrics}>
+        <article><small>Learners</small><strong>{dashboard?.learner_count ?? 0}</strong><p>Enrolled in this published revision</p></article>
+        <article><small>Assessment attempts</small><strong>{dashboard?.attempt_count ?? 0}</strong><p>{dashboard?.learner_count ? `${(dashboard.attempt_count / dashboard.learner_count).toFixed(1)} per learner` : "Waiting for learner evidence"}</p></article>
+        <article><small>Need attention</small><strong>{dashboard?.signals.length ?? 0}</strong><p>Evidence-backed decisions awaiting review</p></article>
         <article><small>Course structure</small><strong>{course?.topic_count ?? 0} topics</strong><p>{course?.concept_count ?? 0} mapped concepts</p></article>
-        <article><small>Learner evidence</small><strong>{course?.open_signal_count ?? 0} open insights</strong><p>Only evidence-backed teaching decisions appear here.</p></article>
-        <article><small>Revision state</small><strong>{course?.working_revision_id ? "Private update" : "Live"}</strong><p>{revisionDiff ? `${revisionDiff.changes.length} visible changes before publish` : "No unpublished changes"}</p></article>
+        <article><small>Unpublished changes</small><strong>{revisionDiff?.changes.length ?? 0}</strong><p>{revisionDiff ? "Visible in the private revision" : "Live course is unchanged"}</p></article>
+      </section>
+      {dashboard?.not_enough_data ? <div className={styles.evidenceNotice}><CircleAlert /><p><strong>Early evidence only.</strong> The charts stay honest and will fill in as learners complete assessments.</p></div> : null}
+      <section className={styles.learningHealth} aria-labelledby="learning-health-title">
+        <header><div><p className={styles.eyebrow}>Live learner evidence</p><h3 id="learning-health-title">Learning health</h3></div><span>Last 14 days</span></header>
+        <InsightsCharts
+          activity={dashboard?.activity_history ?? []}
+          answerOutcomes={answerOutcomes}
+          conceptReach={dashboard?.concept_performance ?? []}
+          learnerCount={dashboard?.learner_count ?? 0}
+          mastery={dashboard?.mastery_distribution ?? { mastered: 0, practiced: 0, struggling: 0, not_started: 0 }}
+          questionRisk={dashboard?.question_performance ?? []}
+        />
+      </section>
+      <section className={styles.overviewSignals}>
+        <header><div><p className={styles.eyebrow}>Human checkpoint</p><h3>Teaching decisions</h3></div><span>{dashboard?.signals.length ?? 0} open</span></header>
+        {dashboard?.signals.length ? dashboard.signals.map((signal) => (
+          <article key={signal.id}>
+            <div><span>{signal.type.replaceAll("_", " ")}</span><h4>{signalText(signal.ai_diagnosis, "title", "Evidence-backed teaching insight")}</h4><p>{signalText(signal.ai_diagnosis, "summary", "Learner evidence suggests this area deserves your judgment.")}</p></div>
+            {editingSignal === signal.id ? (
+              <div className={styles.signalEdit}>
+                <label>How should this insight change?<textarea onChange={(event) => setSignalNote(event.target.value)} rows={3} value={signalNote} /></label>
+                <div><button onClick={() => { setEditingSignal(null); setSignalNote(""); }} type="button">Cancel</button><button disabled={!signalNote.trim()} onClick={() => void onSignal(signal.id, "edited", signalNote).then(() => { setEditingSignal(null); setSignalNote(""); })} type="button"><Check />Save edit</button></div>
+              </div>
+            ) : (
+              <div className={styles.reviewActions}><button onClick={() => void onSignal(signal.id, "accepted")} type="button"><Check />Accept</button><button onClick={() => setEditingSignal(signal.id)} type="button"><Pencil />Edit</button><button onClick={() => void onSignal(signal.id, "dismissed")} type="button"><X />Dismiss</button></div>
+            )}
+          </article>
+        )) : <div className={styles.inlineEmpty}><Check /><div><strong>No open teaching decisions</strong><p>New items appear only when learner evidence crosses a meaningful threshold.</p></div></div>}
       </section>
     </div>
   );
 }
 
-function FocusedBundleCanvas({ artifactTypes, bundles, empty, onItem }: {
-  artifactTypes: string[];
-  bundles: ReviewBundle[];
-  empty: string;
-  onItem: (item: ReviewItem, decision: Decision, revision?: Record<string, unknown>) => void;
+function AssessmentsCanvas({ workspace, disabled, onSave, onRemove }: {
+  workspace: AssessmentWorkspace | null;
+  disabled: boolean;
+  onSave: (draft: AssessmentDraftPayload, question?: CourseAssessment) => Promise<void>;
+  onRemove: (question: CourseAssessment) => Promise<void>;
 }) {
-  const [editing, setEditing] = useState<ReviewItem | null>(null);
-  const [revision, setRevision] = useState("");
-  const items = bundles.flatMap((bundle) => bundle.items).filter((item) => artifactTypes.includes(item.artifact_type));
-  if (!items.length) return <div className={styles.canvasEmpty}><Check /><p className={styles.eyebrow}>Reviewed workspace</p><h2>{empty}</h2><p>Open a working revision before changing live course artifacts.</p></div>;
+  const [editing, setEditing] = useState<CourseAssessment | "new" | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  if (!workspace) return <div className={styles.canvasEmpty}><LoaderCircle className={styles.spin} /><h2>Loading assessments</h2></div>;
+  const questions = workspace.questions.filter((question) => question.review_status !== "dismissed");
   return (
-    <div className={styles.focusedCanvas}>
-      <header><p className={styles.eyebrow}>Structured artifacts</p><h2>{artifactTypes.includes("question") ? "Assessments" : "Adaptive settings"}</h2><p>Structured records remain authoritative; AI-originated changes keep the same Accept, Edit, or Dismiss checkpoint.</p></header>
-      <div>
-        {items.map((item) => (
-          <article data-status={item.status} key={item.id}>
-            <span>{artifactLabel(item.artifact_type)}</span>
-            <h3>{evidenceTitle(item)}</h3>
-            <EvidenceSummary item={item} />
-            {editing?.id === item.id ? (
-              <div className={styles.editReview}>
-                <label>Revise this artifact<textarea onChange={(event) => setRevision(event.target.value)} rows={8} value={revision} /></label>
-                <div><button onClick={() => setEditing(null)} type="button">Cancel</button><button disabled={!safeJson(revision)} onClick={() => { const value = safeJson(revision); if (value) { void onItem(item, "edited", value); setEditing(null); } }} type="button"><Check />Save edit</button></div>
-              </div>
-            ) : item.status === "pending" ? (
-              <div className={styles.reviewActions}>
-                <button onClick={() => void onItem(item, "accepted")} type="button"><Check />Accept</button>
-                <button onClick={() => { setEditing(item); setRevision(JSON.stringify(item.evidence, null, 2)); }} type="button"><Pencil />Edit</button>
-                <button onClick={() => void onItem(item, "dismissed")} type="button"><Trash2 />Dismiss</button>
-              </div>
-            ) : <strong className={styles.decisionSaved}><Check />{item.status}</strong>}
+    <div className={styles.structuredCanvas}>
+      <header><div><p className={styles.eyebrow}>Checks for understanding</p><h2>Assessments</h2><p>Every question in the current course revision, including its answer and remediation route.</p></div><div><span>{workspace.is_working_revision ? "Editing private revision" : "Viewing live revision"}</span><button disabled={disabled || !workspace.topics.length} onClick={() => setEditing("new")} type="button"><Plus />Add assessment</button></div></header>
+      {editing ? <AssessmentEditor key={editing === "new" ? "new" : editing.id} question={editing === "new" ? null : editing} workspace={workspace} onCancel={() => setEditing(null)} onSave={async (draft) => { await onSave(draft, editing === "new" ? undefined : editing); setEditing(null); }} /> : null}
+      <div className={styles.assessmentList}>
+        {questions.map((question, index) => (
+          <article key={question.id}>
+            <div className={styles.assessmentIndex}>{String(index + 1).padStart(2, "0")}</div>
+            <div className={styles.assessmentBody}>
+              <div><span>{question.topic_title}</span><small>{question.type.replaceAll("_", " ")} · {question.review_status}</small></div>
+              <h3>{question.body}</h3>
+              <dl><div><dt>Correct answer</dt><dd>{answerLabel(question.correct_answer)}</dd></div><div><dt>Confidence check</dt><dd>{question.confidence_prompt}</dd></div></dl>
+              <div className={styles.remediationRoutes}><strong>Remediation routes</strong>{question.remediation_rules.map((rule) => <span key={rule.id ?? rule.wrong_answer_pattern}>{rule.wrong_answer_pattern}<ChevronDown /></span>)}</div>
+            </div>
+            <div className={styles.assessmentActions}>
+              <button aria-label={`Edit ${question.body}`} disabled={disabled} onClick={() => setEditing(question)} type="button"><Pencil /></button>
+              {confirmRemove === question.id ? <div><span>Remove in private revision?</span><button onClick={() => setConfirmRemove(null)} type="button">Keep</button><button disabled={disabled} onClick={() => void onRemove(question).then(() => setConfirmRemove(null))} type="button">Remove</button></div> : <button aria-label={`Remove ${question.body}`} disabled={disabled} onClick={() => setConfirmRemove(question.id)} type="button"><Trash2 /></button>}
+            </div>
           </article>
         ))}
+        {!questions.length ? <div className={styles.inlineEmpty}><ClipboardCheck /><div><strong>No active assessments</strong><p>Add a teacher-authored check for understanding. It will stay private until the revision is published.</p></div></div> : null}
       </div>
     </div>
+  );
+}
+
+function AssessmentEditor({ question, workspace, onCancel, onSave }: {
+  question: CourseAssessment | null;
+  workspace: AssessmentWorkspace;
+  onCancel: () => void;
+  onSave: (draft: AssessmentDraftPayload) => Promise<void>;
+}) {
+  const firstTopic = question?.topic_id ?? workspace.topics[0]?.id ?? "";
+  const defaultTarget = workspace.concepts.find((concept) => concept.topic_ids.includes(firstTopic))?.id ?? workspace.concepts[0]?.id ?? "";
+  const [topicId, setTopicId] = useState(firstTopic);
+  const [body, setBody] = useState(question?.body ?? "");
+  const [type, setType] = useState<CourseAssessment["type"]>(question?.type ?? "short_answer");
+  const [answer, setAnswer] = useState(JSON.stringify(question?.correct_answer ?? { answer: "" }, null, 2));
+  const [confidencePrompt, setConfidencePrompt] = useState(question?.confidence_prompt ?? "How confident are you in your answer?");
+  const [rules, setRules] = useState<Array<{ pattern: string; target: string }>>(
+    question?.remediation_rules.map((rule) => ({
+      pattern: rule.wrong_answer_pattern,
+      target: rule.target_clip_id ? `clip:${rule.target_clip_id}` : `concept:${rule.target_concept_id ?? ""}`,
+    })) ?? [{ pattern: "Needs another explanation", target: `concept:${defaultTarget}` }],
+  );
+  const [formError, setFormError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const parsed = safeJson(answer);
+    if (!parsed) { setFormError("Correct answer must be a valid JSON object."); return; }
+    if (rules.some((rule) => !rule.pattern.trim() || !rule.target.split(":")[1])) { setFormError("Every remediation route needs a trigger and target."); return; }
+    setSaving(true);
+    setFormError(null);
+    try {
+      await onSave({
+        topic_id: topicId,
+        body,
+        type,
+        correct_answer: parsed,
+        confidence_prompt: confidencePrompt,
+        remediation_rules: rules.map((rule) => ({
+          wrong_answer_pattern: rule.pattern,
+          target_clip_id: rule.target.startsWith("clip:") ? rule.target.slice(5) : null,
+          target_concept_id: rule.target.startsWith("concept:") ? rule.target.slice(8) : null,
+        })),
+      });
+    } catch { setSaving(false); }
+  }
+  return (
+    <form className={styles.structuredEditor} onSubmit={submit}>
+      <header><div><p className={styles.eyebrow}>Private revision</p><h3>{question ? "Edit assessment" : "Add assessment"}</h3></div><button aria-label="Close assessment editor" onClick={onCancel} type="button"><X /></button></header>
+      <div className={styles.editorGrid}>
+        <label>Topic<select onChange={(event) => setTopicId(event.target.value)} value={topicId}>{workspace.topics.map((topic) => <option key={topic.id} value={topic.id}>{topic.title}</option>)}</select></label>
+        <label>Question type<select onChange={(event) => setType(event.target.value as CourseAssessment["type"])} value={type}><option value="mcq">Multiple choice</option><option value="short_answer">Short answer</option><option value="worked_problem">Worked problem</option></select></label>
+        <label className={styles.editorWide}>Prompt<textarea onChange={(event) => setBody(event.target.value)} required rows={3} value={body} /></label>
+        <label>Correct answer (JSON)<textarea className={styles.monoInput} onChange={(event) => setAnswer(event.target.value)} required rows={5} value={answer} /></label>
+        <label>Confidence check<textarea onChange={(event) => setConfidencePrompt(event.target.value)} required rows={5} value={confidencePrompt} /></label>
+      </div>
+      <fieldset><legend>Remediation routes</legend>{rules.map((rule, index) => <div key={index}><input aria-label={`Trigger pattern ${index + 1}`} onChange={(event) => setRules((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, pattern: event.target.value } : item))} placeholder="When should this route apply?" value={rule.pattern} /><select aria-label={`Remediation target ${index + 1}`} onChange={(event) => setRules((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, target: event.target.value } : item))} value={rule.target}><optgroup label="Concepts">{workspace.concepts.map((concept) => <option key={concept.id} value={`concept:${concept.id}`}>{concept.name}</option>)}</optgroup><optgroup label="Clips">{workspace.clips.map((clip) => <option key={clip.id} value={`clip:${clip.id}`}>{clip.label}</option>)}</optgroup></select>{rules.length > 1 ? <button aria-label={`Remove remediation route ${index + 1}`} onClick={() => setRules((current) => current.filter((_, itemIndex) => itemIndex !== index))} type="button"><X /></button> : null}</div>)}<button onClick={() => setRules((current) => [...current, { pattern: "", target: `concept:${defaultTarget}` }])} type="button"><Plus />Add route</button></fieldset>
+      {formError ? <p className={styles.formError}>{formError}</p> : null}
+      <footer><p>Teacher-authored changes are marked edited and remain private until publish.</p><div><button onClick={onCancel} type="button">Cancel</button><button disabled={saving || !body.trim()} type="submit">{saving ? <LoaderCircle className={styles.spin} /> : <Check />}{question ? "Save assessment" : "Add assessment"}</button></div></footer>
+    </form>
+  );
+}
+
+function SettingsCanvas({ workspace, disabled, onSave, onRemove }: {
+  workspace: RoutingWorkspace | null;
+  disabled: boolean;
+  onSave: (conceptId: string | null, policy: RoutingPolicy) => Promise<void>;
+  onRemove: (conceptId: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState<string | "default" | "new" | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [testPolicyId, setTestPolicyId] = useState("default");
+  const [correct, setCorrect] = useState(true);
+  const [confidence, setConfidence] = useState(3);
+  const [priorCorrect, setPriorCorrect] = useState(0);
+  const [remediationAttempts, setRemediationAttempts] = useState(0);
+  if (!workspace) return <div className={styles.canvasEmpty}><LoaderCircle className={styles.spin} /><h2>Loading course settings</h2></div>;
+  const defaultPolicy = workspace.policies.find((item) => item.concept_id === null)!;
+  const overrides = workspace.policies.filter((item) => item.concept_id !== null);
+  const testRecord = workspace.policies.find((item) => (item.concept_id ?? "default") === testPolicyId) ?? defaultPolicy;
+  const testResult = simulatePolicy(testRecord.policy, correct, confidence, priorCorrect, remediationAttempts);
+  const editingRecord = editing && editing !== "new"
+    ? workspace.policies.find((item) => (item.concept_id ?? "default") === editing)
+    : null;
+  return (
+    <div className={styles.settingsCanvas}>
+      <header><div><p className={styles.eyebrow}>Course behavior</p><h2>Settings & policies</h2><p>Control learner routing in a private revision, then test the outcome without creating learner records.</p></div><span>{workspace.is_working_revision ? "Editing private revision" : "Viewing live revision"}</span></header>
+      <div className={styles.settingsGrid}>
+        <section className={styles.policySection}>
+          <header><div><h3>Learner routing</h3><p>The default applies everywhere unless a concept override is present.</p></div><button disabled={disabled || overrides.length >= workspace.concepts.length} onClick={() => setEditing("new")} type="button"><Plus />Add override</button></header>
+          <article className={styles.defaultPolicy}><div><span>Course default</span><h4>Default mastery policy</h4><PolicySummary policy={defaultPolicy.policy} /></div><button aria-label="Edit default policy" disabled={disabled} onClick={() => setEditing("default")} type="button"><Pencil /></button></article>
+          <div className={styles.policyOverrides}>
+            {overrides.map((record) => <article key={record.concept_id}><div><span>Concept override</span><h4>{record.concept_name}</h4><PolicySummary policy={record.policy} /></div><div><button aria-label={`Edit ${record.concept_name} policy`} disabled={disabled} onClick={() => setEditing(record.concept_id!)} type="button"><Pencil /></button>{confirmRemove === record.concept_id ? <div><button onClick={() => setConfirmRemove(null)} type="button">Keep</button><button onClick={() => void onRemove(record.concept_id!).then(() => setConfirmRemove(null))} type="button">Remove</button></div> : <button aria-label={`Remove ${record.concept_name} override`} disabled={disabled} onClick={() => setConfirmRemove(record.concept_id)} type="button"><Trash2 /></button>}</div></article>)}
+            {!overrides.length ? <div className={styles.inlineEmpty}><GitFork /><div><strong>No concept overrides</strong><p>Every concept currently inherits the course default.</p></div></div> : null}
+          </div>
+          {editing ? <PolicyEditor key={editing} conceptId={editing === "default" ? null : editing === "new" ? undefined : editing} concepts={workspace.concepts.filter((concept) => !overrides.some((record) => record.concept_id === concept.id))} initial={editingRecord?.policy ?? defaultPolicy.policy} onCancel={() => setEditing(null)} onSave={async (conceptId, policy) => { await onSave(conceptId, policy); setEditing(null); }} /> : null}
+        </section>
+        <aside className={styles.policyTester}>
+          <p className={styles.eyebrow}>Safe simulator</p><h3>Test a routing decision</h3><p>This preview uses the saved policy logic and never changes learner progress.</p>
+          <label>Policy<select onChange={(event) => setTestPolicyId(event.target.value)} value={testPolicyId}><option value="default">Course default</option>{overrides.map((record) => <option key={record.concept_id} value={record.concept_id!}>{record.concept_name}</option>)}</select></label>
+          <label className={styles.toggleField}><input checked={correct} onChange={(event) => setCorrect(event.target.checked)} type="checkbox" /><span>Answer is correct</span></label>
+          <label>Confidence <strong>{confidence}/4</strong><input max="4" min="1" onChange={(event) => setConfidence(Number(event.target.value))} type="range" value={confidence} /></label>
+          <label>Prior confident correct attempts<input min="0" onChange={(event) => setPriorCorrect(Number(event.target.value))} type="number" value={priorCorrect} /></label>
+          <label>Remediation attempts used<input min="0" onChange={(event) => setRemediationAttempts(Number(event.target.value))} type="number" value={remediationAttempts} /></label>
+          <div className={styles.testResult} data-action={testResult.action}><span>Predicted route</span><strong>{testResult.action.replaceAll("_", " ")}</strong><p>{testResult.why}</p></div>
+        </aside>
+      </div>
+      <section className={styles.releaseSettings}><div><p className={styles.eyebrow}>Revision safety</p><h3>Changes do not reach learners automatically</h3><p>Assessment and routing edits accumulate in the private working revision. Use Changes to inspect the diff, then Publish updates when it is ready.</p></div><Check /></section>
+    </div>
+  );
+}
+
+function PolicySummary({ policy }: { policy: RoutingPolicy }) {
+  return <p>{policy.correct_attempts_for_mastery} confident correct · confidence ≥ {policy.confidence_threshold} · {policy.max_remediation_attempts} remediation attempts</p>;
+}
+
+function PolicyEditor({ conceptId, concepts, initial, onCancel, onSave }: {
+  conceptId: string | null | undefined;
+  concepts: RoutingWorkspace["concepts"];
+  initial: RoutingPolicy;
+  onCancel: () => void;
+  onSave: (conceptId: string | null, policy: RoutingPolicy) => Promise<void>;
+}) {
+  const [selectedConcept, setSelectedConcept] = useState(conceptId ?? concepts[0]?.id ?? "");
+  const [policy, setPolicy] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  return (
+    <form className={styles.policyEditor} onSubmit={(event) => { event.preventDefault(); setSaving(true); void onSave(conceptId === null ? null : selectedConcept, policy).catch(() => setSaving(false)); }}>
+      <header><h4>{conceptId === null ? "Edit course default" : conceptId ? "Edit concept override" : "Add concept override"}</h4><button aria-label="Close policy editor" onClick={onCancel} type="button"><X /></button></header>
+      {conceptId === undefined ? <label>Concept<select onChange={(event) => setSelectedConcept(event.target.value)} value={selectedConcept}>{concepts.map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select></label> : null}
+      <div><label>Confidence required<input max="4" min="1" onChange={(event) => setPolicy((current) => ({ ...current, confidence_threshold: Number(event.target.value) }))} type="number" value={policy.confidence_threshold} /></label><label>Correct attempts for mastery<input min="1" onChange={(event) => setPolicy((current) => ({ ...current, correct_attempts_for_mastery: Number(event.target.value) }))} type="number" value={policy.correct_attempts_for_mastery} /></label><label>Remediation attempt limit<input min="0" onChange={(event) => setPolicy((current) => ({ ...current, max_remediation_attempts: Number(event.target.value) }))} type="number" value={policy.max_remediation_attempts} /></label><label>Advancement mode<select onChange={(event) => setPolicy((current) => ({ ...current, advancement_mode: event.target.value as RoutingPolicy["advancement_mode"] }))} value={policy.advancement_mode}><option value="require_mastery">Require mastery</option><option value="allow_partial_understanding">Allow partial understanding</option></select></label></div>
+      <footer><button onClick={onCancel} type="button">Cancel</button><button disabled={saving || (conceptId === undefined && !selectedConcept)} type="submit">{saving ? <LoaderCircle className={styles.spin} /> : <Check />}Save policy</button></footer>
+    </form>
   );
 }
 
@@ -910,10 +1233,6 @@ function ChangesCanvas({ revisionDiff }: { revisionDiff: RevisionDiff | null }) 
       ) : <div className={styles.canvasEmpty}><Check /><h2>No content changes yet</h2><p>Accepted chat directives and structured edits will appear here before publishing.</p></div>}
     </div>
   );
-}
-
-function InsightsCanvas({ course }: { course: CourseSummary | null }) {
-  return <div className={styles.insightsCanvas}><div><p className={styles.eyebrow}>Evidence, not noise</p><h2>Teaching insights</h2><p>Manifold surfaces issues only when learner evidence supports a useful intervention.</p></div><section><article><small>Open insights</small><strong>{course?.open_signal_count ?? 0}</strong><p>{course?.status === "published" ? "Evidence-backed proposals awaiting your judgment." : "Insights begin after learners use the published course."}</p></article><article><small>Review principle</small><strong>Accept · Edit · Dismiss</strong><p>No diagnosis changes a live course without your decision.</p></article></section></div>;
 }
 
 function PreviewCanvas({ course }: { course: CourseSummary | null }) {
@@ -1049,6 +1368,36 @@ export function mapToFlow(
 }
 
 function artifactLabel(value: string) { return value.replaceAll("_", " "); }
+function answerLabel(value: Record<string, unknown>) {
+  const answer = value.answer ?? value.correct ?? value.value;
+  if (typeof answer === "string" || typeof answer === "number" || typeof answer === "boolean") return String(answer);
+  return JSON.stringify(value);
+}
+function signalText(value: Record<string, unknown>, key: string, fallback: string) {
+  return typeof value[key] === "string" && value[key] ? String(value[key]) : fallback;
+}
+function simulatePolicy(
+  policy: RoutingPolicy,
+  correct: boolean,
+  confidence: number,
+  priorCorrect: number,
+  remediationAttempts: number,
+) {
+  if (correct && confidence >= policy.confidence_threshold
+    && priorCorrect + 1 >= policy.correct_attempts_for_mastery) {
+    return { action: "advance", why: "The learner met both the correctness and confidence threshold for mastery." };
+  }
+  if (correct && policy.advancement_mode === "allow_partial_understanding") {
+    return { action: "advance", why: "The answer is correct and this policy allows partial-understanding advancement." };
+  }
+  if (correct) {
+    return { action: "reinforce", why: "The answer is correct, but this policy requires more confidence or repeated evidence." };
+  }
+  if (remediationAttempts < policy.max_remediation_attempts) {
+    return { action: "remediate", why: "The learner is routed to the reviewed remediation target before trying again." };
+  }
+  return { action: "flag_instructor", why: "The remediation limit is reached, so the learner is surfaced for teacher attention." };
+}
 function looksLikeUrl(value: string) { try { const url = new URL(value); return url.protocol === "http:" || url.protocol === "https:"; } catch { return false; } }
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function safeJson(value: string): Record<string, unknown> | null { try { const parsed: unknown = JSON.parse(value); return isRecord(parsed) ? parsed : null; } catch { return null; } }

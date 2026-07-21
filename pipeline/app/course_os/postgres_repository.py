@@ -7,13 +7,21 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from app.course_os.models import (
+    AssessmentClipOption,
+    AssessmentConceptOption,
+    AssessmentDraft,
+    AssessmentRuleDraft,
+    AssessmentTopicOption,
+    AssessmentWorkspace,
     AttentionItem,
     ConversationMessage,
+    CourseAssessment,
     CourseCreate,
     CourseMap,
     CourseMapEdge,
     CourseMapNode,
     CourseProposal,
+    CourseRoutingPolicy,
     CourseSummary,
     DashboardActivityPoint,
     DashboardSnapshot,
@@ -26,6 +34,8 @@ from app.course_os.models import (
     ReviewItem,
     RevisionChange,
     RevisionDiff,
+    RoutingPolicyDraft,
+    RoutingWorkspace,
 )
 from app.course_os.repository import CourseOSRepository
 from app.db.pool import pooled_connection
@@ -1646,6 +1656,715 @@ class PostgresCourseOSRepository(CourseOSRepository):
             )
         bundles = await self.review_bundles(UUID(str(bundle["revision_id"])))
         return next((item for item in bundles if item.id == bundle_id), None)
+
+    async def assessment_workspace(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        is_working_revision: bool,
+    ) -> AssessmentWorkspace:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            topic_rows = await (
+                await conn.execute(
+                    """
+                    select id, title from topics
+                    where course_id = %s and revision_id = %s
+                      and review_status <> 'dismissed'
+                    order by start_seconds, title
+                    """,
+                    (course_id, revision_id),
+                )
+            ).fetchall()
+            concept_rows = await (
+                await conn.execute(
+                    """
+                    select c.id, c.name,
+                           coalesce(array_agg(tc.topic_id order by tc.topic_id)
+                             filter (where tc.topic_id is not null), '{}') as topic_ids
+                    from concepts c
+                    left join topic_concepts tc
+                      on tc.concept_id = c.id and tc.revision_id = c.revision_id
+                    where c.course_id = %s and c.revision_id = %s
+                      and c.review_status <> 'dismissed'
+                    group by c.id, c.name
+                    order by c.name
+                    """,
+                    (course_id, revision_id),
+                )
+            ).fetchall()
+            clip_rows = await (
+                await conn.execute(
+                    """
+                    select clip.id, clip.topic_id, topic.title, clip.type,
+                           clip.start_seconds, clip.end_seconds
+                    from clips clip
+                    join topics topic on topic.id = clip.topic_id
+                    where topic.course_id = %s and clip.revision_id = %s
+                      and clip.status in ('active', 'flagged')
+                    order by topic.start_seconds, clip.start_seconds
+                    """,
+                    (course_id, revision_id),
+                )
+            ).fetchall()
+            question_rows = await (
+                await conn.execute(
+                    """
+                    select q.*, t.title as topic_title
+                    from questions q
+                    join topics t on t.id = q.topic_id
+                    where t.course_id = %s and q.revision_id = %s
+                    order by t.start_seconds, q.created_at
+                    """,
+                    (course_id, revision_id),
+                )
+            ).fetchall()
+            questions = tuple(
+                [await _course_assessment_from_row(conn, row) for row in question_rows]
+            )
+        return AssessmentWorkspace(
+            revision_id=revision_id,
+            is_working_revision=is_working_revision,
+            topics=tuple(
+                AssessmentTopicOption(id=UUID(str(row["id"])), title=str(row["title"]))
+                for row in topic_rows
+            ),
+            concepts=tuple(
+                AssessmentConceptOption(
+                    id=UUID(str(row["id"])),
+                    name=str(row["name"]),
+                    topic_ids=tuple(UUID(str(value)) for value in row["topic_ids"]),
+                )
+                for row in concept_rows
+            ),
+            clips=tuple(
+                AssessmentClipOption(
+                    id=UUID(str(row["id"])),
+                    topic_id=UUID(str(row["topic_id"])),
+                    label=(
+                        f"{row['title']} · {str(row['type']).replace('_', ' ')} · "
+                        f"{float(row['start_seconds']):.0f}–{float(row['end_seconds']):.0f}s"
+                    ),
+                )
+                for row in clip_rows
+            ),
+            questions=questions,
+        )
+
+    async def create_assessment(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        draft: AssessmentDraft,
+    ) -> CourseAssessment:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            draft = await _map_assessment_draft(conn, revision_id, draft)
+            await _validate_assessment_scope(conn, course_id, revision_id, draft)
+            row = await (
+                await conn.execute(
+                    """
+                    insert into questions (
+                      topic_id, body, type, correct_answer, confidence_prompt,
+                      instructor_revision, approved_at, review_status, revision_id
+                    ) values (%s, %s, %s, %s::jsonb, %s, %s::jsonb, now(), 'edited', %s)
+                    returning *
+                    """,
+                    (
+                        draft.topic_id,
+                        draft.body.strip(),
+                        draft.type,
+                        Jsonb(draft.correct_answer),
+                        draft.confidence_prompt.strip(),
+                        Jsonb({"action": "created_by_instructor"}),
+                        revision_id,
+                    ),
+                )
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("Failed to create assessment.")
+            await _replace_assessment_rules(conn, UUID(str(row["id"])), revision_id, draft)
+            row["topic_title"] = await _topic_title(conn, draft.topic_id)
+            question = await _course_assessment_from_row(conn, row)
+            await _record_workspace_audit(
+                conn,
+                course_id,
+                revision_id,
+                instructor_id,
+                "question",
+                question.id,
+                "create",
+                None,
+                _assessment_snapshot(question),
+            )
+            return question
+
+    async def update_assessment(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        question_id: UUID,
+        draft: AssessmentDraft,
+    ) -> CourseAssessment | None:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            draft = await _map_assessment_draft(conn, revision_id, draft)
+            existing_row = await (
+                await conn.execute(
+                    """
+                    select q.*, t.title as topic_title from questions q
+                    join topics t on t.id = q.topic_id
+                    where q.revision_id = %s and t.course_id = %s
+                      and q.logical_id = coalesce(
+                        (select source.logical_id from questions source where source.id = %s),
+                        %s
+                      )
+                    """,
+                    (revision_id, course_id, question_id, question_id),
+                )
+            ).fetchone()
+            if existing_row is None:
+                return None
+            existing = await _course_assessment_from_row(conn, existing_row)
+            question_id = existing.id
+            await _validate_assessment_scope(conn, course_id, revision_id, draft)
+            row = await (
+                await conn.execute(
+                    """
+                    update questions
+                    set topic_id = %s, body = %s, type = %s,
+                        correct_answer = %s::jsonb, confidence_prompt = %s,
+                        instructor_revision = %s::jsonb, review_status = 'edited',
+                        approved_at = now(), dismissed_at = null, updated_at = now()
+                    where id = %s and revision_id = %s
+                    returning *
+                    """,
+                    (
+                        draft.topic_id,
+                        draft.body.strip(),
+                        draft.type,
+                        Jsonb(draft.correct_answer),
+                        draft.confidence_prompt.strip(),
+                        Jsonb({"action": "edited_by_instructor"}),
+                        question_id,
+                        revision_id,
+                    ),
+                )
+            ).fetchone()
+            if row is None:
+                return None
+            await _replace_assessment_rules(conn, question_id, revision_id, draft)
+            row["topic_title"] = await _topic_title(conn, draft.topic_id)
+            question = await _course_assessment_from_row(conn, row)
+            await _record_workspace_audit(
+                conn,
+                course_id,
+                revision_id,
+                instructor_id,
+                "question",
+                question.id,
+                "edit",
+                _assessment_snapshot(existing),
+                _assessment_snapshot(question),
+            )
+            return question
+
+    async def dismiss_assessment(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        question_id: UUID,
+    ) -> CourseAssessment | None:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            existing_row = await (
+                await conn.execute(
+                    """
+                    select q.*, t.title as topic_title from questions q
+                    join topics t on t.id = q.topic_id
+                    where q.revision_id = %s and t.course_id = %s
+                      and q.logical_id = coalesce(
+                        (select source.logical_id from questions source where source.id = %s),
+                        %s
+                      )
+                    """,
+                    (revision_id, course_id, question_id, question_id),
+                )
+            ).fetchone()
+            if existing_row is None:
+                return None
+            existing = await _course_assessment_from_row(conn, existing_row)
+            question_id = existing.id
+            row = await (
+                await conn.execute(
+                    """
+                    update questions
+                    set review_status = 'dismissed', dismissed_at = now(), updated_at = now(),
+                        instructor_revision = %s::jsonb
+                    where id = %s and revision_id = %s
+                    returning *
+                    """,
+                    (Jsonb({"action": "removed_by_instructor"}), question_id, revision_id),
+                )
+            ).fetchone()
+            if row is None:
+                return None
+            row["topic_title"] = existing.topic_title
+            question = await _course_assessment_from_row(conn, row)
+            await _record_workspace_audit(
+                conn,
+                course_id,
+                revision_id,
+                instructor_id,
+                "question",
+                question.id,
+                "dismiss",
+                _assessment_snapshot(existing),
+                _assessment_snapshot(question),
+            )
+            return question
+
+    async def routing_workspace(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        is_working_revision: bool,
+    ) -> RoutingWorkspace:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            concept_rows = await (
+                await conn.execute(
+                    """
+                    select c.id, c.name,
+                           coalesce(array_agg(tc.topic_id order by tc.topic_id)
+                             filter (where tc.topic_id is not null), '{}') as topic_ids
+                    from concepts c
+                    left join topic_concepts tc
+                      on tc.concept_id = c.id and tc.revision_id = c.revision_id
+                    where c.course_id = %s and c.revision_id = %s
+                      and c.review_status <> 'dismissed'
+                    group by c.id, c.name order by c.name
+                    """,
+                    (course_id, revision_id),
+                )
+            ).fetchall()
+            policy_rows = await (
+                await conn.execute(
+                    """
+                    select rp.id, rp.concept_id, c.name as concept_name, rp.policy
+                    from routing_policies rp
+                    left join concepts c on c.id = rp.concept_id
+                    where rp.course_id = %s and rp.revision_id = %s
+                    order by rp.concept_id nulls first, c.name
+                    """,
+                    (course_id, revision_id),
+                )
+            ).fetchall()
+        concepts = tuple(
+            AssessmentConceptOption(
+                id=UUID(str(row["id"])),
+                name=str(row["name"]),
+                topic_ids=tuple(UUID(str(value)) for value in row["topic_ids"]),
+            )
+            for row in concept_rows
+        )
+        policies = tuple(_course_routing_policy(row) for row in policy_rows)
+        if not any(policy.concept_id is None for policy in policies):
+            policies = (
+                CourseRoutingPolicy(
+                    id=None,
+                    concept_id=None,
+                    concept_name=None,
+                    policy=RoutingPolicyDraft(3, 1, "require_mastery", 2),
+                ),
+                *policies,
+            )
+        return RoutingWorkspace(
+            revision_id=revision_id,
+            is_working_revision=is_working_revision,
+            concepts=concepts,
+            policies=policies,
+        )
+
+    async def upsert_routing_policy(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        concept_id: UUID | None,
+        policy: RoutingPolicyDraft,
+    ) -> CourseRoutingPolicy:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            if concept_id is not None:
+                concept = await (
+                    await conn.execute(
+                        """
+                        select id, name from concepts
+                        where course_id = %s and revision_id = %s
+                          and logical_id = coalesce(
+                            (select source.logical_id from concepts source where source.id = %s),
+                            %s
+                          )
+                          and review_status <> 'dismissed'
+                        """,
+                        (course_id, revision_id, concept_id, concept_id),
+                    )
+                ).fetchone()
+                if concept is None:
+                    raise ValueError("Routing concept is not part of the working revision.")
+                concept_id = UUID(str(concept["id"]))
+            previous = await (
+                await conn.execute(
+                    """
+                    select id, concept_id, policy from routing_policies
+                    where course_id = %s and revision_id = %s
+                      and concept_id is not distinct from %s
+                    """,
+                    (course_id, revision_id, concept_id),
+                )
+            ).fetchone()
+            policy_json = _routing_policy_json(policy)
+            row = await (
+                await conn.execute(
+                    """
+                    insert into routing_policies (
+                      course_id, concept_id, policy, revision_id
+                    ) values (%s, %s, %s::jsonb, %s)
+                    on conflict (revision_id, concept_id) do update
+                    set policy = excluded.policy, updated_at = now()
+                    returning id, concept_id, policy
+                    """,
+                    (course_id, concept_id, Jsonb(policy_json), revision_id),
+                )
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("Failed to save routing policy.")
+            row["concept_name"] = str(concept["name"]) if concept_id is not None else None
+            saved = _course_routing_policy(row)
+            await _record_workspace_audit(
+                conn,
+                course_id,
+                revision_id,
+                instructor_id,
+                "routing_policy",
+                saved.id or course_id,
+                "edit" if previous else "create",
+                _json_dict(previous["policy"]) if previous else None,
+                policy_json,
+            )
+            return saved
+
+    async def delete_routing_policy(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        concept_id: UUID,
+    ) -> bool:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            mapped = await (
+                await conn.execute(
+                    """
+                    select id from concepts
+                    where course_id = %s and revision_id = %s
+                      and logical_id = coalesce(
+                        (select source.logical_id from concepts source where source.id = %s),
+                        %s
+                      )
+                    """,
+                    (course_id, revision_id, concept_id, concept_id),
+                )
+            ).fetchone()
+            if mapped is None:
+                return False
+            concept_id = UUID(str(mapped["id"]))
+            row = await (
+                await conn.execute(
+                    """
+                    delete from routing_policies
+                    where course_id = %s and revision_id = %s and concept_id = %s
+                    returning id, policy
+                    """,
+                    (course_id, revision_id, concept_id),
+                )
+            ).fetchone()
+            if row is None:
+                return False
+            await _record_workspace_audit(
+                conn,
+                course_id,
+                revision_id,
+                instructor_id,
+                "routing_policy",
+                UUID(str(row["id"])),
+                "dismiss",
+                _json_dict(row["policy"]),
+                None,
+            )
+            return True
+
+
+async def _course_assessment_from_row(
+    conn: Any,
+    row: dict[str, Any],
+) -> CourseAssessment:
+    rule_rows = await (
+        await conn.execute(
+            """
+            select id, wrong_answer_pattern, target_clip_id, target_concept_id
+            from remediation_rules where question_id = %s order by created_at
+            """,
+            (row["id"],),
+        )
+    ).fetchall()
+    return CourseAssessment(
+        id=UUID(str(row["id"])),
+        logical_id=UUID(str(row["logical_id"])),
+        topic_id=UUID(str(row["topic_id"])),
+        topic_title=str(row["topic_title"]),
+        body=str(row["body"]),
+        type=str(row["type"]),
+        correct_answer=_json_dict(row["correct_answer"]),
+        confidence_prompt=str(row["confidence_prompt"]),
+        review_status=str(row["review_status"]),
+        remediation_rules=tuple(
+            {
+                "id": str(rule["id"]),
+                "wrong_answer_pattern": str(rule["wrong_answer_pattern"]),
+                "target_clip_id": (
+                    str(rule["target_clip_id"]) if rule["target_clip_id"] else None
+                ),
+                "target_concept_id": (
+                    str(rule["target_concept_id"])
+                    if rule["target_concept_id"]
+                    else None
+                ),
+            }
+            for rule in rule_rows
+        ),
+    )
+
+
+async def _topic_title(conn: Any, topic_id: UUID) -> str:
+    row = await (
+        await conn.execute("select title from topics where id = %s", (topic_id,))
+    ).fetchone()
+    if row is None:
+        raise ValueError("Assessment topic is not available.")
+    return str(row["title"])
+
+
+async def _validate_assessment_scope(
+    conn: Any,
+    course_id: UUID,
+    revision_id: UUID,
+    draft: AssessmentDraft,
+) -> None:
+    topic = await (
+        await conn.execute(
+            """
+            select 1 from topics
+            where id = %s and course_id = %s and revision_id = %s
+              and review_status <> 'dismissed'
+            """,
+            (draft.topic_id, course_id, revision_id),
+        )
+    ).fetchone()
+    if topic is None:
+        raise ValueError("Assessment topic is not part of the working revision.")
+    for rule in draft.remediation_rules:
+        if rule.target_clip_id is not None:
+            target = await (
+                await conn.execute(
+                    """
+                    select 1 from clips clip
+                    join topics topic on topic.id = clip.topic_id
+                    where clip.id = %s and clip.revision_id = %s
+                      and topic.course_id = %s and clip.status in ('active', 'flagged')
+                    """,
+                    (rule.target_clip_id, revision_id, course_id),
+                )
+            ).fetchone()
+            if target is None:
+                raise ValueError("A remediation clip is not part of the working revision.")
+        if rule.target_concept_id is not None:
+            target = await (
+                await conn.execute(
+                    """
+                    select 1 from concepts
+                    where id = %s and course_id = %s and revision_id = %s
+                      and review_status <> 'dismissed'
+                    """,
+                    (rule.target_concept_id, course_id, revision_id),
+                )
+            ).fetchone()
+            if target is None:
+                raise ValueError("A remediation concept is not part of the working revision.")
+
+
+async def _map_assessment_draft(
+    conn: Any,
+    revision_id: UUID,
+    draft: AssessmentDraft,
+) -> AssessmentDraft:
+    topic_id = await _revision_artifact_id(conn, "topics", draft.topic_id, revision_id)
+    if topic_id is None:
+        raise ValueError("Assessment topic is not part of the working revision.")
+    rules: list[AssessmentRuleDraft] = []
+    for rule in draft.remediation_rules:
+        clip_id = (
+            await _revision_artifact_id(conn, "clips", rule.target_clip_id, revision_id)
+            if rule.target_clip_id
+            else None
+        )
+        concept_id = (
+            await _revision_artifact_id(
+                conn,
+                "concepts",
+                rule.target_concept_id,
+                revision_id,
+            )
+            if rule.target_concept_id
+            else None
+        )
+        if rule.target_clip_id and clip_id is None:
+            raise ValueError("A remediation clip is not part of the working revision.")
+        if rule.target_concept_id and concept_id is None:
+            raise ValueError("A remediation concept is not part of the working revision.")
+        rules.append(
+            AssessmentRuleDraft(
+                wrong_answer_pattern=rule.wrong_answer_pattern,
+                target_clip_id=clip_id,
+                target_concept_id=concept_id,
+            )
+        )
+    return AssessmentDraft(
+        topic_id=topic_id,
+        body=draft.body,
+        type=draft.type,
+        correct_answer=draft.correct_answer,
+        confidence_prompt=draft.confidence_prompt,
+        remediation_rules=tuple(rules),
+    )
+
+
+async def _revision_artifact_id(
+    conn: Any,
+    table: str,
+    artifact_id: UUID,
+    revision_id: UUID,
+) -> UUID | None:
+    if table not in {"topics", "concepts", "clips"}:
+        raise ValueError("Unsupported revision artifact.")
+    row = await (
+        await conn.execute(
+            f"""
+            select id from {table}
+            where revision_id = %s
+              and logical_id = coalesce(
+                (select source.logical_id from {table} source where source.id = %s),
+                %s
+              )
+            """,  # noqa: S608 -- table is restricted by the allowlist above.
+            (revision_id, artifact_id, artifact_id),
+        )
+    ).fetchone()
+    return UUID(str(row["id"])) if row else None
+
+
+async def _replace_assessment_rules(
+    conn: Any,
+    question_id: UUID,
+    revision_id: UUID,
+    draft: AssessmentDraft,
+) -> None:
+    await conn.execute("delete from remediation_rules where question_id = %s", (question_id,))
+    for rule in draft.remediation_rules:
+        await conn.execute(
+            """
+            insert into remediation_rules (
+              question_id, wrong_answer_pattern, target_clip_id, target_concept_id,
+              instructor_revision, approved_at, revision_id
+            ) values (%s, %s, %s, %s, %s::jsonb, now(), %s)
+            """,
+            (
+                question_id,
+                rule.wrong_answer_pattern.strip(),
+                rule.target_clip_id,
+                rule.target_concept_id,
+                Jsonb({"action": "edited_by_instructor"}),
+                revision_id,
+            ),
+        )
+
+
+def _assessment_snapshot(question: CourseAssessment) -> dict[str, Any]:
+    return {
+        "topic_id": str(question.topic_id),
+        "body": question.body,
+        "type": question.type,
+        "correct_answer": question.correct_answer,
+        "confidence_prompt": question.confidence_prompt,
+        "review_status": question.review_status,
+        "remediation_rules": list(question.remediation_rules),
+    }
+
+
+def _routing_policy_json(policy: RoutingPolicyDraft) -> dict[str, Any]:
+    return {
+        "confidence_threshold": policy.confidence_threshold,
+        "correct_attempts_for_mastery": policy.correct_attempts_for_mastery,
+        "advancement_mode": policy.advancement_mode,
+        "max_remediation_attempts": policy.max_remediation_attempts,
+    }
+
+
+def _course_routing_policy(row: dict[str, Any]) -> CourseRoutingPolicy:
+    policy = _json_dict(row["policy"])
+    return CourseRoutingPolicy(
+        id=UUID(str(row["id"])) if row.get("id") else None,
+        concept_id=UUID(str(row["concept_id"])) if row.get("concept_id") else None,
+        concept_name=str(row["concept_name"]) if row.get("concept_name") else None,
+        policy=RoutingPolicyDraft(
+            confidence_threshold=int(policy.get("confidence_threshold", 3)),
+            correct_attempts_for_mastery=int(
+                policy.get("correct_attempts_for_mastery", 1)
+            ),
+            advancement_mode=str(policy.get("advancement_mode", "require_mastery")),
+            max_remediation_attempts=int(policy.get("max_remediation_attempts", 2)),
+        ),
+    )
+
+
+async def _record_workspace_audit(
+    conn: Any,
+    course_id: UUID,
+    revision_id: UUID,
+    instructor_id: UUID,
+    artifact_type: str,
+    artifact_id: UUID,
+    action: str,
+    previous_state: dict[str, Any] | None,
+    new_state: dict[str, Any] | None,
+) -> None:
+    await conn.execute(
+        """
+        insert into audit_events (
+          course_id, actor_type, actor_id, artifact_type, artifact_id,
+          action, source, previous_state, new_state, instructor_note, revision_id
+        ) values (%s, 'instructor', %s, %s, %s, %s, 'instructor',
+                  %s::jsonb, %s::jsonb, %s, %s)
+        """,
+        (
+            course_id,
+            instructor_id,
+            artifact_type,
+            artifact_id,
+            action,
+            Jsonb(previous_state) if previous_state is not None else None,
+            Jsonb(new_state) if new_state is not None else None,
+            "Changed in the structured course workspace.",
+            revision_id,
+        ),
+    )
 
 
 _COURSE_SUMMARY_SQL = """

@@ -41,6 +41,10 @@ _DATA_ONLY_MIGRATIONS = frozenset(
     }
 )
 
+# These migrations must run even against databases that predate migration
+# bookkeeping; their change cannot be inferred from table/column presence.
+_POST_BASELINE_MIGRATIONS = frozenset({"018_course_delete_fk_lifecycle.sql"})
+
 
 async def run_migrations(database_url: str, migrations_dir: Path) -> None:
     async with await psycopg.AsyncConnection.connect(database_url) as conn:

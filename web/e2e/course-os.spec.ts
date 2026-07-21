@@ -145,6 +145,80 @@ async function mockCourseOS(page: Page) {
   return { deleted: () => deleted };
 }
 
+async function mockPublishedCourseOS(page: Page) {
+  const published = {
+    ...course,
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    title: "Applied mechanics",
+    status: "published",
+    active_revision_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    working_revision_id: null,
+    revision_status: "published",
+    generation_run_id: null,
+    generation_status: "complete",
+    generation_phase: "complete",
+    pending_review_count: 0,
+    open_signal_count: 1,
+  };
+  await page.route("http://localhost:8000/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/development/identities") return route.fulfill({ json: [instructor] });
+    if (path.endsWith("/studio")) return route.fulfill({ json: published });
+    if (path.endsWith("/messages") || path.endsWith("/review-bundles")) return route.fulfill({ json: [] });
+    if (path.endsWith("/map")) return route.fulfill({ json: { course_id: published.id, revision_id: published.active_revision_id, nodes: [], edges: [] } });
+    if (path.endsWith("/assessment-workspace")) return route.fulfill({
+      json: {
+        revision_id: published.active_revision_id,
+        is_working_revision: false,
+        topics: [{ id: "topic-1", title: "Force systems" }],
+        concepts: [{ id: "concept-1", name: "Net force", topic_ids: ["topic-1"] }],
+        clips: [{ id: "clip-1", topic_id: "topic-1", label: "Force systems · explanation · 0–60s" }],
+        questions: [{
+          id: "question-1",
+          logical_id: "question-logical",
+          topic_id: "topic-1",
+          topic_title: "Force systems",
+          body: "What determines the direction of net force?",
+          type: "short_answer",
+          correct_answer: { answer: "vector sum" },
+          confidence_prompt: "How confident are you?",
+          review_status: "accepted",
+          remediation_rules: [{ id: "rule-1", wrong_answer_pattern: "Adds magnitudes only", target_clip_id: "clip-1", target_concept_id: "concept-1" }],
+        }],
+      },
+    });
+    if (path.endsWith("/routing-workspace")) return route.fulfill({
+      json: {
+        revision_id: published.active_revision_id,
+        is_working_revision: false,
+        concepts: [{ id: "concept-1", name: "Net force", topic_ids: ["topic-1"] }],
+        policies: [{
+          id: "policy-1",
+          concept_id: null,
+          concept_name: null,
+          policy: { confidence_threshold: 3, correct_attempts_for_mastery: 1, advancement_mode: "require_mastery", max_remediation_attempts: 2 },
+        }],
+      },
+    });
+    if (path.endsWith("/dashboard")) return route.fulfill({
+      json: {
+        course_id: published.id,
+        learner_count: 4,
+        attempt_count: 8,
+        not_enough_data: false,
+        signals: [{ id: "signal-1", type: "stuck_cohort", status: "open", ai_diagnosis: { title: "Net force needs attention", summary: "Two learners exhausted remediation." } }],
+        concept_performance: [{ concept_id: "concept-1", concept_name: "Net force", touched_learners: 4, struggling_learners: 2 }],
+        question_performance: [{ question_id: "question-1", prompt: "What determines the direction of net force?", attempts: 8, incorrect_attempts: 2, low_confidence_correct_attempts: 1 }],
+        clip_performance: [],
+        activity_history: [{ date: "2026-07-21", attempts: 8, active_learners: 4 }],
+        mastery_distribution: { mastered: 2, practiced: 1, struggling: 1, not_started: 0 },
+      },
+    });
+    return route.fulfill({ json: {} });
+  });
+  return published;
+}
+
 test("teacher dashboard prioritizes review work and opens the studio", async ({ page }) => {
   await mockCourseOS(page);
   await page.setViewportSize({ width: 1440, height: 960 });
@@ -203,4 +277,24 @@ test("course deletion requires a separate destructive confirmation", async ({ pa
   await page.getByRole("button", { name: "Delete permanently" }).click();
   await expect(page.getByRole("heading", { name: "Your first course" })).toBeVisible();
   expect(state.deleted()).toBe(true);
+});
+
+test("published course combines insights with overview and exposes durable assessment and policy workspaces", async ({ page }) => {
+  const published = await mockPublishedCourseOS(page);
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto(`/app/courses/${published.id}`);
+
+  await expect(page.getByRole("heading", { name: "Learning health" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Teaching decisions" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Insights" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Assessments" }).click();
+  await expect(page.getByRole("heading", { name: "Assessments" })).toBeVisible();
+  await expect(page.getByText("What determines the direction of net force?")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add assessment" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByRole("heading", { name: "Settings & policies" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Test a routing decision" })).toBeVisible();
+  await expect(page.getByText("Predicted route")).toBeVisible();
 });
