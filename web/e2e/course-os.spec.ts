@@ -172,7 +172,23 @@ async function mockPublishedCourseOS(page: Page) {
         is_working_revision: false,
         topics: [{ id: "topic-1", title: "Force systems" }],
         concepts: [{ id: "concept-1", name: "Net force", topic_ids: ["topic-1"] }],
-        clips: [{ id: "clip-1", topic_id: "topic-1", label: "Force systems · explanation · 0–60s" }],
+        clips: [{
+          id: "clip-1",
+          topic_id: "topic-1",
+          topic_title: "Force systems",
+          video_id: "video-1",
+          label: "Force systems · explanation · 0–60s",
+          start_seconds: 0,
+          end_seconds: 60,
+          type: "explanation",
+          difficulty: "introductory",
+          status: "active",
+          playback_provider: "local",
+          playback_id: null,
+          playback_url: "/videos/video-1/media",
+          delivery_asset_id: null,
+          materialization_status: "source_reference",
+        }],
         questions: [{
           id: "question-1",
           logical_id: "question-logical",
@@ -289,6 +305,7 @@ test("published course combines insights with overview and exposes durable asses
   await expect(page.getByRole("button", { name: "Insights" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Edit course" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Changes" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Review" })).toHaveCount(0);
   await expect(page.getByText("Live revision", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Human checkpoint", { exact: true })).toHaveCount(0);
 
@@ -296,9 +313,16 @@ test("published course combines insights with overview and exposes durable asses
   await expect(page.getByRole("heading", { name: "Assessments" })).toBeVisible();
   await expect(page.getByText("What determines the direction of net force?")).toBeVisible();
   await expect(page.getByRole("button", { name: "Add assessment" })).toBeVisible();
+  await page.getByRole("button", { name: "Preview remediation clip for Adds magnitudes only" }).click();
+  await expect(page.getByLabel("Force systems clip")).toBeVisible();
+  await page.getByRole("button", { name: "Close remediation clip preview" }).click();
   await page.getByRole("button", { name: "Edit What determines the direction of net force?" }).click();
   await expect(page.getByRole("heading", { name: "Edit assessment" })).toBeVisible();
   await expect(page.getByText("Editing private revision", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Preview" }).click();
+  await expect(page.getByRole("heading", { name: "Learner clip preview" })).toBeVisible();
+  await expect(page.getByLabel("Force systems clip")).toBeVisible();
 
   await page.getByRole("button", { name: "Settings" }).click();
   await expect(page.getByRole("heading", { name: "Settings & policies" })).toBeVisible();

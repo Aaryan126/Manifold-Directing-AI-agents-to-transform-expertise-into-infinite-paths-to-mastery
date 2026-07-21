@@ -40,6 +40,8 @@ from app.course_os.models import (
 from app.course_os.repository import CourseOSRepository
 from app.db.pool import pooled_connection
 
+DEFAULT_ROUTING_POLICY = RoutingPolicyDraft(3, 1, "require_mastery", 2)
+
 
 class PostgresCourseOSRepository(CourseOSRepository):
     def __init__(self, database_url: str) -> None:
@@ -1695,10 +1697,23 @@ class PostgresCourseOSRepository(CourseOSRepository):
             clip_rows = await (
                 await conn.execute(
                     """
-                    select clip.id, clip.topic_id, topic.title, clip.type,
-                           clip.start_seconds, clip.end_seconds
+                    select clip.id, clip.topic_id, topic.title, topic.video_id,
+                           clip.type, clip.difficulty, clip.status,
+                           clip.start_seconds, clip.end_seconds,
+                           coalesce(video.playback_provider, 'local') as playback_provider,
+                           video.playback_id,
+                           coalesce(
+                             video.source_metadata->>'playback_url',
+                             '/videos/' || video.id::text || '/media'
+                           ) as playback_url,
+                           video.source_metadata->>'delivery_asset_id' as delivery_asset_id,
+                           coalesce(
+                             clip.materialization_status,
+                             'source_reference'
+                           ) as materialization_status
                     from clips clip
                     join topics topic on topic.id = clip.topic_id
+                    join videos video on video.id = topic.video_id
                     where topic.course_id = %s and clip.revision_id = %s
                       and clip.status in ('active', 'flagged')
                     order by topic.start_seconds, clip.start_seconds
@@ -1740,10 +1755,30 @@ class PostgresCourseOSRepository(CourseOSRepository):
                 AssessmentClipOption(
                     id=UUID(str(row["id"])),
                     topic_id=UUID(str(row["topic_id"])),
+                    topic_title=str(row["title"]),
+                    video_id=UUID(str(row["video_id"])),
                     label=(
                         f"{row['title']} · {str(row['type']).replace('_', ' ')} · "
                         f"{float(row['start_seconds']):.0f}–{float(row['end_seconds']):.0f}s"
                     ),
+                    start_seconds=float(row["start_seconds"]),
+                    end_seconds=float(row["end_seconds"]),
+                    type=str(row["type"]),
+                    difficulty=str(row["difficulty"]) if row["difficulty"] is not None else None,
+                    status=str(row["status"]),
+                    playback_provider=str(row["playback_provider"]),
+                    playback_id=(
+                        str(row["playback_id"])
+                        if row["playback_id"] is not None
+                        else None
+                    ),
+                    playback_url=str(row["playback_url"]),
+                    delivery_asset_id=(
+                        str(row["delivery_asset_id"])
+                        if row["delivery_asset_id"] is not None
+                        else None
+                    ),
+                    materialization_status=str(row["materialization_status"]),
                 )
                 for row in clip_rows
             ),
@@ -1973,7 +2008,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     id=None,
                     concept_id=None,
                     concept_name=None,
-                    policy=RoutingPolicyDraft(3, 1, "require_mastery", 2),
+                    policy=DEFAULT_ROUTING_POLICY,
                 ),
                 *policies,
             )
@@ -2076,6 +2111,42 @@ class PostgresCourseOSRepository(CourseOSRepository):
             if mapped is None:
                 return False
             concept_id = UUID(str(mapped["id"]))
+            default_row = await (
+                await conn.execute(
+                    """
+                    select id from routing_policies
+                    where course_id = %s and revision_id = %s and concept_id is null
+                    """,
+                    (course_id, revision_id),
+                )
+            ).fetchone()
+            if default_row is None:
+                default_policy = DEFAULT_ROUTING_POLICY
+                default_policy_json = _routing_policy_json(default_policy)
+                created_default = await (
+                    await conn.execute(
+                        """
+                        insert into routing_policies (
+                          course_id, concept_id, policy, revision_id
+                        ) values (%s, null, %s::jsonb, %s)
+                        returning id
+                        """,
+                        (course_id, Jsonb(default_policy_json), revision_id),
+                    )
+                ).fetchone()
+                if created_default is None:
+                    raise RuntimeError("Failed to materialize the course default policy.")
+                await _record_workspace_audit(
+                    conn,
+                    course_id,
+                    revision_id,
+                    instructor_id,
+                    "routing_policy",
+                    UUID(str(created_default["id"])),
+                    "create",
+                    None,
+                    default_policy_json,
+                )
             row = await (
                 await conn.execute(
                     """

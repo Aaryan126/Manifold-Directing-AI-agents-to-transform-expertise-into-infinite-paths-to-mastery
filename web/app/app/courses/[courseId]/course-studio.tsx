@@ -38,9 +38,9 @@ import {
   MessageSquareText,
   Paperclip,
   Pencil,
+  Play,
   Plus,
   RotateCcw,
-  Send,
   Settings2,
   SunMedium,
   Trash2,
@@ -72,6 +72,7 @@ import {
 } from "../../course-os";
 import styles from "../../course-os.module.css";
 import { TeacherSidebar, useTeacherSidebar } from "../../teacher-dashboard";
+import { ProviderVideo, type PlaybackInfo } from "../../../ProviderVideo";
 
 const pipelineBase = process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localhost:8000";
 const instructorStorageKey = "manifold.teacher-id";
@@ -139,15 +140,19 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     return (await response.json()) as T;
   }, []);
 
-  const refreshPublishedWorkspace = useCallback(async (user: DevelopmentIdentity) => {
-    const [assessments, routing, dashboard] = await Promise.all([
+  const refreshStructuredWorkspace = useCallback(async (
+    user: DevelopmentIdentity,
+    includeDashboard = true,
+  ) => {
+    const [assessments, routing] = await Promise.all([
       request<AssessmentWorkspace>(`/courses/${courseId}/assessment-workspace`, user),
       request<RoutingWorkspace>(`/courses/${courseId}/routing-workspace`, user),
-      request<DashboardSummary>(`/courses/${courseId}/dashboard`, user),
     ]);
     setAssessmentWorkspace(assessments);
     setRoutingWorkspace(routing);
-    setDashboardSummary(dashboard);
+    if (includeDashboard) {
+      setDashboardSummary(await request<DashboardSummary>(`/courses/${courseId}/dashboard`, user));
+    }
   }, [courseId, request]);
 
   const refreshArtifacts = useCallback(async (user: DevelopmentIdentity) => {
@@ -198,15 +203,17 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       }
       await refreshArtifacts(user);
       await refreshRevisionDiff(user, courseResult);
-      if (courseResult.status === "published") await refreshPublishedWorkspace(user);
-      if (courseResult.pending_review_count > 0) setCanvasView("review");
-      else if (courseResult.status === "published") setCanvasView("overview");
+      if (courseResult.topic_count > 0) {
+        await refreshStructuredWorkspace(user, courseResult.status === "published");
+      }
+      if (courseResult.status === "published") setCanvasView("overview");
+      else if (courseResult.pending_review_count > 0) setCanvasView("review");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not open the course studio.");
     } finally {
       setLoading(false);
     }
-  }, [courseId, refreshArtifacts, refreshPublishedWorkspace, refreshRevisionDiff, request]);
+  }, [courseId, refreshArtifacts, refreshStructuredWorkspace, refreshRevisionDiff, request]);
 
   useEffect(() => {
     void loadStudio();
@@ -222,6 +229,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
             const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
             setCourse(nextCourse);
             await refreshArtifacts(identity);
+            await refreshStructuredWorkspace(identity, false);
             await refreshRevisionDiff(identity, nextCourse);
             setCanvasView("review");
           }
@@ -229,7 +237,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not refresh generation."));
     }, 2200);
     return () => window.clearInterval(interval);
-  }, [courseId, identity, refreshArtifacts, refreshRevisionDiff, request, run]);
+  }, [courseId, identity, refreshArtifacts, refreshStructuredWorkspace, refreshRevisionDiff, request, run]);
 
   async function submitMessage(event: FormEvent) {
     event.preventDefault();
@@ -374,7 +382,8 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       setRun(null);
       setRevisionDiff(null);
       await refreshArtifacts(identity);
-      await refreshPublishedWorkspace(identity);
+      await refreshStructuredWorkspace(identity);
+      setCanvasView("overview");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not publish this revision.");
     } finally {
@@ -422,7 +431,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     setCourse(nextCourse);
     await Promise.all([
       refreshArtifacts(identity),
-      refreshPublishedWorkspace(identity),
+      refreshStructuredWorkspace(identity),
       refreshRevisionDiff(identity, nextCourse),
     ]);
   }
@@ -683,7 +692,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
               <nav className={styles.canvasTabs} aria-label="Course views">
                 {course?.status === "published" ? <CanvasTab active={canvasView === "overview"} icon={<Activity />} label="Overview" onClick={() => setCanvasView("overview")} /> : null}
                 <CanvasTab active={canvasView === "map"} icon={<MapIcon />} label="Course map" onClick={() => setCanvasView("map")} />
-                {course?.status !== "published" || course.working_revision_id ? <CanvasTab active={canvasView === "review"} badge={course?.pending_review_count || undefined} icon={<ClipboardCheck />} label="Review" onClick={() => setCanvasView("review")} /> : null}
+                {course?.status !== "published" ? <CanvasTab active={canvasView === "review"} badge={course?.pending_review_count || undefined} icon={<ClipboardCheck />} label="Review" onClick={() => setCanvasView("review")} /> : null}
                 {course?.status === "published" ? <CanvasTab active={canvasView === "assessments"} icon={<Check />} label="Assessments" onClick={() => setCanvasView("assessments")} /> : null}
                 <CanvasTab active={canvasView === "preview"} icon={<Eye />} label="Preview" onClick={() => setCanvasView("preview")} />
                 {course?.status === "published" ? <CanvasTab active={canvasView === "settings"} icon={<Settings2 />} label="Settings" onClick={() => setCanvasView("settings")} /> : null}
@@ -691,9 +700,9 @@ export function CourseStudio({ courseId }: { courseId: string }) {
               <div className={styles.canvasBody}>
                 {canvasView === "overview" ? <OverviewCanvas course={course} dashboard={dashboardSummary} onSignal={resolveDashboardSignal} revisionDiff={revisionDiff} /> : null}
                 {canvasView === "map" ? <CourseMapCanvas courseMap={courseMap} run={run} /> : null}
-                {canvasView === "review" ? <ReviewCanvas bundles={bundles} onBundle={decideBundle} onItem={decideItem} /> : null}
+                {canvasView === "review" && course?.status !== "published" ? <ReviewCanvas bundles={bundles} onBundle={decideBundle} onItem={decideItem} /> : null}
                 {canvasView === "assessments" ? <AssessmentsCanvas disabled={sending} onRemove={removeAssessment} onSave={saveAssessment} workspace={assessmentWorkspace} /> : null}
-                {canvasView === "preview" ? <PreviewCanvas course={course} /> : null}
+                {canvasView === "preview" ? <PreviewCanvas course={course} workspace={assessmentWorkspace} /> : null}
                 {canvasView === "settings" ? <SettingsCanvas disabled={sending} onRemove={removeRoutingPolicy} onSave={saveRoutingPolicy} workspace={routingWorkspace} /> : null}
               </div>
               </section>
@@ -1027,6 +1036,7 @@ function AssessmentsCanvas({ workspace, disabled, onSave, onRemove }: {
 }) {
   const [editing, setEditing] = useState<CourseAssessment | "new" | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [previewClipId, setPreviewClipId] = useState<string | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!editing) return;
@@ -1042,21 +1052,65 @@ function AssessmentsCanvas({ workspace, disabled, onSave, onRemove }: {
       <header><div><h2>Assessments</h2><p>Every question in the current course revision, including its answer and remediation route.</p></div><div><button aria-expanded={editing === "new"} aria-controls="assessment-editor" disabled={disabled || !workspace.topics.length} onClick={() => setEditing("new")} type="button"><Plus />Add assessment</button></div></header>
       {editing ? <div className={styles.editorReveal} id="assessment-editor" ref={editorRef}><AssessmentEditor key={editing === "new" ? "new" : editing.id} question={editing === "new" ? null : editing} workspace={workspace} onCancel={() => setEditing(null)} onSave={async (draft) => { await onSave(draft, editing === "new" ? undefined : editing); setEditing(null); }} /></div> : null}
       <div className={styles.assessmentList}>
-        {questions.map((question, index) => (
+        {questions.map((question, index) => {
+          const previewClip = workspace.clips.find((clip) => (
+            clip.id === previewClipId
+            && question.remediation_rules.some((rule) => rule.target_clip_id === clip.id)
+          ));
+          return (
           <article key={question.id}>
             <div className={styles.assessmentIndex}>{String(index + 1).padStart(2, "0")}</div>
             <div className={styles.assessmentBody}>
               <div><span>{question.topic_title}</span><small>{question.type.replaceAll("_", " ")} · {question.review_status}</small></div>
               <h3>{question.body}</h3>
               <dl><div><dt>Correct answer</dt><dd>{answerLabel(question.correct_answer)}</dd></div><div><dt>Confidence check</dt><dd>{question.confidence_prompt}</dd></div></dl>
-              <div className={styles.remediationRoutes}><strong>Remediation routes</strong>{question.remediation_rules.map((rule) => <span key={rule.id ?? rule.wrong_answer_pattern}>{rule.wrong_answer_pattern}<ChevronDown /></span>)}</div>
+              <div className={styles.remediationRoutes}>
+                <strong>Remediation routes</strong>
+                {question.remediation_rules.map((rule) => {
+                  const clip = workspace.clips.find((candidate) => candidate.id === rule.target_clip_id);
+                  const concept = workspace.concepts.find((candidate) => candidate.id === rule.target_concept_id);
+                  if (clip) {
+                    const expanded = previewClipId === clip.id;
+                    return (
+                      <button
+                        aria-expanded={expanded}
+                        aria-label={`${expanded ? "Close" : "Preview"} remediation clip for ${rule.wrong_answer_pattern}`}
+                        className={styles.routeChip}
+                        key={rule.id ?? rule.wrong_answer_pattern}
+                        onClick={() => setPreviewClipId(expanded ? null : clip.id)}
+                        type="button"
+                      >
+                        <Play />
+                        <span>{rule.wrong_answer_pattern}</span>
+                        <small>Preview clip</small>
+                      </button>
+                    );
+                  }
+                  return (
+                    <span className={styles.routeChip} key={rule.id ?? rule.wrong_answer_pattern}>
+                      <span>{rule.wrong_answer_pattern}</span>
+                      <small>{concept ? `Routes to ${concept.name}` : "Concept route"}</small>
+                    </span>
+                  );
+                })}
+              </div>
+              {previewClip ? (
+                <section className={styles.assessmentClipPreview}>
+                  <header>
+                    <div><strong>{previewClip.topic_title}</strong><span>{clipTimeRange(previewClip)}</span></div>
+                    <button aria-label="Close remediation clip preview" onClick={() => setPreviewClipId(null)} type="button"><X /></button>
+                  </header>
+                  <ClipPlayer clip={previewClip} />
+                </section>
+              ) : null}
             </div>
             <div className={styles.assessmentActions}>
               <button aria-controls="assessment-editor" aria-expanded={editing !== "new" && editing?.id === question.id} aria-label={`Edit ${question.body}`} disabled={disabled} onClick={() => setEditing(question)} type="button"><Pencil /></button>
               {confirmRemove === question.id ? <div><span>Remove in private revision?</span><button onClick={() => setConfirmRemove(null)} type="button">Keep</button><button disabled={disabled} onClick={() => void onRemove(question).then(() => setConfirmRemove(null))} type="button">Remove</button></div> : <button aria-label={`Remove ${question.body}`} disabled={disabled} onClick={() => setConfirmRemove(question.id)} type="button"><Trash2 /></button>}
             </div>
           </article>
-        ))}
+          );
+        })}
         {!questions.length ? <div className={styles.inlineEmpty}><ClipboardCheck /><div><strong>No active assessments</strong><p>Add a teacher-authored check for understanding. It will stay private until the revision is published.</p></div></div> : null}
       </div>
     </div>
@@ -1206,8 +1260,82 @@ function PolicyEditor({ conceptId, concepts, initial, onCancel, onSave }: {
   );
 }
 
-function PreviewCanvas({ course }: { course: CourseSummary | null }) {
-  return <div className={styles.previewCanvas}><div className={styles.previewFrame}><span>MANIFOLD · LEARNER PREVIEW</span><h2>{course?.title ?? "Your course"}</h2><p>The learner path will adapt here from reviewed concepts, questions, and remediation clips.</p><button disabled type="button"><Send />Begin course</button></div><aside><h3>See what learners will see</h3><p>Preview uses the private working revision and never exposes unreviewed material to enrolled learners.</p></aside></div>;
+function PreviewCanvas({ course, workspace }: {
+  course: CourseSummary | null;
+  workspace: AssessmentWorkspace | null;
+}) {
+  const clips = workspace?.clips ?? [];
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const selectedClip = clips.find((clip) => clip.id === selectedClipId) ?? clips[0] ?? null;
+  const isWorkingRevision = workspace?.is_working_revision ?? false;
+  return (
+    <div className={styles.previewCanvas}>
+      <header>
+        <div><h2>Learner clip preview</h2><p>Review the exact teaching moments in this course revision, in the order learners may encounter them.</p></div>
+        <span>{clips.length} {clips.length === 1 ? "clip" : "clips"}</span>
+      </header>
+      {!workspace ? <div className={styles.canvasEmpty}><LoaderCircle className={styles.spin} /><h2>Loading learner preview</h2></div> : null}
+      {workspace && !clips.length ? <div className={styles.inlineEmpty}><FileVideo /><div><strong>No teaching clips in this revision</strong><p>Generate or add clips before publishing so learners have focused teaching moments to revisit.</p></div></div> : null}
+      {selectedClip ? (
+        <div className={styles.clipPreviewWorkspace}>
+          <nav aria-label="Teaching clips">
+            {clips.map((clip, index) => (
+              <button
+                aria-current={selectedClip.id === clip.id ? "true" : undefined}
+                key={clip.id}
+                onClick={() => setSelectedClipId(clip.id)}
+                type="button"
+              >
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <div><strong>{clip.topic_title}</strong><small>{clip.type.replaceAll("_", " ")} · {clipTimeRange(clip)}</small></div>
+                <Play />
+              </button>
+            ))}
+          </nav>
+          <section className={styles.learnerClipStage}>
+            <ClipPlayer clip={selectedClip} />
+            <div>
+              <div><h3>{selectedClip.topic_title}</h3><p>{selectedClip.type.replaceAll("_", " ")} · {clipTimeRange(selectedClip)}</p></div>
+              <dl>
+                <div><dt>Purpose</dt><dd>Focused teaching moment</dd></div>
+                <div><dt>Difficulty</dt><dd>{selectedClip.difficulty ?? "Not set"}</dd></div>
+                <div><dt>Revision</dt><dd>{isWorkingRevision ? "Private working revision" : "Published learner revision"}</dd></div>
+              </dl>
+            </div>
+          </section>
+        </div>
+      ) : null}
+      <footer><Eye /><p>This is an instructor-only playback preview. Watching here never changes learner progress or mastery.</p><span>{course?.title ?? "Course preview"}</span></footer>
+    </div>
+  );
+}
+
+function ClipPlayer({ clip }: { clip: AssessmentWorkspace["clips"][number] }) {
+  const playback: PlaybackInfo = {
+    provider: clip.playback_provider,
+    playback_id: clip.playback_id,
+    playback_url: clip.playback_url,
+    delivery_asset_id: clip.delivery_asset_id,
+  };
+  return (
+    <ProviderVideo
+      clipId={clip.id}
+      clipMaterializationStatus={clip.materialization_status}
+      endSeconds={clip.end_seconds}
+      pipelineBaseUrl={pipelineBase}
+      playback={playback}
+      startSeconds={clip.start_seconds}
+      title={`${clip.topic_title} clip`}
+      videoId={clip.video_id}
+    />
+  );
+}
+
+function clipTimeRange(clip: AssessmentWorkspace["clips"][number]): string {
+  const duration = Math.max(0, clip.end_seconds - clip.start_seconds);
+  const minutes = Math.floor(duration / 60);
+  const seconds = Math.round(duration % 60);
+  return minutes ? `${minutes}:${String(seconds).padStart(2, "0")}` : `${seconds}s`;
 }
 
 function StudioSkeleton() { return <div className={styles.studioSkeleton}><i /><i /></div>; }

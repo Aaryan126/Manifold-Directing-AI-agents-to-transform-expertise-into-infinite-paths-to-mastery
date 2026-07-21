@@ -138,7 +138,25 @@ def test_assessment_workspace_returns_current_revision_questions_and_targets() -
                 topic_ids=(topic_id,),
             ),
         ),
-        clips=(AssessmentClipOption(id=clip_id, topic_id=topic_id, label="Recap"),),
+        clips=(
+            AssessmentClipOption(
+                id=clip_id,
+                topic_id=topic_id,
+                topic_title="Foundations",
+                video_id=uuid4(),
+                label="Recap",
+                start_seconds=30.0,
+                end_seconds=75.0,
+                type="explanation",
+                difficulty="introductory",
+                status="active",
+                playback_provider="mux",
+                playback_id="playback-1",
+                playback_url="https://stream.example/video.m3u8",
+                delivery_asset_id="asset-1",
+                materialization_status="source_reference",
+            ),
+        ),
         questions=(
             CourseAssessment(
                 id=question_id,
@@ -177,6 +195,10 @@ def test_assessment_workspace_returns_current_revision_questions_and_targets() -
         assert payload["questions"][0]["remediation_rules"][0][
             "target_concept_id"
         ] == str(concept_id)
+        assert payload["clips"][0]["topic_title"] == "Foundations"
+        assert payload["clips"][0]["video_id"]
+        assert payload["clips"][0]["playback_provider"] == "mux"
+        assert payload["clips"][0]["start_seconds"] == 30.0
         service.assessment_workspace.assert_awaited_once_with(course_id, instructor_id)
     finally:
         app.dependency_overrides.clear()

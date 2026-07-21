@@ -226,7 +226,19 @@ class AssessmentConceptOption:
 class AssessmentClipOption:
     id: UUID
     topic_id: UUID
+    topic_title: str
+    video_id: UUID
     label: str
+    start_seconds: float
+    end_seconds: float
+    type: str
+    difficulty: str | None
+    status: str
+    playback_provider: str
+    playback_id: str | None
+    playback_url: str
+    delivery_asset_id: str | None
+    materialization_status: str
 
 
 @dataclass(frozen=True)

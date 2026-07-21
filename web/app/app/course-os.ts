@@ -200,7 +200,23 @@ export type AssessmentWorkspace = {
   is_working_revision: boolean;
   topics: Array<{ id: string; title: string }>;
   concepts: Array<{ id: string; name: string; topic_ids: string[] }>;
-  clips: Array<{ id: string; topic_id: string; label: string }>;
+  clips: Array<{
+    id: string;
+    topic_id: string;
+    topic_title: string;
+    video_id: string;
+    label: string;
+    start_seconds: number;
+    end_seconds: number;
+    type: string;
+    difficulty: string | null;
+    status: string;
+    playback_provider: "local" | "mux";
+    playback_id: string | null;
+    playback_url: string;
+    delivery_asset_id: string | null;
+    materialization_status: "source_reference" | "processing" | "ready" | "failed";
+  }>;
   questions: CourseAssessment[];
 };
 
