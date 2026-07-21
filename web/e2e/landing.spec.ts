@@ -15,7 +15,8 @@ test("public landing page leads into the Manifold workspace", async ({ page }) =
   await expect(startBuilding).toHaveAttribute("href", "/app");
   await startBuilding.click();
   await expect(page).toHaveURL(/\/app$/);
-  await expect(page.getByText("Teacher command center", { exact: true })).toBeVisible();
+  await expect(page.getByText("Teacher command center", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "New course" })).toBeVisible();
 });
 
 test("public landing page is responsive and WCAG 2.2 AA clean", async ({ page }) => {

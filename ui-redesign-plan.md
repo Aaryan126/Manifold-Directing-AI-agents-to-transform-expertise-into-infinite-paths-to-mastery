@@ -18,7 +18,7 @@ Manifold is a calm instructional operating system: precise and information-dense
 ### Visual system direction
 
 - Warm-white and graphite foundation, with neutral surfaces that keep working content dominant.
-- One cobalt or blue-green product accent. Emerald, amber, and red are reserved for semantic states.
+- Graphite and warm-neutral controls lead the application. Restrained orange marks attention, progress, and selected structure; emerald and red remain semantic states. Cobalt/purple decoration is removed from the Course OS.
 - Restrained 4-8px radii, subtle separators, and minimal elevation.
 - Dense instructor workspaces; calmer and more spacious learner surfaces.
 - Proposed typography: Instrument Sans for operational UI and Source Serif 4 for course titles, learner explanations, and orientation moments. Final font choice is confirmed during Stage 1.
@@ -29,9 +29,9 @@ Manifold is a calm instructional operating system: precise and information-dense
 
 ### Instructor workspace
 
-The landing page enters a Teacher Command Center. New course creation opens a side-by-side conversation and dynamic artifact canvas; Manifold owns the durable generation sequence and returns a complete private draft with three review bundles. Published courses use Overview, Course Map, Assessments, Learner Preview, Insights, and Settings, with an always-available course copilot.
+The landing page enters a Teacher Command Center with a light collapsible navigation rail and readable operational typography. New course creation opens a full-width Course Director conversation that remains primary during source submission and durable generation. When the private draft is ready, the conversation yields to a full-width artifact workspace with Course Director available from a docked right-side panel. Published courses use Overview, Course Map, Assessments, Learner Preview, Insights, and Settings, with the same docked copilot.
 
-The Course Map uses topic-centered semantic zoom rather than a universal pipeline graph. Chat commands create typed proposals and visible diffs; structured editors remain authoritative. The previous guided studio remains available only during the parallel rollout.
+The Course Map uses topic-centered semantic zoom rather than a universal pipeline graph. Course overview includes every active topic and concept plus containment and prerequisite edges; topic and artifact zoom progressively focus that complete structure. Chat commands create typed proposals and visible diffs; structured editors remain authoritative. The previous guided studio remains available only during the parallel rollout.
 
 ### Learner workspace
 
@@ -136,6 +136,7 @@ The learner experience prioritizes the current lesson, the next recommended acti
 
 ## Decisions Log
 
+- 2026-07-21: Human visual review replaces the Course OS side-by-side creation default with a chat-first/full-workspace sequence. Course Director owns the full content area until the durable run reaches review, then collapses into an on-demand right dock while structured workspaces use the full width. The Course OS also adopts a light collapsible icon rail, materially larger dashboard/workspace typography, context-specific non-sparkle icons, graphite/orange emphasis instead of cobalt/purple decoration, reviewable automatic private-draft naming, and a complete topic-plus-concept course-overview graph. Existing typed proposals, Accept/Edit/Dismiss gates, audit history, revision isolation, and learner publish gates remain mandatory.
 - 2026-07-21: Course OS Stages 9-12 implementation is complete behind `/app`. The Postgres-leased worker now owns deferred transcription through review-bundle assembly; the Command Center and persistent Course Studio are live; Course Map uses bounded course/topic/artifact zoom plus an accessible outline; published workspaces include grounded evidence answers, revision-scoped chat proposals, an exact logical-identity diff, and mastery-safe activation. Stage 13 is active. Backend/frontend/build/Compose/API gates pass, while the new browser/WCAG/visual run remains explicitly pending because the in-app browser surface was unavailable.
 - 2026-07-20: Artifact proposal creation no longer consumes instructor attention. Reviewed topic/concept coverage automatically prepares clips, and usable clips automatically prepare proposed learner checks; failures expose retry and a dismissed question is not recreated. Assessments remains a required human checkpoint because question correctness and remediation directly affect mastery/routing, but the three-pane generation-heavy workspace is replaced by a wide review queue and one focused editor with advanced routing and AI context collapsed.
 - 2026-07-20: Production-stage task-count badges were removed because unresolved work is already represented inside each focused stage and the extra nav counters added unexplained visual noise. Concept coverage now follows topic identity changes automatically: split children inherit the parent's reviewed links and merges retain the union, leaving the inline connector as an exception-repair control rather than a normal instructor task.

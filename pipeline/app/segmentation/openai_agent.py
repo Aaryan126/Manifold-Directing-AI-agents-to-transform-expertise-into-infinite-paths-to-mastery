@@ -17,6 +17,7 @@ class _TopicOutput(BaseModel):
 
 
 class _SegmentationOutput(BaseModel):
+    course_title: str = Field(min_length=1, max_length=90)
     topics: list[_TopicOutput]
 
 
@@ -40,7 +41,9 @@ class OpenAISegmentationAgent(SegmentationAgent):
                         "audio bed labels, or repeated uppercase phrases unless they are central "
                         "to the pedagogy. Each topic must include a concise title, one-paragraph "
                         "summary, time range, confidence, and a transcript excerpt explaining "
-                        "why the boundary was chosen."
+                        "why the boundary was chosen. Also propose one concise, specific course "
+                        "title that describes the lecture as a whole rather than copying a single "
+                        "topic title."
                     ),
                 },
                 {
@@ -64,8 +67,9 @@ class OpenAISegmentationAgent(SegmentationAgent):
                 end_seconds=topic.end_seconds,
                 evidence=topic.evidence,
                 confidence=topic.confidence,
+                course_title=parsed.course_title if index == 0 else None,
             )
-            for topic in parsed.topics
+            for index, topic in enumerate(parsed.topics)
         )
 
 

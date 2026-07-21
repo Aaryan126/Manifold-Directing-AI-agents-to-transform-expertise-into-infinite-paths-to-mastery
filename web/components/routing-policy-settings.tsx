@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ChevronDown, CircleHelp, RotateCcw, Route, Sparkles } from "lucide-react";
+import { Check, ChevronDown, CircleHelp, LoaderCircle, RotateCcw, Route } from "lucide-react";
 
 import type { Concept, ConceptEdge } from "@/app/graphModel";
 import {
@@ -107,10 +107,10 @@ export function RoutingPolicySettings({
         </div>
         <div className="flex flex-wrap gap-2">
           <Button disabled={!activeConcepts.length || isSaving} onClick={applyRecommendations} type="button" variant="outline">
-            <Sparkles data-icon="inline-start" /> Use recommended mix
+            <Route data-icon="inline-start" /> Use recommended mix
           </Button>
           <Button disabled={!activeConcepts.length || isSaving} onClick={onConfirm} type="button">
-            {isSaving ? <Sparkles className="animate-pulse motion-reduce:animate-none" data-icon="inline-start" /> : <Check data-icon="inline-start" />}
+            {isSaving ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : <Check data-icon="inline-start" />}
             {isSaving ? "Saving" : "Save routing"}
           </Button>
         </div>

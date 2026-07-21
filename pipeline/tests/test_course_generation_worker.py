@@ -115,6 +115,36 @@ async def test_source_task_runs_transcription_inside_the_durable_worker() -> Non
 
 
 @pytest.mark.anyio
+async def test_outline_task_applies_reviewable_course_title_proposal() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    task = _task("outline")
+    run = _run(task)
+    topic_id = uuid4()
+    repository.claim_generation_task = AsyncMock(return_value=task)
+    repository.get_generation_run = AsyncMock(return_value=run)
+    repository.complete_generation_task = AsyncMock()
+    repository.apply_course_title_proposal = AsyncMock(return_value="Practical Vectors")
+    segmentation = AsyncMock()
+    segmentation.propose_topics.return_value = (SimpleNamespace(id=topic_id),)
+
+    worked = await _worker(repository, segmentation=segmentation).run_once()
+
+    assert worked is True
+    repository.apply_course_title_proposal.assert_awaited_once_with(
+        run.course_id,
+        run.revision_id,
+    )
+    repository.complete_generation_task.assert_awaited_once_with(
+        task.id,
+        {
+            "topic_ids": [str(topic_id)],
+            "count": 1,
+            "course_title": "Practical Vectors",
+        },
+    )
+
+
+@pytest.mark.anyio
 async def test_graph_task_generates_private_proposals_before_review() -> None:
     repository = create_autospec(CourseOSRepository, instance=True)
     task = _task("concept_graph")

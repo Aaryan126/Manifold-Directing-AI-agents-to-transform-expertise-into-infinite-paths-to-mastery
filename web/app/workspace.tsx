@@ -108,7 +108,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { LoaderCircle, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { Clapperboard, ListTree, LoaderCircle, Network, Plus, RefreshCw, Trash2 } from "lucide-react";
 
 type Job = {
   id: string;
@@ -2183,7 +2183,7 @@ export default function HomePage() {
                   Accept all
                 </Button>
                 <Button disabled={isSegmenting} onClick={() => void segmentTranscript()} type="button">
-                  <Sparkles data-icon="inline-start" />
+                  <ListTree data-icon="inline-start" />
                   {isSegmenting ? "Segmenting" : "Generate Outline"}
                 </Button>
               </>
@@ -2381,7 +2381,7 @@ export default function HomePage() {
                             onClick={() => void generateClipsForTopic(topic.id)}
                             type="button"
                           >
-                            {generationAction === `clips:${topic.id}` || (selectedTopicActiveClips.length === 0 && !preparationFailures[`clips:${topic.id}`]) ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />}
+                            {generationAction === `clips:${topic.id}` || (selectedTopicActiveClips.length === 0 && !preparationFailures[`clips:${topic.id}`]) ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : <Clapperboard data-icon="inline-start" />}
                             {generationAction === `clips:${topic.id}`
                               ? "Preparing clips"
                               : selectedTopicActiveClips.length
@@ -2547,7 +2547,7 @@ export default function HomePage() {
                 {isAcceptingGraph ? "Accepting" : "Accept all"}
               </Button>
               <Button disabled={graphBlockReason !== null || generationAction !== null} onClick={generateGraph} type="button">
-                {generationAction === "graph" ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />}
+                {generationAction === "graph" ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : <Network data-icon="inline-start" />}
                 {generationAction === "graph" ? "Generating graph" : "Generate graph"}
               </Button>
             </>}
@@ -3336,7 +3336,7 @@ const graphTopicPalette = [
   { background: "#ecfdf5", border: "#059669", edge: "#10b981" },
   { background: "#fffbeb", border: "#d97706", edge: "#f59e0b" },
   { background: "#fff1f2", border: "#e11d48", edge: "#f43f5e" },
-  { background: "#f5f3ff", border: "#7c3aed", edge: "#8b5cf6" },
+  { background: "#f5f5f4", border: "#57534e", edge: "#78716c" },
   { background: "#ecfeff", border: "#0891b2", edge: "#06b6d4" },
 ] as const;
 

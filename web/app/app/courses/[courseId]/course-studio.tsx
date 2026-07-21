@@ -25,18 +25,21 @@ import {
   Check,
   ChevronDown,
   CircleAlert,
+  ClipboardCheck,
+  ClipboardList,
   Eye,
+  FilePenLine,
   FileVideo,
   GitFork,
   Lightbulb,
   LoaderCircle,
   Map as MapIcon,
+  MessageCircleMore,
   MessageSquareText,
   Paperclip,
   Pencil,
   RotateCcw,
   Send,
-  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -45,6 +48,7 @@ import {
   evidenceTitle,
   generationPhaseLabel,
   shouldHydrateGenerationRun,
+  studioPresentationMode,
   type CourseMap,
   type CourseMessage,
   type CourseSummary,
@@ -55,7 +59,7 @@ import {
   type RevisionDiff,
 } from "../../course-os";
 import styles from "../../course-os.module.css";
-import { TeacherSidebar } from "../../teacher-dashboard";
+import { TeacherSidebar, useTeacherSidebar } from "../../teacher-dashboard";
 
 const pipelineBase = process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localhost:8000";
 const instructorStorageKey = "manifold.teacher-id";
@@ -63,6 +67,7 @@ type CanvasView = "overview" | "map" | "review" | "assessments" | "insights" | "
 type Decision = "accepted" | "edited" | "dismissed";
 
 export function CourseStudio({ courseId }: { courseId: string }) {
+  const { sidebarCollapsed, toggleSidebar } = useTeacherSidebar();
   const fileInput = useRef<HTMLInputElement>(null);
   const [identity, setIdentity] = useState<DevelopmentIdentity | null>(null);
   const [course, setCourse] = useState<CourseSummary | null>(null);
@@ -78,6 +83,13 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   const [sourceLabel, setSourceLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [proposalStates, setProposalStates] = useState<Record<string, string>>({});
+  const [directorOpen, setDirectorOpen] = useState(false);
+
+  const isBuilding = Boolean(
+    (run && ["queued", "running"].includes(run.status))
+    || (course && ["queued", "running"].includes(course.generation_status ?? "")),
+  );
+  const focusedCreation = studioPresentationMode(course) === "creation";
 
   const request = useCallback(async <T,>(path: string, user: DevelopmentIdentity, init?: RequestInit): Promise<T> => {
     const headers = new Headers(init?.headers);
@@ -187,7 +199,11 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content }),
       });
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
       setMessages(await request<CourseMessage[]>(`/courses/${courseId}/messages`, identity));
+      await refreshArtifacts(identity);
+      await refreshRevisionDiff(identity, nextCourse);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not send the message.");
       setComposer(content);
@@ -372,7 +388,6 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     }
   }
 
-  const isBuilding = run && ["queued", "running"].includes(run.status);
   const editingLocked = course?.status === "published" && !course.working_revision_id;
   const canPublish = Boolean(
     course?.working_revision_id
@@ -383,9 +398,76 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     && !isBuilding,
   );
 
+  const courseDirector = (
+    <section className={`${styles.conversationPanel} ${focusedCreation ? styles.creationConversation : styles.dockedConversation}`} aria-labelledby="conversation-title">
+      <div className={styles.panelHeader}>
+        <div className={styles.directorIdentity}><MessageSquareText /><span><strong id="conversation-title">Course Director</strong><small>Manifold</small></span></div>
+        <div className={styles.panelHeaderActions}>
+          <span className={styles.onlinePill}><i />Working with you</span>
+          {!focusedCreation ? <button aria-label="Close Course Director" onClick={() => setDirectorOpen(false)} type="button"><X /></button> : null}
+        </div>
+      </div>
+      <div className={styles.messageList}>
+        {messages.map((message) => (
+          <MessageBubble
+            key={message.id}
+            message={message}
+            proposalStates={proposalStates}
+            onResolve={resolveProposal}
+          />
+        ))}
+
+        {(course?.source_count ?? 0) === 0 ? (
+          <SourceRequest onChoose={() => fileInput.current?.click()} />
+        ) : null}
+
+        {run ? (
+          <GenerationActivity run={run} sourceLabel={sourceLabel} onRetry={retryGeneration} />
+        ) : sourceLabel ? <GenerationActivityLabel label={sourceLabel} /> : null}
+      </div>
+
+      <form className={styles.composer} onSubmit={submitMessage}>
+        <input
+          accept="audio/*,video/*"
+          className={styles.hiddenInput}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void ingestFile(file);
+          }}
+          ref={fileInput}
+          type="file"
+        />
+        <textarea
+          aria-label="Message Manifold"
+          onChange={(event) => setComposer(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              event.currentTarget.form?.requestSubmit();
+            }
+          }}
+          placeholder={editingLocked
+            ? "Ask about learner evidence, or request a private course change…"
+            : (course?.source_count ?? 0) === 0
+              ? "Paste a lecture link, or tell Manifold about the course…"
+              : "Ask about or change this course…"}
+          rows={focusedCreation ? 4 : 3}
+          value={composer}
+        />
+        <div>
+          <button aria-label="Attach lecture" disabled={editingLocked} onClick={() => fileInput.current?.click()} type="button"><Paperclip /></button>
+          <span>Enter to send · Shift + Enter for a new line</span>
+          <button aria-label="Send message" className={styles.sendButton} disabled={!composer.trim() || sending} type="submit">
+            {sending ? <LoaderCircle className={styles.spin} /> : <ArrowUp />}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+
   return (
-    <div className={`${styles.appShell} ${styles.studioApp}`}>
-      <TeacherSidebar compact identity={identity} />
+    <div className={`${styles.appShell} ${styles.studioApp} ${sidebarCollapsed ? styles.sidebarCollapsedShell : ""}`}>
+      <TeacherSidebar collapsed={sidebarCollapsed} compact identity={identity} onToggle={toggleSidebar} />
       <main className={styles.studioMain}>
         <header className={styles.studioHeader}>
           <div className={styles.studioTitle}>
@@ -396,8 +478,8 @@ export function CourseStudio({ courseId }: { courseId: string }) {
             </div>
           </div>
           <div className={styles.studioStatus}>
-            {isBuilding ? <span data-tone="building"><LoaderCircle className={styles.spin} />{Math.round(run.progress)}% building</span>
-              : course?.pending_review_count ? <span data-tone="review"><Sparkles />{course.pending_review_count} to review</span>
+            {isBuilding ? <span data-tone="building"><LoaderCircle className={styles.spin} />{Math.round(run?.progress ?? course?.generation_progress ?? 0)}% building</span>
+              : course?.pending_review_count ? <span data-tone="review"><ClipboardCheck />{course.pending_review_count} to review</span>
                 : course?.status === "published" ? <span data-tone="live"><Check />Live</span>
                   : <span><Activity />Private</span>}
             {editingLocked ? (
@@ -413,74 +495,15 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         {error ? <div className={styles.studioError} role="alert"><CircleAlert /><span>{error}</span><button onClick={() => setError(null)} aria-label="Dismiss error"><X /></button></div> : null}
 
         {loading ? <StudioSkeleton /> : (
-          <div className={styles.studioGrid}>
-            <section className={styles.conversationPanel} aria-labelledby="conversation-title">
-              <div className={styles.panelHeader}>
-                <div><MessageSquareText /><span><strong id="conversation-title">Course Director</strong><small>Manifold</small></span></div>
-                <span className={styles.onlinePill}><i />Working with you</span>
-              </div>
-              <div className={styles.messageList}>
-                {messages.map((message) => (
-                  <MessageBubble
-                    key={message.id}
-                    message={message}
-                    proposalStates={proposalStates}
-                    onResolve={resolveProposal}
-                  />
-                ))}
-
-                {(course?.source_count ?? 0) === 0 ? (
-                  <SourceRequest onChoose={() => fileInput.current?.click()} />
-                ) : null}
-
-                {run ? (
-                  <GenerationActivity run={run} sourceLabel={sourceLabel} onRetry={retryGeneration} />
-                ) : sourceLabel ? <GenerationActivityLabel label={sourceLabel} /> : null}
-              </div>
-
-              <form className={styles.composer} onSubmit={submitMessage}>
-                <input
-                  accept="audio/*,video/*"
-                  className={styles.hiddenInput}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) void ingestFile(file);
-                  }}
-                  ref={fileInput}
-                  type="file"
-                />
-                <textarea
-                  aria-label="Message Manifold"
-                  onChange={(event) => setComposer(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      event.currentTarget.form?.requestSubmit();
-                    }
-                  }}
-                  placeholder={editingLocked
-                    ? "Ask about learner evidence, or open an update revision to change this course."
-                    : (course?.source_count ?? 0) === 0
-                      ? "Paste a lecture link, or tell Manifold about the course…"
-                      : "Ask about or change this course…"}
-                  rows={3}
-                  value={composer}
-                />
-                <div>
-                  <button aria-label="Attach lecture" disabled={editingLocked} onClick={() => fileInput.current?.click()} type="button"><Paperclip /></button>
-                  <span>Enter to send · Shift + Enter for a new line</span>
-                  <button aria-label="Send message" className={styles.sendButton} disabled={!composer.trim() || sending} type="submit">
-                    {sending ? <LoaderCircle className={styles.spin} /> : <ArrowUp />}
-                  </button>
-                </div>
-              </form>
-            </section>
-
-            <section className={styles.canvasPanel} aria-label="Course workspace canvas">
+          focusedCreation ? (
+            <div className={styles.creationStage}>{courseDirector}</div>
+          ) : (
+            <div className={styles.workspaceStage}>
+              <section className={styles.canvasPanel} aria-label="Course workspace canvas">
               <nav className={styles.canvasTabs} aria-label="Course views">
                 {course?.status === "published" ? <CanvasTab active={canvasView === "overview"} icon={<Activity />} label="Overview" onClick={() => setCanvasView("overview")} /> : null}
                 <CanvasTab active={canvasView === "map"} icon={<MapIcon />} label="Course map" onClick={() => setCanvasView("map")} />
-                {course?.status !== "published" || course.working_revision_id ? <CanvasTab active={canvasView === "review"} badge={course?.pending_review_count || undefined} icon={<Sparkles />} label="Review" onClick={() => setCanvasView("review")} /> : null}
+                {course?.status !== "published" || course.working_revision_id ? <CanvasTab active={canvasView === "review"} badge={course?.pending_review_count || undefined} icon={<ClipboardCheck />} label="Review" onClick={() => setCanvasView("review")} /> : null}
                 {course?.status === "published" ? <CanvasTab active={canvasView === "assessments"} icon={<Check />} label="Assessments" onClick={() => setCanvasView("assessments")} /> : null}
                 <CanvasTab active={canvasView === "insights"} badge={course?.open_signal_count || undefined} icon={<Lightbulb />} label="Insights" onClick={() => setCanvasView("insights")} />
                 <CanvasTab active={canvasView === "preview"} icon={<Eye />} label="Preview" onClick={() => setCanvasView("preview")} />
@@ -497,8 +520,14 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                 {canvasView === "settings" ? <FocusedBundleCanvas artifactTypes={["routing_policy"]} bundles={bundles} empty="No routing settings are available." onItem={decideItem} /> : null}
                 {canvasView === "changes" ? <ChangesCanvas revisionDiff={revisionDiff} /> : null}
               </div>
-            </section>
-          </div>
+              </section>
+              <button aria-expanded={directorOpen} aria-label="Open Course Director" className={styles.directorLauncher} onClick={() => setDirectorOpen((current) => !current)} type="button">
+                <MessageCircleMore />
+                <span>Course Director</span>
+              </button>
+              {directorOpen ? <aside className={styles.directorDock}>{courseDirector}</aside> : null}
+            </div>
+          )
         )}
       </main>
     </div>
@@ -544,7 +573,7 @@ function MessageBubble({ message, proposalStates, onResolve }: {
           const proposed = isRecord(block.proposed_state) ? block.proposed_state : {};
           return (
             <div className={styles.proposalCard} key={`${proposalId}-${index}`}>
-              <span><Sparkles />Proposed course directive</span>
+              <span><FilePenLine />Proposed course directive</span>
               <p>{typeof proposed.instruction === "string" ? proposed.instruction : "Update the course brief."}</p>
               {editingProposalId === proposalId ? (
                 <div className={styles.proposalEdit}>
@@ -707,7 +736,7 @@ function ReviewCanvas({ bundles, onBundle, onItem }: { bundles: ReviewBundle[]; 
   const [editing, setEditing] = useState<ReviewItem | null>(null);
   const [revision, setRevision] = useState("");
   const active = bundles.find((bundle) => bundle.id === activeBundleId) ?? bundles[0];
-  if (!active) return <div className={styles.canvasEmpty}><Sparkles /><p className={styles.eyebrow}>Human review</p><h2>No review bundle yet</h2><p>Manifold will assemble a small set of high-leverage decisions after the full private draft is built.</p></div>;
+  if (!active) return <div className={styles.canvasEmpty}><ClipboardList /><p className={styles.eyebrow}>Human review</p><h2>No review bundle yet</h2><p>Manifold will assemble a small set of high-leverage decisions after the full private draft is built.</p></div>;
   const pending = active.items.filter((item) => item.status === "pending");
   return (
     <div className={styles.reviewCanvas}>
@@ -837,7 +866,7 @@ function PreviewCanvas({ course }: { course: CourseSummary | null }) {
 
 function StudioSkeleton() { return <div className={styles.studioSkeleton}><i /><i /></div>; }
 
-function mapToFlow(
+export function mapToFlow(
   courseMap: CourseMap | null,
   topicId: string | null,
   artifactId: string | null,
@@ -846,14 +875,78 @@ function mapToFlow(
   const allTopics = courseMap.nodes.filter((node) => node.kind === "topic");
   const allConcepts = courseMap.nodes.filter((node) => node.kind === "concept");
   if (!topicId) {
-    return {
-      nodes: allTopics.map((topic, index) => ({
+    const topics = allTopics.filter((topic) => topic.status !== "dismissed");
+    const concepts = allConcepts.filter((concept) => concept.status !== "dismissed");
+    const columns = Math.min(3, Math.max(1, Math.ceil(Math.sqrt(topics.length))));
+    const clusterWidth = 430;
+    const rowHeights = new Map<number, number>();
+    topics.forEach((topic, index) => {
+      const row = Math.floor(index / columns);
+      const conceptCount = concepts.filter((concept) => concept.topic_id === topic.id).length;
+      const height = 122 + Math.max(1, Math.ceil(conceptCount / 2)) * 82;
+      rowHeights.set(row, Math.max(rowHeights.get(row) ?? 0, height));
+    });
+    const rowOffsets = new Map<number, number>();
+    let nextOffset = 0;
+    for (let row = 0; row <= Math.floor(Math.max(0, topics.length - 1) / columns); row += 1) {
+      rowOffsets.set(row, nextOffset);
+      nextOffset += (rowHeights.get(row) ?? 210) + 56;
+    }
+    const nodes: Node[] = [];
+    topics.forEach((topic, index) => {
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      const originX = column * clusterWidth;
+      const originY = rowOffsets.get(row) ?? 0;
+      nodes.push({
         id: topic.id,
-        position: { x: (index % 3) * 240, y: Math.floor(index / 3) * 125 },
+        position: { x: originX, y: originY },
         data: { label: topic.title },
-        style: { background: "#17181d", border: "0", borderRadius: 10, color: "#fff", fontSize: 11, fontWeight: 650, padding: 13, width: 205 },
-      })),
-      edges: [],
+        style: { background: "#202126", border: "0", borderRadius: 10, color: "#fff", fontSize: 14, fontWeight: 650, lineHeight: 1.35, padding: 15, width: 380 },
+      });
+      concepts.filter((concept) => concept.topic_id === topic.id).forEach((concept, conceptIndex) => {
+        nodes.push({
+          id: concept.id,
+          position: {
+            x: originX + (conceptIndex % 2) * 194,
+            y: originY + 104 + Math.floor(conceptIndex / 2) * 82,
+          },
+          data: { label: concept.title },
+          style: { background: "#fff", border: "1px solid #d6d2c9", borderRadius: 9, color: "#292930", fontSize: 12, lineHeight: 1.35, padding: 12, width: 180 },
+        });
+      });
+    });
+    const unlinked = concepts.filter((concept) => !concept.topic_id);
+    unlinked.forEach((concept, index) => {
+      nodes.push({
+        id: concept.id,
+        position: { x: (index % columns) * 210, y: nextOffset + Math.floor(index / columns) * 76 },
+        data: { label: concept.title },
+        style: { background: "#fff8f0", border: "1px dashed #ce8a4e", borderRadius: 9, color: "#292930", fontSize: 12, padding: 12, width: 190 },
+      });
+    });
+    const visibleConceptIds = new Set(concepts.map((concept) => concept.id));
+    const containment: Edge[] = concepts.filter((concept) => concept.topic_id).map((concept) => ({
+      id: `topic-${concept.id}`,
+      source: concept.topic_id!,
+      target: concept.id,
+      type: "smoothstep",
+      style: { stroke: "#bdb9b1", strokeWidth: 1.25 },
+    }));
+    const prerequisite: Edge[] = courseMap.edges
+      .filter((edge) => visibleConceptIds.has(edge.source_id) && visibleConceptIds.has(edge.target_id) && edge.status !== "dismissed")
+      .map((edge) => ({
+        id: edge.id,
+        source: edge.source_id,
+        target: edge.target_id,
+        type: "smoothstep",
+        animated: edge.status === "proposed",
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#c7762d" },
+        style: { stroke: "#c7762d", strokeWidth: 1.7 },
+      }));
+    return {
+      nodes,
+      edges: [...containment, ...prerequisite],
     };
   }
   const directIds = new Set(allConcepts.filter((concept) => concept.topic_id === topicId).map((concept) => concept.id));
@@ -880,7 +973,7 @@ function mapToFlow(
     id: topic.id,
     position: { x: 30, y: 40 + index * 170 },
     data: { label: topic.title },
-    style: { background: "#17181d", border: "0", borderRadius: 10, color: "#fff", fontSize: 11, fontWeight: 650, padding: 12, width: 190 },
+    style: { background: "#202126", border: "0", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 650, padding: 13, width: 210 },
   }));
   const conceptRows = new Map<string, number>();
   concepts.forEach((concept) => {
@@ -891,11 +984,11 @@ function mapToFlow(
       id: concept.id,
       position: { x: 340 + (current % 2) * 210, y: 28 + topicIndex * 170 + Math.floor(current / 2) * 62 },
       data: { label: concept.title },
-      style: { background: concept.status === "dismissed" ? "#f3f1ed" : "#fff", border: "1px solid #d9d7d0", borderRadius: 9, color: "#292930", fontSize: 10, padding: 10, width: 176 },
+      style: { background: concept.status === "dismissed" ? "#f3f1ed" : "#fff", border: "1px solid #d9d7d0", borderRadius: 9, color: "#292930", fontSize: 12, padding: 11, width: 190 },
     });
   });
   const containment: Edge[] = concepts.filter((concept) => concept.topic_id).map((concept) => ({ id: `topic-${concept.id}`, source: concept.topic_id!, target: concept.id, type: "smoothstep", style: { stroke: "#c5c3bc", strokeWidth: 1 } }));
-  const prerequisite: Edge[] = courseMap.edges.filter((edge) => focusIds.has(edge.source_id) && focusIds.has(edge.target_id)).map((edge) => ({ id: edge.id, source: edge.source_id, target: edge.target_id, type: "smoothstep", animated: edge.status === "proposed", markerEnd: { type: MarkerType.ArrowClosed, color: "#6e6fc4" }, style: { stroke: "#6e6fc4", strokeWidth: 1.5 } }));
+  const prerequisite: Edge[] = courseMap.edges.filter((edge) => focusIds.has(edge.source_id) && focusIds.has(edge.target_id)).map((edge) => ({ id: edge.id, source: edge.source_id, target: edge.target_id, type: "smoothstep", animated: edge.status === "proposed", markerEnd: { type: MarkerType.ArrowClosed, color: "#c7762d" }, style: { stroke: "#c7762d", strokeWidth: 1.5 } }));
   return { nodes, edges: [...containment, ...prerequisite] };
 }
 

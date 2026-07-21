@@ -162,9 +162,13 @@ class CourseOSService:
             and course.working_revision_id is None
             and not evidence_question
         ):
-            raise CourseOSValidationError(
-                "Open an update revision before proposing a change to the live course."
-            )
+            try:
+                course = await self._repository.create_working_revision(
+                    course_id,
+                    instructor_id,
+                )
+            except ValueError as exc:
+                raise CourseOSValidationError(str(exc)) from exc
         revision_id = _current_revision(course)
         instructor_message = await self._repository.add_message(
             course_id,
@@ -321,13 +325,19 @@ def _current_revision(course: CourseSummary) -> UUID:
 
 def _is_evidence_question(content: str) -> bool:
     normalized = content.strip().lower()
-    return normalized.endswith("?") or normalized.startswith(
+    return normalized.startswith(
         (
             "how many learners",
             "how are learners",
+            "how did learners",
             "what are learners",
+            "what is learner",
+            "what is the learner",
             "which learners",
+            "which concepts",
+            "which questions",
             "where are learners",
+            "where do learners",
             "show me learner",
             "show learner",
         )

@@ -4,6 +4,7 @@ import {
   evidenceTitle,
   generationPhaseLabel,
   shouldHydrateGenerationRun,
+  studioPresentationMode,
   type CourseSummary,
 } from "../app/app/course-os";
 
@@ -47,6 +48,13 @@ describe("Course OS presentation", () => {
     expect(shouldHydrateGenerationRun({ ...withRun, generation_status: "waiting_review" })).toBe(true);
     expect(shouldHydrateGenerationRun({ ...withRun, generation_status: "complete" })).toBe(false);
     expect(shouldHydrateGenerationRun({ ...withRun, generation_status: "cancelled" })).toBe(false);
+  });
+
+  it("keeps Course Director full-width until the private draft reaches review", () => {
+    expect(studioPresentationMode(course)).toBe("creation");
+    expect(studioPresentationMode({ ...course, generation_status: "running", source_count: 1 })).toBe("creation");
+    expect(studioPresentationMode({ ...course, generation_status: "waiting_review", source_count: 1 })).toBe("workspace");
+    expect(studioPresentationMode({ ...course, pending_review_count: 4, source_count: 1 })).toBe("workspace");
   });
 
   it("uses human-readable evidence fields for review cards", () => {

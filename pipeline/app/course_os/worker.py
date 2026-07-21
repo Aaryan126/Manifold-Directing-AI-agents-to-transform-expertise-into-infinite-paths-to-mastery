@@ -94,7 +94,15 @@ class CourseGenerationWorker:
             return {"video_id": str(video_id), "transcript_ready": True}
         if task.task_type == "outline":
             topics = await self._segmentation.propose_topics(video_id)
-            return {"topic_ids": [str(topic.id) for topic in topics], "count": len(topics)}
+            course_title = await self._repository.apply_course_title_proposal(
+                run.course_id,
+                run.revision_id,
+            )
+            return {
+                "topic_ids": [str(topic.id) for topic in topics],
+                "count": len(topics),
+                "course_title": course_title,
+            }
         if task.task_type == "concept_graph":
             graph = await self._graph.propose_graph(run.course_id, provisional=True)
             return {"concept_count": len(graph.concepts), "edge_count": len(graph.edges)}

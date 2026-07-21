@@ -143,6 +143,8 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await page.getByRole("heading", { name: "Forces and motion" }).click();
   await expect(page).toHaveURL(new RegExp(`/app/courses/${course.id}$`));
   await expect(page.getByRole("heading", { name: "Forces and motion" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Course Director" })).toBeVisible();
+  await page.getByRole("button", { name: "Open Course Director" }).click();
   await expect(page.getByText("Your complete private draft is ready for review.")).toBeVisible();
 });
 

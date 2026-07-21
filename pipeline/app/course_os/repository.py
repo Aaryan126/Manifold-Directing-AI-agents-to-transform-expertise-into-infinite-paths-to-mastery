@@ -93,6 +93,13 @@ class CourseOSRepository(ABC):
     async def generation_topic_ids(self, revision_id: UUID) -> tuple[UUID, ...]: ...
 
     @abstractmethod
+    async def apply_course_title_proposal(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+    ) -> str | None: ...
+
+    @abstractmethod
     async def assemble_review_bundles(
         self,
         course_id: UUID,

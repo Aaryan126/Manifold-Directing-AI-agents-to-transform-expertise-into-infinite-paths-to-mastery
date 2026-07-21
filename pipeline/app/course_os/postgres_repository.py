@@ -903,6 +903,81 @@ class PostgresCourseOSRepository(CourseOSRepository):
             ).fetchall()
         return tuple(UUID(str(row[0])) for row in rows)
 
+    async def apply_course_title_proposal(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+    ) -> str | None:
+        async with await psycopg.AsyncConnection.connect(
+            self._database_url,
+            row_factory=dict_row,
+        ) as conn:
+            row = await (
+                await conn.execute(
+                    """
+                    select c.title as current_title,
+                           t.ai_proposal ->> 'course_title' as proposed_title
+                    from courses c
+                    join course_revisions r on r.id = %s and r.course_id = c.id
+                    left join lateral (
+                      select ai_proposal from topics
+                      where revision_id = r.id
+                        and nullif(ai_proposal ->> 'course_title', '') is not null
+                      order by start_seconds limit 1
+                    ) t on true
+                    where c.id = %s and c.status = 'draft'
+                    for update of c
+                    """,
+                    (revision_id, course_id),
+                )
+            ).fetchone()
+            if row is None or row["proposed_title"] is None:
+                return None
+            current_title = str(row["current_title"]).strip()
+            proposed_title = str(row["proposed_title"]).strip()[:90]
+            if current_title.casefold() not in {"untitled course", "new course", "course studio"}:
+                return None
+            if not proposed_title:
+                return None
+            title_proposal = {
+                "title": proposed_title,
+                "original_title": current_title,
+                "ai_proposal": proposed_title,
+                "status": "pending",
+            }
+            await conn.execute(
+                "update courses set title = %s, updated_at = now() where id = %s",
+                (proposed_title, course_id),
+            )
+            await conn.execute(
+                """
+                update course_revisions
+                set brief = jsonb_set(brief, '{course_title}', %s::jsonb, true),
+                    updated_at = now()
+                where id = %s and course_id = %s
+                """,
+                (Jsonb(title_proposal), revision_id, course_id),
+            )
+            await conn.execute(
+                """
+                insert into audit_events (
+                  course_id, actor_type, artifact_type, artifact_id, action, source,
+                  previous_state, new_state, scope, revision_id
+                ) values (
+                  %s, 'ai', 'course_title', %s, 'propose', 'ai',
+                  %s::jsonb, %s::jsonb, 'revision', %s
+                )
+                """,
+                (
+                    course_id,
+                    course_id,
+                    Jsonb({"title": current_title}),
+                    Jsonb({"title": proposed_title}),
+                    revision_id,
+                ),
+            )
+        return proposed_title
+
     async def assemble_review_bundles(
         self,
         course_id: UUID,
@@ -912,8 +987,8 @@ class PostgresCourseOSRepository(CourseOSRepository):
             (
                 "course_structure",
                 "Course structure",
-                "Review the outline, concepts, and prerequisite relationships.",
-                ("topic", "concept", "concept_edge"),
+                "Review the course title, outline, concepts, and prerequisite relationships.",
+                ("course_title", "topic", "concept", "concept_edge"),
             ),
             (
                 "learner_experience",
@@ -1332,7 +1407,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
             items = await (
                 await conn.execute(
                     """
-                    select ri.* from review_items ri
+                    select ri.*, rb.revision_id as review_revision_id from review_items ri
                     join review_bundles rb on rb.id = ri.bundle_id
                     where rb.revision_id = %s order by ri.created_at
                     """,
@@ -1361,7 +1436,8 @@ class PostgresCourseOSRepository(CourseOSRepository):
             item = await (
                 await conn.execute(
                     """
-                    select ri.* from review_items ri
+                    select ri.*, rb.revision_id as review_revision_id
+                    from review_items ri
                     join review_bundles rb on rb.id = ri.bundle_id
                     where ri.id = %s and rb.course_id = %s for update of ri
                     """,
@@ -1375,6 +1451,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
                 conn,
                 artifact_type,
                 UUID(str(item["artifact_id"])),
+                UUID(str(item["review_revision_id"])),
                 decision,
                 instructor_revision,
             )
@@ -1499,9 +1576,50 @@ async def _apply_artifact_review(
     conn: Any,
     artifact_type: str,
     artifact_id: UUID,
+    revision_id: UUID,
     decision: ReviewDecision,
     revision: dict[str, Any] | None,
 ) -> None:
+    if artifact_type == "course_title":
+        row = await (
+            await conn.execute(
+                "select brief -> 'course_title' as proposal from course_revisions where id = %s",
+                (revision_id,),
+            )
+        ).fetchone()
+        proposal = _json_dict(row["proposal"]) if row and row["proposal"] else {}
+        proposed_title = str(proposal.get("title") or "Untitled course").strip()
+        original_title = str(proposal.get("original_title") or "Untitled course").strip()
+        title = proposed_title
+        if decision == ReviewDecision.EDITED:
+            edited_title = revision.get("title") if revision else None
+            if not isinstance(edited_title, str) or not edited_title.strip():
+                raise ValueError("A course-title edit must include a non-empty title.")
+            title = edited_title.strip()[:90]
+        elif decision == ReviewDecision.DISMISSED:
+            title = original_title or "Untitled course"
+        proposal.update(
+            {
+                "title": title,
+                "status": decision.value,
+                "instructor_revision": revision,
+            }
+        )
+        await conn.execute(
+            "update courses set title = %s, updated_at = now() where id = %s",
+            (title, artifact_id),
+        )
+        await conn.execute(
+            """
+            update course_revisions
+            set brief = jsonb_set(brief, '{course_title}', %s::jsonb, true),
+                updated_at = now()
+            where id = %s and course_id = %s
+            """,
+            (Jsonb(proposal), revision_id, artifact_id),
+        )
+        return
+
     if decision == ReviewDecision.EDITED and revision:
         if artifact_type == "topic":
             await conn.execute(
@@ -1747,6 +1865,13 @@ async def _review_artifacts(
     artifact_types: tuple[str, ...],
 ) -> list[dict[str, Any]]:
     queries = {
+        "course_title": """
+            select r.course_id as artifact_id, r.course_id as logical_id,
+                   'normal' as risk_level,
+                   r.brief -> 'course_title' as evidence
+            from course_revisions r
+            where r.id = %s and r.brief ? 'course_title'
+        """,
         "topic": """
             select id as artifact_id, logical_id, 'normal' as risk_level,
                    jsonb_build_object(

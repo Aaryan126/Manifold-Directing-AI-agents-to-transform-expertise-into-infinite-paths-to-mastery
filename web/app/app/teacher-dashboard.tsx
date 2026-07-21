@@ -5,15 +5,18 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowRight,
+  BarChart3,
   BookOpen,
   ChevronRight,
   CircleHelp,
+  ClipboardCheck,
   LayoutDashboard,
   Library,
   LoaderCircle,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Search,
-  Sparkles,
   Users,
 } from "lucide-react";
 
@@ -27,9 +30,11 @@ import styles from "./course-os.module.css";
 
 const pipelineBase = process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localhost:8000";
 const instructorStorageKey = "manifold.teacher-id";
+const sidebarStorageKey = "manifold.sidebar-collapsed";
 
 export function TeacherDashboard() {
   const router = useRouter();
+  const { sidebarCollapsed, toggleSidebar } = useTeacherSidebar();
   const [identity, setIdentity] = useState<DevelopmentIdentity | null>(null);
   const [dashboard, setDashboard] = useState<DashboardSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -104,12 +109,11 @@ export function TeacherDashboard() {
   }
 
   return (
-    <div className={styles.appShell}>
-      <TeacherSidebar identity={identity} />
+    <div className={`${styles.appShell} ${sidebarCollapsed ? styles.sidebarCollapsedShell : ""}`}>
+      <TeacherSidebar collapsed={sidebarCollapsed} identity={identity} onToggle={toggleSidebar} />
       <main className={styles.dashboardMain}>
         <header className={styles.dashboardHeader}>
           <div>
-            <p className={styles.eyebrow}>Teacher command center</p>
             <h1>{identity ? `Good ${timeOfDay()}, ${firstName(identity.display_name)}.` : "Your courses"}</h1>
             <p>Build with Manifold, then focus your judgment where it changes learning.</p>
           </div>
@@ -130,7 +134,7 @@ export function TeacherDashboard() {
           <>
             <section className={styles.metricRow} aria-label="Portfolio summary">
               <Metric label="Courses" value={dashboard.total_courses} detail={`${dashboard.published_courses} live`} icon={<BookOpen />} />
-              <Metric label="Need your review" value={dashboard.courses_in_review} detail="Private until approved" icon={<Sparkles />} />
+              <Metric label="Need your review" value={dashboard.courses_in_review} detail="Private until approved" icon={<ClipboardCheck />} />
               <Metric label="Active learners" value={dashboard.active_learners} detail="Across published courses" icon={<Users />} />
             </section>
 
@@ -138,7 +142,6 @@ export function TeacherDashboard() {
               <section className={styles.attentionSection} aria-labelledby="attention-title">
                 <div className={styles.sectionHeading}>
                   <div>
-                    <p className={styles.eyebrow}>Attention</p>
                     <h2 id="attention-title">Worth your judgment</h2>
                   </div>
                   <span>{dashboard.attention.length} open</span>
@@ -161,7 +164,6 @@ export function TeacherDashboard() {
             <section className={styles.coursesSection} aria-labelledby="courses-title">
               <div className={styles.sectionHeading}>
                 <div>
-                  <p className={styles.eyebrow}>Portfolio</p>
                   <h2 id="courses-title">Your courses</h2>
                 </div>
                 {dashboard.courses.length > 4 ? (
@@ -188,28 +190,60 @@ export function TeacherDashboard() {
   );
 }
 
-export function TeacherSidebar({ identity, compact = false }: { identity: DevelopmentIdentity | null; compact?: boolean }) {
+export function TeacherSidebar({
+  collapsed,
+  compact = false,
+  identity,
+  onToggle,
+}: {
+  collapsed: boolean;
+  compact?: boolean;
+  identity: DevelopmentIdentity | null;
+  onToggle: () => void;
+}) {
   return (
-    <aside className={compact ? styles.studioSidebar : styles.dashboardSidebar}>
+    <aside className={compact ? styles.studioSidebar : styles.dashboardSidebar} data-collapsed={collapsed || undefined}>
       <Link className={styles.wordmark} href="/app" aria-label="Manifold teacher dashboard">
         <span className={styles.brandMark} aria-hidden="true"><i /><i /><i /></span>
         <span>Manifold</span>
       </Link>
       <nav aria-label="Teacher workspace">
         <p>Workspace</p>
-        <Link className={styles.activeNav} href="/app"><LayoutDashboard aria-hidden="true" />Overview</Link>
-        <Link href="/app#courses-title"><Library aria-hidden="true" />Courses</Link>
-        <span aria-disabled="true"><Sparkles aria-hidden="true" />Insights<small>per course</small></span>
+        <Link className={styles.activeNav} href="/app" title={collapsed ? "Overview" : undefined}><LayoutDashboard aria-hidden="true" /><span>Overview</span></Link>
+        <Link href="/app#courses-title" title={collapsed ? "Courses" : undefined}><Library aria-hidden="true" /><span>Courses</span></Link>
+        <span aria-disabled="true" title={collapsed ? "Insights — per course" : undefined}><BarChart3 aria-hidden="true" /><span>Insights<small>per course</small></span></span>
       </nav>
       <div className={styles.sidebarFooter}>
-        <Link href="/manifold"><CircleHelp aria-hidden="true" />Legacy studio</Link>
+        <Link href="/manifold" title={collapsed ? "Legacy studio" : undefined}><CircleHelp aria-hidden="true" /><span>Legacy studio</span></Link>
         <div className={styles.profileChip}>
           <span>{initials(identity?.display_name ?? "Teacher")}</span>
           <div><strong>{identity?.display_name ?? "Teacher"}</strong><small>Instructor</small></div>
         </div>
+        <button className={styles.sidebarToggle} onClick={onToggle} title={collapsed ? "Expand navigation" : "Collapse navigation"} type="button">
+          {collapsed ? <PanelLeftOpen aria-hidden="true" /> : <PanelLeftClose aria-hidden="true" />}
+          <span>{collapsed ? "Expand navigation" : "Collapse navigation"}</span>
+        </button>
       </div>
     </aside>
   );
+}
+
+export function useTeacherSidebar() {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    setSidebarCollapsed(window.localStorage.getItem(sidebarStorageKey) === "true");
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((current) => {
+      const next = !current;
+      window.localStorage.setItem(sidebarStorageKey, String(next));
+      return next;
+    });
+  }, []);
+
+  return { sidebarCollapsed, toggleSidebar };
 }
 
 function CourseCard({ course }: { course: CourseSummary }) {

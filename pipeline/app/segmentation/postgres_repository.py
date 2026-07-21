@@ -343,7 +343,7 @@ class PostgresTopicRepository(TopicRepository):
 
 
 def _proposal_json(proposal: TopicProposal) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "title": proposal.title,
         "summary": proposal.summary,
         "start_seconds": proposal.start_seconds,
@@ -351,6 +351,9 @@ def _proposal_json(proposal: TopicProposal) -> dict[str, object]:
         "evidence": proposal.evidence,
         "confidence": proposal.confidence,
     }
+    if proposal.course_title:
+        payload["course_title"] = proposal.course_title
+    return payload
 
 
 def _edit_json(edit: TopicEdit) -> dict[str, object]:

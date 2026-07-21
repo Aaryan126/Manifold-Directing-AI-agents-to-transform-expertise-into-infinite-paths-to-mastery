@@ -165,7 +165,7 @@ async def test_copilot_question_answers_from_saved_evidence_without_a_mutation_p
 
 
 @pytest.mark.anyio
-async def test_live_course_requires_working_revision_before_chat_can_propose_mutation() -> None:
+async def test_live_course_chat_opens_private_revision_before_proposing_mutation() -> None:
     repository = create_autospec(CourseOSRepository, instance=True)
     course = replace(
         _course(),
@@ -173,14 +173,51 @@ async def test_live_course_requires_working_revision_before_chat_can_propose_mut
         active_revision_id=uuid4(),
         working_revision_id=None,
     )
+    working = replace(course, working_revision_id=uuid4(), revision_status="building")
+    instructor_message = ConversationMessage(
+        id=uuid4(),
+        role="instructor",
+        content="Shorten the introduction",
+        blocks=(),
+        created_at=datetime.now(UTC),
+    )
+    proposal = CourseProposal(
+        id=uuid4(),
+        proposal_type="brief_update",
+        artifact_type="course_brief",
+        logical_artifact_id=None,
+        before_state=None,
+        proposed_state={"instruction": instructor_message.content},
+        rationale="Use this as a durable directive.",
+        status="proposed",
+        created_at=datetime.now(UTC),
+    )
+    response_message = replace(instructor_message, id=uuid4(), role="manifold")
     repository.user_role = AsyncMock(return_value="instructor")
     repository.get_course = AsyncMock(return_value=course)
+    repository.create_working_revision = AsyncMock(return_value=working)
+    repository.add_message = AsyncMock(side_effect=[instructor_message, response_message])
+    repository.create_proposal = AsyncMock(return_value=proposal)
     service = CourseOSService(repository)
 
-    with pytest.raises(CourseOSValidationError, match="Open an update revision"):
-        await service.send_message(course.id, course.instructor_id, "Shorten the introduction")
+    response, created_proposal = await service.send_message(
+        course.id,
+        course.instructor_id,
+        instructor_message.content,
+    )
 
-    repository.add_message.assert_not_awaited()
+    assert response == response_message
+    assert created_proposal == proposal
+    repository.create_working_revision.assert_awaited_once_with(
+        course.id,
+        course.instructor_id,
+    )
+    repository.create_proposal.assert_awaited_once_with(
+        course.id,
+        working.working_revision_id,
+        instructor_message.id,
+        instructor_message.content,
+    )
 
 
 @pytest.mark.anyio

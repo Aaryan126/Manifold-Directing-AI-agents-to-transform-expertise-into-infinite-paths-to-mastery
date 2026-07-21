@@ -25,6 +25,7 @@ class TopicProposal:
     end_seconds: float
     evidence: str
     confidence: float
+    course_title: str | None = None
 
 
 @dataclass(frozen=True)

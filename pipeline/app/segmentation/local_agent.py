@@ -1,4 +1,5 @@
 import re
+from dataclasses import replace
 
 from app.segmentation.agent import SegmentationAgent
 from app.segmentation.models import TopicProposal, TranscriptWord, VideoTranscript
@@ -58,6 +59,11 @@ class LocalHeuristicSegmentationAgent(SegmentationAgent):
                     confidence=0.55,
                 )
             )
+        if proposals:
+            proposals[0] = replace(
+                proposals[0],
+                course_title=_course_title_from_topics(proposals),
+            )
         return tuple(proposals)
 
 
@@ -110,6 +116,14 @@ def _title_from_text(text: str, index: int) -> str:
         return f"Topic {index}"
     words = cleaned.split()[:7]
     return " ".join(words).rstrip(".,;:") or f"Topic {index}"
+
+
+def _course_title_from_topics(proposals: list[TopicProposal]) -> str:
+    first = proposals[0].title.strip().rstrip(".,;:")
+    if len(proposals) == 1:
+        return first[:90]
+    focus = first.split(":", maxsplit=1)[0].strip()
+    return f"{focus}: A practical course"[:90]
 
 
 def _summary_from_text(text: str, max_words: int = 45) -> str:

@@ -177,6 +177,17 @@ export function shouldHydrateGenerationRun(course: CourseSummary): boolean {
   );
 }
 
+export function studioPresentationMode(course: CourseSummary | null): "creation" | "workspace" {
+  if (!course) return "creation";
+  const ready = course.status === "published"
+    || course.pending_review_count > 0
+    || course.generation_status === "waiting_review"
+    || course.generation_status === "complete"
+    || course.revision_status === "review"
+    || course.revision_status === "published";
+  return ready ? "workspace" : "creation";
+}
+
 export function evidenceTitle(item: ReviewItem): string {
   const evidence = item.evidence;
   const candidate = evidence.title ?? evidence.name ?? evidence.body ?? evidence.type;
