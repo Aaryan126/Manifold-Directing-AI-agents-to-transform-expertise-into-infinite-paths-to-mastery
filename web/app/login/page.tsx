@@ -69,16 +69,9 @@ export default function LoginPage() {
       <header className={styles.topbar}>
         <Link href="/" aria-label="Back to Manifold home"><ArrowLeft /><span>Back</span></Link>
         <Link className={styles.brand} href="/" aria-label="Manifold home"><BrandMark />Manifold</Link>
-        <span aria-hidden="true" />
       </header>
 
-      <section className={styles.loginPanel} aria-labelledby="login-title">
-        <div className={styles.intro}>
-          <span className={styles.eyebrow}>Development access</span>
-          <h1 id="login-title">Welcome to Manifold.</h1>
-          <p>Choose your workspace, then enter its demonstration credentials.</p>
-        </div>
-
+      <section className={styles.loginPanel} aria-label="Sign in to Manifold">
         <div className={styles.roleSwitch} aria-label="Choose a workspace" role="group">
           <button aria-pressed={role === "instructor"} onClick={() => chooseRole("instructor")} type="button">
             <School aria-hidden="true" />
@@ -102,7 +95,7 @@ export default function LoginPage() {
           {error ? <p className={styles.error} role="alert">{error}</p> : null}
           <button className={styles.submit} disabled={submitting} type="submit">
             {submitting ? <LoaderCircle className={styles.spin} aria-hidden="true" /> : null}
-            <span>{submitting ? "Opening workspace" : `Continue as ${role === "instructor" ? "David" : "Brian"}`}</span>
+            <span>{submitting ? "Opening workspace" : "Continue"}</span>
             {!submitting ? <ArrowRight aria-hidden="true" /> : null}
           </button>
         </form>
