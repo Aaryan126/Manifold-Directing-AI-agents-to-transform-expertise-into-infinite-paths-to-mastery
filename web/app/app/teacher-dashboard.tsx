@@ -422,7 +422,6 @@ function EmptyPortfolio({ onCreate, creating }: { onCreate: () => void; creating
   return (
     <div className={styles.emptyPortfolio}>
       <span className={styles.emptyOrbit} aria-hidden="true"><i /><i /><i /></span>
-      <p className={styles.eyebrow}>Your first course</p>
       <h3>Bring the lecture. Manifold will build the draft.</h3>
       <p>Upload a recording or paste a link. You’ll return when the complete course is ready for your review.</p>
       <button className={styles.primaryButton} disabled={creating} onClick={onCreate} type="button"><Plus />Create a course</button>

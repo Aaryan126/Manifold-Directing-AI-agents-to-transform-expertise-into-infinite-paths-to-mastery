@@ -275,7 +275,7 @@ test("course deletion requires a separate destructive confirmation", async ({ pa
   expect(state.deleted()).toBe(false);
 
   await page.getByRole("button", { name: "Delete permanently" }).click();
-  await expect(page.getByRole("heading", { name: "Your first course" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Bring the lecture. Manifold will build the draft." })).toBeVisible();
   expect(state.deleted()).toBe(true);
 });
 
@@ -287,14 +287,23 @@ test("published course combines insights with overview and exposes durable asses
   await expect(page.getByRole("heading", { name: "Learning health" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Teaching decisions" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Insights" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Edit course" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Changes" })).toHaveCount(0);
+  await expect(page.getByText("Live revision", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Human checkpoint", { exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Assessments" }).click();
   await expect(page.getByRole("heading", { name: "Assessments" })).toBeVisible();
   await expect(page.getByText("What determines the direction of net force?")).toBeVisible();
   await expect(page.getByRole("button", { name: "Add assessment" })).toBeVisible();
+  await page.getByRole("button", { name: "Edit What determines the direction of net force?" }).click();
+  await expect(page.getByRole("heading", { name: "Edit assessment" })).toBeVisible();
+  await expect(page.getByText("Editing private revision", { exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Settings" }).click();
   await expect(page.getByRole("heading", { name: "Settings & policies" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Test a routing decision" })).toBeVisible();
+  await page.getByRole("button", { name: "Edit default policy" }).click();
+  await expect(page.getByRole("heading", { name: "Edit course default" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Preview routing behavior" })).toBeVisible();
   await expect(page.getByText("Predicted route")).toBeVisible();
 });

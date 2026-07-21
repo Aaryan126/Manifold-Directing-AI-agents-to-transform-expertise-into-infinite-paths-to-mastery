@@ -253,15 +253,6 @@
   margin: 0;
 }
 
-.eyebrow {
-  color: #96591f;
-  font-size: 12px;
-  font-weight: 740;
-  letter-spacing: 0.14em;
-  margin: 0 0 11px;
-  text-transform: uppercase;
-}
-
 .primaryButton {
   align-items: center;
   background: var(--os-ink);
@@ -339,7 +330,6 @@
 }
 
 .sectionHeading > span { color: var(--os-subtle); font-size: 14px; }
-.sectionHeading .eyebrow { margin-bottom: 5px; }
 
 .dashboardOperations {
   display: grid;
@@ -571,7 +561,7 @@
 }
 
 .emptyPortfolio h3 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 29px; font-weight: 470; letter-spacing: -0.035em; margin: 0 0 8px; }
-.emptyPortfolio > p:not(.eyebrow) { color: var(--os-subtle); font-size: 15px; margin: 0 0 22px; max-width: 520px; }
+.emptyPortfolio > p { color: var(--os-subtle); font-size: 15px; margin: 0 0 22px; max-width: 520px; }
 .emptyOrbit { height: 58px; margin-bottom: 20px; position: relative; width: 78px; }
 .emptyOrbit i { background: var(--os-blue); border-radius: 50%; height: 14px; position: absolute; width: 14px; }
 .emptyOrbit i:nth-child(1) { left: 6px; top: 24px; }
@@ -802,7 +792,7 @@
 .canvasEmpty { align-items: center; display: flex; flex-direction: column; height: 100%; justify-content: center; padding: 40px; text-align: center; }
 .canvasEmpty > svg { color: #4d4e53; height: 34px; margin-bottom: 17px; width: 34px; }
 .canvasEmpty h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 29px; font-weight: 470; letter-spacing: -0.035em; margin: 0 0 9px; }
-.canvasEmpty > p:not(.eyebrow) { color: #77767d; font-size: 14px; line-height: 1.55; margin: 0; max-width: 500px; }
+.canvasEmpty > p { color: #77767d; font-size: 14px; line-height: 1.55; margin: 0; max-width: 500px; }
 .mapConstellation { height: 84px; margin-bottom: 18px; position: relative; width: 125px; }
 .mapConstellation::before,.mapConstellation::after { background: #d5d3cd; content: ""; height: 1px; left: 25px; position: absolute; top: 39px; transform: rotate(-16deg); width: 76px; }
 .mapConstellation::after { transform: rotate(22deg); }
@@ -814,7 +804,6 @@
 
 .mapCanvas { display: flex; flex-direction: column; height: 100%; }
 .canvasIntro { align-items: flex-end; display: flex; flex: none; justify-content: space-between; padding: 22px 28px 15px; }
-.canvasIntro .eyebrow { margin-bottom: 3px; }
 .canvasIntro h2 { font-size: 18px; font-weight: 650; margin: 0; }
 .canvasIntro > span { color: #85838a; font-size: 11px; }
 .zoomTrail { align-items: center; color: #929097; display: flex; font-size: 11px; gap: 5px; }
@@ -853,7 +842,7 @@
 .reviewWorkspace { min-height: 0; overflow: auto; padding: 24px; }
 .reviewWorkspace > header { align-items: flex-start; display: flex; gap: 20px; justify-content: space-between; margin-bottom: 22px; }
 .reviewWorkspace > header h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 25px; font-weight: 470; letter-spacing: -0.035em; margin: 0 0 4px; }
-.reviewWorkspace > header p:not(.eyebrow) { color: #77767d; font-size: 13px; line-height: 1.5; margin: 0; max-width: 560px; }
+.reviewWorkspace > header p { color: #77767d; font-size: 13px; line-height: 1.5; margin: 0; max-width: 560px; }
 .reviewWorkspace > header > button { align-items: center; background: #24252b; border: 0; border-radius: 8px; color: #fff; cursor: pointer; display: flex; flex: none; font: inherit; font-size: 12px; font-weight: 650; gap: 6px; min-height: 40px; padding: 0 13px; }
 .reviewWorkspace > header > button svg,.reviewWorkspace > header > span svg { height: 12px; width: 12px; }
 .reviewWorkspace > header > span { align-items: center; color: #4c815a; display: flex; font-size: 12px; gap: 5px; }
@@ -885,9 +874,7 @@
 .overviewHeader { align-items: flex-start; display: flex; gap: 24px; justify-content: space-between; }
 .overviewHeader > div { max-width: 760px; }
 .overviewHeader h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: clamp(31px, 3vw, 42px); font-weight: 460; letter-spacing: -0.04em; margin: 0 0 8px; }
-.overviewHeader p:not(.eyebrow) { color: #737279; font-size: 14px; line-height: 1.55; margin: 0; }
-.overviewHeader > span { background: #eff5ee; border: 1px solid #d2e0d1; border-radius: 999px; color: #4b7252; flex: none; font-size: 11px; font-weight: 700; padding: 8px 11px; }
-.overviewHeader > span[data-working="true"] { background: #fff4e9; border-color: #efd4ba; color: #92591f; }
+.overviewHeader p { color: #737279; font-size: 14px; line-height: 1.55; margin: 0; }
 .overviewMetrics { display: grid; gap: 1px; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-top: 30px; overflow: hidden; border: 1px solid #e1dfd8; border-radius: 12px; background: #e1dfd8; }
 .overviewMetrics article { background: #fff; min-height: 132px; padding: 18px; }
 .overviewMetrics small { color: #77757c; font-size: 10px; font-weight: 720; letter-spacing: .05em; text-transform: uppercase; }
@@ -898,7 +885,7 @@
 .evidenceNotice p { font-size: 12px; margin: 0; }
 .learningHealth,.overviewSignals { border: 1px solid #e1dfd8; border-radius: 12px; margin-top: 18px; overflow: hidden; }
 .learningHealth > header,.overviewSignals > header { align-items: center; background: #f8f7f4; border-bottom: 1px solid #e1dfd8; display: flex; justify-content: space-between; padding: 16px 19px; }
-.learningHealth h3,.overviewSignals h3 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 24px; font-weight: 480; letter-spacing: -.03em; margin: 2px 0 0; }
+.learningHealth h3,.overviewSignals h3 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 24px; font-weight: 480; letter-spacing: -.03em; margin: 0; }
 .learningHealth > header > span,.overviewSignals > header > span { color: #77757c; font-size: 11px; }
 .overviewSignals > article { align-items: flex-start; border-bottom: 1px solid #e6e4de; display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr) auto; padding: 18px 20px; }
 .overviewSignals > article:last-child { border-bottom: 0; }
@@ -916,10 +903,9 @@
 .structuredCanvas > header,.settingsCanvas > header { align-items: flex-start; display: flex; gap: 24px; justify-content: space-between; margin-bottom: 24px; }
 .structuredCanvas > header > div:first-child,.settingsCanvas > header > div:first-child { max-width: 690px; }
 .structuredCanvas > header h2,.settingsCanvas > header h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 32px; font-weight: 470; letter-spacing: -.04em; margin: 0 0 6px; }
-.structuredCanvas > header p:not(.eyebrow),.settingsCanvas > header p:not(.eyebrow) { color: #737279; font-size: 13px; line-height: 1.55; margin: 0; }
+.structuredCanvas > header p,.settingsCanvas > header p { color: #737279; font-size: 13px; line-height: 1.55; margin: 0; }
 .structuredCanvas > header > div:last-child { align-items: flex-end; display: flex; flex-direction: column; gap: 10px; }
-.structuredCanvas > header span,.settingsCanvas > header > span { color: #77757c; font-size: 10px; font-weight: 700; text-transform: uppercase; }
-.structuredCanvas > header button,.policySection > header button { align-items: center; background: #24252b; border: 0; border-radius: 8px; color: #fff; display: flex; font: inherit; font-size: 11px; font-weight: 680; gap: 6px; min-height: 38px; padding: 0 12px; }
+.structuredCanvas > header button,.policySection > header button { align-items: center; background: #24252b; border: 0; border-radius: 8px; color: #fff; cursor: pointer; display: flex; font: inherit; font-size: 11px; font-weight: 680; gap: 6px; min-height: 38px; padding: 0 12px; }
 .structuredCanvas button:disabled,.settingsCanvas button:disabled { cursor: not-allowed; opacity: .5; }
 .structuredCanvas button svg,.settingsCanvas button svg { height: 12px; width: 12px; }
 .assessmentList { display: grid; gap: 10px; }
@@ -937,7 +923,7 @@
 .remediationRoutes span { align-items: center; background: #f7f5f1; border-radius: 999px; color: #69676e; display: flex; font-size: 10px; gap: 5px; padding: 5px 8px; }
 .remediationRoutes svg { height: 9px; transform: rotate(-90deg); width: 9px; }
 .assessmentActions { align-items: flex-end; display: flex; gap: 5px; }
-.assessmentActions > button { align-items: center; background: #fff; border: 1px solid #d9d6cf; border-radius: 7px; color: #66656c; display: flex; height: 32px; justify-content: center; width: 32px; }
+.assessmentActions > button { align-items: center; background: #fff; border: 1px solid #d9d6cf; border-radius: 7px; color: #66656c; cursor: pointer; display: flex; height: 32px; justify-content: center; width: 32px; }
 .assessmentActions > div { align-items: center; background: #fff4f1; border: 1px solid #eccdc7; border-radius: 8px; display: flex; flex-wrap: wrap; gap: 5px; max-width: 205px; padding: 7px; }
 .assessmentActions > div span { color: #85473f; flex-basis: 100%; font-size: 9px; font-weight: 700; }
 .assessmentActions > div button { background: #fff; border: 1px solid #dac8c3; border-radius: 5px; color: #6f5c58; font: inherit; font-size: 9px; padding: 5px 7px; }
@@ -947,6 +933,7 @@
 .inlineEmpty strong { font-size: 13px; }
 .inlineEmpty p { color: #88868d; font-size: 11px; margin: 4px 0 0; }
 
+.editorReveal { scroll-margin-block-start: 18px; }
 .structuredEditor { background: #f8f7f4; border: 1px solid #dad7cf; border-radius: 12px; margin-bottom: 18px; padding: 18px; }
 .structuredEditor > header,.policyEditor > header { align-items: flex-start; display: flex; justify-content: space-between; margin-bottom: 15px; }
 .structuredEditor h3 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 22px; font-weight: 480; margin: 1px 0 0; }
@@ -969,17 +956,17 @@
 .structuredEditor > footer button,.policyEditor > footer button { align-items: center; background: #fff; border: 1px solid #d7d4cd; border-radius: 7px; color: #56555c; display: flex; font: inherit; font-size: 10px; font-weight: 680; gap: 5px; min-height: 35px; padding: 0 10px; }
 .structuredEditor > footer button:last-child,.policyEditor > footer button:last-child { background: #24252b; border-color: #24252b; color: #fff; }
 
-.settingsGrid { align-items: start; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(270px, 340px); }
+.settingsGrid { align-items: start; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
 .policySection,.policyTester,.releaseSettings { background: #fff; border: 1px solid #dfddd6; border-radius: 11px; }
 .policySection { overflow: hidden; }
 .policySection > header { align-items: flex-start; background: #f8f7f4; border-bottom: 1px solid #dfddd6; display: flex; justify-content: space-between; padding: 17px; }
 .policySection h3,.policyTester h3,.releaseSettings h3 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 22px; font-weight: 480; letter-spacing: -.03em; margin: 0 0 4px; }
-.policySection > header p,.policyTester > p:not(.eyebrow),.releaseSettings p { color: #77757c; font-size: 11px; line-height: 1.5; margin: 0; }
+.policySection > header p,.policyTester > header p,.releaseSettings p { color: #77757c; font-size: 11px; line-height: 1.5; margin: 0; }
 .defaultPolicy,.policyOverrides > article { align-items: flex-start; border-bottom: 1px solid #e5e3dd; display: flex; gap: 16px; justify-content: space-between; padding: 16px 17px; }
 .defaultPolicy span,.policyOverrides article span { color: #9a5a20; font-size: 9px; font-weight: 730; text-transform: uppercase; }
 .defaultPolicy h4,.policyOverrides h4 { font-size: 14px; margin: 5px 0; }
 .defaultPolicy p,.policyOverrides p { color: #77757c; font-size: 10px; margin: 0; }
-.defaultPolicy > button,.policyOverrides article > div:last-child > button { align-items: center; background: #fff; border: 1px solid #d8d5ce; border-radius: 7px; color: #66656c; display: flex; height: 31px; justify-content: center; width: 31px; }
+.defaultPolicy > button,.policyOverrides article > div:last-child > button { align-items: center; background: #fff; border: 1px solid #d8d5ce; border-radius: 7px; color: #66656c; cursor: pointer; display: flex; height: 31px; justify-content: center; width: 31px; }
 .policyOverrides article > div:last-child { display: flex; gap: 5px; }
 .policyOverrides article > div:last-child > div { background: #fff4f1; border-radius: 6px; display: flex; gap: 4px; padding: 4px; }
 .policyOverrides article > div:last-child > div button { background: #fff; border: 1px solid #dac8c3; border-radius: 4px; font: inherit; font-size: 9px; padding: 3px 6px; }
@@ -988,12 +975,16 @@
 .policyEditor h4 { font-size: 14px; margin: 0; }
 .policyEditor > div { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 12px 0; }
 .policyEditor > footer { border-top: 1px solid #dfddd6; padding-top: 12px; }
-.policyTester { padding: 18px; position: sticky; top: 18px; }
-.policyTester > label { margin-top: 14px; }
+.policyTester { min-width: 0; overflow: hidden; }
+.policyTester > header { background: #f8f7f4; border-bottom: 1px solid #dfddd6; padding: 17px; }
+.policyTesterGrid { align-items: end; display: grid; gap: 14px; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 18px; }
+.policyTesterGrid > label { min-width: 0; }
+.policyTesterGrid > label:first-child { grid-column: span 2; }
+.policyTesterGrid input,.policyTesterGrid select { box-sizing: border-box; max-width: 100%; width: 100%; }
 .toggleField { align-items: center; display: flex !important; grid-template-columns: auto 1fr; }
-.toggleField input { min-height: 0; }
+.toggleField input { flex: none; min-height: 0; width: auto; }
 .policyTester label > strong { color: #35363b; float: right; }
-.testResult { background: #f5f3ee; border-left: 3px solid #c6762c; border-radius: 7px; margin-top: 18px; padding: 13px; }
+.testResult { align-self: stretch; background: #f5f3ee; border-left: 3px solid #c6762c; border-radius: 7px; grid-column: span 2; margin: 0; padding: 13px; }
 .testResult span { color: #8b898f; font-size: 9px; font-weight: 720; text-transform: uppercase; }
 .testResult strong { display: block; font-size: 17px; margin: 5px 0; text-transform: capitalize; }
 .testResult p { color: #68676e; font-size: 10px; line-height: 1.5; margin: 0; }
@@ -1003,27 +994,11 @@
 .releaseSettings > div { max-width: 700px; }
 .releaseSettings > svg { background: #edf5ed; border-radius: 50%; color: #4e7855; flex: none; height: 36px; padding: 9px; width: 36px; }
 
-.changesCanvas { height: 100%; overflow: auto; padding: 26px; }
-.changesCanvas > header { margin-bottom: 20px; }
-.changesCanvas > header h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 27px; font-weight: 470; letter-spacing: -0.035em; margin: 0 0 5px; }
-.changesCanvas > header p:not(.eyebrow) { color: #77767d; font-size: 13px; margin: 0; }
-.changesCanvas > div:not(.canvasEmpty) { display: grid; gap: 8px; }
-.changesCanvas article { align-items: center; background: #fff; border: 1px solid #dedcd5; border-radius: 9px; display: grid; gap: 8px; grid-template-columns: 65px 1fr auto; padding: 11px 13px; }
-.changesCanvas article > span { border-radius: 999px; font-size: 10px; font-weight: 700; padding: 5px 8px; text-align: center; text-transform: uppercase; }
-.changesCanvas article[data-change="added"] > span { background: #e6f3e9; color: #3f744c; }
-.changesCanvas article[data-change="changed"] > span { background: #f6e8d9; color: #8c541f; }
-.changesCanvas article[data-change="removed"] > span { background: #f7e8e5; color: #914a41; }
-.changesCanvas article > strong { font-size: 12px; text-transform: capitalize; }
-.changesCanvas article > small { color: #8c8a91; font-family: ui-monospace, monospace; font-size: 10px; }
-.changesCanvas details { grid-column: 1 / -1; }
-.changesCanvas summary { color: #69676f; cursor: pointer; font-size: 11px; }
-.changesCanvas details > div { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 8px; }
-.changesCanvas pre { background: #f7f6f2; border-radius: 7px; font-size: 10px; margin: 0; max-height: 220px; overflow: auto; padding: 10px; white-space: pre-wrap; }
 
 .insightsCanvas { height: 100%; overflow: auto; padding: clamp(28px, 5vw, 56px); }
 .insightsCanvas > div { max-width: 590px; }
 .insightsCanvas h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 34px; font-weight: 460; letter-spacing: -0.04em; margin: 0 0 8px; }
-.insightsCanvas > div > p:not(.eyebrow) { color: #737279; font-size: 14px; line-height: 1.5; }
+.insightsCanvas > div > p { color: #737279; font-size: 14px; line-height: 1.5; }
 .insightsCanvas section { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 34px; }
 .insightsCanvas article { background: #f7f6f2; border: 1px solid #e1dfd8; border-radius: 11px; min-height: 165px; padding: 18px; }
 .insightsCanvas article small { color: #77757c; font-size: 10px; font-weight: 700; text-transform: uppercase; }
@@ -1038,7 +1013,7 @@
 .previewFrame button { align-items: center; background: var(--os-mint); border: 0; border-radius: 8px; color: #20170f; display: flex; font: inherit; font-size: 12px; font-weight: 680; gap: 6px; margin-top: 25px; min-height: 40px; padding: 0 13px; }
 .previewFrame button svg { height: 12px; width: 12px; }
 .previewCanvas aside h3 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 24px; font-weight: 470; letter-spacing: -0.035em; margin: 0 0 8px; }
-.previewCanvas aside > p:not(.eyebrow) { color: #727178; font-size: 13px; line-height: 1.5; }
+.previewCanvas aside > p { color: #727178; font-size: 13px; line-height: 1.5; }
 .studioSkeleton { display: grid; flex: 1; gap: 1px; grid-template-columns: 39% 61%; }
 .studioSkeleton i { animation: pulse 1.1s ease-in-out infinite alternate; background: #e9e7e1; }
 
@@ -1047,8 +1022,7 @@
   .reviewCanvas { grid-template-columns: 210px minmax(0, 1fr); }
   .canvasTabs button { padding-inline: 9px; }
   .overviewMetrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .settingsGrid { grid-template-columns: 1fr; }
-  .policyTester { position: static; }
+  .policyTesterGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 780px) {
@@ -1100,6 +1074,8 @@
   .overviewSignals > article { grid-template-columns: 1fr; }
   .structuredEditor fieldset > div { grid-template-columns: 1fr; }
   .structuredEditor fieldset > div > button { width: 100%; }
+  .policyTesterGrid { grid-template-columns: 1fr; }
+  .policyTesterGrid > label:first-child,.testResult { grid-column: auto; }
   .previewCanvas { display: block; }
   .previewCanvas aside { margin-top: 30px; }
 }

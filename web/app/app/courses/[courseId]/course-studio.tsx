@@ -75,7 +75,7 @@ import { TeacherSidebar, useTeacherSidebar } from "../../teacher-dashboard";
 
 const pipelineBase = process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localhost:8000";
 const instructorStorageKey = "manifold.teacher-id";
-type CanvasView = "overview" | "map" | "review" | "assessments" | "preview" | "settings" | "changes";
+type CanvasView = "overview" | "map" | "review" | "assessments" | "preview" | "settings";
 type Decision = "accepted" | "edited" | "dismissed";
 type AssessmentDraftPayload = {
   topic_id: string;
@@ -357,29 +357,6 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       setError(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not retry generation.");
-    }
-  }
-
-  async function openWorkingRevision() {
-    if (!identity) return;
-    setSending(true);
-    setError(null);
-    try {
-      const nextCourse = await request<CourseSummary>(
-        `/courses/${courseId}/working-revision`,
-        identity,
-        { method: "POST" },
-      );
-      setCourse(nextCourse);
-      setMessages(await request<CourseMessage[]>(`/courses/${courseId}/messages`, identity));
-      await refreshArtifacts(identity);
-      await refreshRevisionDiff(identity, nextCourse);
-      await refreshPublishedWorkspace(identity);
-      setCanvasView("changes");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not open an update revision.");
-    } finally {
-      setSending(false);
     }
   }
 
@@ -687,13 +664,11 @@ export function CourseStudio({ courseId }: { courseId: string }) {
               : course?.pending_review_count ? <span data-tone="review"><ClipboardCheck />{course.pending_review_count} to review</span>
                 : course?.status === "published" ? <span data-tone="live"><Check />Live</span>
                   : <span><Activity />Private</span>}
-            {editingLocked ? (
-              <button disabled={sending} onClick={() => void openWorkingRevision()} type="button">Edit course</button>
-            ) : (
+            {!editingLocked ? (
               <button disabled={!canPublish || sending} onClick={() => void publishRevision()} type="button">
                 {course?.status === "published" ? "Publish updates" : "Publish course"}
               </button>
-            )}
+            ) : null}
           </div>
         </header>
 
@@ -712,7 +687,6 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                 {course?.status === "published" ? <CanvasTab active={canvasView === "assessments"} icon={<Check />} label="Assessments" onClick={() => setCanvasView("assessments")} /> : null}
                 <CanvasTab active={canvasView === "preview"} icon={<Eye />} label="Preview" onClick={() => setCanvasView("preview")} />
                 {course?.status === "published" ? <CanvasTab active={canvasView === "settings"} icon={<Settings2 />} label="Settings" onClick={() => setCanvasView("settings")} /> : null}
-                {course?.active_revision_id && course.working_revision_id ? <CanvasTab active={canvasView === "changes"} badge={revisionDiff?.changes.length || undefined} icon={<Pencil />} label="Changes" onClick={() => setCanvasView("changes")} /> : null}
               </nav>
               <div className={styles.canvasBody}>
                 {canvasView === "overview" ? <OverviewCanvas course={course} dashboard={dashboardSummary} onSignal={resolveDashboardSignal} revisionDiff={revisionDiff} /> : null}
@@ -721,7 +695,6 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                 {canvasView === "assessments" ? <AssessmentsCanvas disabled={sending} onRemove={removeAssessment} onSave={saveAssessment} workspace={assessmentWorkspace} /> : null}
                 {canvasView === "preview" ? <PreviewCanvas course={course} /> : null}
                 {canvasView === "settings" ? <SettingsCanvas disabled={sending} onRemove={removeRoutingPolicy} onSave={saveRoutingPolicy} workspace={routingWorkspace} /> : null}
-                {canvasView === "changes" ? <ChangesCanvas revisionDiff={revisionDiff} /> : null}
               </div>
               </section>
               <button aria-expanded={directorOpen} aria-label="Open Course Director" className={styles.directorLauncher} onClick={() => setDirectorOpen((current) => !current)} type="button">
@@ -892,7 +865,6 @@ function CourseMapCanvas({ courseMap, run }: { courseMap: CourseMap | null; run:
     return (
       <div className={styles.canvasEmpty}>
         <span className={styles.mapConstellation}><i /><i /><i /><i /></span>
-        <p className={styles.eyebrow}>Live artifact canvas</p>
         <h2>{run ? generationPhaseLabel(run.phase) : "Your course will take shape here"}</h2>
         <p>Topics, concepts, prerequisites, assessments, and learning paths appear as Manifold builds them.</p>
       </div>
@@ -916,7 +888,7 @@ function CourseMapCanvas({ courseMap, run }: { courseMap: CourseMap | null; run:
   return (
     <div className={styles.mapCanvas}>
       <div className={styles.canvasIntro}>
-        <div><p className={styles.eyebrow}>Semantic course map</p><h2>{activeArtifact?.title ?? activeTopic?.title ?? `${topics.length} topics · ${courseMap.nodes.filter((node) => node.kind === "concept").length} concepts`}</h2></div>
+        <div><h2>{activeArtifact?.title ?? activeTopic?.title ?? `${topics.length} topics · ${courseMap.nodes.filter((node) => node.kind === "concept").length} concepts`}</h2></div>
         <div className={styles.zoomTrail} aria-label="Course map zoom level">
           <button aria-current={!topicId ? "page" : undefined} onClick={() => { setTopicId(null); setArtifactId(null); }} type="button">Course</button>
           {activeTopic ? <><span>/</span><button aria-current={!artifactId ? "page" : undefined} onClick={() => setArtifactId(null)} type="button">Topic</button></> : null}
@@ -950,7 +922,7 @@ function ReviewCanvas({ bundles, onBundle, onItem }: { bundles: ReviewBundle[]; 
   const [editing, setEditing] = useState<ReviewItem | null>(null);
   const [revision, setRevision] = useState("");
   const active = bundles.find((bundle) => bundle.id === activeBundleId) ?? bundles[0];
-  if (!active) return <div className={styles.canvasEmpty}><ClipboardList /><p className={styles.eyebrow}>Human review</p><h2>No review bundle yet</h2><p>Manifold will assemble a small set of high-leverage decisions after the full private draft is built.</p></div>;
+  if (!active) return <div className={styles.canvasEmpty}><ClipboardList /><h2>No review bundle yet</h2><p>Manifold will assemble a small set of high-leverage decisions after the full private draft is built.</p></div>;
   const pending = active.items.filter((item) => item.status === "pending");
   return (
     <div className={styles.reviewCanvas}>
@@ -962,7 +934,7 @@ function ReviewCanvas({ bundles, onBundle, onItem }: { bundles: ReviewBundle[]; 
         ))}
       </div>
       <div className={styles.reviewWorkspace}>
-        <header><div><p className={styles.eyebrow}>Review bundle</p><h2>{active.title}</h2><p>{active.summary}</p></div>{pending.length ? <button onClick={() => onBundle(active)} type="button"><Check />Approve remaining {pending.length}</button> : <span><Check />Bundle complete</span>}</header>
+        <header><div><h2>{active.title}</h2><p>{active.summary}</p></div>{pending.length ? <button onClick={() => onBundle(active)} type="button"><Check />Approve remaining {pending.length}</button> : <span><Check />Bundle complete</span>}</header>
         <div className={styles.reviewItems}>
           {active.items.map((item) => (
             <article data-status={item.status} key={item.id}>
@@ -1006,8 +978,7 @@ function OverviewCanvas({ course, dashboard, revisionDiff, onSignal }: {
   return (
     <div className={styles.overviewCanvas}>
       <header className={styles.overviewHeader}>
-        <div><p className={styles.eyebrow}>Course overview</p><h2>{course?.title}</h2><p>Course health, learner evidence, and review-worthy insights in one workspace.</p></div>
-        <span data-working={course?.working_revision_id ? "true" : undefined}>{course?.working_revision_id ? "Private update open" : "Live revision"}</span>
+        <div><h2>{course?.title}</h2><p>Course health, learner evidence, and review-worthy insights in one workspace.</p></div>
       </header>
       <section className={styles.overviewMetrics}>
         <article><small>Learners</small><strong>{dashboard?.learner_count ?? 0}</strong><p>Enrolled in this published revision</p></article>
@@ -1018,7 +989,7 @@ function OverviewCanvas({ course, dashboard, revisionDiff, onSignal }: {
       </section>
       {dashboard?.not_enough_data ? <div className={styles.evidenceNotice}><CircleAlert /><p><strong>Early evidence only.</strong> The charts stay honest and will fill in as learners complete assessments.</p></div> : null}
       <section className={styles.learningHealth} aria-labelledby="learning-health-title">
-        <header><div><p className={styles.eyebrow}>Live learner evidence</p><h3 id="learning-health-title">Learning health</h3></div><span>Last 14 days</span></header>
+        <header><div><h3 id="learning-health-title">Learning health</h3></div><span>Last 14 days</span></header>
         <InsightsCharts
           activity={dashboard?.activity_history ?? []}
           answerOutcomes={answerOutcomes}
@@ -1029,7 +1000,7 @@ function OverviewCanvas({ course, dashboard, revisionDiff, onSignal }: {
         />
       </section>
       <section className={styles.overviewSignals}>
-        <header><div><p className={styles.eyebrow}>Human checkpoint</p><h3>Teaching decisions</h3></div><span>{dashboard?.signals.length ?? 0} open</span></header>
+        <header><div><h3>Teaching decisions</h3></div><span>{dashboard?.signals.length ?? 0} open</span></header>
         {dashboard?.signals.length ? dashboard.signals.map((signal) => (
           <article key={signal.id}>
             <div><span>{signal.type.replaceAll("_", " ")}</span><h4>{signalText(signal.ai_diagnosis, "title", "Evidence-backed teaching insight")}</h4><p>{signalText(signal.ai_diagnosis, "summary", "Learner evidence suggests this area deserves your judgment.")}</p></div>
@@ -1056,12 +1027,20 @@ function AssessmentsCanvas({ workspace, disabled, onSave, onRemove }: {
 }) {
   const [editing, setEditing] = useState<CourseAssessment | "new" | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!editing) return;
+    const frame = window.requestAnimationFrame(() => {
+      editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [editing]);
   if (!workspace) return <div className={styles.canvasEmpty}><LoaderCircle className={styles.spin} /><h2>Loading assessments</h2></div>;
   const questions = workspace.questions.filter((question) => question.review_status !== "dismissed");
   return (
     <div className={styles.structuredCanvas}>
-      <header><div><p className={styles.eyebrow}>Checks for understanding</p><h2>Assessments</h2><p>Every question in the current course revision, including its answer and remediation route.</p></div><div><span>{workspace.is_working_revision ? "Editing private revision" : "Viewing live revision"}</span><button disabled={disabled || !workspace.topics.length} onClick={() => setEditing("new")} type="button"><Plus />Add assessment</button></div></header>
-      {editing ? <AssessmentEditor key={editing === "new" ? "new" : editing.id} question={editing === "new" ? null : editing} workspace={workspace} onCancel={() => setEditing(null)} onSave={async (draft) => { await onSave(draft, editing === "new" ? undefined : editing); setEditing(null); }} /> : null}
+      <header><div><h2>Assessments</h2><p>Every question in the current course revision, including its answer and remediation route.</p></div><div><button aria-expanded={editing === "new"} aria-controls="assessment-editor" disabled={disabled || !workspace.topics.length} onClick={() => setEditing("new")} type="button"><Plus />Add assessment</button></div></header>
+      {editing ? <div className={styles.editorReveal} id="assessment-editor" ref={editorRef}><AssessmentEditor key={editing === "new" ? "new" : editing.id} question={editing === "new" ? null : editing} workspace={workspace} onCancel={() => setEditing(null)} onSave={async (draft) => { await onSave(draft, editing === "new" ? undefined : editing); setEditing(null); }} /></div> : null}
       <div className={styles.assessmentList}>
         {questions.map((question, index) => (
           <article key={question.id}>
@@ -1073,7 +1052,7 @@ function AssessmentsCanvas({ workspace, disabled, onSave, onRemove }: {
               <div className={styles.remediationRoutes}><strong>Remediation routes</strong>{question.remediation_rules.map((rule) => <span key={rule.id ?? rule.wrong_answer_pattern}>{rule.wrong_answer_pattern}<ChevronDown /></span>)}</div>
             </div>
             <div className={styles.assessmentActions}>
-              <button aria-label={`Edit ${question.body}`} disabled={disabled} onClick={() => setEditing(question)} type="button"><Pencil /></button>
+              <button aria-controls="assessment-editor" aria-expanded={editing !== "new" && editing?.id === question.id} aria-label={`Edit ${question.body}`} disabled={disabled} onClick={() => setEditing(question)} type="button"><Pencil /></button>
               {confirmRemove === question.id ? <div><span>Remove in private revision?</span><button onClick={() => setConfirmRemove(null)} type="button">Keep</button><button disabled={disabled} onClick={() => void onRemove(question).then(() => setConfirmRemove(null))} type="button">Remove</button></div> : <button aria-label={`Remove ${question.body}`} disabled={disabled} onClick={() => setConfirmRemove(question.id)} type="button"><Trash2 /></button>}
             </div>
           </article>
@@ -1129,7 +1108,7 @@ function AssessmentEditor({ question, workspace, onCancel, onSave }: {
   }
   return (
     <form className={styles.structuredEditor} onSubmit={submit}>
-      <header><div><p className={styles.eyebrow}>Private revision</p><h3>{question ? "Edit assessment" : "Add assessment"}</h3></div><button aria-label="Close assessment editor" onClick={onCancel} type="button"><X /></button></header>
+      <header><div><h3>{question ? "Edit assessment" : "Add assessment"}</h3></div><button aria-label="Close assessment editor" onClick={onCancel} type="button"><X /></button></header>
       <div className={styles.editorGrid}>
         <label>Topic<select onChange={(event) => setTopicId(event.target.value)} value={topicId}>{workspace.topics.map((topic) => <option key={topic.id} value={topic.id}>{topic.title}</option>)}</select></label>
         <label>Question type<select onChange={(event) => setType(event.target.value as CourseAssessment["type"])} value={type}><option value="mcq">Multiple choice</option><option value="short_answer">Short answer</option><option value="worked_problem">Worked problem</option></select></label>
@@ -1157,6 +1136,14 @@ function SettingsCanvas({ workspace, disabled, onSave, onRemove }: {
   const [confidence, setConfidence] = useState(3);
   const [priorCorrect, setPriorCorrect] = useState(0);
   const [remediationAttempts, setRemediationAttempts] = useState(0);
+  const editorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!editing) return;
+    const frame = window.requestAnimationFrame(() => {
+      editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [editing]);
   if (!workspace) return <div className={styles.canvasEmpty}><LoaderCircle className={styles.spin} /><h2>Loading course settings</h2></div>;
   const defaultPolicy = workspace.policies.find((item) => item.concept_id === null)!;
   const overrides = workspace.policies.filter((item) => item.concept_id !== null);
@@ -1167,28 +1154,30 @@ function SettingsCanvas({ workspace, disabled, onSave, onRemove }: {
     : null;
   return (
     <div className={styles.settingsCanvas}>
-      <header><div><p className={styles.eyebrow}>Course behavior</p><h2>Settings & policies</h2><p>Control learner routing in a private revision, then test the outcome without creating learner records.</p></div><span>{workspace.is_working_revision ? "Editing private revision" : "Viewing live revision"}</span></header>
+      <header><div><h2>Settings & policies</h2><p>Control how learners advance, revisit concepts, and receive remediation.</p></div></header>
       <div className={styles.settingsGrid}>
         <section className={styles.policySection}>
-          <header><div><h3>Learner routing</h3><p>The default applies everywhere unless a concept override is present.</p></div><button disabled={disabled || overrides.length >= workspace.concepts.length} onClick={() => setEditing("new")} type="button"><Plus />Add override</button></header>
-          <article className={styles.defaultPolicy}><div><span>Course default</span><h4>Default mastery policy</h4><PolicySummary policy={defaultPolicy.policy} /></div><button aria-label="Edit default policy" disabled={disabled} onClick={() => setEditing("default")} type="button"><Pencil /></button></article>
+          <header><div><h3>Learner routing</h3><p>The default applies everywhere unless a concept override is present.</p></div><button aria-controls="policy-editor" aria-expanded={editing === "new"} disabled={disabled || overrides.length >= workspace.concepts.length} onClick={() => setEditing("new")} type="button"><Plus />Add override</button></header>
+          {editing ? <div className={styles.editorReveal} id="policy-editor" ref={editorRef}><PolicyEditor key={editing} conceptId={editing === "default" ? null : editing === "new" ? undefined : editing} concepts={workspace.concepts.filter((concept) => !overrides.some((record) => record.concept_id === concept.id))} initial={editingRecord?.policy ?? defaultPolicy.policy} onCancel={() => setEditing(null)} onSave={async (conceptId, policy) => { await onSave(conceptId, policy); setEditing(null); }} /></div> : null}
+          <article className={styles.defaultPolicy}><div><span>Course default</span><h4>Default mastery policy</h4><PolicySummary policy={defaultPolicy.policy} /></div><button aria-controls="policy-editor" aria-expanded={editing === "default"} aria-label="Edit default policy" disabled={disabled} onClick={() => setEditing("default")} type="button"><Pencil /></button></article>
           <div className={styles.policyOverrides}>
-            {overrides.map((record) => <article key={record.concept_id}><div><span>Concept override</span><h4>{record.concept_name}</h4><PolicySummary policy={record.policy} /></div><div><button aria-label={`Edit ${record.concept_name} policy`} disabled={disabled} onClick={() => setEditing(record.concept_id!)} type="button"><Pencil /></button>{confirmRemove === record.concept_id ? <div><button onClick={() => setConfirmRemove(null)} type="button">Keep</button><button onClick={() => void onRemove(record.concept_id!).then(() => setConfirmRemove(null))} type="button">Remove</button></div> : <button aria-label={`Remove ${record.concept_name} override`} disabled={disabled} onClick={() => setConfirmRemove(record.concept_id)} type="button"><Trash2 /></button>}</div></article>)}
+            {overrides.map((record) => <article key={record.concept_id}><div><span>Concept override</span><h4>{record.concept_name}</h4><PolicySummary policy={record.policy} /></div><div><button aria-controls="policy-editor" aria-expanded={editing === record.concept_id} aria-label={`Edit ${record.concept_name} policy`} disabled={disabled} onClick={() => setEditing(record.concept_id!)} type="button"><Pencil /></button>{confirmRemove === record.concept_id ? <div><button onClick={() => setConfirmRemove(null)} type="button">Keep</button><button onClick={() => void onRemove(record.concept_id!).then(() => setConfirmRemove(null))} type="button">Remove</button></div> : <button aria-label={`Remove ${record.concept_name} override`} disabled={disabled} onClick={() => setConfirmRemove(record.concept_id)} type="button"><Trash2 /></button>}</div></article>)}
             {!overrides.length ? <div className={styles.inlineEmpty}><GitFork /><div><strong>No concept overrides</strong><p>Every concept currently inherits the course default.</p></div></div> : null}
           </div>
-          {editing ? <PolicyEditor key={editing} conceptId={editing === "default" ? null : editing === "new" ? undefined : editing} concepts={workspace.concepts.filter((concept) => !overrides.some((record) => record.concept_id === concept.id))} initial={editingRecord?.policy ?? defaultPolicy.policy} onCancel={() => setEditing(null)} onSave={async (conceptId, policy) => { await onSave(conceptId, policy); setEditing(null); }} /> : null}
         </section>
-        <aside className={styles.policyTester}>
-          <p className={styles.eyebrow}>Safe simulator</p><h3>Test a routing decision</h3><p>This preview uses the saved policy logic and never changes learner progress.</p>
-          <label>Policy<select onChange={(event) => setTestPolicyId(event.target.value)} value={testPolicyId}><option value="default">Course default</option>{overrides.map((record) => <option key={record.concept_id} value={record.concept_id!}>{record.concept_name}</option>)}</select></label>
-          <label className={styles.toggleField}><input checked={correct} onChange={(event) => setCorrect(event.target.checked)} type="checkbox" /><span>Answer is correct</span></label>
-          <label>Confidence <strong>{confidence}/4</strong><input max="4" min="1" onChange={(event) => setConfidence(Number(event.target.value))} type="range" value={confidence} /></label>
-          <label>Prior confident correct attempts<input min="0" onChange={(event) => setPriorCorrect(Number(event.target.value))} type="number" value={priorCorrect} /></label>
-          <label>Remediation attempts used<input min="0" onChange={(event) => setRemediationAttempts(Number(event.target.value))} type="number" value={remediationAttempts} /></label>
-          <div className={styles.testResult} data-action={testResult.action}><span>Predicted route</span><strong>{testResult.action.replaceAll("_", " ")}</strong><p>{testResult.why}</p></div>
-        </aside>
+        <section className={styles.policyTester}>
+          <header><div><h3>Preview routing behavior</h3><p>Try a hypothetical learner outcome against a saved policy. This preview never changes learner progress.</p></div></header>
+          <div className={styles.policyTesterGrid}>
+            <label>Policy<select onChange={(event) => setTestPolicyId(event.target.value)} value={testPolicyId}><option value="default">Course default</option>{overrides.map((record) => <option key={record.concept_id} value={record.concept_id!}>{record.concept_name}</option>)}</select></label>
+            <label className={styles.toggleField}><input checked={correct} onChange={(event) => setCorrect(event.target.checked)} type="checkbox" /><span>Answer is correct</span></label>
+            <label>Confidence <strong>{confidence}/4</strong><input max="4" min="1" onChange={(event) => setConfidence(Number(event.target.value))} type="range" value={confidence} /></label>
+            <label>Prior confident correct attempts<input min="0" onChange={(event) => setPriorCorrect(Number(event.target.value))} type="number" value={priorCorrect} /></label>
+            <label>Remediation attempts used<input min="0" onChange={(event) => setRemediationAttempts(Number(event.target.value))} type="number" value={remediationAttempts} /></label>
+            <div className={styles.testResult} data-action={testResult.action}><span>Predicted route</span><strong>{testResult.action.replaceAll("_", " ")}</strong><p>{testResult.why}</p></div>
+          </div>
+        </section>
       </div>
-      <section className={styles.releaseSettings}><div><p className={styles.eyebrow}>Revision safety</p><h3>Changes do not reach learners automatically</h3><p>Assessment and routing edits accumulate in the private working revision. Use Changes to inspect the diff, then Publish updates when it is ready.</p></div><Check /></section>
+      <section className={styles.releaseSettings}><div><h3>Changes do not reach learners automatically</h3><p>Assessment and routing edits accumulate privately until you choose Publish updates in the course header.</p></div><Check /></section>
     </div>
   );
 }
@@ -1217,26 +1206,8 @@ function PolicyEditor({ conceptId, concepts, initial, onCancel, onSave }: {
   );
 }
 
-function ChangesCanvas({ revisionDiff }: { revisionDiff: RevisionDiff | null }) {
-  if (!revisionDiff) return <div className={styles.canvasEmpty}><Pencil /><p className={styles.eyebrow}>Versioned updates</p><h2>No private update is open</h2><p>Open an update revision to change the live course without disrupting current learners.</p></div>;
-  return (
-    <div className={styles.changesCanvas}>
-      <header><div><p className={styles.eyebrow}>Working revision diff</p><h2>{revisionDiff.changes.length} unpublished changes</h2><p>The active learner revision remains untouched until you choose Publish updates.</p></div></header>
-      {revisionDiff.changes.length ? (
-        <div>{revisionDiff.changes.map((change) => (
-          <article data-change={change.change_type} key={`${change.artifact_type}-${change.logical_artifact_id}`}>
-            <span>{change.change_type}</span><strong>{artifactLabel(change.artifact_type)}</strong>
-            <small>{change.logical_artifact_id.slice(0, 8)}</small>
-            <details><summary>Inspect before and after</summary><div><pre>{JSON.stringify(change.before_state, null, 2)}</pre><pre>{JSON.stringify(change.after_state, null, 2)}</pre></div></details>
-          </article>
-        ))}</div>
-      ) : <div className={styles.canvasEmpty}><Check /><h2>No content changes yet</h2><p>Accepted chat directives and structured edits will appear here before publishing.</p></div>}
-    </div>
-  );
-}
-
 function PreviewCanvas({ course }: { course: CourseSummary | null }) {
-  return <div className={styles.previewCanvas}><div className={styles.previewFrame}><span>MANIFOLD · LEARNER PREVIEW</span><h2>{course?.title ?? "Your course"}</h2><p>The learner path will adapt here from reviewed concepts, questions, and remediation clips.</p><button disabled type="button"><Send />Begin course</button></div><aside><p className={styles.eyebrow}>Preview is safe</p><h3>See what learners will see</h3><p>Preview uses the private working revision and never exposes unreviewed material to enrolled learners.</p></aside></div>;
+  return <div className={styles.previewCanvas}><div className={styles.previewFrame}><span>MANIFOLD · LEARNER PREVIEW</span><h2>{course?.title ?? "Your course"}</h2><p>The learner path will adapt here from reviewed concepts, questions, and remediation clips.</p><button disabled type="button"><Send />Begin course</button></div><aside><h3>See what learners will see</h3><p>Preview uses the private working revision and never exposes unreviewed material to enrolled learners.</p></aside></div>;
 }
 
 function StudioSkeleton() { return <div className={styles.studioSkeleton}><i /><i /></div>; }
