@@ -50,6 +50,11 @@ class CourseOSService:
     async def course(self, course_id: UUID, instructor_id: UUID) -> CourseSummary:
         return await self._require_owned_course(course_id, instructor_id)
 
+    async def delete_course(self, course_id: UUID, instructor_id: UUID) -> None:
+        await self._require_owned_course(course_id, instructor_id)
+        if not await self._repository.delete_course(course_id, instructor_id):
+            raise CourseOSValidationError("Course not found.")
+
     async def open_working_revision(
         self,
         course_id: UUID,

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowRight,
   BarChart3,
@@ -17,6 +17,7 @@ import {
   PanelLeftOpen,
   Plus,
   Search,
+  Trash2,
   Users,
 } from "lucide-react";
 
@@ -39,6 +40,8 @@ export function TeacherDashboard() {
   const [dashboard, setDashboard] = useState<DashboardSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteCandidate, setDeleteCandidate] = useState<CourseSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
@@ -105,6 +108,28 @@ export function TeacherDashboard() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not create the course.");
       setCreating(false);
+    }
+  }
+
+  async function deleteCourse() {
+    if (!identity || !deleteCandidate || deleting) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const response = await fetch(`${pipelineBase}/courses/${deleteCandidate.id}`, {
+        method: "DELETE",
+        headers: { "X-User-ID": identity.id },
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
+        throw new Error(payload?.detail ?? "Could not delete the course.");
+      }
+      setDeleteCandidate(null);
+      await loadDashboard();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not delete the course.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -179,13 +204,23 @@ export function TeacherDashboard() {
                 <EmptyPortfolio onCreate={createCourse} creating={creating} />
               ) : (
                 <div className={styles.courseGrid}>
-                  {visibleCourses.map((course) => <CourseCard course={course} key={course.id} />)}
+                  {visibleCourses.map((course) => (
+                    <CourseCard course={course} key={course.id} onDelete={() => setDeleteCandidate(course)} />
+                  ))}
                 </div>
               )}
             </section>
           </>
         ) : null}
       </main>
+      {deleteCandidate ? (
+        <ConfirmDeleteDialog
+          course={deleteCandidate}
+          deleting={deleting}
+          onCancel={() => setDeleteCandidate(null)}
+          onConfirm={() => void deleteCourse()}
+        />
+      ) : null}
     </div>
   );
 }
@@ -246,26 +281,71 @@ export function useTeacherSidebar() {
   return { sidebarCollapsed, toggleSidebar };
 }
 
-function CourseCard({ course }: { course: CourseSummary }) {
+function CourseCard({ course, onDelete }: { course: CourseSummary; onDelete: () => void }) {
   const state = courseState(course);
   return (
-    <Link className={styles.courseCard} href={`/app/courses/${course.id}`}>
-      <div className={styles.courseCover} data-tone={state.tone}>
-        <span>{course.topic_count > 0 ? `${course.topic_count} topics` : "New course"}</span>
-        {state.tone === "building" ? <div className={styles.miniProgress}><i style={{ width: `${course.generation_progress}%` }} /></div> : null}
-      </div>
-      <div className={styles.courseCardBody}>
-        <div className={styles.courseTitleRow}>
-          <h3>{course.title}</h3>
-          <ChevronRight aria-hidden="true" />
+    <article className={styles.courseCard}>
+      <Link className={styles.courseCardLink} href={`/app/courses/${course.id}`}>
+        <div className={styles.courseCover} data-tone={state.tone}>
+          <span>{course.topic_count > 0 ? `${course.topic_count} topics` : "New course"}</span>
+          {state.tone === "building" ? <div className={styles.miniProgress}><i style={{ width: `${course.generation_progress}%` }} /></div> : null}
         </div>
-        <p>{course.description || "Manifold is ready to turn your lecture into a private course draft."}</p>
-        <div className={styles.courseMeta}>
-          <span data-tone={state.tone}><i />{state.label}</span>
-          <small>{state.action}</small>
+        <div className={styles.courseCardBody}>
+          <div className={styles.courseTitleRow}>
+            <h3>{course.title}</h3>
+            <ChevronRight aria-hidden="true" />
+          </div>
+          <p>{course.description || "Manifold is ready to turn your lecture into a private course draft."}</p>
+          <div className={styles.courseMeta}>
+            <span data-tone={state.tone}><i />{state.label}</span>
+            <small>{state.action}</small>
+          </div>
         </div>
-      </div>
-    </Link>
+      </Link>
+      <button className={styles.courseDeleteButton} onClick={onDelete} type="button" aria-label={`Delete ${course.title}`}>
+        <Trash2 aria-hidden="true" />
+      </button>
+    </article>
+  );
+}
+
+function ConfirmDeleteDialog({
+  course,
+  deleting,
+  onCancel,
+  onConfirm,
+}: {
+  course: CourseSummary;
+  deleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const cancelButton = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    cancelButton.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !deleting) onCancel();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [deleting, onCancel]);
+
+  return (
+    <div className={styles.dialogBackdrop}>
+      <section aria-describedby="delete-course-description" aria-labelledby="delete-course-title" aria-modal="true" className={styles.confirmDialog} role="dialog">
+        <span><Trash2 aria-hidden="true" /></span>
+        <h2 id="delete-course-title">Delete “{course.title}”?</h2>
+        <p id="delete-course-description">This permanently removes the course, generated artifacts, and learner records. This cannot be undone.</p>
+        <div>
+          <button disabled={deleting} onClick={onCancel} ref={cancelButton} type="button">Keep course</button>
+          <button disabled={deleting} onClick={onConfirm} type="button">
+            {deleting ? <LoaderCircle className={styles.spin} aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
+            Delete permanently
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 

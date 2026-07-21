@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from app.course_os.models import (
@@ -237,6 +237,16 @@ async def course_studio(
     service: CourseOSDependency,
 ) -> CourseSummaryResponse:
     return _course_response(await _call(service.course(course_id, user_id)))
+
+
+@router.delete("/courses/{course_id}", status_code=204)
+async def delete_course(
+    course_id: UUID,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> Response:
+    await _call(service.delete_course(course_id, user_id))
+    return Response(status_code=204)
 
 
 @router.post(

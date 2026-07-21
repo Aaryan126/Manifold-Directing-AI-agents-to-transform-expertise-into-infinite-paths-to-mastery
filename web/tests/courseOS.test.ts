@@ -4,6 +4,7 @@ import {
   evidenceTitle,
   generationPhaseLabel,
   shouldHydrateGenerationRun,
+  shouldCenterCreationComposer,
   studioPresentationMode,
   type CourseSummary,
 } from "../app/app/course-os";
@@ -55,6 +56,12 @@ describe("Course OS presentation", () => {
     expect(studioPresentationMode({ ...course, generation_status: "running", source_count: 1 })).toBe("creation");
     expect(studioPresentationMode({ ...course, generation_status: "waiting_review", source_count: 1 })).toBe("workspace");
     expect(studioPresentationMode({ ...course, pending_review_count: 4, source_count: 1 })).toBe("workspace");
+  });
+
+  it("centers the pristine composer and docks it after the first submission", () => {
+    expect(shouldCenterCreationComposer(course, false, false, false, false)).toBe(true);
+    expect(shouldCenterCreationComposer(course, true, false, false, false)).toBe(false);
+    expect(shouldCenterCreationComposer(course, false, true, true, true)).toBe(false);
   });
 
   it("uses human-readable evidence fields for review cards", () => {

@@ -29,6 +29,7 @@ const course = {
 };
 
 async function mockCourseOS(page: Page) {
+  let deleted = false;
   await page.route("http://localhost:8000/**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
@@ -39,8 +40,8 @@ async function mockCourseOS(page: Page) {
     if (path === "/instructors/me/dashboard") {
       await route.fulfill({
         json: {
-          courses: [course],
-          attention: [{
+          courses: deleted ? [] : [course],
+          attention: deleted ? [] : [{
             id: `review:${course.id}`,
             course_id: course.id,
             kind: "review_ready",
@@ -48,12 +49,17 @@ async function mockCourseOS(page: Page) {
             detail: "2 decisions remain across the review bundles.",
             urgency: "normal",
           }],
-          total_courses: 1,
+          total_courses: deleted ? 0 : 1,
           published_courses: 0,
-          courses_in_review: 1,
+          courses_in_review: deleted ? 0 : 1,
           active_learners: 0,
         },
       });
+      return;
+    }
+    if (path === `/courses/${course.id}` && route.request().method() === "DELETE") {
+      deleted = true;
+      await route.fulfill({ status: 204, body: "" });
       return;
     }
     if (path.endsWith("/studio")) {
@@ -126,6 +132,7 @@ async function mockCourseOS(page: Page) {
     }
     await route.fulfill({ json: {} });
   });
+  return { deleted: () => deleted };
 }
 
 test("teacher dashboard prioritizes review work and opens the studio", async ({ page }) => {
@@ -166,4 +173,23 @@ test("course studio exposes map, review decisions, and a mobile-safe layout", as
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
     .analyze();
   expect(results.violations).toEqual([]);
+});
+
+test("course deletion requires a separate destructive confirmation", async ({ page }) => {
+  const state = await mockCourseOS(page);
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto("/app");
+
+  const deleteButton = page.getByRole("button", { name: "Delete Forces and motion" });
+  await page.getByRole("heading", { name: "Forces and motion" }).hover();
+  await expect(deleteButton).toBeVisible();
+  await deleteButton.click();
+
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Delete “Forces and motion”?" })).toBeVisible();
+  expect(state.deleted()).toBe(false);
+
+  await page.getByRole("button", { name: "Delete permanently" }).click();
+  await expect(page.getByRole("heading", { name: "Your first course" })).toBeVisible();
+  expect(state.deleted()).toBe(true);
 });

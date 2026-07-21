@@ -8,7 +8,7 @@ import {
   type Edge,
   type Node,
 } from "@xyflow/react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -48,6 +48,7 @@ import {
   evidenceTitle,
   generationPhaseLabel,
   shouldHydrateGenerationRun,
+  shouldCenterCreationComposer,
   studioPresentationMode,
   type CourseMap,
   type CourseMessage,
@@ -67,6 +68,7 @@ type CanvasView = "overview" | "map" | "review" | "assessments" | "insights" | "
 type Decision = "accepted" | "edited" | "dismissed";
 
 export function CourseStudio({ courseId }: { courseId: string }) {
+  const router = useRouter();
   const { sidebarCollapsed, toggleSidebar } = useTeacherSidebar();
   const fileInput = useRef<HTMLInputElement>(null);
   const [identity, setIdentity] = useState<DevelopmentIdentity | null>(null);
@@ -90,6 +92,13 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     || (course && ["queued", "running"].includes(course.generation_status ?? "")),
   );
   const focusedCreation = studioPresentationMode(course) === "creation";
+  const composerCentered = shouldCenterCreationComposer(
+    course,
+    messages.some((message) => message.role === "instructor"),
+    Boolean(run),
+    Boolean(sourceLabel),
+    sending,
+  );
 
   const request = useCallback(async <T,>(path: string, user: DevelopmentIdentity, init?: RequestInit): Promise<T> => {
     const headers = new Headers(init?.headers);
@@ -388,6 +397,27 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     }
   }
 
+  async function leaveStudio() {
+    if (identity && course?.status === "draft" && course.source_count === 0) {
+      setSending(true);
+      setError(null);
+      try {
+        const response = await fetch(`${pipelineBase}/courses/${courseId}`, {
+          method: "DELETE",
+          headers: { "X-User-ID": identity.id },
+        });
+        if (!response.ok) {
+          throw new Error(await responseDetail(response, "Could not discard the empty course."));
+        }
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "Could not discard the empty course.");
+        setSending(false);
+        return;
+      }
+    }
+    router.push("/app");
+  }
+
   const editingLocked = course?.status === "published" && !course.working_revision_id;
   const canPublish = Boolean(
     course?.working_revision_id
@@ -399,13 +429,18 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   );
 
   const courseDirector = (
-    <section className={`${styles.conversationPanel} ${focusedCreation ? styles.creationConversation : styles.dockedConversation}`} aria-labelledby="conversation-title">
+    <section
+      className={`${styles.conversationPanel} ${focusedCreation ? styles.creationConversation : styles.dockedConversation}`}
+      data-composer-centered={composerCentered || undefined}
+      aria-labelledby="conversation-title"
+    >
       <div className={styles.panelHeader}>
         <div className={styles.directorIdentity}><MessageSquareText /><span><strong id="conversation-title">Course Director</strong><small>Manifold</small></span></div>
-        <div className={styles.panelHeaderActions}>
-          <span className={styles.onlinePill}><i />Working with you</span>
-          {!focusedCreation ? <button aria-label="Close Course Director" onClick={() => setDirectorOpen(false)} type="button"><X /></button> : null}
-        </div>
+        {!focusedCreation ? (
+          <div className={styles.panelHeaderActions}>
+            <button aria-label="Close Course Director" onClick={() => setDirectorOpen(false)} type="button"><X /></button>
+          </div>
+        ) : null}
       </div>
       <div className={styles.messageList}>
         {messages.map((message) => (
@@ -471,7 +506,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       <main className={styles.studioMain}>
         <header className={styles.studioHeader}>
           <div className={styles.studioTitle}>
-            <Link href="/app" aria-label="Back to courses"><ArrowLeft /></Link>
+            <button aria-label="Back to courses" disabled={sending} onClick={() => void leaveStudio()} type="button"><ArrowLeft /></button>
             <div>
               <span>{course?.status === "published" ? "Published course" : "Private course draft"}</span>
               <h1>{course?.title ?? "Course studio"}</h1>

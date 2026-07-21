@@ -28,7 +28,7 @@ export type CourseSummary = {
 export type AttentionItem = {
   id: string;
   course_id: string;
-  kind: "generation_failed" | "review_ready" | "learner_insight";
+  kind: "generation_active" | "generation_failed" | "review_ready" | "learner_insight";
   title: string;
   detail: string;
   urgency: "normal" | "high";
@@ -186,6 +186,21 @@ export function studioPresentationMode(course: CourseSummary | null): "creation"
     || course.revision_status === "review"
     || course.revision_status === "published";
   return ready ? "workspace" : "creation";
+}
+
+export function shouldCenterCreationComposer(
+  course: CourseSummary | null,
+  hasInstructorMessage: boolean,
+  hasRun: boolean,
+  hasSourceLabel: boolean,
+  sending: boolean,
+): boolean {
+  return studioPresentationMode(course) === "creation"
+    && (course?.source_count ?? 0) === 0
+    && !hasInstructorMessage
+    && !hasRun
+    && !hasSourceLabel
+    && !sending;
 }
 
 export function evidenceTitle(item: ReviewItem): string {

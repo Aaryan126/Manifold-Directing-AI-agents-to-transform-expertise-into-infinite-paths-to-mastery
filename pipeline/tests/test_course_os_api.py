@@ -82,3 +82,23 @@ def test_create_course_returns_working_revision() -> None:
         assert response.json()["revision_status"] == "building"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_delete_course_returns_no_content_after_confirmation_request() -> None:
+    instructor_id = uuid4()
+    course_id = uuid4()
+    service = AsyncMock()
+    app.dependency_overrides[get_course_os_service] = lambda: service
+    client = TestClient(app)
+
+    try:
+        response = client.delete(
+            f"/courses/{course_id}",
+            headers={"X-User-ID": str(instructor_id)},
+        )
+
+        assert response.status_code == 204
+        assert response.content == b""
+        service.delete_course.assert_awaited_once_with(course_id, instructor_id)
+    finally:
+        app.dependency_overrides.clear()

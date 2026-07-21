@@ -60,6 +60,34 @@ async def test_create_course_requires_instructor_and_normalizes_copy() -> None:
 
 
 @pytest.mark.anyio
+async def test_delete_course_requires_ownership_before_permanent_removal() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    course = _course()
+    repository.user_role = AsyncMock(return_value="instructor")
+    repository.get_course = AsyncMock(return_value=course)
+    repository.delete_course = AsyncMock(return_value=True)
+    service = CourseOSService(repository)
+
+    await service.delete_course(course.id, course.instructor_id)
+
+    repository.delete_course.assert_awaited_once_with(course.id, course.instructor_id)
+
+
+@pytest.mark.anyio
+async def test_delete_course_rejects_a_different_instructor() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    course = _course()
+    repository.user_role = AsyncMock(return_value="instructor")
+    repository.get_course = AsyncMock(return_value=course)
+    service = CourseOSService(repository)
+
+    with pytest.raises(CourseOSValidationError, match="does not own"):
+        await service.delete_course(course.id, uuid4())
+
+    repository.delete_course.assert_not_awaited()
+
+
+@pytest.mark.anyio
 async def test_learner_cannot_open_teacher_dashboard() -> None:
     repository = create_autospec(CourseOSRepository, instance=True)
     repository.user_role = AsyncMock(return_value="learner")

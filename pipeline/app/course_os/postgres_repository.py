@@ -124,6 +124,20 @@ class PostgresCourseOSRepository(CourseOSRepository):
             ).fetchone()
         return _course_summary(row) if row else None
 
+    async def delete_course(self, course_id: UUID, instructor_id: UUID) -> bool:
+        async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+            deleted = await (
+                await conn.execute(
+                    """
+                    delete from courses
+                    where id = %s and instructor_id = %s
+                    returning id
+                    """,
+                    (course_id, instructor_id),
+                )
+            ).fetchone()
+        return deleted is not None
+
     async def create_working_revision(
         self,
         course_id: UUID,
@@ -561,16 +575,44 @@ class PostgresCourseOSRepository(CourseOSRepository):
         return summary
 
     async def dashboard(self, instructor_id: UUID) -> DashboardSnapshot:
-        courses = await self.list_courses(instructor_id)
+        all_courses = await self.list_courses(instructor_id)
+        courses = tuple(course for course in all_courses if _is_portfolio_course(course))
         attention: list[AttentionItem] = []
-        for course in courses:
+        for course in all_courses:
+            if course.source_count == 0:
+                continue
+            if course.generation_status in {
+                GenerationRunStatus.QUEUED.value,
+                GenerationRunStatus.RUNNING.value,
+            }:
+                attention.append(
+                    AttentionItem(
+                        id=f"generation:{course.id}",
+                        course_id=course.id,
+                        kind="generation_active",
+                        title=(
+                            f"Manifold is building {course.title}"
+                            if not _is_placeholder_title(course.title)
+                            else "Manifold is building your course"
+                        ),
+                        detail=(
+                            f"{round(course.generation_progress)}% complete. "
+                            "You can leave and return while the private draft continues."
+                        ),
+                        urgency="normal",
+                    )
+                )
             if course.generation_status == GenerationRunStatus.FAILED.value:
                 attention.append(
                     AttentionItem(
                         id=f"generation:{course.id}",
                         course_id=course.id,
                         kind="generation_failed",
-                        title=f"{course.title} needs help",
+                        title=(
+                            f"{course.title} needs help"
+                            if not _is_placeholder_title(course.title)
+                            else "Your course build needs help"
+                        ),
                         detail="A generation step failed. Open the studio to retry it.",
                         urgency="high",
                     )
@@ -581,7 +623,11 @@ class PostgresCourseOSRepository(CourseOSRepository):
                         id=f"review:{course.id}",
                         course_id=course.id,
                         kind="review_ready",
-                        title=f"{course.title} is ready for review",
+                        title=(
+                            f"{course.title} is ready for review"
+                            if not _is_placeholder_title(course.title)
+                            else "Your course is ready for review"
+                        ),
                         detail=(
                             f"{course.pending_review_count} decisions remain "
                             "across the review bundles."
@@ -1570,6 +1616,24 @@ _TASK_ORDER = (
     "assessments",
     "review_bundles",
 )
+
+_PLACEHOLDER_COURSE_TITLES = {"untitled course", "new course", "course studio"}
+
+
+def _is_placeholder_title(title: str) -> bool:
+    return title.strip().casefold() in _PLACEHOLDER_COURSE_TITLES
+
+
+def _is_portfolio_course(course: CourseSummary) -> bool:
+    if _is_placeholder_title(course.title):
+        return False
+    if course.status == "published":
+        return True
+    return (
+        course.source_count > 0
+        and course.generation_status
+        in {GenerationRunStatus.WAITING_REVIEW.value, GenerationRunStatus.COMPLETE.value}
+    )
 
 
 async def _apply_artifact_review(

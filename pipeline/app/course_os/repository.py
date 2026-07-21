@@ -32,6 +32,9 @@ class CourseOSRepository(ABC):
     async def get_course(self, course_id: UUID) -> CourseSummary | None: ...
 
     @abstractmethod
+    async def delete_course(self, course_id: UUID, instructor_id: UUID) -> bool: ...
+
+    @abstractmethod
     async def create_working_revision(
         self,
         course_id: UUID,
