@@ -111,12 +111,24 @@ class DashboardSnapshot:
 
 
 @dataclass(frozen=True)
+class DashboardEvidenceReference:
+    id: str
+    label: str
+    value: str
+    metric: str
+    course_id: UUID | None = None
+    course_title: str | None = None
+
+
+@dataclass(frozen=True)
 class DashboardCommandResult:
     kind: str
     message: str
     course_id: UUID | None = None
     course_title: str | None = None
     action_label: str | None = None
+    evidence: tuple[DashboardEvidenceReference, ...] = ()
+    searched_course_count: int = 0
 
 
 @dataclass(frozen=True)

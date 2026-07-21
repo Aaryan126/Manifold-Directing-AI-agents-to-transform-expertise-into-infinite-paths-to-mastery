@@ -21,7 +21,6 @@ import {
   Plus,
   Search,
   Send,
-  Sparkles,
   Trash2,
 } from "lucide-react";
 
@@ -434,30 +433,31 @@ function IntelligenceBrief({
   result: DashboardCommandResult | null;
 }) {
   const radar = dashboard.course_radar ?? [];
-  const activeAgents = radar.filter((course) => course.agent_status === "working").length;
   const topCourse = [...radar].sort((a, b) => b.open_issues - a.open_issues)[0];
-  const headline = dashboard.attention.length
-    ? `${dashboard.attention.length} decision${dashboard.attention.length === 1 ? " needs" : "s need"} your judgment.`
-    : "Your course team is monitoring the evidence.";
+  const totalIssues = radar.reduce((total, course) => total + course.open_issues, 0);
+  const latestActivity = dashboard.activity_history.at(-1)?.active_learners ?? 0;
+  const previousActivity = dashboard.activity_history.at(-2)?.active_learners ?? 0;
+  const activitySummary = latestActivity === previousActivity
+    ? `learner activity held at ${latestActivity}`
+    : `learner activity ${latestActivity > previousActivity ? "rose" : "fell"} from ${previousActivity} to ${latestActivity}`;
+  const headline = topCourse && totalIssues > 0
+    ? `${topCourse.title} carries ${topCourse.open_issues} of ${totalIssues} open issues; ${activitySummary}.`
+    : radar.length
+      ? `No open course issues; ${activitySummary}.`
+      : "Publish a course to begin monitoring learner evidence.";
+  const support = topCourse
+    ? `${dashboard.courses_in_review} course${dashboard.courses_in_review === 1 ? " is" : "s are"} awaiting review. Manifold will keep every proposed change private until you approve it.`
+    : "Manifold will compare activity, confidence, mastery, and clip completion as evidence arrives.";
   return (
     <section className={styles.intelligenceBrief} aria-labelledby="intelligence-brief-title">
       <div className={styles.briefHeading}>
-        <span><Sparkles aria-hidden="true" /></span>
         <div>
-          <small>Manifold intelligence brief</small>
           <h2 id="intelligence-brief-title">{headline}</h2>
-          <p>{topCourse
-            ? `${topCourse.title} is the current focus with ${topCourse.open_issues} open issue${topCourse.open_issues === 1 ? "" : "s"}. Evidence stays private until you approve a change.`
-            : "As learner evidence arrives, Manifold will rank what deserves attention and brief the right specialist."}</p>
+          <p>{support}</p>
         </div>
-        <dl>
-          <div><dt>Live courses</dt><dd>{dashboard.published_courses}</dd></div>
-          <div><dt>Active learners</dt><dd>{dashboard.active_learners}</dd></div>
-          <div><dt>Specialists working</dt><dd>{activeAgents}</dd></div>
-        </dl>
       </div>
       <form className={styles.dashboardCommand} onSubmit={(event) => void onSubmit(event)}>
-        <label htmlFor="dashboard-command">Ask about your courses or request a change…</label>
+        <label className={styles.srOnly} htmlFor="dashboard-command">Ask Manifold about your courses or request a private change</label>
         <div>
           <input
             autoComplete="off"
@@ -479,10 +479,25 @@ function IntelligenceBrief({
       {error ? <p className={styles.commandError} role="alert">{error}</p> : null}
       {result ? (
         <div className={styles.commandResult} data-kind={result.kind} role="status">
-          <span>{result.kind === "proposal" ? <ClipboardCheck aria-hidden="true" /> : <Activity aria-hidden="true" />}</span>
-          <p><strong>{result.kind === "proposal" ? "Private proposal prepared" : "Evidence answer"}</strong>{result.message}</p>
-          {result.course_id && result.action_label ? (
-            <Link href={`/app/courses/${result.course_id}`}>{result.action_label}<ArrowUpRight aria-hidden="true" /></Link>
+          <div className={styles.commandResultSummary}>
+            <p>
+              <strong>{result.kind === "proposal" ? "Private proposal prepared" : `Manifold searched ${result.searched_course_count} course${result.searched_course_count === 1 ? "" : "s"}`}</strong>
+              {result.message}
+            </p>
+            {result.course_id && result.action_label ? (
+              <Link href={`/app/courses/${result.course_id}`}>{result.action_label}<ArrowUpRight aria-hidden="true" /></Link>
+            ) : null}
+          </div>
+          {result.evidence?.length ? (
+            <ul className={styles.commandEvidence} aria-label="Evidence used">
+              {result.evidence.map((item) => (
+                <li key={item.id}>
+                  <span>{item.course_title ?? "Portfolio"}</span>
+                  <strong>{item.label}</strong>
+                  <small>{item.value}</small>
+                </li>
+              ))}
+            </ul>
           ) : null}
         </div>
       ) : null}
@@ -493,7 +508,7 @@ function IntelligenceBrief({
 function CourseRadar({ courses }: { courses: CourseRadarItem[] }) {
   return (
     <section className={styles.courseRadar} aria-labelledby="course-radar-title">
-      <header><div><h2 id="course-radar-title">Course radar</h2><p>Every published course, its learner evidence, and the specialist watching it.</p></div><span>Last 7 days</span></header>
+      <header><div><h2 id="course-radar-title">Course radar</h2><p>Compare every live course, its learner evidence, and the specialist watching it.</p></div><span>Last 7 days</span></header>
       {courses.length ? (
         <div className={styles.radarScroller}>
           <div className={styles.radarTable} role="table" aria-label="Published course intelligence">

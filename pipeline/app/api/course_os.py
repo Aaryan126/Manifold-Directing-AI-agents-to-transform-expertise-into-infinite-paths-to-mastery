@@ -107,12 +107,23 @@ class DashboardCommandRequest(BaseModel):
     content: str = Field(min_length=1, max_length=2000)
 
 
+class DashboardEvidenceReferenceResponse(BaseModel):
+    id: str
+    label: str
+    value: str
+    metric: str
+    course_id: UUID | None
+    course_title: str | None
+
+
 class DashboardCommandResponse(BaseModel):
     kind: Literal["evidence", "proposal", "empty"]
     message: str
     course_id: UUID | None
     course_title: str | None
     action_label: str | None
+    evidence: list[DashboardEvidenceReferenceResponse]
+    searched_course_count: int
 
 
 class GenerationStartRequest(BaseModel):
@@ -786,7 +797,15 @@ def _dashboard_response(snapshot: DashboardSnapshot) -> DashboardResponse:
 
 
 def _dashboard_command_response(result: DashboardCommandResult) -> DashboardCommandResponse:
-    return DashboardCommandResponse(**result.__dict__)
+    return DashboardCommandResponse(
+        kind=result.kind,
+        message=result.message,
+        course_id=result.course_id,
+        course_title=result.course_title,
+        action_label=result.action_label,
+        evidence=[DashboardEvidenceReferenceResponse(**item.__dict__) for item in result.evidence],
+        searched_course_count=result.searched_course_count,
+    )
 
 
 def _run_response(run: GenerationRun) -> GenerationRunResponse:

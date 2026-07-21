@@ -71,6 +71,15 @@ export type DashboardCommandResult = {
   course_id: string | null;
   course_title: string | null;
   action_label: string | null;
+  evidence: Array<{
+    id: string;
+    label: string;
+    value: string;
+    metric: string;
+    course_id: string | null;
+    course_title: string | null;
+  }>;
+  searched_course_count: number;
 };
 
 export type GenerationTask = {

@@ -14,6 +14,7 @@ from app.clips.materializer import LocalFfmpegClipMaterializer
 from app.clips.postgres_repository import PostgresClipRepository
 from app.clips.service import ClipService
 from app.config import Settings, get_settings
+from app.course_os.dashboard_assistant import LocalDashboardAssistant, OpenAIDashboardAssistant
 from app.course_os.postgres_repository import PostgresCourseOSRepository
 from app.course_os.service import CourseOSService
 from app.course_os.worker import CourseGenerationWorker
@@ -56,7 +57,15 @@ def get_course_os_service() -> CourseOSService:
 
 
 def build_course_os_service(settings: Settings) -> CourseOSService:
-    return CourseOSService(repository=PostgresCourseOSRepository(settings.database_url))
+    assistant = (
+        OpenAIDashboardAssistant(settings.openai_api_key, settings.llm_model)
+        if settings.openai_api_key
+        else LocalDashboardAssistant()
+    )
+    return CourseOSService(
+        repository=PostgresCourseOSRepository(settings.database_url),
+        dashboard_assistant=assistant,
+    )
 
 
 @lru_cache

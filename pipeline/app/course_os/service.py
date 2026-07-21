@@ -1,6 +1,7 @@
 from typing import Any
 from uuid import UUID
 
+from app.course_os.dashboard_assistant import DashboardAssistant, LocalDashboardAssistant
 from app.course_os.models import (
     AssessmentDraft,
     AssessmentWorkspace,
@@ -9,7 +10,6 @@ from app.course_os.models import (
     CourseCreate,
     CourseMap,
     CourseProposal,
-    CourseRadarItem,
     CourseRoutingPolicy,
     CourseSummary,
     DashboardCommandResult,
@@ -30,8 +30,13 @@ class CourseOSValidationError(ValueError):
 
 
 class CourseOSService:
-    def __init__(self, repository: CourseOSRepository) -> None:
+    def __init__(
+        self,
+        repository: CourseOSRepository,
+        dashboard_assistant: DashboardAssistant | None = None,
+    ) -> None:
         self._repository = repository
+        self._dashboard_assistant = dashboard_assistant or LocalDashboardAssistant()
 
     async def dashboard(self, instructor_id: UUID) -> DashboardSnapshot:
         await self._require_instructor(instructor_id)
@@ -47,9 +52,9 @@ class CourseOSService:
         if not instruction:
             raise CourseOSValidationError("Command cannot be empty.")
         snapshot = await self._repository.dashboard(instructor_id)
-        target = _select_dashboard_course(snapshot.course_radar, instruction)
-        if _is_change_request(instruction):
-            if target is None:
+        analysis = await self._dashboard_assistant.analyze(instruction, snapshot)
+        if analysis.intent == "change_request":
+            if analysis.course_id is None:
                 return DashboardCommandResult(
                     kind="empty",
                     message=(
@@ -57,19 +62,30 @@ class CourseOSService:
                         "Open a course and tell the Course Director what you want changed."
                     ),
                 )
-            await self.send_message(target.course_id, instructor_id, instruction)
+            await self.send_message(analysis.course_id, instructor_id, instruction)
             return DashboardCommandResult(
                 kind="proposal",
                 message=(
-                    f"I prepared a private directive for {target.title}. "
+                    f"{analysis.answer} I prepared it as a private directive for "
+                    f"{analysis.course_title}. "
                     "Nothing learner-facing changed; review, edit, or dismiss it "
                     "in Course Director."
                 ),
-                course_id=target.course_id,
-                course_title=target.title,
+                course_id=analysis.course_id,
+                course_title=analysis.course_title,
                 action_label="Review private proposal",
+                evidence=analysis.evidence,
+                searched_course_count=analysis.searched_course_count,
             )
-        return _dashboard_evidence_answer(snapshot, instruction, target)
+        return DashboardCommandResult(
+            kind="evidence" if analysis.evidence else "empty",
+            message=analysis.answer,
+            course_id=analysis.course_id,
+            course_title=analysis.course_title,
+            action_label=analysis.action_label,
+            evidence=analysis.evidence,
+            searched_course_count=analysis.searched_course_count,
+        )
 
     async def list_courses(self, instructor_id: UUID) -> tuple[CourseSummary, ...]:
         await self._require_instructor(instructor_id)
@@ -576,153 +592,4 @@ def _evidence_answer(evidence: dict[str, Any]) -> str:
         f"{incorrect} were incorrect and {low_confidence} were low-confidence. "
         f"There {'are' if open_signals != 1 else 'is'} {open_signals} open "
         f"evidence-backed insight{'s' if open_signals != 1 else ''}."
-    )
-
-
-def _is_change_request(content: str) -> bool:
-    normalized = content.lower()
-    return any(
-        term in normalized
-        for term in (
-            "prepare improvement",
-            "prepare improvements",
-            "change ",
-            "modify ",
-            "update ",
-            "shorten ",
-            "replace ",
-            "add ",
-            "remove ",
-            "revise ",
-            "rewrite ",
-            "cut down",
-        )
-    )
-
-
-def _select_dashboard_course(
-    courses: tuple[CourseRadarItem, ...],
-    instruction: str,
-) -> CourseRadarItem | None:
-    if not courses:
-        return None
-    normalized = instruction.lower()
-    named = next((course for course in courses if course.title.lower() in normalized), None)
-    if named is not None:
-        return named
-    return max(
-        courses,
-        key=lambda course: (
-            course.open_issues,
-            100 - (course.accuracy_percent if course.accuracy_percent is not None else 100),
-            100 - (
-                course.clip_completion_percent
-                if course.clip_completion_percent is not None
-                else 100
-            ),
-        ),
-    )
-
-
-def _dashboard_evidence_answer(
-    snapshot: DashboardSnapshot,
-    instruction: str,
-    target: CourseRadarItem | None,
-) -> DashboardCommandResult:
-    normalized = instruction.lower()
-    if not snapshot.course_radar:
-        return DashboardCommandResult(
-            kind="empty",
-            message=(
-                "There are no published courses with learner evidence yet. "
-                "I’ll answer this once learners generate activity."
-            ),
-        )
-    if "confident" in normalized and "incorrect" in normalized:
-        ranked = sorted(
-            snapshot.course_radar,
-            key=lambda course: course.confident_incorrect_attempts,
-            reverse=True,
-        )
-        leader = ranked[0]
-        if leader.confident_incorrect_attempts == 0:
-            message = "No confident-but-incorrect attempts are recorded across published courses."
-        else:
-            message = (
-                f"{leader.title} has the clearest misconception signal: "
-                f"{leader.confident_incorrect_attempts} confident-but-incorrect attempt"
-                f"{'s' if leader.confident_incorrect_attempts != 1 else ''}."
-            )
-        target = leader
-    elif "clip" in normalized or "drop-off" in normalized:
-        measured = [
-            course
-            for course in snapshot.course_radar
-            if course.clip_completion_percent is not None
-        ]
-        if not measured:
-            return DashboardCommandResult(
-                kind="empty",
-                message="No clip watch evidence has been recorded yet, so I won’t infer drop-off.",
-            )
-        target = min(measured, key=lambda course: course.clip_completion_percent or 0)
-        completion = target.clip_completion_percent or 0
-        message = (
-            f"{target.title} has the lowest measured clip completion at {completion:.0f}% "
-            f"({100 - completion:.0f}% drop-off)."
-        )
-    elif "compare" in normalized and "confidence" in normalized:
-        measured = [
-            course
-            for course in snapshot.course_radar
-            if course.confidence_percent is not None
-        ]
-        if not measured:
-            return DashboardCommandResult(
-                kind="empty",
-                message="No assessment confidence evidence has been recorded yet.",
-            )
-        ordered = sorted(measured, key=lambda course: course.confidence_percent or 0)
-        message = "Confidence across published courses: " + "; ".join(
-            f"{course.title} {course.confidence_percent:.0f}%" for course in ordered
-        ) + "."
-        target = ordered[0]
-    elif "changed" in normalized or "yesterday" in normalized:
-        today = snapshot.activity_history[-1].active_learners if snapshot.activity_history else 0
-        yesterday = (
-            snapshot.activity_history[-2].active_learners
-            if len(snapshot.activity_history) > 1
-            else 0
-        )
-        delta = today - yesterday
-        direction = "up" if delta > 0 else "down" if delta < 0 else "unchanged"
-        message = (
-            f"Daily active learners are {direction} ({yesterday} to {today}). "
-            f"There are {len(snapshot.attention)} open items needing judgment and "
-            f"{snapshot.new_learners} new learner{'s' if snapshot.new_learners != 1 else ''} "
-            "in the last seven days."
-        )
-    else:
-        if target is None:
-            return DashboardCommandResult(
-                kind="empty",
-                message="No grounded course evidence is available.",
-            )
-        accuracy = (
-            f"{target.accuracy_percent:.0f}% accuracy"
-            if target.accuracy_percent is not None
-            else "accuracy is still unmeasured"
-        )
-        message = (
-            f"{target.title} is the current focus: {target.open_issues} open issue"
-            f"{'s' if target.open_issues != 1 else ''}, {accuracy}, and "
-            f"{target.mastery_movement} learner-concept mastery movement"
-            f"{'s' if target.mastery_movement != 1 else ''} this week."
-        )
-    return DashboardCommandResult(
-        kind="evidence",
-        message=message,
-        course_id=target.course_id if target else None,
-        course_title=target.title if target else None,
-        action_label="Inspect evidence" if target else None,
     )

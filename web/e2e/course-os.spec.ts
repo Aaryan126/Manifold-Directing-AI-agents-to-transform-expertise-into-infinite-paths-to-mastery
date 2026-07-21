@@ -46,6 +46,15 @@ async function mockCourseOS(page: Page) {
           course_id: course.id,
           course_title: course.title,
           action_label: "Inspect evidence",
+          searched_course_count: 1,
+          evidence: [{
+            id: `course:${course.id}:confident-incorrect`,
+            label: "Confident but incorrect",
+            value: "2",
+            metric: "confident-incorrect",
+            course_id: course.id,
+            course_title: course.title,
+          }],
         },
       });
       return;
@@ -369,20 +378,21 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Needs your judgment", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Course radar" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /decision needs your judgment/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /carries 2 of 2 open issues/i })).toBeVisible();
   await expect(page.getByText("Portfolio summary", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("columnheader", { name: "Clip completion" })).toBeVisible();
   await page.getByRole("button", { name: "Where are learners confident but incorrect?" }).click();
   await page.getByRole("button", { name: "Ask Manifold" }).click();
   await expect(page.getByText("Forces and motion has 2 confident-but-incorrect attempts.")).toBeVisible();
+  await expect(page.getByRole("list", { name: "Evidence used" })).toContainText("Confident but incorrect");
   const dashboardAccessibility = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
     .analyze();
   expect(dashboardAccessibility.violations).toEqual([]);
-  await expect(page.getByRole("heading", { name: "Forces and motion" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Forces and motion", exact: true })).toBeVisible();
   await expect(page.getByText("Ready to review", { exact: true })).toBeVisible();
 
-  await page.getByRole("heading", { name: "Forces and motion" }).click();
+  await page.getByRole("heading", { name: "Forces and motion", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/app/courses/${course.id}$`));
   await expect(page.getByRole("heading", { name: "Forces and motion" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open Course Director" })).toBeVisible();
@@ -416,7 +426,7 @@ test("course deletion requires a separate destructive confirmation", async ({ pa
   await page.goto("/app");
 
   const deleteButton = page.getByRole("button", { name: "Delete Forces and motion" });
-  await page.getByRole("heading", { name: "Forces and motion" }).hover();
+  await page.getByRole("heading", { name: "Forces and motion", exact: true }).hover();
   await expect(deleteButton).toBeVisible();
   await deleteButton.click();
 
