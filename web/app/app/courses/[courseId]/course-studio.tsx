@@ -44,6 +44,7 @@ import {
 import {
   evidenceTitle,
   generationPhaseLabel,
+  shouldHydrateGenerationRun,
   type CourseMap,
   type CourseMessage,
   type CourseSummary,
@@ -128,7 +129,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       ]);
       setCourse(courseResult);
       setMessages(messageResult);
-      if (courseResult.generation_run_id) {
+      if (shouldHydrateGenerationRun(courseResult) && courseResult.generation_run_id) {
         const runResult = await request<GenerationRun>(
           `/courses/${courseId}/generation-runs/${courseResult.generation_run_id}`,
           user,
@@ -611,16 +612,19 @@ function SourceRequest({ onChoose }: { onChoose: () => void }) {
 
 function GenerationActivity({ run, sourceLabel, onRetry }: { run: GenerationRun; sourceLabel: string | null; onRetry: () => void }) {
   const failed = run.status === "failed";
+  const cancelled = run.status === "cancelled";
+  const ready = run.status === "waiting_review" || run.status === "complete";
+  const active = run.status === "queued" || run.status === "running";
   return (
     <article className={styles.generationActivity} data-failed={failed || undefined}>
       <div>
-        <span>{failed ? <CircleAlert /> : run.status === "waiting_review" ? <Check /> : <LoaderCircle className={styles.spin} />}</span>
+        <span>{failed ? <CircleAlert /> : cancelled ? <X /> : ready ? <Check /> : <LoaderCircle className={styles.spin} />}</span>
         <div>
-          <strong>{failed ? "I hit a problem" : generationPhaseLabel(run.phase)}</strong>
-          <small>{failed ? run.error_summary : sourceLabel ?? "Your work is safe. You can leave and return at any time."}</small>
+          <strong>{failed ? "I hit a problem" : cancelled ? "Generation stopped" : generationPhaseLabel(run.phase)}</strong>
+          <small>{failed ? run.error_summary : cancelled ? "No agent work is running." : run.status === "complete" ? "This course has been published." : run.status === "waiting_review" ? "The complete private draft is waiting for your review." : sourceLabel ?? "Your work is safe. You can leave and return at any time."}</small>
         </div>
       </div>
-      {!failed ? <div className={styles.runProgress}><i style={{ width: `${run.progress}%` }} /></div> : null}
+      {active ? <div className={styles.runProgress}><i style={{ width: `${run.progress}%` }} /></div> : null}
       <ul>
         {run.tasks.map((task) => <li data-status={task.status} key={task.id}><i />{generationPhaseLabel(task.task_type)}<span>{task.status}</span></li>)}
       </ul>

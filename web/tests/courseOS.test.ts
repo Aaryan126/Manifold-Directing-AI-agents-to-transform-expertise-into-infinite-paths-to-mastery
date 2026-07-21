@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { courseState, evidenceTitle, generationPhaseLabel, type CourseSummary } from "../app/app/course-os";
+import {
+  courseState,
+  evidenceTitle,
+  generationPhaseLabel,
+  shouldHydrateGenerationRun,
+  type CourseSummary,
+} from "../app/app/course-os";
 
 const course: CourseSummary = {
   id: "course",
@@ -31,6 +37,16 @@ describe("Course OS presentation", () => {
   it("turns durable task names into teacher-facing activity", () => {
     expect(generationPhaseLabel("concept_graph")).toBe("Mapping concepts and prerequisites");
     expect(generationPhaseLabel("review")).toBe("Your private draft is ready");
+    expect(generationPhaseLabel("complete")).toBe("Course published");
+  });
+
+  it("does not hydrate a completed or cancelled run as active generation", () => {
+    const withRun = { ...course, generation_run_id: "run" };
+
+    expect(shouldHydrateGenerationRun({ ...withRun, generation_status: "running" })).toBe(true);
+    expect(shouldHydrateGenerationRun({ ...withRun, generation_status: "waiting_review" })).toBe(true);
+    expect(shouldHydrateGenerationRun({ ...withRun, generation_status: "complete" })).toBe(false);
+    expect(shouldHydrateGenerationRun({ ...withRun, generation_status: "cancelled" })).toBe(false);
   });
 
   it("uses human-readable evidence fields for review cards", () => {

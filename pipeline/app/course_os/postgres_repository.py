@@ -538,7 +538,8 @@ class PostgresCourseOSRepository(CourseOSRepository):
             )
             await conn.execute(
                 """
-                update generation_runs set status = 'complete', updated_at = now()
+                update generation_runs
+                set status = 'complete', phase = 'complete', progress = 100, updated_at = now()
                 where revision_id = %s and status = 'waiting_review'
                 """,
                 (working_revision_id,),

@@ -164,8 +164,17 @@ export function generationPhaseLabel(phase: string | null): string {
     assessments: "Designing checks for understanding",
     review_bundles: "Assembling your review",
     review: "Your private draft is ready",
+    complete: "Course published",
   };
   return phase ? labels[phase] ?? "Building your course" : "Ready when you are";
+}
+
+export function shouldHydrateGenerationRun(course: CourseSummary): boolean {
+  return Boolean(
+    course.generation_run_id
+    && course.generation_status !== "complete"
+    && course.generation_status !== "cancelled",
+  );
 }
 
 export function evidenceTitle(item: ReviewItem): string {
