@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, GraduationCap, LoaderCircle, School } from "lucide-react";
+import { ArrowLeft, GraduationCap, LoaderCircle, School } from "lucide-react";
 
 import { BrandMark } from "../../components/brand-mark";
 import {
@@ -95,8 +95,7 @@ export default function LoginPage() {
           {error ? <p className={styles.error} role="alert">{error}</p> : null}
           <button className={styles.submit} disabled={submitting} type="submit">
             {submitting ? <LoaderCircle className={styles.spin} aria-hidden="true" /> : null}
-            <span>{submitting ? "Opening workspace" : "Continue"}</span>
-            {!submitting ? <ArrowRight aria-hidden="true" /> : null}
+            <span>{submitting ? "Signing in" : "Sign in"}</span>
           </button>
         </form>
 

@@ -46,8 +46,8 @@
 .loginPanel input { background: #fff; border: 1px solid #d3d0c8; border-radius: 9px; color: var(--ink); font: inherit; font-size: 15px; min-height: 50px; padding: 0 14px; }
 .loginPanel input:focus { border-color: #6d6b65; outline: 3px solid rgb(217 122 43 / 15%); }
 .error { background: #fff0ed; border-left: 3px solid #b9463d; color: #8f382f; font-size: 12px; margin: 0; padding: 10px 12px; }
-.submit { align-items: center; background: var(--ink); border: 1px solid var(--ink); border-radius: 9px; color: #fff; cursor: pointer; display: flex; font: inherit; font-size: 14px; font-weight: 650; gap: 10px; justify-content: center; min-height: 52px; padding: 0 17px; }
-.submit span { flex: 1; text-align: left; }
+.submit { align-items: center; background: var(--ink); border: 1px solid var(--ink); border-radius: 9px; color: #fff; cursor: pointer; display: flex; font: inherit; font-size: 14px; font-weight: 650; gap: 8px; justify-content: center; justify-self: center; min-height: 46px; min-width: 118px; padding: 0 20px; }
+.submit span { text-align: center; }
 .submit svg { height: 17px; width: 17px; }
 .submit:disabled { cursor: wait; opacity: .7; }
 .notice { color: #88868d; font-size: 11px; line-height: 1.5; margin: 17px auto 0; max-width: 470px; text-align: center; }
@@ -60,6 +60,7 @@
   .loginPanel { min-height: calc(100dvh - 62px); padding: 32px 17px 42px; }
   .roleSwitch { grid-template-columns: 1fr; }
   .loginPanel form { padding: 20px; }
+  .submit { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }

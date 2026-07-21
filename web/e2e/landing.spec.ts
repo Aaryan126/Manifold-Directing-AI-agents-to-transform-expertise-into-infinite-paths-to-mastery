@@ -35,7 +35,7 @@ test("public landing page leads through role-aware development login", async ({ 
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole("region", { name: "Sign in to Manifold" })).toBeVisible();
   await page.getByLabel("Password").fill("David1");
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/app$/);
   await expect(page.getByRole("button", { name: "New course" })).toBeVisible();
 });
@@ -65,7 +65,7 @@ test("student credentials open Brian's dedicated learner Course OS", async ({ pa
   await page.getByRole("button", { name: /Student/ }).click();
   await expect(page.getByLabel("Username")).toHaveValue("Brian");
   await page.getByLabel("Password").fill("Brian1");
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page).toHaveURL(/\/learn$/);
   await expect(
