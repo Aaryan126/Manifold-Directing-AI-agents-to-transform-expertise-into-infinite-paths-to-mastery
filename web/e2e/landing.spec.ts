@@ -22,12 +22,10 @@ test("public landing page is responsive and WCAG 2.2 AA clean", async ({ page })
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
 
-  await expect(page.getByRole("button", { name: "Open navigation" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Manifold home" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Start building" })).toBeVisible();
+  await expect(page.getByRole("navigation")).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-
-  await page.getByRole("button", { name: "Open navigation" }).click();
-  await expect(page.getByRole("navigation", { name: "Mobile navigation" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Company" })).toBeVisible();
 
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])

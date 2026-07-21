@@ -1,25 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import {
-  ArrowRight,
-  GitBranch,
-  Menu,
-  Play,
-  X,
-} from "lucide-react";
-import { useState } from "react";
+import { ArrowRight, GitBranch } from "lucide-react";
 import styles from "./landing.module.css";
-
-const navigation = [
-  { label: "Products", href: "/manifold" },
-  { label: "Solutions", href: "/manifold" },
-  { label: "Models", href: "/manifold" },
-  { label: "Developers", href: "/manifold" },
-  { label: "Blog", href: "/manifold" },
-  { label: "Customers", href: "/manifold" },
-  { label: "Company", href: "/manifold" },
-];
 
 const geometricCells = [
   "signal", "signal", "ember", "crimson", "signal", "gold", "signal", "signal",
@@ -29,56 +12,19 @@ const geometricCells = [
 ] as const;
 
 export default function LandingPage() {
-  const [menuOpen, setMenuOpen] = useState(false);
-
   return (
     <main className={styles.page}>
       <header className={styles.navbar}>
         <Link className={styles.brand} href="/" aria-label="Manifold home">
-          <span className={styles.brandMark} aria-hidden="true">
-            <GitBranch />
-          </span>
-          <span>Manifold</span>
+          Manifold
         </Link>
-
-        <nav className={styles.desktopNav} aria-label="Primary navigation">
-          {navigation.map((item) => (
-            <a key={item.label} href={item.href}>
-              {item.label}
-            </a>
-          ))}
-        </nav>
 
         <div className={styles.navActions}>
           <Link className={styles.startButton} href="/manifold">
             Start building
             <ArrowRight aria-hidden="true" />
           </Link>
-          <button
-            aria-expanded={menuOpen}
-            aria-label={menuOpen ? "Close navigation" : "Open navigation"}
-            className={styles.menuButton}
-            onClick={() => setMenuOpen((open) => !open)}
-            type="button"
-          >
-            {menuOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
-          </button>
         </div>
-
-        {menuOpen ? (
-          <nav className={styles.mobileNav} aria-label="Mobile navigation">
-            {navigation.map((item) => (
-              <a key={item.label} href={item.href} onClick={() => setMenuOpen(false)}>
-                {item.label}
-                <ArrowRight aria-hidden="true" />
-              </a>
-            ))}
-            <Link href="/manifold" onClick={() => setMenuOpen(false)}>
-              Start building
-              <ArrowRight aria-hidden="true" />
-            </Link>
-          </nav>
-        ) : null}
       </header>
 
       <section className={styles.hero} aria-labelledby="landing-title">
@@ -122,9 +68,6 @@ export default function LandingPage() {
           <div className={styles.featuredNews}>
             <p>Featured</p>
             <Link href="/manifold">
-              <span className={styles.newsIcon} aria-hidden="true">
-                <Play />
-              </span>
               <span>
                 <strong>See a lecture become a course.</strong>
                 <small>Open the prepared Manifold demo</small>
