@@ -656,6 +656,8 @@
 .creationStage { background: #fff; display: flex; flex: 1; min-height: 0; padding: 0; }
 .creationConversation {
   --creation-stack-offset: 0px;
+  --creation-greeting-offset: 36px;
+  --creation-composer-offset: -30px;
   border: 0;
   box-shadow: none;
   margin: 0;
@@ -686,7 +688,7 @@
   left: 50%;
   max-width: 880px;
   position: absolute;
-  top: calc(50% - 185px + var(--creation-stack-offset));
+  top: calc(50% - 185px + var(--creation-stack-offset) + var(--creation-greeting-offset));
   transform: translateX(-50%);
   width: calc(100% - 72px);
 }
@@ -771,7 +773,7 @@
   z-index: 5;
 }
 
-.creationConversation[data-composer-centered] .composer { height: 150px; top: calc(50% - 35px + var(--creation-stack-offset)); }
+.creationConversation[data-composer-centered] .composer { height: 150px; top: calc(50% - 35px + var(--creation-stack-offset) + var(--creation-composer-offset)); }
 .creationConversation[data-composer-centered] .composer textarea { font-size: 17px; min-height: 76px; padding: 9px 8px; }
 .creationConversation[data-composer-centered] .composer > div > button { color: #4b4b51; height: 34px; width: 34px; }
 .creationConversation[data-composer-centered] .composer > div svg { height: 18px; width: 18px; }
