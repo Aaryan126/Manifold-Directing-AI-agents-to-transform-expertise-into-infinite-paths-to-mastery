@@ -12,7 +12,10 @@ from app.course_os.models import (
     CourseAssessment,
     CourseCreate,
     CourseProposal,
+    CourseRadarItem,
     CourseSummary,
+    DashboardActivityPoint,
+    DashboardSnapshot,
     RevisionDiff,
     RoutingPolicyDraft,
 )
@@ -99,6 +102,122 @@ async def test_learner_cannot_open_teacher_dashboard() -> None:
 
     with pytest.raises(CourseOSValidationError, match="Only an instructor"):
         await service.dashboard(uuid4())
+
+
+@pytest.mark.anyio
+async def test_dashboard_command_answers_confident_misconception_from_saved_evidence() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    instructor_id = uuid4()
+    course_id = uuid4()
+    radar = CourseRadarItem(
+        course_id=course_id,
+        title="Vectors",
+        activity_trend=(0, 1, 1, 2, 1, 2, 3),
+        active_learners=3,
+        accuracy_percent=62.5,
+        confidence_percent=75,
+        confident_incorrect_attempts=3,
+        clip_completion_percent=68,
+        mastery_percent=40,
+        mastery_movement=1,
+        open_issues=2,
+        agent_status="monitoring",
+        agent_role="learning_analyst",
+    )
+    repository.user_role = AsyncMock(return_value="instructor")
+    repository.dashboard = AsyncMock(return_value=DashboardSnapshot(
+        courses=(),
+        attention=(),
+        total_courses=1,
+        published_courses=1,
+        courses_in_review=0,
+        active_learners=3,
+        new_learners=1,
+        activity_history=(DashboardActivityPoint("2026-07-21", 3),),
+        course_radar=(radar,),
+    ))
+    service = CourseOSService(repository)
+
+    result = await service.dashboard_command(
+        instructor_id,
+        "Where are learners confident but incorrect?",
+    )
+
+    assert result.kind == "evidence"
+    assert result.course_id == course_id
+    assert "3 confident-but-incorrect attempts" in result.message
+
+
+@pytest.mark.anyio
+async def test_dashboard_change_command_creates_private_reviewable_directive() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    course = replace(_course(), status="published", active_revision_id=uuid4())
+    radar = CourseRadarItem(
+        course_id=course.id,
+        title=course.title,
+        activity_trend=(0, 1, 1, 2, 1, 2, 3),
+        active_learners=3,
+        accuracy_percent=50,
+        confidence_percent=75,
+        confident_incorrect_attempts=2,
+        clip_completion_percent=60,
+        mastery_percent=40,
+        mastery_movement=1,
+        open_issues=4,
+        agent_status="monitoring",
+        agent_role="learning_analyst",
+    )
+    snapshot = DashboardSnapshot(
+        courses=(course,),
+        attention=(),
+        total_courses=1,
+        published_courses=1,
+        courses_in_review=0,
+        active_learners=3,
+        new_learners=1,
+        activity_history=(),
+        course_radar=(radar,),
+    )
+    instructor_message = ConversationMessage(
+        id=uuid4(),
+        role="instructor",
+        content="Prepare improvements for my weakest topic.",
+        blocks=(),
+        created_at=datetime.now(UTC),
+    )
+    proposal = CourseProposal(
+        id=uuid4(),
+        proposal_type="brief_update",
+        artifact_type="course_brief",
+        logical_artifact_id=None,
+        before_state=None,
+        proposed_state={"instruction": instructor_message.content},
+        rationale="Use this as a durable directive.",
+        status="proposed",
+        created_at=datetime.now(UTC),
+    )
+    response_message = replace(instructor_message, id=uuid4(), role="manifold")
+    repository.user_role = AsyncMock(return_value="instructor")
+    repository.dashboard = AsyncMock(return_value=snapshot)
+    repository.get_course = AsyncMock(return_value=course)
+    repository.add_message = AsyncMock(side_effect=[instructor_message, response_message])
+    repository.create_proposal = AsyncMock(return_value=proposal)
+    service = CourseOSService(repository)
+
+    result = await service.dashboard_command(
+        course.instructor_id,
+        instructor_message.content,
+    )
+
+    assert result.kind == "proposal"
+    assert result.course_id == course.id
+    assert "Nothing learner-facing changed" in result.message
+    repository.create_proposal.assert_awaited_once_with(
+        course.id,
+        course.working_revision_id,
+        instructor_message.id,
+        instructor_message.content,
+    )
 
 
 @pytest.mark.anyio

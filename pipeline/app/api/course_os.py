@@ -16,6 +16,7 @@ from app.course_os.models import (
     CourseProposal,
     CourseRoutingPolicy,
     CourseSummary,
+    DashboardCommandResult,
     DashboardSnapshot,
     GenerationRun,
     ReviewBundle,
@@ -74,6 +75,22 @@ class DashboardActivityPointResponse(BaseModel):
     active_learners: int
 
 
+class CourseRadarItemResponse(BaseModel):
+    course_id: UUID
+    title: str
+    activity_trend: list[int]
+    active_learners: int
+    accuracy_percent: float | None
+    confidence_percent: float | None
+    confident_incorrect_attempts: int
+    clip_completion_percent: float | None
+    mastery_percent: float | None
+    mastery_movement: int
+    open_issues: int
+    agent_status: str
+    agent_role: str | None
+
+
 class DashboardResponse(BaseModel):
     courses: list[CourseSummaryResponse]
     attention: list[AttentionItemResponse]
@@ -83,6 +100,19 @@ class DashboardResponse(BaseModel):
     active_learners: int
     new_learners: int
     activity_history: list[DashboardActivityPointResponse]
+    course_radar: list[CourseRadarItemResponse]
+
+
+class DashboardCommandRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=2000)
+
+
+class DashboardCommandResponse(BaseModel):
+    kind: Literal["evidence", "proposal", "empty"]
+    message: str
+    course_id: UUID | None
+    course_title: str | None
+    action_label: str | None
 
 
 class GenerationStartRequest(BaseModel):
@@ -301,6 +331,19 @@ class RoutingWorkspaceResponse(BaseModel):
 @router.get("/instructors/me/dashboard", response_model=DashboardResponse)
 async def dashboard(user_id: UserContext, service: CourseOSDependency) -> DashboardResponse:
     return _dashboard_response(await _call(service.dashboard(user_id)))
+
+
+@router.post(
+    "/instructors/me/dashboard/command",
+    response_model=DashboardCommandResponse,
+)
+async def dashboard_command(
+    request: DashboardCommandRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> DashboardCommandResponse:
+    result = await _call(service.dashboard_command(user_id, request.content))
+    return _dashboard_command_response(result)
 
 
 @router.get("/instructors/me/courses", response_model=list[CourseSummaryResponse])
@@ -730,7 +773,20 @@ def _dashboard_response(snapshot: DashboardSnapshot) -> DashboardResponse:
             )
             for point in snapshot.activity_history
         ],
+        course_radar=[
+            CourseRadarItemResponse(
+                **{
+                    **item.__dict__,
+                    "activity_trend": list(item.activity_trend),
+                }
+            )
+            for item in snapshot.course_radar
+        ],
     )
+
+
+def _dashboard_command_response(result: DashboardCommandResult) -> DashboardCommandResponse:
+    return DashboardCommandResponse(**result.__dict__)
 
 
 def _run_response(run: GenerationRun) -> GenerationRunResponse:

@@ -12,6 +12,7 @@ from app.course_os.models import (
     CourseAssessment,
     CourseRoutingPolicy,
     CourseSummary,
+    DashboardCommandResult,
     DashboardSnapshot,
     RoutingPolicyDraft,
 )
@@ -51,8 +52,41 @@ def test_teacher_dashboard_returns_empty_state_metrics() -> None:
             "active_learners": 0,
             "new_learners": 0,
             "activity_history": [],
+            "course_radar": [],
         }
         service.dashboard.assert_awaited_once_with(instructor_id)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_dashboard_command_returns_grounded_result() -> None:
+    instructor_id = uuid4()
+    course_id = uuid4()
+    service = AsyncMock()
+    service.dashboard_command.return_value = DashboardCommandResult(
+        kind="evidence",
+        message="Mechanics has the strongest misconception signal.",
+        course_id=course_id,
+        course_title="Mechanics",
+        action_label="Inspect evidence",
+    )
+    app.dependency_overrides[get_course_os_service] = lambda: service
+    client = TestClient(app)
+
+    try:
+        response = client.post(
+            "/instructors/me/dashboard/command",
+            headers={"X-User-ID": str(instructor_id)},
+            json={"content": "Where are learners confident but incorrect?"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["course_id"] == str(course_id)
+        assert response.json()["kind"] == "evidence"
+        service.dashboard_command.assert_awaited_once_with(
+            instructor_id,
+            "Where are learners confident but incorrect?",
+        )
     finally:
         app.dependency_overrides.clear()
 

@@ -8,7 +8,7 @@ import {
   type Edge,
   type Node,
 } from "@xyflow/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
   useCallback,
@@ -108,6 +108,8 @@ const InsightsCharts = dynamic(
 
 export function CourseStudio({ courseId }: { courseId: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedCanvasView = searchParams.get("view");
   const { sidebarCollapsed, toggleSidebar } = useTeacherSidebar();
   const fileInput = useRef<HTMLInputElement>(null);
   const sourceInput = useRef<HTMLInputElement>(null);
@@ -233,14 +235,20 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       if (courseResult.topic_count > 0) {
         await refreshStructuredWorkspace(user, courseResult.status === "published");
       }
-      if (courseResult.status === "published") setCanvasView("overview");
+      if (courseResult.status === "published") {
+        setCanvasView(
+          requestedCanvasView && ["overview", "map", "assessments", "preview", "settings"].includes(requestedCanvasView)
+            ? requestedCanvasView as CanvasView
+            : "overview",
+        );
+      }
       else if (courseResult.pending_review_count > 0) setCanvasView("review");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not open the course studio.");
     } finally {
       setLoading(false);
     }
-  }, [courseId, refreshArtifacts, refreshIntelligence, refreshStructuredWorkspace, refreshRevisionDiff, request, router]);
+  }, [courseId, refreshArtifacts, refreshIntelligence, refreshStructuredWorkspace, refreshRevisionDiff, request, requestedCanvasView, router]);
 
   useEffect(() => {
     void loadStudio();
@@ -1267,7 +1275,7 @@ function OverviewCanvas({
       {dashboard?.not_enough_data ? <div className={styles.evidenceNotice}><CircleAlert /><p><strong>Early evidence only.</strong> The charts stay honest and will fill in as learners complete assessments.</p></div> : null}
 
       <div className={styles.intelligenceGrid}>
-        <section className={styles.priorityBrief}>
+        <section className={styles.priorityBrief} id="priority-brief">
           <header><div><h3>Priority brief</h3><p>Ranked issues that can change learning, not a generic notification feed.</p></div><span>{priorities.length} open</span></header>
           <div>
             {priorities.map((priority, index) => {
@@ -1299,7 +1307,7 @@ function OverviewCanvas({
           </div>
         </section>
 
-        <section className={styles.courseTeam}>
+        <section className={styles.courseTeam} id="course-team">
           <header><div><h3>Your course team</h3><p>Specialists prepare private work. You decide what enters the course.</p></div><Network /></header>
           <div>
             {activeTasks.map((task) => (
@@ -1315,7 +1323,7 @@ function OverviewCanvas({
         </section>
       </div>
 
-      <section className={styles.evidenceWorkspace}>
+      <section className={styles.evidenceWorkspace} id="evidence-inspector">
         <header><div><h3>Evidence inspector</h3><p>Trace a recommendation to actual learner behavior and course coverage.</p></div><span>{selectedTopic ? selectedTopic.title : "Choose a priority or topic"}</span></header>
         <div>
           <article>
@@ -1369,7 +1377,7 @@ function OverviewCanvas({
         </div>
       </section>
 
-      <section className={styles.learningHealth} aria-labelledby="learning-health-title">
+      <section className={styles.learningHealth} aria-labelledby="learning-health-title" id="learning-patterns">
         <header><div><h3 id="learning-health-title">Learning patterns</h3><p>Supporting trends for the priorities above.</p></div><span>Last 14 days</span></header>
         <InsightsCharts
           activity={dashboard?.activity_history ?? []}

@@ -21,6 +21,7 @@ from app.course_os.models import (
     CourseMapEdge,
     CourseMapNode,
     CourseProposal,
+    CourseRadarItem,
     CourseRoutingPolicy,
     CourseSummary,
     DashboardActivityPoint,
@@ -741,6 +742,141 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     (instructor_id,),
                 )
             ).fetchall()
+            radar_rows = await (
+                await conn.execute(
+                    """
+                    with published as (
+                      select id, title, active_revision_id
+                      from courses
+                      where instructor_id = %s and status = 'published'
+                    ), days as (
+                      select generate_series(
+                        (now() at time zone 'UTC')::date - interval '6 days',
+                        (now() at time zone 'UTC')::date,
+                        interval '1 day'
+                      )::date as activity_date
+                    ), daily as (
+                      select
+                        p.id as course_id,
+                        d.activity_date,
+                        count(distinct a.learner_id) as learners
+                      from published p
+                      cross join days d
+                      left join topics t on t.course_id = p.id
+                        and t.revision_id = p.active_revision_id
+                      left join questions q on q.topic_id = t.id
+                        and q.revision_id = p.active_revision_id
+                      left join attempts a on a.question_id = q.id
+                        and (a.created_at at time zone 'UTC')::date = d.activity_date
+                      group by p.id, d.activity_date
+                    ), activity as (
+                      select course_id,
+                        array_agg(learners order by activity_date) as trend,
+                        max(learners) as active_learners
+                      from daily group by course_id
+                    ), attempt_metrics as (
+                      select p.id as course_id,
+                        count(a.id) as attempts,
+                        count(a.id) filter (where a.correctness) as correct_attempts,
+                        count(a.id) filter (where a.confidence >= 3) as confident_attempts,
+                        count(a.id) filter (where not a.correctness and a.confidence >= 3)
+                          as confident_incorrect
+                      from published p
+                      left join topics t on t.course_id = p.id
+                        and t.revision_id = p.active_revision_id
+                      left join questions q on q.topic_id = t.id
+                        and q.revision_id = p.active_revision_id
+                      left join attempts a on a.question_id = q.id
+                      group by p.id
+                    ), clip_totals as (
+                      select p.id as course_id, w.learner_id, cl.id as clip_id,
+                        least(1.0, sum(w.watched_seconds) /
+                          nullif(cl.end_seconds - cl.start_seconds, 0)) as completion
+                      from published p
+                      join topics t on t.course_id = p.id
+                        and t.revision_id = p.active_revision_id
+                      join clips cl on cl.topic_id = t.id
+                        and cl.revision_id = p.active_revision_id and cl.status = 'active'
+                      join learner_watch_events w on w.course_id = p.id and w.clip_id = cl.id
+                      group by p.id, w.learner_id, cl.id, cl.start_seconds, cl.end_seconds
+                    ), clip_metrics as (
+                      select course_id, avg(completion) * 100 as completion_percent
+                      from clip_totals group by course_id
+                    ), mastery_metrics as (
+                      select p.id as course_id,
+                        count(m.learner_id) as mastery_rows,
+                        count(m.learner_id) filter (where m.state = 'mastered') as mastered,
+                        count(m.learner_id) filter (
+                          where m.state = 'mastered'
+                            and m.updated_at >= now() - interval '7 days'
+                        ) as movement
+                      from published p
+                      left join concepts c on c.course_id = p.id
+                        and c.revision_id = p.active_revision_id
+                      left join learner_concept_mastery m on m.concept_id = c.id
+                      group by p.id
+                    ), open_tasks as (
+                      select p.id as course_id,
+                        count(t.id) filter (
+                          where t.status in ('queued', 'running', 'waiting_review', 'failed')
+                        )
+                          as open_count
+                      from published p
+                      left join course_agent_tasks t on t.course_id = p.id
+                        and t.revision_id = p.active_revision_id
+                      group by p.id
+                    ), latest_task as (
+                      select distinct on (t.course_id)
+                        t.course_id, t.status, t.specialist_role
+                      from course_agent_tasks t
+                      join published p on p.id = t.course_id
+                      order by t.course_id, t.updated_at desc
+                    )
+                    select
+                      p.id, p.title, coalesce(ac.trend, array[0,0,0,0,0,0,0]::bigint[]),
+                      coalesce(ac.active_learners, 0), am.attempts,
+                      am.correct_attempts, am.confident_attempts, am.confident_incorrect,
+                      cm.completion_percent, mm.mastery_rows, mm.mastered, mm.movement,
+                      coalesce(ot.open_count, 0), lt.status, lt.specialist_role
+                    from published p
+                    left join activity ac on ac.course_id = p.id
+                    left join attempt_metrics am on am.course_id = p.id
+                    left join clip_metrics cm on cm.course_id = p.id
+                    left join mastery_metrics mm on mm.course_id = p.id
+                    left join open_tasks ot on ot.course_id = p.id
+                    left join latest_task lt on lt.course_id = p.id
+                    order by p.title
+                    """,
+                    (instructor_id,),
+                )
+            ).fetchall()
+        course_by_id = {course.id: course for course in all_courses}
+        portfolio_course_ids = {course.id for course in courses}
+        radar = tuple(
+            CourseRadarItem(
+                course_id=row[0],
+                title=str(row[1]),
+                activity_trend=tuple(int(value or 0) for value in row[2]),
+                active_learners=int(row[3] or 0),
+                accuracy_percent=_percentage(row[5], row[4]),
+                confidence_percent=_percentage(row[6], row[4]),
+                confident_incorrect_attempts=int(row[7] or 0),
+                clip_completion_percent=(
+                    round(float(row[8]), 1) if row[8] is not None else None
+                ),
+                mastery_percent=_percentage(row[10], row[9]),
+                mastery_movement=int(row[11] or 0),
+                open_issues=(
+                    int(row[12] or 0)
+                    + course_by_id[row[0]].open_signal_count
+                    + course_by_id[row[0]].pending_review_count
+                ),
+                agent_status=_dashboard_agent_status(row[13]),
+                agent_role=str(row[14]) if row[14] else None,
+            )
+            for row in radar_rows
+            if row[0] in portfolio_course_ids
+        )
         return DashboardSnapshot(
             courses=courses,
             attention=tuple(attention),
@@ -756,6 +892,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
                 )
                 for row in activity_rows
             ),
+            course_radar=radar,
         )
 
     async def create_generation_run(
@@ -3207,6 +3344,23 @@ async def _apply_typed_proposal(
 
 def _json_dict(value: object) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
+
+
+def _percentage(numerator: object, denominator: object) -> float | None:
+    total = float(str(denominator or 0))
+    if total == 0:
+        return None
+    return round((float(str(numerator or 0)) / total) * 100, 1)
+
+
+def _dashboard_agent_status(value: object) -> str:
+    status = str(value) if value else "complete"
+    return {
+        "queued": "working",
+        "running": "working",
+        "waiting_review": "ready_for_review",
+        "failed": "needs_attention",
+    }.get(status, "monitoring")
 
 
 def _datetime(value: object) -> datetime:

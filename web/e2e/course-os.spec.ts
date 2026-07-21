@@ -38,6 +38,18 @@ async function mockCourseOS(page: Page) {
       await route.fulfill({ json: [instructor] });
       return;
     }
+    if (path === "/instructors/me/dashboard/command") {
+      await route.fulfill({
+        json: {
+          kind: "evidence",
+          message: "Forces and motion has 2 confident-but-incorrect attempts.",
+          course_id: course.id,
+          course_title: course.title,
+          action_label: "Inspect evidence",
+        },
+      });
+      return;
+    }
     if (path === "/instructors/me/dashboard") {
       await route.fulfill({
         json: {
@@ -64,6 +76,21 @@ async function mockCourseOS(page: Page) {
             { date: "2026-07-20", active_learners: 3 },
             { date: "2026-07-21", active_learners: 1 },
           ],
+          course_radar: deleted ? [] : [{
+            course_id: course.id,
+            title: course.title,
+            activity_trend: [0, 1, 0, 2, 1, 3, 1],
+            active_learners: 3,
+            accuracy_percent: 62.5,
+            confidence_percent: 75,
+            confident_incorrect_attempts: 2,
+            clip_completion_percent: 68,
+            mastery_percent: 40,
+            mastery_movement: 1,
+            open_issues: 2,
+            agent_status: "working",
+            agent_role: "learning_analyst",
+          }],
         },
       });
       return;
@@ -340,8 +367,18 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(
     page.getByRole("heading", { name: /Good (morning|afternoon|evening), Ada\./ }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Priority inbox" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Course health" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Needs your judgment", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Course radar" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /decision needs your judgment/i })).toBeVisible();
+  await expect(page.getByText("Portfolio summary", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("columnheader", { name: "Clip completion" })).toBeVisible();
+  await page.getByRole("button", { name: "Where are learners confident but incorrect?" }).click();
+  await page.getByRole("button", { name: "Ask Manifold" }).click();
+  await expect(page.getByText("Forces and motion has 2 confident-but-incorrect attempts.")).toBeVisible();
+  const dashboardAccessibility = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(dashboardAccessibility.violations).toEqual([]);
   await expect(page.getByRole("heading", { name: "Forces and motion" })).toBeVisible();
   await expect(page.getByText("Ready to review", { exact: true })).toBeVisible();
 

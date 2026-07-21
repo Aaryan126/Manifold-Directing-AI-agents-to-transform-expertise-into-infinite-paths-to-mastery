@@ -46,6 +46,31 @@ export type DashboardSnapshot = {
     date: string;
     active_learners: number;
   }>;
+  course_radar: CourseRadarItem[];
+};
+
+export type CourseRadarItem = {
+  course_id: string;
+  title: string;
+  activity_trend: number[];
+  active_learners: number;
+  accuracy_percent: number | null;
+  confidence_percent: number | null;
+  confident_incorrect_attempts: number;
+  clip_completion_percent: number | null;
+  mastery_percent: number | null;
+  mastery_movement: number;
+  open_issues: number;
+  agent_status: "working" | "ready_for_review" | "needs_attention" | "monitoring";
+  agent_role: "learning_analyst" | "curriculum_architect" | "clip_editor" | "assessment_designer" | null;
+};
+
+export type DashboardCommandResult = {
+  kind: "evidence" | "proposal" | "empty";
+  message: string;
+  course_id: string | null;
+  course_title: string | null;
+  action_label: string | null;
 };
 
 export type GenerationTask = {

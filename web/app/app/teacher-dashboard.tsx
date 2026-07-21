@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
-  ArrowRight,
+  Activity,
+  ArrowUpRight,
   BarChart3,
-  BookOpen,
-  ChevronDown,
   ChevronRight,
   CircleAlert,
   CircleHelp,
@@ -21,8 +20,9 @@ import {
   PanelLeftOpen,
   Plus,
   Search,
+  Send,
+  Sparkles,
   Trash2,
-  Users,
 } from "lucide-react";
 
 import { BrandMark } from "../../components/brand-mark";
@@ -30,7 +30,9 @@ import { clearDevelopmentSession, readDevelopmentSession } from "../developmentS
 
 import {
   courseState,
+  type CourseRadarItem,
   type CourseSummary,
+  type DashboardCommandResult,
   type DashboardSnapshot,
   type DevelopmentIdentity,
 } from "./course-os";
@@ -51,6 +53,10 @@ export function TeacherDashboard() {
   const [showAllAttention, setShowAllAttention] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [command, setCommand] = useState("");
+  const [commandResult, setCommandResult] = useState<DashboardCommandResult | null>(null);
+  const [commanding, setCommanding] = useState(false);
+  const [commandError, setCommandError] = useState<string | null>(null);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -137,6 +143,29 @@ export function TeacherDashboard() {
     }
   }
 
+  async function runDashboardCommand(event?: FormEvent) {
+    event?.preventDefault();
+    if (!identity || commanding || !command.trim()) return;
+    setCommanding(true);
+    setCommandError(null);
+    setCommandResult(null);
+    try {
+      const response = await fetch(`${pipelineBase}/instructors/me/dashboard/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-User-ID": identity.id },
+        body: JSON.stringify({ content: command.trim() }),
+      });
+      const payload = (await response.json().catch(() => null)) as DashboardCommandResult | { detail?: string } | null;
+      if (!response.ok) throw new Error(payload && "detail" in payload ? payload.detail : "Manifold could not answer that yet.");
+      setCommandResult(payload as DashboardCommandResult);
+      if ((payload as DashboardCommandResult).kind === "proposal") await loadDashboard();
+    } catch (caught) {
+      setCommandError(caught instanceof Error ? caught.message : "Manifold could not answer that yet.");
+    } finally {
+      setCommanding(false);
+    }
+  }
+
   return (
     <div className={`${styles.appShell} ${sidebarCollapsed ? styles.sidebarCollapsedShell : ""}`}>
       <TeacherSidebar collapsed={sidebarCollapsed} identity={identity} onToggle={toggleSidebar} />
@@ -161,17 +190,21 @@ export function TeacherDashboard() {
 
         {loading ? <DashboardSkeleton /> : dashboard ? (
           <>
-            <section className={styles.dashboardSummaryCard} aria-label="Portfolio summary">
-              <Metric label="Courses" value={dashboard.total_courses} detail={`${dashboard.published_courses} live`} icon={<BookOpen />} />
-              <Metric label="In review" value={dashboard.courses_in_review} detail="Needs approval" icon={<ClipboardCheck />} />
-              <Metric label="Active learners" value={dashboard.active_learners} detail="Across published courses" icon={<Users />} />
-            </section>
+            <IntelligenceBrief
+              command={command}
+              commanding={commanding}
+              dashboard={dashboard}
+              error={commandError}
+              onChange={setCommand}
+              onSubmit={runDashboardCommand}
+              result={commandResult}
+            />
 
-            <section className={styles.dashboardOperations} aria-label="Teacher priorities and course health">
+            <section className={styles.dashboardOperations} aria-label="Teacher priorities">
               <article className={styles.priorityPanel} aria-labelledby="attention-title">
                 <header>
                   <div>
-                    <h2 id="attention-title">Priority inbox</h2>
+                    <h2 id="attention-title">Needs your judgment</h2>
                     <p>Where your judgment creates the most impact.</p>
                   </div>
                   {dashboard.attention.length > 3 ? (
@@ -199,8 +232,9 @@ export function TeacherDashboard() {
                   )}
                 </div>
               </article>
-              <CourseHealth dashboard={dashboard} />
             </section>
+
+            <CourseRadar courses={dashboard.course_radar ?? []} />
 
             <section className={styles.coursesSection} aria-labelledby="courses-title">
               <div className={styles.sectionHeading}>
@@ -374,43 +408,129 @@ function ConfirmDeleteDialog({
   );
 }
 
-function Metric({ label, value, detail, icon }: { label: string; value: number; detail: string; icon: ReactNode }) {
+const suggestedCommands = [
+  "What changed since yesterday?",
+  "Where are learners confident but incorrect?",
+  "Prepare improvements for my weakest topic.",
+  "Find clips with high drop-off.",
+  "Compare confidence across my courses.",
+];
+
+function IntelligenceBrief({
+  command,
+  commanding,
+  dashboard,
+  error,
+  onChange,
+  onSubmit,
+  result,
+}: {
+  command: string;
+  commanding: boolean;
+  dashboard: DashboardSnapshot;
+  error: string | null;
+  onChange: (value: string) => void;
+  onSubmit: (event?: FormEvent) => Promise<void>;
+  result: DashboardCommandResult | null;
+}) {
+  const radar = dashboard.course_radar ?? [];
+  const activeAgents = radar.filter((course) => course.agent_status === "working").length;
+  const topCourse = [...radar].sort((a, b) => b.open_issues - a.open_issues)[0];
+  const headline = dashboard.attention.length
+    ? `${dashboard.attention.length} decision${dashboard.attention.length === 1 ? " needs" : "s need"} your judgment.`
+    : "Your course team is monitoring the evidence.";
   return (
-    <article className={styles.metricCard}>
-      <span>{icon}</span>
-      <div><small>{label}</small><strong>{value}</strong><p>{detail}</p></div>
-    </article>
+    <section className={styles.intelligenceBrief} aria-labelledby="intelligence-brief-title">
+      <div className={styles.briefHeading}>
+        <span><Sparkles aria-hidden="true" /></span>
+        <div>
+          <small>Manifold intelligence brief</small>
+          <h2 id="intelligence-brief-title">{headline}</h2>
+          <p>{topCourse
+            ? `${topCourse.title} is the current focus with ${topCourse.open_issues} open issue${topCourse.open_issues === 1 ? "" : "s"}. Evidence stays private until you approve a change.`
+            : "As learner evidence arrives, Manifold will rank what deserves attention and brief the right specialist."}</p>
+        </div>
+        <dl>
+          <div><dt>Live courses</dt><dd>{dashboard.published_courses}</dd></div>
+          <div><dt>Active learners</dt><dd>{dashboard.active_learners}</dd></div>
+          <div><dt>Specialists working</dt><dd>{activeAgents}</dd></div>
+        </dl>
+      </div>
+      <form className={styles.dashboardCommand} onSubmit={(event) => void onSubmit(event)}>
+        <label htmlFor="dashboard-command">Ask about your courses or request a change…</label>
+        <div>
+          <input
+            autoComplete="off"
+            id="dashboard-command"
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="Ask about your courses or request a change…"
+            value={command}
+          />
+          <button aria-label="Ask Manifold" disabled={commanding || !command.trim()} type="submit">
+            {commanding ? <LoaderCircle className={styles.spin} aria-hidden="true" /> : <Send aria-hidden="true" />}
+          </button>
+        </div>
+        <div className={styles.commandSuggestions} aria-label="Suggested commands">
+          {suggestedCommands.map((suggestion) => (
+            <button key={suggestion} onClick={() => onChange(suggestion)} type="button">{suggestion}</button>
+          ))}
+        </div>
+      </form>
+      {error ? <p className={styles.commandError} role="alert">{error}</p> : null}
+      {result ? (
+        <div className={styles.commandResult} data-kind={result.kind} role="status">
+          <span>{result.kind === "proposal" ? <ClipboardCheck aria-hidden="true" /> : <Activity aria-hidden="true" />}</span>
+          <p><strong>{result.kind === "proposal" ? "Private proposal prepared" : "Evidence answer"}</strong>{result.message}</p>
+          {result.course_id && result.action_label ? (
+            <Link href={`/app/courses/${result.course_id}`}>{result.action_label}<ArrowUpRight aria-hidden="true" /></Link>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
-function CourseHealth({ dashboard }: { dashboard: DashboardSnapshot }) {
-  const highestActivity = Math.max(1, ...dashboard.activity_history.map((point) => point.active_learners));
-  const weeklyActive = Math.max(0, ...dashboard.activity_history.map((point) => point.active_learners));
+function CourseRadar({ courses }: { courses: CourseRadarItem[] }) {
   return (
-    <article className={styles.courseHealth} aria-labelledby="course-health-title">
-      <header>
-        <div><h2 id="course-health-title">Course health</h2><p>Learner activity across published courses</p></div>
-        <span>This week<ChevronDown aria-hidden="true" /></span>
-      </header>
-      <div className={styles.healthLegend}>
-        <span><i />Peak daily learners <strong>{weeklyActive}</strong></span>
-        <span><i />New learners <strong>{dashboard.new_learners}</strong></span>
-      </div>
-      <div
-        aria-label={`Active learners over the last seven days. Peak ${weeklyActive}.`}
-        className={styles.healthChart}
-        role="img"
-      >
-        {dashboard.activity_history.map((point) => (
-          <div key={point.date}>
-            <span><i style={{ height: point.active_learners ? `${Math.max(12, (point.active_learners / highestActivity) * 100)}%` : "3px" }}><b /></i></span>
-            <small>{weekday(point.date)}</small>
+    <section className={styles.courseRadar} aria-labelledby="course-radar-title">
+      <header><div><h2 id="course-radar-title">Course radar</h2><p>Every published course, its learner evidence, and the specialist watching it.</p></div><span>Last 7 days</span></header>
+      {courses.length ? (
+        <div className={styles.radarScroller}>
+          <div className={styles.radarTable} role="table" aria-label="Published course intelligence">
+            <div className={styles.radarTableHead} role="row">
+              <span role="columnheader">Course</span><span role="columnheader">Activity</span><span role="columnheader">Accuracy</span><span role="columnheader">Confidence</span><span role="columnheader">Clip completion</span><span role="columnheader">Mastery</span><span role="columnheader">Open issues</span><span role="columnheader">Agent</span>
+            </div>
+            {courses.map((course) => <CourseRadarRow course={course} key={course.course_id} />)}
           </div>
-        ))}
-      </div>
-      <Link href="/app#courses-title">Open a course to view analytics<ArrowRight aria-hidden="true" /></Link>
-    </article>
+        </div>
+      ) : <div className={styles.radarEmpty}><Activity aria-hidden="true" /><p><strong>No published-course evidence yet.</strong> The radar activates when a course is live.</p></div>}
+    </section>
   );
+}
+
+function CourseRadarRow({ course }: { course: CourseRadarItem }) {
+  const peak = Math.max(1, ...course.activity_trend);
+  const route = `/app/courses/${course.course_id}`;
+  return (
+    <div className={styles.radarRow} role="row">
+      <Link className={styles.radarCourse} href={`${route}?view=overview`} role="cell"><strong>{course.title}</strong><small>{course.active_learners} peak active learners</small></Link>
+      <Link className={styles.radarActivity} href={`${route}?view=overview#learning-patterns`} role="cell" aria-label={`Inspect activity for ${course.title}`}>
+        <span role="img" aria-label={`Seven-day learner activity: ${course.activity_trend.join(", ")}`}>
+          {course.activity_trend.map((value, index) => <i key={index} style={{ height: `${Math.max(12, (value / peak) * 100)}%` }} />)}
+        </span>
+      </Link>
+      <RadarMetric href={`${route}?view=overview#evidence-inspector`} label="accuracy" value={percent(course.accuracy_percent)} />
+      <RadarMetric href={`${route}?view=overview#evidence-inspector`} label="confidence" note={course.confident_incorrect_attempts ? `${course.confident_incorrect_attempts} confident misses` : undefined} value={percent(course.confidence_percent)} />
+      <RadarMetric href={`${route}?view=preview`} label="clip completion" note={course.clip_completion_percent === null ? undefined : `${Math.round(100 - course.clip_completion_percent)}% drop-off`} value={percent(course.clip_completion_percent)} />
+      <RadarMetric href={`${route}?view=overview#evidence-inspector`} label="mastery" note={`+${course.mastery_movement} this week`} value={percent(course.mastery_percent)} />
+      <Link className={styles.radarIssues} data-open={course.open_issues > 0 || undefined} href={`${route}?view=overview#priority-brief`} role="cell"><strong>{course.open_issues}</strong><small>{course.open_issues === 1 ? "issue" : "issues"}</small></Link>
+      <Link className={styles.radarAgent} data-status={course.agent_status} href={`${route}?view=overview#course-team`} role="cell"><i /><span><strong>{agentStatus(course.agent_status)}</strong><small>{agentRole(course.agent_role)}</small></span></Link>
+    </div>
+  );
+}
+
+function RadarMetric({ href, label, note, value }: { href: string; label: string; note?: string; value: string }) {
+  return <Link aria-label={`Inspect ${label}`} className={styles.radarMetric} href={href} role="cell"><strong>{value}</strong><small>{note ?? (value === "—" ? "Collecting evidence" : label)}</small></Link>;
 }
 
 function attentionIcon(kind: DashboardSnapshot["attention"][number]["kind"]) {
@@ -450,6 +570,10 @@ function timeOfDay() {
   if (hour < 18) return "afternoon";
   return "evening";
 }
-function weekday(date: string) {
-  return new Intl.DateTimeFormat("en", { weekday: "short", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
+function percent(value: number | null) { return value === null ? "—" : `${Math.round(value)}%`; }
+function agentStatus(status: CourseRadarItem["agent_status"]) {
+  return { working: "Working", ready_for_review: "Ready for review", needs_attention: "Needs attention", monitoring: "Monitoring" }[status];
+}
+function agentRole(role: CourseRadarItem["agent_role"]) {
+  return role ? { learning_analyst: "Learning analyst", curriculum_architect: "Curriculum architect", clip_editor: "Clip editor", assessment_designer: "Assessment designer" }[role] : "Course team";
 }

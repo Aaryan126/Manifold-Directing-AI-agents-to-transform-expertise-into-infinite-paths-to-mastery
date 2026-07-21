@@ -81,6 +81,23 @@ class DashboardActivityPoint:
 
 
 @dataclass(frozen=True)
+class CourseRadarItem:
+    course_id: UUID
+    title: str
+    activity_trend: tuple[int, ...]
+    active_learners: int
+    accuracy_percent: float | None
+    confidence_percent: float | None
+    confident_incorrect_attempts: int
+    clip_completion_percent: float | None
+    mastery_percent: float | None
+    mastery_movement: int
+    open_issues: int
+    agent_status: str
+    agent_role: str | None
+
+
+@dataclass(frozen=True)
 class DashboardSnapshot:
     courses: tuple[CourseSummary, ...]
     attention: tuple[AttentionItem, ...]
@@ -90,6 +107,16 @@ class DashboardSnapshot:
     active_learners: int
     new_learners: int
     activity_history: tuple[DashboardActivityPoint, ...]
+    course_radar: tuple[CourseRadarItem, ...] = ()
+
+
+@dataclass(frozen=True)
+class DashboardCommandResult:
+    kind: str
+    message: str
+    course_id: UUID | None = None
+    course_title: str | None = None
+    action_label: str | None = None
 
 
 @dataclass(frozen=True)
