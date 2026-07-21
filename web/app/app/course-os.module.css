@@ -685,11 +685,13 @@
   align-items: center;
   display: flex;
   gap: 15px;
+  justify-content: center;
   left: 50%;
   max-width: 880px;
   position: absolute;
   top: calc(50% - 185px + var(--creation-stack-offset) + var(--creation-greeting-offset));
   transform: translateX(-50%);
+  text-align: center;
   width: calc(100% - 72px);
 }
 .creationGreeting > svg { color: #d8792c; height: 39px; stroke-width: 1.55; width: 39px; }
