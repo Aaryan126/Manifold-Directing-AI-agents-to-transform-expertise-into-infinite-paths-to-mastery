@@ -15,6 +15,7 @@ from app.course_os.models import (
     CourseMapNode,
     CourseProposal,
     CourseSummary,
+    DashboardActivityPoint,
     DashboardSnapshot,
     GenerationRun,
     GenerationRunStatus,
@@ -650,24 +651,78 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     )
                 )
         async with pooled_connection(self._database_url) as conn:
-            row = await (
+            learner_row = await (
                 await conn.execute(
                     """
                     select count(distinct e.learner_id)
                     from enrollments e
                     join courses c on c.id = e.course_id
                     where c.instructor_id = %s
+                      and c.status = 'published'
                     """,
                     (instructor_id,),
                 )
             ).fetchone()
+            new_learner_row = await (
+                await conn.execute(
+                    """
+                    select count(distinct e.learner_id)
+                    from enrollments e
+                    join courses c on c.id = e.course_id
+                    where c.instructor_id = %s
+                      and c.status = 'published'
+                      and e.created_at >= (now() at time zone 'UTC')::date - interval '6 days'
+                    """,
+                    (instructor_id,),
+                )
+            ).fetchone()
+            activity_rows = await (
+                await conn.execute(
+                    """
+                    with days as (
+                      select generate_series(
+                        (now() at time zone 'UTC')::date - interval '6 days',
+                        (now() at time zone 'UTC')::date,
+                        interval '1 day'
+                      )::date as activity_date
+                    ), daily_activity as (
+                      select
+                        (a.created_at at time zone 'UTC')::date as activity_date,
+                        count(distinct a.learner_id) as active_learners
+                      from attempts a
+                      join questions q on q.id = a.question_id
+                      join topics t on t.id = q.topic_id
+                      join courses c on c.id = t.course_id
+                      where c.instructor_id = %s
+                        and c.status = 'published'
+                        and a.created_at >= (now() at time zone 'UTC')::date - interval '6 days'
+                      group by (a.created_at at time zone 'UTC')::date
+                    )
+                    select
+                      days.activity_date,
+                      coalesce(daily_activity.active_learners, 0)
+                    from days
+                    left join daily_activity using (activity_date)
+                    order by days.activity_date
+                    """,
+                    (instructor_id,),
+                )
+            ).fetchall()
         return DashboardSnapshot(
             courses=courses,
             attention=tuple(attention),
             total_courses=len(courses),
             published_courses=sum(course.status == "published" for course in courses),
             courses_in_review=sum(course.pending_review_count > 0 for course in courses),
-            active_learners=int(row[0]) if row else 0,
+            active_learners=int(learner_row[0]) if learner_row else 0,
+            new_learners=int(new_learner_row[0]) if new_learner_row else 0,
+            activity_history=tuple(
+                DashboardActivityPoint(
+                    date=row[0].isoformat(),
+                    active_learners=int(row[1] or 0),
+                )
+                for row in activity_rows
+            ),
         )
 
     async def create_generation_run(
@@ -767,7 +822,16 @@ class PostgresCourseOSRepository(CourseOSRepository):
                 return None
             tasks = await (
                 await conn.execute(
-                    "select * from generation_tasks where run_id = %s order by created_at",
+                    """
+                    select * from generation_tasks where run_id = %s
+                    order by array_position(
+                      array[
+                        'source_ready', 'outline', 'concept_graph',
+                        'clips', 'assessments', 'review_bundles'
+                      ],
+                      task_type
+                    ), created_at, id
+                    """,
                     (run_id,),
                 )
             ).fetchall()

@@ -53,6 +53,16 @@ async function mockCourseOS(page: Page) {
           published_courses: 0,
           courses_in_review: deleted ? 0 : 1,
           active_learners: 0,
+          new_learners: 0,
+          activity_history: [
+            { date: "2026-07-15", active_learners: 0 },
+            { date: "2026-07-16", active_learners: 1 },
+            { date: "2026-07-17", active_learners: 0 },
+            { date: "2026-07-18", active_learners: 2 },
+            { date: "2026-07-19", active_learners: 1 },
+            { date: "2026-07-20", active_learners: 3 },
+            { date: "2026-07-21", active_learners: 1 },
+          ],
         },
       });
       return;
@@ -143,7 +153,8 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(
     page.getByRole("heading", { name: /Good (morning|afternoon|evening), Ada\./ }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Worth your judgment" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Priority inbox" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Course health" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Forces and motion" })).toBeVisible();
   await expect(page.getByText("Ready to review", { exact: true })).toBeVisible();
 

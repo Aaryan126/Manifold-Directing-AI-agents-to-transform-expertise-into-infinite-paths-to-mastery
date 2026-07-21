@@ -41,6 +41,11 @@ export type DashboardSnapshot = {
   published_courses: number;
   courses_in_review: number;
   active_learners: number;
+  new_learners: number;
+  activity_history: Array<{
+    date: string;
+    active_learners: number;
+  }>;
 };
 
 export type GenerationTask = {
@@ -167,6 +172,23 @@ export function generationPhaseLabel(phase: string | null): string {
     complete: "Course published",
   };
   return phase ? labels[phase] ?? "Building your course" : "Ready when you are";
+}
+
+const generationTaskSequence = [
+  "source_ready",
+  "outline",
+  "concept_graph",
+  "clips",
+  "assessments",
+  "review_bundles",
+] as const;
+
+export function orderedGenerationTasks(tasks: GenerationTask[]): GenerationTask[] {
+  const rank = new Map<string, number>(generationTaskSequence.map((task, index) => [task, index]));
+  return [...tasks].sort(
+    (left, right) => (rank.get(left.task_type) ?? Number.MAX_SAFE_INTEGER)
+      - (rank.get(right.task_type) ?? Number.MAX_SAFE_INTEGER),
+  );
 }
 
 export function shouldHydrateGenerationRun(course: CourseSummary): boolean {

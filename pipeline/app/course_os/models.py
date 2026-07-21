@@ -75,6 +75,12 @@ class AttentionItem:
 
 
 @dataclass(frozen=True)
+class DashboardActivityPoint:
+    date: str
+    active_learners: int
+
+
+@dataclass(frozen=True)
 class DashboardSnapshot:
     courses: tuple[CourseSummary, ...]
     attention: tuple[AttentionItem, ...]
@@ -82,6 +88,8 @@ class DashboardSnapshot:
     published_courses: int
     courses_in_review: int
     active_learners: int
+    new_learners: int
+    activity_history: tuple[DashboardActivityPoint, ...]
 
 
 @dataclass(frozen=True)

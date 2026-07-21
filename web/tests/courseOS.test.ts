@@ -3,10 +3,12 @@ import {
   courseState,
   evidenceTitle,
   generationPhaseLabel,
+  orderedGenerationTasks,
   shouldHydrateGenerationRun,
   shouldCenterCreationComposer,
   studioPresentationMode,
   type CourseSummary,
+  type GenerationTask,
 } from "../app/app/course-os";
 
 const course: CourseSummary = {
@@ -40,6 +42,31 @@ describe("Course OS presentation", () => {
     expect(generationPhaseLabel("concept_graph")).toBe("Mapping concepts and prerequisites");
     expect(generationPhaseLabel("review")).toBe("Your private draft is ready");
     expect(generationPhaseLabel("complete")).toBe("Course published");
+  });
+
+  it("orders generation work from the lecture dependency to review assembly", () => {
+    const task = (task_type: string): GenerationTask => ({
+      id: task_type,
+      task_type,
+      scope_key: "course",
+      status: "queued",
+      attempts: 0,
+      max_attempts: 3,
+      output: null,
+      error_message: null,
+    });
+
+    expect(orderedGenerationTasks([
+      task("review_bundles"),
+      task("concept_graph"),
+      task("source_ready"),
+      task("outline"),
+    ]).map((item) => item.task_type)).toEqual([
+      "source_ready",
+      "outline",
+      "concept_graph",
+      "review_bundles",
+    ]);
   });
 
   it("does not hydrate a completed or cancelled run as active generation", () => {

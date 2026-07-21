@@ -7,12 +7,15 @@ import {
   ArrowRight,
   BarChart3,
   BookOpen,
+  ChevronDown,
   ChevronRight,
+  CircleAlert,
   CircleHelp,
   ClipboardCheck,
   LayoutDashboard,
   Library,
   LoaderCircle,
+  MessageCircle,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -42,6 +45,7 @@ export function TeacherDashboard() {
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteCandidate, setDeleteCandidate] = useState<CourseSummary | null>(null);
+  const [showAllAttention, setShowAllAttention] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
@@ -157,34 +161,46 @@ export function TeacherDashboard() {
 
         {loading ? <DashboardSkeleton /> : dashboard ? (
           <>
-            <section className={styles.metricRow} aria-label="Portfolio summary">
+            <section className={styles.dashboardSummaryCard} aria-label="Portfolio summary">
               <Metric label="Courses" value={dashboard.total_courses} detail={`${dashboard.published_courses} live`} icon={<BookOpen />} />
-              <Metric label="Need your review" value={dashboard.courses_in_review} detail="Private until approved" icon={<ClipboardCheck />} />
+              <Metric label="In review" value={dashboard.courses_in_review} detail="Needs approval" icon={<ClipboardCheck />} />
               <Metric label="Active learners" value={dashboard.active_learners} detail="Across published courses" icon={<Users />} />
             </section>
 
-            {dashboard.attention.length > 0 ? (
-              <section className={styles.attentionSection} aria-labelledby="attention-title">
-                <div className={styles.sectionHeading}>
+            <section className={styles.dashboardOperations} aria-label="Teacher priorities and course health">
+              <article className={styles.priorityPanel} aria-labelledby="attention-title">
+                <header>
                   <div>
-                    <h2 id="attention-title">Worth your judgment</h2>
+                    <h2 id="attention-title">Priority inbox</h2>
+                    <p>Where your judgment creates the most impact.</p>
                   </div>
-                  <span>{dashboard.attention.length} open</span>
-                </div>
-                <div className={styles.attentionGrid}>
-                  {dashboard.attention.slice(0, 3).map((item) => (
-                    <Link className={styles.attentionCard} data-urgency={item.urgency} href={`/app/courses/${item.course_id}`} key={item.id}>
-                      <span className={styles.attentionMarker} />
+                  {dashboard.attention.length > 3 ? (
+                    <button onClick={() => setShowAllAttention((current) => !current)} type="button">
+                      {showAllAttention ? "Show less" : "View all"}<ChevronRight aria-hidden="true" />
+                    </button>
+                  ) : <span>{dashboard.attention.length} open</span>}
+                </header>
+                <div className={styles.priorityList}>
+                  {dashboard.attention.length ? (showAllAttention ? dashboard.attention : dashboard.attention.slice(0, 3)).map((item) => (
+                    <Link className={styles.priorityItem} data-kind={item.kind} href={`/app/courses/${item.course_id}`} key={item.id}>
+                      <span className={styles.priorityIcon}>{attentionIcon(item.kind)}</span>
                       <span>
                         <strong>{item.title}</strong>
                         <small>{item.detail}</small>
                       </span>
-                      <ArrowRight aria-hidden="true" />
+                      <em>{attentionAction(item.kind)}</em>
+                      <ChevronRight aria-hidden="true" />
                     </Link>
-                  ))}
+                  )) : (
+                    <div className={styles.priorityEmpty}>
+                      <ClipboardCheck aria-hidden="true" />
+                      <span><strong>You’re all caught up</strong><small>New review decisions and learner signals will appear here.</small></span>
+                    </div>
+                  )}
                 </div>
-              </section>
-            ) : null}
+              </article>
+              <CourseHealth dashboard={dashboard} />
+            </section>
 
             <section className={styles.coursesSection} aria-labelledby="courses-title">
               <div className={styles.sectionHeading}>
@@ -358,6 +374,50 @@ function Metric({ label, value, detail, icon }: { label: string; value: number; 
   );
 }
 
+function CourseHealth({ dashboard }: { dashboard: DashboardSnapshot }) {
+  const highestActivity = Math.max(1, ...dashboard.activity_history.map((point) => point.active_learners));
+  const weeklyActive = Math.max(0, ...dashboard.activity_history.map((point) => point.active_learners));
+  return (
+    <article className={styles.courseHealth} aria-labelledby="course-health-title">
+      <header>
+        <div><h2 id="course-health-title">Course health</h2><p>Learner activity across published courses</p></div>
+        <span>This week<ChevronDown aria-hidden="true" /></span>
+      </header>
+      <div className={styles.healthLegend}>
+        <span><i />Peak daily learners <strong>{weeklyActive}</strong></span>
+        <span><i />New learners <strong>{dashboard.new_learners}</strong></span>
+      </div>
+      <div
+        aria-label={`Active learners over the last seven days. Peak ${weeklyActive}.`}
+        className={styles.healthChart}
+        role="img"
+      >
+        {dashboard.activity_history.map((point) => (
+          <div key={point.date}>
+            <span><i style={{ height: point.active_learners ? `${Math.max(12, (point.active_learners / highestActivity) * 100)}%` : "3px" }}><b /></i></span>
+            <small>{weekday(point.date)}</small>
+          </div>
+        ))}
+      </div>
+      <Link href="/app#courses-title">Open a course to view analytics<ArrowRight aria-hidden="true" /></Link>
+    </article>
+  );
+}
+
+function attentionIcon(kind: DashboardSnapshot["attention"][number]["kind"]) {
+  if (kind === "generation_active") return <LoaderCircle className={styles.spin} aria-hidden="true" />;
+  if (kind === "generation_failed") return <CircleAlert aria-hidden="true" />;
+  if (kind === "learner_insight") return <MessageCircle aria-hidden="true" />;
+  return <ClipboardCheck aria-hidden="true" />;
+}
+
+function attentionAction(kind: DashboardSnapshot["attention"][number]["kind"]) {
+  if (kind === "generation_active") return "Building";
+  if (kind === "generation_failed") return "Retry";
+  if (kind === "learner_insight") return "Insight";
+  return "Review";
+}
+
 function EmptyPortfolio({ onCreate, creating }: { onCreate: () => void; creating: boolean }) {
   return (
     <div className={styles.emptyPortfolio}>
@@ -381,4 +441,7 @@ function timeOfDay() {
   if (hour < 12) return "morning";
   if (hour < 18) return "afternoon";
   return "evening";
+}
+function weekday(date: string) {
+  return new Intl.DateTimeFormat("en", { weekday: "short", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
 }

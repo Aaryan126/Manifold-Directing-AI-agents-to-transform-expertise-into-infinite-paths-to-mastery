@@ -38,8 +38,10 @@ import {
   MessageSquareText,
   Paperclip,
   Pencil,
+  Plus,
   RotateCcw,
   Send,
+  SunMedium,
   Trash2,
   X,
 } from "lucide-react";
@@ -47,6 +49,7 @@ import {
 import {
   evidenceTitle,
   generationPhaseLabel,
+  orderedGenerationTasks,
   shouldHydrateGenerationRun,
   shouldCenterCreationComposer,
   studioPresentationMode,
@@ -432,27 +435,34 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     <section
       className={`${styles.conversationPanel} ${focusedCreation ? styles.creationConversation : styles.dockedConversation}`}
       data-composer-centered={composerCentered || undefined}
-      aria-labelledby="conversation-title"
+      aria-label={focusedCreation ? "Course Director" : undefined}
+      aria-labelledby={focusedCreation ? undefined : "conversation-title"}
     >
-      <div className={styles.panelHeader}>
-        <div className={styles.directorIdentity}><MessageSquareText /><span><strong id="conversation-title">Course Director</strong><small>Manifold</small></span></div>
-        {!focusedCreation ? (
+      {!focusedCreation ? (
+        <div className={styles.panelHeader}>
+          <div className={styles.directorIdentity}><MessageSquareText /><span><strong id="conversation-title">Course Director</strong><small>Manifold</small></span></div>
           <div className={styles.panelHeaderActions}>
             <button aria-label="Close Course Director" onClick={() => setDirectorOpen(false)} type="button"><X /></button>
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
+      {composerCentered ? (
+        <div className={styles.creationGreeting}>
+          <SunMedium aria-hidden="true" />
+          <h2>Good {greetingTime()}, {teacherFirstName(identity?.display_name)}.</h2>
+        </div>
+      ) : null}
       <div className={styles.messageList}>
-        {messages.map((message) => (
+        {!composerCentered ? messages.map((message) => (
           <MessageBubble
             key={message.id}
             message={message}
             proposalStates={proposalStates}
             onResolve={resolveProposal}
           />
-        ))}
+        )) : null}
 
-        {(course?.source_count ?? 0) === 0 ? (
+        {!composerCentered && (course?.source_count ?? 0) === 0 ? (
           <SourceRequest onChoose={() => fileInput.current?.click()} />
         ) : null}
 
@@ -484,14 +494,14 @@ export function CourseStudio({ courseId }: { courseId: string }) {
           placeholder={editingLocked
             ? "Ask about learner evidence, or request a private course change…"
             : (course?.source_count ?? 0) === 0
-              ? "Paste a lecture link, or tell Manifold about the course…"
+              ? (composerCentered ? "What would you like to teach? Paste a lecture link or add a file…" : "Paste a lecture link, or tell Manifold about the course…")
               : "Ask about or change this course…"}
           rows={focusedCreation ? 4 : 3}
           value={composer}
         />
         <div>
-          <button aria-label="Attach lecture" disabled={editingLocked} onClick={() => fileInput.current?.click()} type="button"><Paperclip /></button>
-          <span>Enter to send · Shift + Enter for a new line</span>
+          <button aria-label="Attach lecture" disabled={editingLocked} onClick={() => fileInput.current?.click()} type="button">{composerCentered ? <Plus /> : <Paperclip />}</button>
+          <span>{composerCentered ? null : "Enter to send · Shift + Enter for a new line"}</span>
           <button aria-label="Send message" className={styles.sendButton} disabled={!composer.trim() || sending} type="submit">
             {sending ? <LoaderCircle className={styles.spin} /> : <ArrowUp />}
           </button>
@@ -690,7 +700,7 @@ function GenerationActivity({ run, sourceLabel, onRetry }: { run: GenerationRun;
       </div>
       {active ? <div className={styles.runProgress}><i style={{ width: `${run.progress}%` }} /></div> : null}
       <ul>
-        {run.tasks.map((task) => <li data-status={task.status} key={task.id}><i />{generationPhaseLabel(task.task_type)}<span>{task.status}</span></li>)}
+        {orderedGenerationTasks(run.tasks).map((task) => <li data-status={task.status} key={task.id}><i />{generationPhaseLabel(task.task_type)}<span>{task.status}</span></li>)}
       </ul>
       {failed ? <button onClick={onRetry} type="button"><RotateCcw />Retry failed step</button> : null}
     </article>
@@ -699,6 +709,17 @@ function GenerationActivity({ run, sourceLabel, onRetry }: { run: GenerationRun;
 
 function GenerationActivityLabel({ label }: { label: string }) {
   return <article className={styles.generationActivity}><div><span><LoaderCircle className={styles.spin} /></span><div><strong>{label}</strong><small>This will continue if you leave.</small></div></div></article>;
+}
+
+function greetingTime() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "morning";
+  if (hour < 18) return "afternoon";
+  return "evening";
+}
+
+function teacherFirstName(name: string | undefined) {
+  return name?.trim().split(/\s+/)[0] || "Teacher";
 }
 
 function CanvasTab({ active, badge, icon, label, onClick }: { active: boolean; badge?: number; icon: ReactNode; label: string; onClick: () => void }) {

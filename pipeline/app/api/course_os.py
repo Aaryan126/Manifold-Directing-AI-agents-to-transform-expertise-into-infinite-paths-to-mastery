@@ -62,6 +62,11 @@ class AttentionItemResponse(BaseModel):
     urgency: str
 
 
+class DashboardActivityPointResponse(BaseModel):
+    date: str
+    active_learners: int
+
+
 class DashboardResponse(BaseModel):
     courses: list[CourseSummaryResponse]
     attention: list[AttentionItemResponse]
@@ -69,6 +74,8 @@ class DashboardResponse(BaseModel):
     published_courses: int
     courses_in_review: int
     active_learners: int
+    new_learners: int
+    activity_history: list[DashboardActivityPointResponse]
 
 
 class GenerationStartRequest(BaseModel):
@@ -480,6 +487,14 @@ def _dashboard_response(snapshot: DashboardSnapshot) -> DashboardResponse:
         published_courses=snapshot.published_courses,
         courses_in_review=snapshot.courses_in_review,
         active_learners=snapshot.active_learners,
+        new_learners=snapshot.new_learners,
+        activity_history=[
+            DashboardActivityPointResponse(
+                date=point.date,
+                active_learners=point.active_learners,
+            )
+            for point in snapshot.activity_history
+        ],
     )
 
 
