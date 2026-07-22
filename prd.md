@@ -1,0 +1,299 @@
+# PRD: Manifold — Video-Native Adaptive Learning Platform
+
+**Status:** Draft v1.0
+**Owner:** [You]
+**Last updated:** 2026-07-22
+**Companion docs:** `plan.md` (implementation phases), `implementation.md` (live build status), `AGENTS.md` (agent operating instructions)
+
+---
+
+## 1. Vision
+
+**Product:** **Manifold** — *Directing AI agents to transform expertise into infinite paths to master.*
+
+Turn any instructor's existing lecture recordings into a mastery-based, personalized course — without a curriculum team, instructional designers, or a content-authoring pipeline. The instructor supplies expertise and judgment; the system (AI agents under instructor supervision) does the structuring, sequencing, assessment, and adaptation work that would normally require a full learning-design team.
+
+**One-line pitch:** *One expert + AI agents = an adaptive course platform that used to require an institution.*
+
+**Core design tenet:** AI proposes, human decides. Every AI-generated artifact (segmentation, concept graph, clip selection, assessment, remediation logic) is presented to the instructor as an editable proposal, never shipped to learners without a review checkpoint (initial) and never silently altered based on downstream data without instructor visibility and control (ongoing, via the dashboard). Full autonomy is intentionally not a goal — the product's value proposition depends on the instructor's judgment being embedded in the system.
+
+---
+
+## 2. Problem Statement
+
+- Long-form lecture video is passive and one-size-fits-all: every learner watches the same content in the same order regardless of prior knowledge.
+- Turning raw lecture footage into a structured, adaptive course today requires instructional designers, video editors, and assessment writers — a cost and workflow only institutions can afford.
+- Independent experts, tutors, corporate trainers, and small teams have valuable recorded content (or the ability to create it) but no practical way to make it adaptive.
+- Fully AI-generated "AI tutor" products discard the instructor's actual material and expertise, which undermines trust, accuracy, and pedagogical intent — and doesn't help instructors monetize or scale *their own* teaching.
+
+## 3. Target Users
+
+### Primary: The Instructor / Subject-Matter Expert ("the operator")
+A solo expert, tutor, corporate trainer, or small teaching team with existing or newly recorded lecture video, who wants to offer an adaptive, mastery-based course without hiring a team. This is the "One Person Company" persona — this product is the team they don't have to hire.
+
+### Secondary: The Learner
+A student taking the course, who wants to reach mastery efficiently, skip what they already know, and get targeted help on what they don't.
+
+*(Note: multi-instructor org accounts, billing, and learner self-signup/marketplace flows are explicitly out of scope for this phase — see Section 11.)*
+
+---
+
+## 4. Core User Journeys
+
+### 4.1 Instructor: Course Creation
+1. Instructor enters the Teacher Command Center and opens a full-width Course Director conversation to submit one lecture file or link, with an optional audience/outcome brief. Merely opening this surface does not add an untitled shell to `Your courses`.
+2. The focused conversation remains the primary surface while a durable server-side agent run transcribes the source and prepares a complete private draft: a reviewable course title, topics, concept graph, clips, assessments, remediation, routing recommendations, and quality checks. The instructor may leave and resume later.
+3. When generation completes, the conversation yields to a full-width artifact workspace and Manifold presents bundled review for Course Structure, Learner Experience, and Publish Setup. Every consequential artifact retains Accept/Edit/Dismiss or Regenerate controls and remains unpublished until reviewed.
+4. The instructor reviews through the directly editable artifact canvas and semantic Course Map. Course Director remains available from a docked panel for questions and typed change proposals; upstream edits explicitly mark affected descendants stale and selectively regenerate them.
+5. The instructor previews and publishes the reviewed revision; learners can enroll.
+6. Later edits begin from the artifact's own pencil/add/remove control and accumulate in a private working revision. There is no global `Edit course` mode or separate Changes workspace: instructors review the edited records in context, Overview reports the unpublished-change count, and `Publish updates` preserves completed learner work while applying the new revision to future routing.
+
+### 4.2 Learner: Adaptive Learning
+1. Learner starts the course; optionally takes a placement check to skip known material.
+2. Learner watches a topic, answers the comprehension question, and rates their confidence.
+3. System routes: correct + confident → advance; correct + unsure → reinforcement clip; incorrect → prerequisite clip, alternate explanation, or misconception-specific correction.
+4. Learner's mastery state per concept is tracked continuously.
+5. Learner reaches course mastery faster than linear playback would allow.
+
+### 4.3 Instructor: Ongoing Oversight (Dashboard Loop)
+1. Instructor opens the dashboard and sees aggregate signals: where cohorts get stuck, which clips/questions underperform, where real learner data contradicts the AI's original graph/assumptions.
+2. Each signal is presented as a problem card with an AI diagnosis and explicit **Acknowledge / Dismiss / Prepare improvement** actions. Acknowledgment is evidence triage only and never mutates a course artifact.
+3. `Prepare improvement` briefs the relevant specialist to create an exact private proposal. The instructor then uses the standard **Accept AI suggestion / Edit manually / Dismiss** artifact checkpoint before the working revision changes.
+4. Changes apply going forward to new learner paths (not retroactively, by default — see Section 6.6).
+
+This closes the loop: the instructor's judgment isn't just applied once at setup, it continuously corrects the AI's model based on real-world outcomes — the mechanism that makes this feel like "one person running an institution" rather than a static course.
+
+---
+
+## 5. Human-in-the-Loop Design Principle (cross-cutting requirement)
+
+This is not a single feature — it's a constraint on every feature below. Rules:
+
+- **No AI output reaches learners without a review checkpoint on first publish** (segmentation outline, graph, questions).
+- **Every AI action taken based on downstream data (dashboard-driven changes) must be surfaced to the instructor as a proposal, not applied silently.** The one exception is the per-learner adaptive routing engine itself (Section 6.6), which must run autonomously in real time — but its *policy* (mastery thresholds, routing rules) is instructor-set and instructor-editable, not autonomous.
+- **Every "propose → review" surface uses the same interaction pattern**: `Accept AI suggestion / Edit manually / Dismiss`. This consistency is a product requirement, not just a UI nicety — it's what makes the human-in-the-loop model legible to the instructor and to anyone evaluating the product.
+- **AI-authored content remains auditable**: original proposals, evidence, and instructor actions are persisted. Rationale stays visible in high-impact graph, clip, question, and dashboard review surfaces; the Topic Outline intentionally omits proposal rationale to keep rapid boundary review focused on the generated title, summary, and timing.
+
+### 5.1 Product Interface Direction
+
+- The production interface uses one shared visual system with distinct instructor and learner workspaces; it must not remain a single long document containing every workflow.
+- The primary instructor entry is a Teacher Command Center with course portfolio, durable generation/review state, learner health, and one unified `Needs your judgment` queue. It uses a light, collapsible, viewport-fixed desktop navigation rail whose navigation, identity, and collapse controls remain visible without page scrolling; readable operational type; neutral graphite controls; and restrained orange semantic emphasis. The top operating surface is a minimal, evidence-derived portfolio situation summary plus an unlabeled but accessibly named global Manifold command composer whose visible prompt is `Ask Manifold anything…`, not decorative labels or duplicate counters. Four concise suggested commands remain on one desktop row. Each question retrieves the most relevant persisted portfolio/course signals before GPT-5.4 synthesizes a conclusion-first answer with restrained, safely rendered Markdown and without exposing internal identifiers; exact saved references remain available through a collapsed `Evidence used` disclosure rather than competing with the answer. Missing measurements are stated rather than inferred. A per-published-course radar exposes learner activity, accuracy, confidence, clip completion/drop-off, mastery movement, open issues, and the specialist currently monitoring or preparing private work; its headings use one centered alignment rule and each metric deep-links to its supporting inspector or structured artifact surface. Requested changes use the same evidence analysis to choose a target but create only private `Accept / Edit / Dismiss` proposals and never silently mutate reviewed or learner-facing content. An empty instructor sees a direct file/link creation action rather than fabricated analytics.
+- Course creation begins as an edge-to-edge white, focused Course Director conversation while the source is collected and durable specialist tasks run. The pristine state omits a redundant panel header and instructional upload stack, instead presenting a compact personalized greeting and elevated lecture prompt. After the first submission the prompt moves smoothly to the bottom working position and agent tasks render top-to-bottom in dependency order. Once the private draft is ready, a full-width structured artifact workspace becomes primary and the conversation is available on demand in a docked panel that retains its Course Director identity header. Chat is the command layer; structured artifacts remain the source of truth.
+- Source-less placeholder course shells are persistence details and never appear in `Your courses`. Submitted in-progress work remains resumable through operational attention, while only named completed private drafts and published courses enter the portfolio. Course cards support permanent deletion through a discoverable keyboard-accessible action and a separate confirmation step that clearly states the destructive scope.
+- Agents prepare the complete unpublished draft before substantial review. Provisional artifacts may feed downstream generation inside a building revision, but only accepted/edited current artifacts satisfy learner and publication gates.
+- Published course structure and evidence meet in one **Blueprint** workspace rather than separate Overview and Course Map destinations. Blueprint has Live, Design, Learner path, and Revision modes over the same selected topic/concept. Its typed relations connect topics, concepts, clips, questions, sources, sequence, prerequisites, remediation, and evidence; bounded course/topic/concept semantic zoom and an accessible outline prevent an all-node wall. React Flow remains the interaction layer and ELK.js lays out only the visible subgraph while preserving saved instructor positions.
+- Live mode is a decision cockpit, not a wall of metrics: a compact summary, at most five ranked priorities, persisted specialist activity, synchronized evidence inspection, and performance/coverage overlays on the actual course structure. `Acknowledge`/`Dismiss` resolve diagnoses without editing the course. `Prepare improvement` creates a coordinated private proposal pack; every contained artifact still uses the standard `Accept AI suggestion / Edit manually / Dismiss` checkpoint and no accept-all action exists.
+- Design mode allows direct instructor editing of inspector fields, explicit concept sequence, and prerequisite connections. Direct teacher edits are audited and automatically open a private working revision; AI-authored edits remain proposals. Learner path previews the same reviewed graph, sequence, content, assessments, and routing evidence for a cohort or selected learner. Revision shows exact private diffs. Assessments, Learner Preview, and Settings remain initially as focused bulk/deep editors reachable from Blueprint rather than independent product silos.
+- The previous `/manifold` guided studio is retained temporarily as a rollback path during parallel implementation, not as a permanent alternate mode.
+- Instructor surfaces use a calm, information-dense operational shell with persistent navigation and one primary working surface. Review queues must make status and Accept/Edit/Dismiss actions easy to scan; contextual rationale is shown where it materially supports the decision rather than occupying every review surface. Stage navigation may guide sequence but must only hard-block genuine pipeline prerequisites.
+- The concept graph is a full-canvas working surface with contextual concept/edge review tools rather than a graph embedded inside a decorative panel. Node positioning, concept creation/removal, and prerequisite connection/reconnection happen directly on that surface; removal preserves review history rather than physically deleting instructor decisions.
+- Learner surfaces prioritize a concept-driven prerequisite/current/next path, one current learning activity, an embedded assessment checkpoint, transparent route rationale, and optional concept-level mastery map. Prerequisites are hard eligibility constraints, instructor sequence breaks eligible ties, and persisted answer/confidence/mastery evidence controls remediation or reinforcement. Clips, questions, and explicitly published learner aids are presented in the active concept context rather than as disconnected lists.
+- The Phase 10 application-workspace redesign targets desktop and laptop web. Tablet and mobile layouts remain outside the instructor/learner workspace redesign scope; the public marketing landing page is a separate responsive surface and must remain usable from mobile through wide desktop.
+- Full execution stages, visual thesis, non-regression rules, and approval gates are maintained in `ui-redesign-plan.md`.
+
+---
+
+## 6. Feature Requirements
+
+### 6.1 Video Ingestion & Transcription
+- Accept video upload (mp4, mov) or a video URL (e.g. YouTube link) for ingestion.
+- Provide a one-click Manifold demo source using a repository-bundled video and its real cached timestamped transcript. The demo must reuse its completed record, avoid repeated ASR/provider spend, avoid consuming Mux storage, and then enter the same instructor review pipeline as a normal upload.
+- Generate a time-aligned transcript (word- or phrase-level timestamps required for downstream clipping).
+- Handle lectures up to at least 3 hours; process asynchronously with progress status.
+- Extract slide/screen-share text via OCR when visually present (improves segmentation and concept extraction quality) — stretch goal, not launch-blocking.
+
+### 6.2 Topic Segmentation
+- AI proposes topic boundaries (target 10–20 min per topic) based on transcript semantics (topic shift detection), not just fixed time windows.
+- Each proposed topic has: title, time range, one-paragraph AI-generated summary.
+- **HITL checkpoint:** Instructor-facing editable timeline/outline UI — merge, split, rename, drag boundaries, delete/add topics. Changes are simple, fast (target: full review of a 2-hour lecture's segmentation in under 10 minutes).
+
+### 6.3 Clip Extraction & Tagging
+- From each topic, extract reusable sub-clips tagged by type: `definition`, `worked_example`, `explanation`, `misconception_correction`, `prerequisite_recap`.
+- Each clip tagged with: source topic, concept(s) covered, difficulty level, type.
+- Clips must be independently playable (clean in/out points, no mid-sentence cuts) — this is a hard quality bar, since janky cuts undermine trust in the whole product.
+- With the local video provider, reviewed clip boundaries are materialized into zero-based MP4 assets using FFmpeg so the player timeline and media duration represent the clip itself. Source-range playback is retained only as a compatibility/failure fallback; Mux remains available behind the provider abstraction.
+- Once a reviewed topic has reviewed concept coverage, clip extraction starts automatically. Generation is pipeline work, not an instructor decision; failures expose an explicit retry without blocking review of other topics.
+- **HITL checkpoint:** lightweight clip review embedded in the topic-production workspace — the instructor spot-checks the automatically prepared, independently playable learner media without entering a duplicate clip queue. Full per-clip approval is not required because it does not scale to the "one person" story. If quality is wrong, the instructor regenerates that topic's clips; the active learner clip is replaced while historical clip records remain audit-only and excluded from routing.
+- Topic boundary, dismissal, split, merge, or concept-coverage changes must invalidate affected generated clips. Stale media is excluded from learner routing until regenerated and spot-checked in the topic workspace.
+
+### 6.4 Concept & Prerequisite Graph
+- AI extracts one to three independently assessable, routable concepts per topic and infers a directed prerequisite graph (`requires` edges) across the whole course. Repeated or near-duplicate concepts should be represented once and linked to every relevant topic.
+- Graph must support: multiple prerequisites per concept, concepts spanning multiple topics, and cross-topic prerequisite links (not just linear topic order).
+- Prerequisite inference is deliberately sparse: an edge exists only when mastery of the source is genuinely necessary before the target. Chronology, adjacency, and conceptual association alone are not prerequisite evidence. Low-confidence edges are omitted rather than presented as structure the instructor must clean up.
+- Regeneration replaces only unreviewed AI proposals. Accepted, edited, dismissed, and merged instructor decisions are durable and cannot be silently reset or resurrected by a later model run.
+- **HITL checkpoint:** Visual graph editor. Instructor can position nodes, add instructor-authored concepts, remove concepts through traceable dismissal, add/remove/re-link edges directly on the canvas, merge duplicate concepts, rename nodes, and repair the topic links attached to each concept. Topic links are explicit reviewed data because downstream clip and assessment generation requires every covered topic to have at least one reviewed concept. This is the single most important review step — instructor domain knowledge here (e.g. "my students always struggle with X before Y even though the textbook order says otherwise") materially improves personalization quality.
+- The editor defaults to active concepts grouped in topic order and provides a topic focus that retains immediate prerequisite/dependent context. Dismissed history remains explicitly available for traceability without cluttering the primary review canvas.
+- Graph must be queryable at runtime (given a learner's mastered-concept set, compute eligible next concepts) with low latency, since this is called on every learner interaction.
+
+### 6.5 Assessment Generation
+- Going forward, every active reviewed concept needs explicit assessment coverage: at least one reviewed comprehension-check question (MCQ, short answer, or worked-problem style depending on subject) plus a confidence self-rating prompt (e.g. 1–4 scale). A question has one primary concept and may intentionally cover additional concepts. Existing published revisions remain valid; Blueprint flags uncovered concepts as design debt until the relevant working revision is reviewed and published.
+- Per question: a remediation map — for each plausible wrong answer (or wrong-answer *category*, e.g. "sign error" in math), which clip/concept to route the learner to.
+- Assessment proposals are generated automatically when a reviewed topic has reviewed concept coverage and usable clips. A dismissed proposal is an instructor decision and is never silently recreated.
+- **HITL checkpoint:** a focused queue/editor provides Approve / Edit / Regenerate / Dismiss before a question goes live. Answer keys, answer choices, confidence prompts, and remediation rules remain editable, with routing and AI context collapsed by default. No question ships unapproved.
+
+### 6.6 Adaptive Learning Path Engine
+- Runs **autonomously per learner in real time** (this is the one part of the pipeline intentionally not gated by human review per-instance — see Section 5).
+- Inputs per interaction: current concept, answer correctness, confidence rating, learner's mastery history.
+- Eligibility and ordering are deterministic before evidence-based routing: all reviewed prerequisites are hard constraints, then the instructor's explicit revisioned concept sequence breaks ties among eligible concepts. Bayesian Knowledge Tracing is intentionally deferred until real calibration data exists.
+- Routing logic (instructor-configurable policy, not hardcoded):
+  - Correct + high confidence → advance to next eligible concept per graph.
+  - Correct + low confidence → reinforcement (a second example clip on the same concept) before advancing.
+  - Incorrect → route to: prerequisite clip (if a prerequisite gap is likely), alternate explanation clip (if it's a first miss), or misconception-specific correction clip (if the wrong answer matches a known misconception pattern).
+- Maintain a per-learner mastery state (per concept: not-started / struggling / practiced / mastered), used both for routing and for dashboard analytics.
+- Persist an immutable route event for every assessed transition, including the attempt, mastery before/after, action, target, explanation, evidence snapshot, and course revision.
+- Support an optional placement/diagnostic check at course start to skip already-known material.
+- Instructor-configurable policy knobs: mastery threshold definition, "allow advancing with partial understanding" vs. "require mastery" per concept, max remediation attempts before flagging to instructor. The normal interface presents graph-informed Foundation, Standard, and Applied-practice groups and a single bulk confirmation; concept-level controls remain collapsed for exceptional cases. Confirmed policy coverage is required before publishing.
+
+### 6.7 Learner Experience (Player)
+- Video player with topic/clip navigation, progress indicator per concept (not just % video watched).
+- In-line comprehension check + confidence prompt after each topic.
+- Clear "why am I seeing this" messaging when routed to a remediation/prerequisite clip (transparency builds trust — this should never feel like a punishment or a black box).
+- Learner-facing mastery map (which concepts mastered, which in progress) — motivational and orienting.
+
+### 6.8 Instructor Dashboard
+- **Cohort analytics:** fourteen-day attempt/active-learner activity, course-wide mastery-state distribution, and concept reach/struggle aggregated from persisted attempts, enrollments, and learner-concept mastery.
+- **Content performance:** answer-outcome distribution, question-level incorrect/uncertain demand, and per-clip remediation demand derived from real learner events. Do not display unsupported correlation or skip-rate claims until those events are explicitly instrumented.
+- **Model-drift signals:** flags where real learner behavior contradicts the AI's original graph/assumptions (e.g. "learners who struggle here didn't struggle with the listed prerequisite, but did struggle with concept X, which isn't linked").
+- **Problem-card interaction pattern** (used consistently across all three signal types above):
+  - Signal (what's wrong) → AI diagnosis (why, per AI) → evidence-triage actions: `Acknowledge` / `Dismiss`, plus `Prepare improvement`.
+  - `Prepare improvement` → exact private typed proposal → artifact actions: `Accept AI suggestion` / `Edit manually` / `Dismiss`.
+  - Resolving a diagnosis never mutates course content or policy by itself, and an unchanged resolved evidence fingerprint must not reopen on refresh.
+- **Direct edit actions**, reachable from a problem card or standalone:
+  - Graph: add/remove/re-link prerequisite edges (opens the same graph editor as 6.4, with a data overlay).
+  - Clips: regenerate the affected topic's learner clips; replaced/flagged historical records stay audit-only and cannot route to learners.
+  - Questions: inline edit, regenerate (AI proposes variants), or edit the remediation mapping (which wrong answer routes to which clip).
+  - Routing policy: adjust per-concept mastery/advancement policy (6.6); manually override an individual stuck learner's path.
+- Changes from the dashboard apply to future learner interactions by default; a "reprocess in-progress learners" option should exist but require explicit instructor confirmation, since it affects people mid-course.
+- Blueprint Live mode separates course-design health (coverage, structure, source alignment, assessment/clip readiness) from learner-evidence health (reach, correctness, confidence, mastery, remediation, and trends), so a new course remains useful without fabricated learner data.
+- Blueprint Design mode uses the same selected structure as Live mode for persisted graph/sequence manipulation, avoiding a separate read-only diagnostic map that drifts from its editor. Every canvas operation has an accessible outline/inspector equivalent.
+
+### 6.9 Publishing, Enrollment & Development Identity
+- Courses have an explicit draft/published state. Learners cannot enroll in or access learner content for draft courses.
+- Enrollment records link learner-role users to published courses and gate learner progress/attempt APIs.
+- The current project uses an explicit development login gate backed by persisted instructor and learner identities so complete role-specific journeys can be tested. Fixed demonstration credentials route David to the instructor Course OS and Brian to the learner Course OS, but the API still uses the development `X-User-ID` context. This is not production authentication: secure password storage, signed sessions, account recovery, account administration, and security hardening remain future work.
+
+### 6.10 Agent Runs, Review Bundles & Course Revisions
+- Agent work is persisted as resumable course-generation runs and scoped tasks with dependencies, leases, retry state, progress, and structured failures. Work continues without an open browser and resumes safely after service restart.
+- A new course accepts one initial source; instructors can add further sources later through a new working revision.
+- The initial source remains an audio/video lecture. Supplemental PDF and PPTX sources may be added to a revision as private AI context, reviewed learner resources, or both. Native text, speaker notes, page/slide visuals, and exact citations are extracted asynchronously; no supplemental source becomes learner-visible without review and publication.
+- Post-generation specialist work is persisted with the same durable status/retry expectations as generation. A specialist task may prepare multiple atomic proposals, but each proposal is independently reviewable and failure cannot leave partially applied artifacts.
+- Review is grouped into Course Structure, Learner Experience, and Publish Setup. A teacher may approve remaining unchanged items only after opening the bundle; AI never automatically approves its own output.
+- Course conversations, structured agent messages, and pending change proposals are persisted per course/revision. The Course Director may read course and learner evidence, but any mutation must become an auditable typed proposal.
+- Courses keep an active published revision and at most one working revision. Artifacts have stable logical identities across revisions so diffs and mastery migration are deterministic.
+- Publishing an update preserves immutable attempts and completed work, maps mastery for unchanged concepts, retains removed artifacts as history, initializes new concepts as not started, and applies the new revision to future learner routing.
+
+---
+
+## 7. Non-Goals / Out of Scope (this phase)
+
+Explicitly deferred — documented here so scope doesn't silently creep, and so `plan.md` can propose them as a clearly-separated future phase if/when priorities change:
+
+- Multi-tenant SaaS account management (orgs, teams, roles beyond instructor/learner).
+- Billing, payments, subscription management.
+- Public course marketplace / discovery.
+- Native mobile apps (responsive web is in scope; native iOS/Android is not).
+- Live/synchronous teaching features (this is an asynchronous, pre-recorded-video product).
+- Fully AI-generated (non-instructor-sourced) lecture content — out of scope by design, not just by phase, since it conflicts with the core value proposition (reusing real instructor content + judgment).
+
+---
+
+## 8. Ideal Tech Stack (recommendation, chosen on merit — not sponsor-constrained)
+
+| Layer | Choice | Rationale |
+|---|---|---|
+| Frontend | **Next.js (React) + TypeScript**, Tailwind CSS, shadcn/ui | Best-in-class DX for a content- and interaction-heavy app; SSR/streaming helps with video-heavy pages; large ecosystem for video players and graph visualization (e.g. React Flow for the concept graph editor). |
+| Backend (app API) | **Node.js/TypeScript**, tRPC or a typed REST layer | Type-sharing with the Next.js frontend end-to-end; good fit for the interactive dashboard/editor CRUD surface. |
+| AI/video pipeline service | **Python** (FastAPI), separate service | Python has the strongest ecosystem for transcription, ffmpeg orchestration, and ML tooling; keeping this as its own service also lets it scale/queue independently from the interactive web app. |
+| Orchestration | **Temporal** (or a simpler queue like BullMQ/Celery if complexity doesn't warrant Temporal) | The ingestion pipeline is a multi-step, long-running, retry-prone workflow (transcribe → segment → extract clips → build graph → generate assessments); a durable workflow engine avoids fragile ad-hoc job chains. |
+| LLM (reasoning: segmentation, graph-building, assessment generation, dashboard diagnosis) | **OpenAI GPT-5.4** | Long-context, strong structured-output and instruction-following performance are the key requirements here (feeding full transcripts + generating structured JSON graphs/questions). Use GPT-5.4 consistently for all LLM-powered agents unless a later architecture decision explicitly changes this. |
+| Transcription | **Whisper-class ASR** (open-weight, self-hostable, or a hosted equivalent) | Mature, accurate, word-level timestamps, cost-effective at scale. |
+| Relational data | **PostgreSQL** | Users, videos, topics, clips, questions, attempts, mastery state — standard relational shape. |
+| Graph data (concept/prerequisite graph) | **Neo4j** (or Postgres + a graph-query layer if avoiding a second datastore) | Prerequisite traversal (given mastered concepts, compute eligible next concepts) is a native graph query; a real graph DB makes this fast and the queries legible. For a leaner build, an adjacency-table-in-Postgres approach is an acceptable fallback — documented as a phase 0 decision to make explicitly, not default into. |
+| Object storage | **S3-compatible storage** | Video files, extracted clips. |
+| Video delivery | **Mux available behind the provider abstraction; local delivery active for development and the public demo** | Mux provides adaptive streaming and remains implemented with its 10-video safeguard, while the current public Render demo uses bundled/local delivery by explicit user decision. |
+| Auth / identity | **Development login gate + persisted role context** for the current project; Auth.js/Clerk remains a production option | Fixed demonstration credentials provide clear instructor/learner entry and local session routing, but the underlying `X-User-ID` context and browser storage are explicitly not production-ready authentication. |
+| Testing | **Vitest/Jest** (frontend/Node), **Pytest** (Python pipeline), **Playwright** (e2e) | Standard, well-supported per-layer. |
+| Infra | **Docker containers**, deployable to any cloud (AWS, Fly.io, Render) | Keep infra cloud-agnostic at the architecture level even if a specific cloud is chosen for deployment. |
+
+The current public demo uses Render Free for the web and pipeline services and an isolated database in the user's existing Neon Free project. This is a demonstration environment, not a production-reliability commitment: Render's free services can cold-start after idling. Provider and database credentials remain deployment secrets and are never committed.
+
+This is a recommendation, not a mandate — `implementation.md` should record the *actual* stack decisions made as the project proceeds, since real choices may reasonably diverge (e.g. choosing a hosted ASR API over self-hosted Whisper for speed of build). If the stack changes, update `implementation.md` first; `AGENTS.md` instructs the agent to keep this PRD in sync (see that file).
+
+---
+
+## 9. Data Model (high-level entities)
+
+- **User** (role: instructor | learner)
+- **Course** → has many **Video**s
+- **Video** → transcript, duration, source metadata
+- **Topic** (belongs to Video/Course; time range; title; summary)
+- **Concept** (belongs to Course; name; description)
+- **ConceptEdge** (from_concept, to_concept, relationship = `requires`)
+- **Clip** (belongs to Topic; time range within source video; type; tagged concept(s); difficulty)
+- **Question** (belongs to Topic; body; type; correct answer; confidence prompt; explicitly covers one primary and optionally additional Concepts)
+- **RemediationRule** (belongs to Question; wrong_answer_pattern → target Clip/Concept)
+- **Enrollment** (Learner ↔ Course)
+- **LearnerConceptMastery** (Learner, Concept, state: not_started/struggling/practiced/mastered, updated_at)
+- **Attempt** (Learner, Question, answer, correctness, confidence, timestamp)
+- **DashboardSignal** (type: stuck_cohort | underperforming_content | graph_drift; related entity; AI diagnosis; status: open/accepted/edited/dismissed)
+- **RoutingPolicy** (per Concept or per Course: mastery threshold rules, advancement rules)
+- **CourseSource / RevisionSource** (immutable PDF/PPTX/video source plus revision purpose, review state, and learner visibility)
+- **SourceSection / SourceCitation** (page/slide text, notes, visual summary, and exact artifact/proposal provenance)
+- **CourseAgentTask** (revision-scoped specialist work, evidence snapshot, durable status, result, and linked typed proposals)
+- **LearnerRouteEvent** (immutable Attempt-linked mastery transition, selected action/target, rationale, evidence snapshot, and revision)
+
+---
+
+## 10. Success Criteria
+
+### Product-level
+- An instructor can go from raw lecture upload to a published adaptive course with all HITL checkpoints completed, for a 2-hour lecture, in under 60 minutes of active review time (not counting async processing time).
+- The system records sufficient watch-time, routing, attempt, and mastery data to support a future controlled comparison of adaptive learning against linear playback. Demonstrating fewer watched minutes with a real learner cohort is a deferred product-validation study, not a Phase 10 engineering completion gate.
+- At least one full instructor "dashboard correction loop" (signal → accept/edit/dismiss → applied change → visible effect on subsequent learner data) is demonstrably functional end-to-end.
+
+### Technical / quality bars
+- Clip boundaries: no mid-sentence or mid-thought cuts in >95% of generated clips (human-rated sample).
+- Concept graph: instructor edit rate on first review is a *tracked metric*, not a target to minimize — the goal is a useful starting proposal, not a perfect autonomous graph. (A 0% edit rate is actually a mild red flag: it may mean instructors aren't engaging critically.)
+- Segmentation review time for a 2-hour lecture: under 10 minutes for a first-pass instructor review.
+- Assessment approval: >90% of generated questions require only light edits (not full rewrites) in normal cases, tracked as a quality signal for the generation prompts/pipeline.
+- Dashboard signal precision: manually-sampled dashboard flags should reflect real, actionable issues (not noise) at a rate the instructor finds worth their time — track dismiss-rate as an inverse quality signal.
+
+### HITL-specific (important given the hackathon/theme framing, and just good product practice)
+- Every AI-generated artifact type (segmentation, graph, clips, questions, dashboard suggestions) has a demonstrable, working `Accept / Edit / Dismiss` interaction.
+- No path exists in the product for AI-generated content to reach a learner without having passed through its defined checkpoint at least once.
+
+---
+
+## 11. Testing Strategy
+
+Full detail lives in `plan.md` (per-phase breakdown). Overall strategy:
+
+- **Unit tests** (automated, coding agent responsibility): pipeline functions (segmentation boundary logic, graph edge computation, routing policy evaluation, remediation mapping resolution), isolated from LLM calls where possible (mock/stub AI outputs for deterministic logic tests).
+- **Integration tests** (automated): full pipeline stages against fixture video/transcript data — e.g. "given this transcript, does segmentation produce topics within the target length range."
+- **AI-output quality tests** (semi-automated + human-reviewed): since LLM outputs aren't strictly deterministic, these use a rubric-based human review (or an LLM-as-judge pass as a first filter, human-verified) rather than exact-match assertions. Tracked as part of Section 10's quality bars.
+- **End-to-end tests** (automated, Playwright): critical user journeys (4.1, 4.2, 4.3) run against a test environment with fixture data.
+- **Human tests** (manual, after each implementation phase — see `plan.md`): a checklist the user runs personally to sanity-check what automated tests can't (does the segmentation *feel* right, is the graph *pedagogically* sensible, does the dashboard suggestion *actually* make sense).
+
+---
+
+## 12. Risks & Open Questions
+
+- **Video licensing/rights** for any non-instructor-owned demo content — must be clearly disclosed, not a product concern but a demo/legal one (see prior discussion).
+- **Cold-start problem**: a new course has no learner data yet, so the dashboard's data-driven signals (6.8) have nothing to work with until there's a real cohort — early-course dashboard should clearly communicate "not enough data yet" rather than show false signals.
+- **Clip quality at scale**: extraction quality depends heavily on transcript/ASR accuracy and source video audio quality — worth defining a minimum input quality bar or a "low confidence, please review manually" flag.
+- **Graph complexity ceiling**: the implemented topic focus shows a selected topic plus its immediate graph neighbors, while density limits keep generation to one to three concepts per topic. Real larger-course testing must still validate whether deeper neighborhood controls are needed.
+- **Open question**: should retroactive reprocessing (applying a dashboard-driven fix to already-in-progress learners) be a v1 feature or explicitly deferred? Current recommendation (Section 6.8): defer to explicit instructor opt-in, don't auto-apply.
+- **Deferred validation study:** whether adaptive learners reach the same mastery with fewer watched minutes than linear-playback learners requires a real cohort, comparison protocol, and analysis plan. Phase 10 provides the instrumentation, but the outcome must not be claimed from synthetic E2E/load data.
+
+---
+
+## 13. Future Roadmap (post-core-product)
+
+Documented for context, not being built now (Section 7):
+
+- Multi-tenant SaaS layer: org accounts, billing, learner marketplace/discovery.
+- Cross-course concept graph reuse (shared concept libraries across an instructor's multiple courses).
+- Peer-teaching signals (learners who've mastered a concept help explain it to others).
+- Mobile-native apps.
+- Marketplace of instructor-published courses (the actual "One Person Company" monetization layer).
+- Controlled learner-cohort evaluation comparing adaptive-path watched minutes and mastery outcomes against linear playback.
