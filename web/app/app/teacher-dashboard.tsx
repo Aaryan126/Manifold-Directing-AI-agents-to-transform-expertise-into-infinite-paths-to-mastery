@@ -441,7 +441,7 @@ function IntelligenceBrief({
     ? `learner activity held at ${latestActivity}`
     : `learner activity ${latestActivity > previousActivity ? "rose" : "fell"} from ${previousActivity} to ${latestActivity}`;
   const headline = topCourse && totalIssues > 0
-    ? `${topCourse.title} carries ${topCourse.open_issues} of ${totalIssues} open issues; ${activitySummary}.`
+    ? `${topCourse.title}: ${topCourse.open_issues} of ${totalIssues} open issues; ${activitySummary}.`
     : radar.length
       ? `No open course issues; ${activitySummary}.`
       : "Publish a course to begin monitoring learner evidence.";

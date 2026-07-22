@@ -386,7 +386,9 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   )).toBeLessThanOrEqual(1);
   await expect(page.getByRole("heading", { name: "Needs your judgment", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Course radar" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /carries 2 of 2 open issues/i })).toBeVisible();
+  const intelligenceHeadline = page.getByRole("heading", { name: /2 of 2 open issues/i });
+  await expect(intelligenceHeadline).toBeVisible();
+  expect(await intelligenceHeadline.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await expect(page.getByText("Portfolio summary", { exact: true })).toHaveCount(0);
   await expect(page.getByPlaceholder("Ask Manifold anything…")).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Clip completion" })).toBeVisible();
