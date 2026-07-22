@@ -211,6 +211,16 @@ class CourseOSRepository(ABC):
     ) -> None: ...
 
     @abstractmethod
+    async def update_blueprint_concept_topics(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        concept_id: UUID,
+        topic_ids: tuple[UUID, ...],
+    ) -> None: ...
+
+    @abstractmethod
     async def revision_diff(
         self,
         active_revision_id: UUID | None,

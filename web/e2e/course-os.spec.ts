@@ -212,6 +212,7 @@ async function mockPublishedCourseOS(page: Page) {
   const proposalDecisions: Array<{ proposal_id: string; decision: string }> = [];
   let editedConcept: { name?: string; description?: string } | null = null;
   let savedSequence: string[] = [];
+  let savedTopicIds: string[] = [];
   let workingRevisionOpen = false;
   const workingRevisionId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
   const published = {
@@ -252,6 +253,12 @@ async function mockPublishedCourseOS(page: Page) {
     }
     if (path.includes("/blueprint/concepts/") && route.request().method() === "PATCH") {
       editedConcept = JSON.parse(route.request().postData() ?? "{}") as typeof editedConcept;
+      workingRevisionOpen = true;
+      return route.fulfill({ json: publishedBlueprint(editedConcept, "working") });
+    }
+    if (path.includes("/blueprint/concepts/") && path.endsWith("/topics") && route.request().method() === "PUT") {
+      const body = JSON.parse(route.request().postData() ?? "{}") as { topic_logical_ids?: string[] };
+      savedTopicIds = body.topic_logical_ids ?? [];
       workingRevisionOpen = true;
       return route.fulfill({ json: publishedBlueprint(editedConcept, "working") });
     }
@@ -477,6 +484,7 @@ async function mockPublishedCourseOS(page: Page) {
   ) {
     const working = revisionKind === "working";
     const topicId = working ? "topic-working" : "topic-1";
+    const topicTwoId = working ? "topic-working-2" : "topic-2";
     const conceptId = working ? "concept-working" : "concept-1";
     const conceptTwoId = working ? "concept-working-2" : "concept-2";
     const clipId = working ? "clip-working" : "clip-1";
@@ -488,6 +496,7 @@ async function mockPublishedCourseOS(page: Page) {
       revision_kind: revisionKind,
       nodes: [
         { id: topicId, logical_id: "topic-logical", kind: "topic", title: "Force systems", status: "accepted", parent_id: null, metadata: {} },
+        { id: topicTwoId, logical_id: "topic-logical-2", kind: "topic", title: "Balanced systems", status: "accepted", parent_id: null, metadata: { sequence_rank: 2 } },
         { id: conceptId, logical_id: "concept-logical", kind: "concept", title: conceptEdit?.name ?? "Net force", status: "accepted", parent_id: topicId, metadata: { sequence_rank: 1, description: conceptEdit?.description ?? "Combine force vectors." } },
         { id: conceptTwoId, logical_id: "concept-logical-2", kind: "concept", title: "Balanced forces", status: "accepted", parent_id: topicId, metadata: { sequence_rank: 2, description: "Recognize equilibrium." } },
         { id: clipId, logical_id: "clip-logical", kind: "clip", title: "Vector direction", status: "accepted", parent_id: topicId, metadata: { duration_seconds: 60 } },
@@ -496,7 +505,7 @@ async function mockPublishedCourseOS(page: Page) {
       ],
       edges: [
         { id: "contains-1", source_id: topicId, target_id: conceptId, kind: "contains", status: "accepted" },
-        { id: "contains-2", source_id: topicId, target_id: conceptTwoId, kind: "contains", status: "accepted" },
+        { id: "contains-2", source_id: topicTwoId, target_id: conceptTwoId, kind: "contains", status: "accepted" },
         { id: "next-1", source_id: conceptId, target_id: conceptTwoId, kind: "next", status: "accepted" },
         { id: "teaches-1", source_id: clipId, target_id: conceptId, kind: "teaches", status: "accepted" },
         { id: "assesses-1", source_id: questionId, target_id: conceptId, kind: "assesses", status: "accepted" },
@@ -511,6 +520,7 @@ async function mockPublishedCourseOS(page: Page) {
     savedLayout: () => savedLayout,
     editedConcept: () => editedConcept,
     savedSequence: () => savedSequence,
+    savedTopicIds: () => savedTopicIds,
   };
 }
 
@@ -575,11 +585,11 @@ test("course studio exposes Blueprint, review decisions, and a mobile-safe layou
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/app/courses/${course.id}`);
 
-  await expect(page.getByRole("button", { name: "Blueprint" })).toBeVisible();
-  await page.getByRole("button", { name: "Blueprint" }).click();
-  await expect(page.getByRole("heading", { name: "Forces and motion", level: 2 })).toBeVisible();
-  await page.getByRole("button", { name: /Net force/ }).click();
-  await expect(page.getByRole("button", { name: "Vector addition", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Blueprint", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Blueprint", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Course Blueprint", level: 2 })).toBeVisible();
+  await page.getByRole("button", { name: "Net force 1 concepts" }).click();
+  await expect(page.getByText("Vector addition", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: /^Review/ }).click();
   await expect(page.getByRole("heading", { name: "Course structure" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Accept" })).toBeVisible();
@@ -610,13 +620,50 @@ test("course deletion requires a separate destructive confirmation", async ({ pa
   expect(state.deleted()).toBe(true);
 });
 
-test("published course unifies artifacts, evidence, learner path, and atomic proposals in Blueprint", async ({ page }) => {
+test("published course opens with a readable structured Blueprint", async ({ page }) => {
   const state = await mockPublishedCourseOS(page);
   const { published } = state;
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto(`/app/courses/${published.id}`);
 
-  await expect(page.getByRole("button", { name: "Blueprint" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Course Blueprint" })).toBeVisible();
+  await expect(page.getByText("See how every concept is taught, checked, and adapted—then reshape the private revision directly.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Net force.*50% correct/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Balanced forces.*Awaiting learner evidence/i })).toBeVisible();
+  await expect(page.getByTestId("rf__node-source-1")).toHaveCount(0);
+  await page.getByRole("button", { name: /Net force.*50% correct/i }).click();
+  await expect(page.getByRole("dialog", { name: /Net force artifact inspector/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Focus this concept and its connections" })).toBeVisible();
+  await page.getByRole("button", { name: "Close artifact inspector" }).click();
+  await page.getByRole("button", { name: "Dependencies" }).click();
+  await expect(page.getByTestId("rf__node-concept-1")).toBeInViewport();
+  await page.getByRole("button", { name: "Design", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Design", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const conceptOccurrence = page.getByTestId("concept-occurrence-topic-logical-concept-logical");
+  const destinationLane = page.getByTestId("topic-lane-topic-logical-2");
+  await conceptOccurrence.dragTo(destinationLane);
+  await expect(page.getByRole("heading", { name: /Place “Net force” in Balanced systems/ })).toBeVisible();
+  await page.getByRole("button", { name: "Also link here" }).click();
+  await expect.poll(() => state.savedTopicIds()).toEqual(["topic-logical", "topic-logical-2"]);
+  await conceptOccurrence.dragTo(destinationLane);
+  await page.getByRole("button", { name: "Move here" }).click();
+  await expect.poll(() => state.savedTopicIds()).toEqual(["topic-logical-2"]);
+  await expect(page.getByRole("button", { name: "Old Blueprint" })).toBeVisible();
+
+  const accessibility = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(accessibility.violations).toEqual([]);
+});
+
+test("Old Blueprint preserves the detailed free-form graph and atomic proposal workflow", async ({ page }) => {
+  const state = await mockPublishedCourseOS(page);
+  const { published } = state;
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto(`/app/courses/${published.id}`);
+
+  await expect(page.getByRole("button", { name: "Blueprint", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Old Blueprint" }).click();
   await expect(page.getByText("Structure, teaching, assessment, evidence, and routing in one inspectable model.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("dialog", { name: /artifact inspector/ })).toHaveCount(0);

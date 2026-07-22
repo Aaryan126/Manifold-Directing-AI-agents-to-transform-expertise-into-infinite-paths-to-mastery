@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   answerOutcomeSummary,
+  blueprintConceptNeighborhoodIds,
+  buildBlueprintTopicLanes,
   canPrepareImprovement,
   compareBlueprintSequence,
   courseState,
@@ -8,10 +10,12 @@ import {
   generationPhaseLabel,
   orderedGenerationTasks,
   performancePercent,
+  reorderBlueprintConcepts,
   masteryStateForConcept,
   shouldHydrateGenerationRun,
   shouldCenterCreationComposer,
   studioPresentationMode,
+  topicLogicalIdsForConcept,
   visibleBlueprintNodeIds,
   type BlueprintConceptEvidence,
   type BlueprintNode,
@@ -74,6 +78,78 @@ describe("Course OS presentation", () => {
       .map((item) => item.id)).toEqual(["concept-1", "concept-2"]);
     expect(masteryStateForConcept("concept-1", evidence)).toBe("not_started");
     expect(masteryStateForConcept("concept-2", evidence)).toBe("struggling");
+  });
+
+  it("builds topic swimlanes with shared concept aliases and artifact coverage", () => {
+    const node = (
+      id: string,
+      kind: BlueprintNode["kind"],
+      rank: number,
+    ): BlueprintNode => ({
+      id,
+      logical_id: `logical-${id}`,
+      kind,
+      title: id,
+      status: "accepted",
+      parent_id: null,
+      metadata: { sequence_rank: rank },
+    });
+    const topicA = node("topic-a", "topic", 0);
+    const topicB = node("topic-b", "topic", 1);
+    const conceptA = node("concept-a", "concept", 0);
+    const conceptB = node("concept-b", "concept", 1);
+    const clip = node("clip-a", "clip", 0);
+    const question = node("question-a", "question", 0);
+    const blueprint: CourseBlueprint = {
+      course_id: "course",
+      revision_id: "revision",
+      revision_kind: "active",
+      nodes: [topicA, topicB, conceptA, conceptB, clip, question],
+      edges: [
+        { id: "a", source_id: topicA.id, target_id: conceptA.id, kind: "contains", status: "accepted" },
+        { id: "b", source_id: topicB.id, target_id: conceptA.id, kind: "contains", status: "accepted" },
+        { id: "c", source_id: topicB.id, target_id: conceptB.id, kind: "contains", status: "accepted" },
+        { id: "d", source_id: conceptA.id, target_id: clip.id, kind: "teaches", status: "accepted" },
+        { id: "e", source_id: question.id, target_id: conceptA.id, kind: "assesses", status: "accepted" },
+      ],
+      uncovered_concept_ids: [],
+    };
+
+    const lanes = buildBlueprintTopicLanes(blueprint, []);
+
+    expect(lanes).toHaveLength(2);
+    expect(lanes[0].concepts[0]).toMatchObject({
+      id: "occurrence:logical-topic-a:logical-concept-a",
+      sharedTopicCount: 2,
+      clipCount: 1,
+      questionCount: 1,
+    });
+    expect(topicLogicalIdsForConcept(blueprint, conceptA.id)).toEqual([
+      topicA.logical_id,
+      topicB.logical_id,
+    ]);
+    expect(blueprintConceptNeighborhoodIds(blueprint, conceptA.id)).toEqual(
+      new Set([conceptA.id, topicA.id, topicB.id, clip.id, question.id]),
+    );
+  });
+
+  it("reorders a concept once even when it is represented in multiple topic lanes", () => {
+    const concept = (id: string, rank: number): BlueprintNode => ({
+      id,
+      logical_id: `logical-${id}`,
+      kind: "concept",
+      title: id,
+      status: "accepted",
+      parent_id: null,
+      metadata: { sequence_rank: rank },
+    });
+    const concepts = [concept("a", 0), concept("b", 1), concept("c", 2)];
+
+    expect(reorderBlueprintConcepts(concepts, "logical-c", "logical-b")).toEqual([
+      "logical-a",
+      "logical-c",
+      "logical-b",
+    ]);
   });
 
   it("limits a 300-concept Blueprint to the selected topic's visible neighborhood", () => {

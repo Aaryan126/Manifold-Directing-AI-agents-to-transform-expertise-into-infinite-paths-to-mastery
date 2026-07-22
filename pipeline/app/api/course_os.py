@@ -305,6 +305,10 @@ class BlueprintConceptUpdateRequest(BaseModel):
     description: str = Field(default="", max_length=4000)
 
 
+class BlueprintConceptTopicsRequest(BaseModel):
+    topic_logical_ids: list[UUID] = Field(min_length=1)
+
+
 class AssessmentRuleRequest(BaseModel):
     wrong_answer_pattern: str = Field(min_length=1, max_length=500)
     target_clip_id: UUID | None = None
@@ -706,6 +710,29 @@ async def update_blueprint_concept(
                 concept_id,
                 request.name,
                 request.description,
+            )
+        )
+    )
+
+
+@router.put(
+    "/courses/{course_id}/blueprint/concepts/{concept_id}/topics",
+    response_model=CourseBlueprintResponse,
+)
+async def update_blueprint_concept_topics(
+    course_id: UUID,
+    concept_id: UUID,
+    request: BlueprintConceptTopicsRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseBlueprintResponse:
+    return _blueprint_response(
+        await _call(
+            service.update_blueprint_concept_topics(
+                course_id,
+                user_id,
+                concept_id,
+                tuple(request.topic_logical_ids),
             )
         )
     )

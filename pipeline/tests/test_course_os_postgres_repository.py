@@ -67,6 +67,34 @@ class _RoutingDeleteConnection:
         return _Cursor()
 
 
+class _ConceptTopicConnection:
+    def __init__(
+        self,
+        concept_id: UUID,
+        concept_logical_id: UUID,
+        previous_topic: dict[str, UUID],
+        next_topics: list[dict[str, UUID]],
+    ) -> None:
+        self.concept_id = concept_id
+        self.concept_logical_id = concept_logical_id
+        self.previous_topic = previous_topic
+        self.next_topics = next_topics
+        self.statements: list[str] = []
+        self.parameters: list[object] = []
+
+    async def execute(self, query: str, parameters: object = None) -> object:
+        normalized = " ".join(query.split())
+        self.statements.append(normalized)
+        self.parameters.append(parameters)
+        if normalized.startswith("select id, logical_id from concepts"):
+            return _Cursor({"id": self.concept_id, "logical_id": self.concept_logical_id})
+        if normalized.startswith("select id, logical_id from topics"):
+            return _RowsCursor(self.next_topics)
+        if normalized.startswith("select t.id, t.logical_id from topic_concepts"):
+            return _RowsCursor([self.previous_topic])
+        return _Cursor()
+
+
 @pytest.mark.anyio
 async def test_deleting_last_override_persists_the_displayed_course_default(
     monkeypatch: pytest.MonkeyPatch,
@@ -156,3 +184,55 @@ def test_published_update_does_not_reuse_first_publication_bundle_gate() -> None
     assert _publication_blockers(readiness, is_update=False) == [
         "Review bundles have not been assembled.",
     ]
+
+
+@pytest.mark.anyio
+async def test_concept_topic_assignment_is_audited_and_invalidates_affected_clips(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    concept_id = uuid4()
+    concept_logical_id = uuid4()
+    previous_topic = {"id": uuid4(), "logical_id": uuid4()}
+    next_topics = [
+        {"id": uuid4(), "logical_id": uuid4()},
+        {"id": uuid4(), "logical_id": uuid4()},
+    ]
+    connection = _ConceptTopicConnection(
+        concept_id,
+        concept_logical_id,
+        previous_topic,
+        next_topics,
+    )
+
+    @asynccontextmanager
+    async def fake_connection(*_args: object, **_kwargs: object) -> AsyncIterator[object]:
+        yield connection
+
+    monkeypatch.setattr(repository_module, "pooled_connection", fake_connection)
+    repository = PostgresCourseOSRepository("postgresql://unused")
+
+    await repository.update_blueprint_concept_topics(
+        uuid4(),
+        uuid4(),
+        uuid4(),
+        concept_logical_id,
+        tuple(topic["logical_id"] for topic in next_topics),
+    )
+
+    assert any(
+        statement.startswith("delete from topic_concepts") for statement in connection.statements
+    )
+    assert (
+        sum(
+            statement.startswith("insert into topic_concepts")
+            for statement in connection.statements
+        )
+        == 2
+    )
+    assert any(
+        statement.startswith("update clips set status = 'superseded'")
+        for statement in connection.statements
+    )
+    assert any(
+        statement.startswith("insert into audit_events") for statement in connection.statements
+    )

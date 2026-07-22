@@ -60,6 +60,8 @@ import {
 
 import {
   answerOutcomeSummary,
+  blueprintConceptNeighborhoodIds,
+  buildBlueprintTopicLanes,
   canPrepareImprovement,
   compareBlueprintSequence,
   evidenceTitle,
@@ -70,6 +72,8 @@ import {
   shouldHydrateGenerationRun,
   shouldCenterCreationComposer,
   studioPresentationMode,
+  topicLogicalIdsForConcept,
+  reorderBlueprintConcepts,
   visibleBlueprintNodeIds,
   type CourseMap,
   type CourseAssessment,
@@ -101,7 +105,7 @@ import { ProviderVideo, type PlaybackInfo } from "../../../ProviderVideo";
 import { readDevelopmentSession } from "../../../developmentSession";
 
 const pipelineBase = process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localhost:8000";
-type CanvasView = "blueprint" | "review" | "assessments" | "preview" | "settings";
+type CanvasView = "blueprint" | "old-blueprint" | "review" | "assessments" | "preview" | "settings";
 type BlueprintMode = "live" | "design" | "learner" | "revision";
 type Decision = "accepted" | "edited" | "dismissed";
 type AssessmentDraftPayload = {
@@ -270,7 +274,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       }
       if (courseResult.status === "published") {
         setCanvasView(
-          requestedCanvasView && ["assessments", "preview", "settings"].includes(requestedCanvasView)
+          requestedCanvasView && ["blueprint", "old-blueprint", "assessments", "preview", "settings"].includes(requestedCanvasView)
             ? requestedCanvasView as CanvasView
             : "blueprint",
         );
@@ -738,6 +742,35 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     }
   }
 
+  async function updateBlueprintConceptTopics(node: BlueprintNode, topicLogicalIds: string[]) {
+    if (!identity) return;
+    setSending(true);
+    try {
+      const next = await request<CourseBlueprint>(
+        `/courses/${courseId}/blueprint/concepts/${node.logical_id}/topics`,
+        identity,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ topic_logical_ids: topicLogicalIds }),
+        },
+      );
+      setWorkingBlueprint(next);
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
+      await Promise.all([
+        refreshBlueprint(identity, nextCourse),
+        refreshArtifacts(identity),
+        refreshRevisionDiff(identity, nextCourse),
+      ]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not update the concept placement.");
+      throw caught;
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function saveBlueprintPosition(node: BlueprintNode, x: number, y: number) {
     if (!identity) return;
     try {
@@ -990,6 +1023,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
               <section className={styles.canvasPanel} aria-label="Course workspace canvas">
               <nav className={styles.canvasTabs} aria-label="Course views">
                 <CanvasTab active={canvasView === "blueprint"} icon={<Network />} label="Blueprint" onClick={() => setCanvasView("blueprint")} />
+                <CanvasTab active={canvasView === "old-blueprint"} icon={<GitFork />} label="Old Blueprint" onClick={() => setCanvasView("old-blueprint")} />
                 {course?.status !== "published" ? <CanvasTab active={canvasView === "review"} badge={course?.pending_review_count || undefined} icon={<ClipboardCheck />} label="Review" onClick={() => setCanvasView("review")} /> : null}
                 {course?.status === "published" ? <CanvasTab active={canvasView === "assessments"} icon={<Check />} label="Assessments" onClick={() => setCanvasView("assessments")} /> : null}
                 <CanvasTab active={canvasView === "preview"} icon={<Eye />} label="Preview" onClick={() => setCanvasView("preview")} />
@@ -1003,6 +1037,30 @@ export function CourseStudio({ courseId }: { courseId: string }) {
               <div className={styles.canvasBody}>
                 {canvasView === "blueprint" ? (
                   <BlueprintWorkspace
+                    activeBlueprint={activeBlueprint}
+                    agentTasks={agentTasks}
+                    blueprintEvidence={blueprintEvidence}
+                    course={course}
+                    dashboard={dashboardSummary}
+                    disabled={sending}
+                    onAddPrerequisite={createPrerequisite}
+                    onAskDirector={(node) => {
+                      setComposer(`Help me improve “${node.title}”. Trace the learner evidence and propose the smallest effective private change.`);
+                      setDirectorOpen(true);
+                    }}
+                    onLoadPack={loadAgentTaskPack}
+                    onPrepare={requestBlueprintImprovement}
+                    onResolvePrerequisite={resolvePrerequisite}
+                    onResolveProposal={resolvePackProposal}
+                    onSequence={updateBlueprintSequence}
+                    onUpdateConceptTopics={updateBlueprintConceptTopics}
+                    onUpdateConcept={updateBlueprintConcept}
+                    revisionDiff={revisionDiff}
+                    workingBlueprint={workingBlueprint}
+                  />
+                ) : null}
+                {canvasView === "old-blueprint" ? (
+                  <LegacyBlueprintWorkspace
                     activeBlueprint={activeBlueprint}
                     agentTasks={agentTasks}
                     blueprintEvidence={blueprintEvidence}
@@ -1215,7 +1273,404 @@ function blueprintModeDescription(mode: BlueprintMode) {
   return "Monitor the live course and its evidence";
 }
 
+type StructuredBlueprintLens = "course" | "focus" | "dependencies";
+type PendingConceptPlacement = {
+  concept: BlueprintNode;
+  originTopic: BlueprintNode;
+  destinationTopic: BlueprintNode;
+  targetLogicalId: string | null;
+};
+
 function BlueprintWorkspace({
+  activeBlueprint,
+  agentTasks,
+  blueprintEvidence,
+  course,
+  dashboard,
+  disabled,
+  onAddPrerequisite,
+  onAskDirector,
+  onLoadPack,
+  onPrepare,
+  onResolvePrerequisite,
+  onResolveProposal,
+  onSequence,
+  onUpdateConcept,
+  onUpdateConceptTopics,
+  revisionDiff,
+  workingBlueprint,
+}: {
+  activeBlueprint: CourseBlueprint | null;
+  agentTasks: CourseAgentTask[];
+  blueprintEvidence: BlueprintConceptEvidence[];
+  course: CourseSummary | null;
+  dashboard: DashboardSummary | null;
+  disabled: boolean;
+  onAddPrerequisite: (fromConceptId: string, toConceptId: string) => Promise<void>;
+  onAskDirector: (node: BlueprintNode) => void;
+  onLoadPack: (taskId: string) => Promise<AgentTaskPack>;
+  onPrepare: (node: BlueprintNode, neighbors: BlueprintNode[]) => Promise<void>;
+  onResolvePrerequisite: (edge: BlueprintEdge, decision: "accepted" | "dismissed") => Promise<void>;
+  onResolveProposal: (proposal: AgentTaskProposal, decision: Decision, revision?: Record<string, unknown>) => Promise<void>;
+  onSequence: (conceptIds: string[]) => Promise<void>;
+  onUpdateConcept: (node: BlueprintNode, name: string, description: string) => Promise<void>;
+  onUpdateConceptTopics: (node: BlueprintNode, topicLogicalIds: string[]) => Promise<void>;
+  revisionDiff: RevisionDiff | null;
+  workingBlueprint: CourseBlueprint | null;
+}) {
+  const [mode, setMode] = useState<BlueprintMode>(course?.status === "published" ? "live" : "design");
+  const [lens, setLens] = useState<StructuredBlueprintLens>("course");
+  const [selectedLogicalId, setSelectedLogicalId] = useState<string | null>(null);
+  const [focusTopicLogicalId, setFocusTopicLogicalId] = useState<string | null>(null);
+  const [draggedOccurrenceId, setDraggedOccurrenceId] = useState<string | null>(null);
+  const [pendingPlacement, setPendingPlacement] = useState<PendingConceptPlacement | null>(null);
+  const designMode = mode === "design";
+  const blueprint = mode === "live" || mode === "learner"
+    ? (activeBlueprint ?? workingBlueprint)
+    : (workingBlueprint ?? activeBlueprint);
+  const topics = useMemo(
+    () => blueprint?.nodes.filter((node) => node.kind === "topic").sort(compareBlueprintSequence) ?? [],
+    [blueprint],
+  );
+  const concepts = useMemo(
+    () => blueprint?.nodes.filter((node) => node.kind === "concept").sort(compareBlueprintSequence) ?? [],
+    [blueprint],
+  );
+  const lanes = useMemo(
+    () => blueprint ? buildBlueprintTopicLanes(blueprint, blueprintEvidence) : [],
+    [blueprint, blueprintEvidence],
+  );
+  const occurrences = useMemo(
+    () => lanes.flatMap((lane) => lane.concepts),
+    [lanes],
+  );
+  const selected = blueprint?.nodes.find((node) => node.logical_id === selectedLogicalId) ?? null;
+  const selectedEvidence = selected?.kind === "concept"
+    ? blueprintEvidence.find((item) => item.concept_id === selected.id) ?? null
+    : null;
+  const neighbors = selected && blueprint
+    ? blueprint.edges
+      .filter((edge) => edge.source_id === selected.id || edge.target_id === selected.id)
+      .map((edge) => blueprint.nodes.find((node) => node.id === (edge.source_id === selected.id ? edge.target_id : edge.source_id)))
+      .filter((node): node is BlueprintNode => Boolean(node))
+    : [];
+  const pendingEdges = blueprint?.edges.filter((edge) => edge.kind === "requires" && edge.status === "proposed") ?? [];
+  const coverageGaps = blueprint?.uncovered_concept_ids.length ?? 0;
+  const selectedTask = selected
+    ? agentTasks.find((task) => task.target_logical_artifact_id === selected.logical_id && task.task_type === "prepare_improvement")
+    : null;
+  const draggedOccurrence = occurrences.find((occurrence) => occurrence.id === draggedOccurrenceId) ?? null;
+
+  useEffect(() => {
+    if (selectedLogicalId && !blueprint?.nodes.some((node) => node.logical_id === selectedLogicalId)) {
+      setSelectedLogicalId(null);
+    }
+  }, [blueprint, selectedLogicalId]);
+
+  if (!blueprint) {
+    return <div className={styles.canvasEmpty}><LoaderCircle className={styles.spin} /><h2>Loading the course Blueprint</h2><p>The structure, learning evidence, and adaptive routes are being assembled.</p></div>;
+  }
+
+  const focusNodeIds = lens === "focus"
+    ? selected?.kind === "concept"
+      ? blueprintConceptNeighborhoodIds(blueprint, selected.id)
+      : visibleBlueprintNodeIds(blueprint, focusTopicLogicalId)
+    : null;
+  const dependencyBlueprint = lens === "dependencies"
+    ? {
+      ...blueprint,
+      nodes: blueprint.nodes.filter((node) => node.kind === "concept"),
+      edges: blueprint.edges.filter((edge) => edge.kind === "requires"),
+    }
+    : blueprint;
+  const dependencyNodeIds = lens === "dependencies"
+    ? new Set(dependencyBlueprint.nodes.map((node) => node.id))
+    : focusNodeIds;
+
+  async function dropConcept(
+    destinationTopic: BlueprintNode,
+    targetLogicalId: string | null,
+  ) {
+    if (!designMode || disabled || !draggedOccurrence) return;
+    setDraggedOccurrenceId(null);
+    if (draggedOccurrence.topic.logical_id === destinationTopic.logical_id) {
+      if (targetLogicalId !== draggedOccurrence.concept.logical_id) {
+        await onSequence(
+          reorderBlueprintConcepts(
+            concepts,
+            draggedOccurrence.concept.logical_id,
+            targetLogicalId,
+          ),
+        );
+      }
+      return;
+    }
+    setPendingPlacement({
+      concept: draggedOccurrence.concept,
+      originTopic: draggedOccurrence.topic,
+      destinationTopic,
+      targetLogicalId,
+    });
+  }
+
+  async function confirmPlacement(action: "link" | "move") {
+    if (!pendingPlacement || !blueprint) return;
+    const existing = topicLogicalIdsForConcept(blueprint, pendingPlacement.concept.id);
+    const nextTopics = action === "link"
+      ? Array.from(new Set([...existing, pendingPlacement.destinationTopic.logical_id]))
+      : Array.from(new Set([
+        ...existing.filter((topicId) => topicId !== pendingPlacement.originTopic.logical_id),
+        pendingPlacement.destinationTopic.logical_id,
+      ]));
+    const placement = pendingPlacement;
+    setPendingPlacement(null);
+    await onUpdateConceptTopics(placement.concept, nextTopics);
+    if (placement.targetLogicalId !== placement.concept.logical_id) {
+      await onSequence(
+        reorderBlueprintConcepts(
+          concepts,
+          placement.concept.logical_id,
+          placement.targetLogicalId,
+        ),
+      );
+    }
+  }
+
+  return (
+    <div className={styles.structuredBlueprint} data-design={designMode} data-mode={mode}>
+      <header className={styles.structuredBlueprintHeader}>
+        <div>
+          <h2>Course Blueprint</h2>
+          <p>See how every concept is taught, checked, and adapted—then reshape the private revision directly.</p>
+        </div>
+        <div className={styles.blueprintHealthSummary}>
+          <span data-tone={coverageGaps ? "warning" : "healthy"}><strong>{coverageGaps || "Complete"}</strong> {coverageGaps ? "coverage gaps" : "coverage"}</span>
+          <span><strong>{dashboard?.attempt_count ?? 0}</strong> learner attempts</span>
+          <span><strong>{revisionDiff?.changes.length ?? 0}</strong> private changes</span>
+        </div>
+      </header>
+
+      {coverageGaps || pendingEdges.length ? (
+        <div className={styles.blueprintNotice}>
+          <CircleAlert />
+          <p><strong>{coverageGaps ? `${coverageGaps} concepts need a teaching artifact or assessment.` : `${pendingEdges.length} prerequisite relationships need review.`}</strong> Everything remains private until you confirm it.</p>
+        </div>
+      ) : null}
+
+      <section className={styles.structuredBlueprintToolbar}>
+        <div>
+          <small>Blueprint mode</small>
+          <strong>{blueprintModeDescription(mode)}</strong>
+        </div>
+        <nav aria-label="Blueprint lens">
+          <button aria-pressed={lens === "course"} onClick={() => { setLens("course"); setFocusTopicLogicalId(null); }} type="button"><BookOpenCheck />Course</button>
+          <button aria-pressed={lens === "dependencies"} onClick={() => setLens("dependencies")} type="button"><GitFork />Dependencies</button>
+          {lens === "focus" ? <button aria-pressed="true" type="button"><Search />Focused</button> : null}
+        </nav>
+        <nav aria-label="Blueprint mode" className={styles.structuredModeNav}>
+          {blueprintModes.map((item) => (
+            <button
+              aria-pressed={mode === item.id}
+              key={item.id}
+              onClick={() => {
+                setMode(item.id);
+                if (item.id === "design") {
+                  setLens("course");
+                  setFocusTopicLogicalId(null);
+                }
+              }}
+              type="button"
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+      </section>
+
+      <div className={styles.structuredBlueprintBody}>
+        <nav className={styles.structuredBlueprintOutline} aria-label="Blueprint topics">
+          <button aria-current={lens === "course" ? "page" : undefined} onClick={() => { setLens("course"); setFocusTopicLogicalId(null); setSelectedLogicalId(null); }} type="button"><BookOpenCheck /><span><strong>Whole course</strong><small>{topics.length} topics · {concepts.length} concepts</small></span></button>
+          {lanes.map((lane, index) => (
+            <button aria-current={focusTopicLogicalId === lane.topic.logical_id ? "page" : undefined} key={lane.topic.id} onClick={() => { setFocusTopicLogicalId(lane.topic.logical_id); setSelectedLogicalId(lane.topic.logical_id); setLens("focus"); }} type="button"><i>{String(index + 1).padStart(2, "0")}</i><span><strong>{lane.topic.title}</strong><small>{lane.concepts.length} concepts</small></span></button>
+          ))}
+        </nav>
+
+        <section className={styles.structuredBlueprintCanvas} onClick={() => setSelectedLogicalId(null)}>
+          {mode === "learner" ? <LearnerBlueprintStrip concepts={concepts} evidence={blueprintEvidence} onSelect={(logicalId) => { setSelectedLogicalId(logicalId); setLens("focus"); }} selectedLogicalId={selectedLogicalId} /> : null}
+          {mode === "revision" ? <RevisionBlueprintSummary active={activeBlueprint} diff={revisionDiff} working={workingBlueprint} /> : null}
+          {lens === "course" ? (
+            <div className={styles.topicLaneBoard}>
+              <div className={styles.blueprintLegend} aria-label="Blueprint status legend">
+                <span><i data-tone="healthy" />Healthy</span><span><i data-tone="attention" />Needs attention</span><span><i data-tone="waiting" />Awaiting evidence</span><span><i data-tone="private" />Private change</span>
+                {designMode ? <em>Drag cards to reorder. Drop into another topic to move or link.</em> : null}
+              </div>
+              {lanes.map((lane, laneIndex) => (
+                <article
+                  className={styles.topicLane}
+                  data-drop-target={draggedOccurrence ? "true" : undefined}
+                  data-testid={`topic-lane-${lane.topic.logical_id}`}
+                  key={lane.topic.id}
+                  onDragOver={(event) => { if (designMode) event.preventDefault(); }}
+                  onDrop={(event) => { event.preventDefault(); void dropConcept(lane.topic, null); }}
+                >
+                  <header onClick={(event) => { event.stopPropagation(); setFocusTopicLogicalId(lane.topic.logical_id); setSelectedLogicalId(lane.topic.logical_id); }}>
+                    <span>{String(laneIndex + 1).padStart(2, "0")}</span>
+                    <div><h3>{lane.topic.title}</h3><p>{lane.concepts.length} concepts · {lane.concepts.reduce((total, item) => total + item.clipCount, 0)} clips · {lane.concepts.reduce((total, item) => total + item.questionCount, 0)} checks</p></div>
+                    <button aria-label={`Focus ${lane.topic.title}`} onClick={(event) => { event.stopPropagation(); setFocusTopicLogicalId(lane.topic.logical_id); setSelectedLogicalId(lane.topic.logical_id); setLens("focus"); }} type="button"><Search /></button>
+                  </header>
+                  <div className={styles.topicLaneConcepts}>
+                    {lane.concepts.map((occurrence, conceptIndex) => {
+                      const evidence = occurrence.evidence;
+                      const tone = blueprintConceptTone(occurrence.concept, evidence, blueprint.uncovered_concept_ids);
+                      return (
+                        <button
+                          className={styles.conceptBundleCard}
+                          data-selected={selectedLogicalId === occurrence.concept.logical_id}
+                          data-tone={tone}
+                          data-testid={`concept-occurrence-${lane.topic.logical_id}-${occurrence.concept.logical_id}`}
+                          draggable={designMode && !disabled}
+                          key={occurrence.id}
+                          onClick={(event) => { event.stopPropagation(); setSelectedLogicalId(occurrence.concept.logical_id); }}
+                          onDoubleClick={(event) => { event.stopPropagation(); setSelectedLogicalId(occurrence.concept.logical_id); setLens("focus"); }}
+                          onDragStart={(event) => { setDraggedOccurrenceId(occurrence.id); event.dataTransfer.effectAllowed = "move"; }}
+                          onDragEnd={() => setDraggedOccurrenceId(null)}
+                          onDragOver={(event) => { if (designMode) event.preventDefault(); }}
+                          onDrop={(event) => { event.preventDefault(); event.stopPropagation(); void dropConcept(lane.topic, occurrence.concept.logical_id); }}
+                          type="button"
+                        >
+                          <i>{conceptIndex + 1}</i>
+                          <span className={styles.conceptBundleContent}>
+                            <strong>{occurrence.concept.title}</strong>
+                            <small>{evidence?.attempts ? `${Math.round(evidence.correct_percent ?? 0)}% correct · ${evidence.touched_learners} learners` : "Awaiting learner evidence"}</small>
+                          </span>
+                          <span className={styles.conceptBundleArtifacts}>
+                            <em><Play />{occurrence.clipCount}</em><em><ClipboardCheck />{occurrence.questionCount}</em>
+                            {occurrence.sharedTopicCount > 1 ? <em title="Shared across topics"><GitFork />{occurrence.sharedTopicCount}</em> : null}
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {!lane.concepts.length ? <p className={styles.emptyTopicLane}>No concepts are assigned to this topic.</p> : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <StructuredBlueprintFlow
+              blueprint={dependencyBlueprint}
+              connectable={designMode && lens === "dependencies"}
+              evidence={blueprintEvidence}
+              onConnect={onAddPrerequisite}
+              onSelect={(node) => setSelectedLogicalId(node?.logical_id ?? null)}
+              selectedId={selected?.id ?? null}
+              visibleNodeIds={dependencyNodeIds}
+            />
+          )}
+
+          {selected ? (
+            <aside aria-label={`${selected.title} artifact inspector`} className={`${styles.blueprintInspector} ${styles.structuredBlueprintInspector}`} onClick={(event) => event.stopPropagation()} role="dialog">
+              <header><span data-kind={selected.kind}>{blueprintKindIcon(selected.kind)}</span><div><small>{selected.kind}</small><h3>{selected.title}</h3><em data-status={selected.status}>{selected.status}</em></div><button aria-label="Close artifact inspector" className={styles.inspectorClose} onClick={() => setSelectedLogicalId(null)} type="button"><X /></button></header>
+              {selected.kind === "concept" ? <ConceptEvidencePanel evidence={selectedEvidence} /> : <ArtifactCoveragePanel node={selected} neighbors={neighbors} />}
+              {designMode && selected.kind === "concept" ? <><ConceptInspectorEditor disabled={disabled} node={selected} onSave={onUpdateConcept} /><SequenceControls concepts={concepts} disabled={disabled} onChange={onSequence} selected={selected} /></> : null}
+              {selected.kind === "concept" ? <button className={styles.inspectorFocusButton} onClick={() => setLens("focus")} type="button"><Search />Focus this concept and its connections</button> : null}
+              {pendingEdges.filter((edge) => edge.source_id === selected.id || edge.target_id === selected.id).map((edge) => {
+                const other = blueprint.nodes.find((node) => node.id === (edge.source_id === selected.id ? edge.target_id : edge.source_id));
+                return <article className={styles.relationshipReview} key={edge.id}><small>Proposed prerequisite</small><strong>{edge.source_id === selected.id ? `${selected.title} → ${other?.title}` : `${other?.title} → ${selected.title}`}</strong><div><button disabled={disabled} onClick={() => void onResolvePrerequisite(edge, "dismissed")} type="button"><X />Dismiss</button><button disabled={disabled} onClick={() => void onResolvePrerequisite(edge, "accepted")} type="button"><Check />Accept</button></div></article>;
+              })}
+              <div className={styles.blueprintActions}>
+                <button onClick={() => onAskDirector(selected)} type="button"><MessageCircleMore />Ask Director</button>
+                <button disabled={disabled || Boolean(selectedTask && ["queued", "running"].includes(selectedTask.status))} onClick={() => void onPrepare(selected, neighbors)} type="button"><Wand2 />{selectedTask?.status === "waiting_review" ? "Review improvement" : "Prepare improvement"}</button>
+              </div>
+              {selectedTask ? <ProposalPack task={selectedTask} load={onLoadPack} onResolve={onResolveProposal} /> : null}
+            </aside>
+          ) : null}
+        </section>
+      </div>
+
+      {pendingPlacement ? (
+        <div className={styles.blueprintPlacementOverlay} onClick={() => setPendingPlacement(null)} role="presentation">
+          <section aria-labelledby="concept-placement-title" aria-modal="true" className={styles.blueprintPlacementDialog} onClick={(event) => event.stopPropagation()} role="dialog">
+            <span><GitFork /></span>
+            <h3 id="concept-placement-title">Place “{pendingPlacement.concept.title}” in {pendingPlacement.destinationTopic.title}?</h3>
+            <p>This is a structural change to the private revision. Choose whether the concept should remain in its current topic too.</p>
+            <div><button onClick={() => setPendingPlacement(null)} type="button">Cancel</button><button disabled={disabled} onClick={() => void confirmPlacement("link")} type="button">Also link here</button><button disabled={disabled} onClick={() => void confirmPlacement("move")} type="button">Move here</button></div>
+          </section>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function blueprintConceptTone(
+  concept: BlueprintNode,
+  evidence: BlueprintConceptEvidence | null,
+  uncoveredConceptIds: string[],
+) {
+  if (concept.status === "edited" || concept.status === "proposed") return "private";
+  if (uncoveredConceptIds.includes(concept.id) || evidence?.confident_incorrect) return "attention";
+  if (!evidence?.attempts) return "waiting";
+  if ((evidence.correct_percent ?? 0) >= 70) return "healthy";
+  return "attention";
+}
+
+function StructuredBlueprintFlow({
+  blueprint,
+  connectable,
+  evidence,
+  onConnect,
+  onSelect,
+  selectedId,
+  visibleNodeIds,
+}: {
+  blueprint: CourseBlueprint;
+  connectable: boolean;
+  evidence: BlueprintConceptEvidence[];
+  onConnect: (fromConceptId: string, toConceptId: string) => Promise<void>;
+  onSelect: (node: BlueprintNode | null) => void;
+  selectedId: string | null;
+  visibleNodeIds: Set<string> | null;
+}) {
+  const [instance, setInstance] = useState<ReactFlowInstance | null>(null);
+  const flow = useBlueprintFlow(blueprint, evidence, "learner", visibleNodeIds, selectedId, false);
+  const fitKey = `${blueprint.revision_id}:${Array.from(visibleNodeIds ?? []).sort().join(":")}`;
+  useEffect(() => {
+    if (!instance || !flow.layoutReady || !flow.nodes.length) return;
+    const frame = window.requestAnimationFrame(() => {
+      void instance.fitView({ duration: 360, maxZoom: 1.05, padding: 0.18 });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [fitKey, flow.layoutReady, flow.nodes.length, instance]);
+  return (
+    <div className={styles.structuredFlowCanvas}>
+      {!flow.layoutReady ? <div className={styles.blueprintLayoutLoading}><LoaderCircle className={styles.spin} />Arranging the learning system…</div> : null}
+      <ReactFlow
+        edges={flow.edges.map((edge) => ({ ...edge, type: "smoothstep" }))}
+        fitView
+        nodes={flow.nodes}
+        nodesConnectable={connectable}
+        nodesDraggable={false}
+        onConnect={(connection) => {
+          if (!connection.source || !connection.target || connection.source === connection.target) return;
+          const source = blueprint.nodes.find((node) => node.id === connection.source);
+          const target = blueprint.nodes.find((node) => node.id === connection.target);
+          if (source?.kind === "concept" && target?.kind === "concept") {
+            void onConnect(source.logical_id, target.logical_id);
+          }
+        }}
+        onInit={setInstance}
+        onNodeClick={(_, node) => onSelect(blueprint.nodes.find((item) => item.id === node.id) ?? null)}
+        onPaneClick={() => onSelect(null)}
+        panOnScroll
+        proOptions={{ hideAttribution: true }}
+      >
+        <Background color="#e2ded6" gap={22} size={1} />
+        <Controls showInteractive={false} />
+      </ReactFlow>
+    </div>
+  );
+}
+
+function LegacyBlueprintWorkspace({
   activeBlueprint,
   agentTasks,
   blueprintEvidence,
@@ -1452,6 +1907,7 @@ function useBlueprintFlow(
   mode: BlueprintMode,
   visibleNodeIds: Set<string> | null,
   selectedId: string | null,
+  respectSavedLayout = true,
 ) {
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [completedLayoutKey, setCompletedLayoutKey] = useState<string | null>(null);
@@ -1484,7 +1940,7 @@ function useBlueprintFlow(
       if (cancelled) return;
       setPositions(Object.fromEntries((layout.children ?? []).map((node) => {
         const artifact = visibleNodes.find((item) => item.id === node.id);
-        const saved = artifact && isRecord(artifact.metadata.layout)
+        const saved = respectSavedLayout && artifact && isRecord(artifact.metadata.layout)
           ? artifact.metadata.layout
           : null;
         return [node.id, {
@@ -1495,7 +1951,7 @@ function useBlueprintFlow(
       setCompletedLayoutKey(requestedLayoutKey);
     });
     return () => { cancelled = true; };
-  }, [mode, requestedLayoutKey, visibleEdges, visibleNodes]);
+  }, [mode, requestedLayoutKey, respectSavedLayout, visibleEdges, visibleNodes]);
 
   const layoutReady = completedLayoutKey === requestedLayoutKey;
   const nodes: Node[] = (layoutReady ? visibleNodes : []).map((node) => {

@@ -523,6 +523,31 @@ class CourseOSService:
             raise CourseOSValidationError(str(exc)) from exc
         return await self._repository.blueprint(course_id, revision_id, "working")
 
+    async def update_blueprint_concept_topics(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        concept_id: UUID,
+        topic_ids: tuple[UUID, ...],
+    ) -> CourseBlueprint:
+        if not topic_ids:
+            raise CourseOSValidationError("A concept must belong to at least one topic.")
+        if len(topic_ids) != len(set(topic_ids)):
+            raise CourseOSValidationError("Concept topic assignments cannot contain duplicates.")
+        course = await self._require_editable_course(course_id, instructor_id)
+        revision_id = _current_revision(course)
+        try:
+            await self._repository.update_blueprint_concept_topics(
+                course_id,
+                revision_id,
+                instructor_id,
+                concept_id,
+                topic_ids,
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        return await self._repository.blueprint(course_id, revision_id, "working")
+
     async def revision_diff(self, course_id: UUID, instructor_id: UUID) -> RevisionDiff:
         course = await self._require_owned_course(course_id, instructor_id)
         if course.working_revision_id is None:

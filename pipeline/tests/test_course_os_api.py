@@ -347,6 +347,43 @@ def test_blueprint_concept_edit_is_forwarded_as_private_instructor_work() -> Non
         app.dependency_overrides.clear()
 
 
+def test_blueprint_concept_topic_assignment_is_forwarded_as_private_work() -> None:
+    instructor_id = uuid4()
+    course_id = uuid4()
+    revision_id = uuid4()
+    concept_id = uuid4()
+    topic_ids = (uuid4(), uuid4())
+    service = AsyncMock()
+    service.update_blueprint_concept_topics.return_value = CourseBlueprint(
+        course_id=course_id,
+        revision_id=revision_id,
+        revision_kind="working",
+        nodes=(),
+        edges=(),
+        uncovered_concept_ids=(),
+    )
+    app.dependency_overrides[get_course_os_service] = lambda: service
+    client = TestClient(app)
+
+    try:
+        response = client.put(
+            f"/courses/{course_id}/blueprint/concepts/{concept_id}/topics",
+            headers={"X-User-ID": str(instructor_id)},
+            json={"topic_logical_ids": [str(topic_id) for topic_id in topic_ids]},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["revision_kind"] == "working"
+        service.update_blueprint_concept_topics.assert_awaited_once_with(
+            course_id,
+            instructor_id,
+            concept_id,
+            topic_ids,
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_delete_course_returns_no_content_after_confirmation_request() -> None:
     instructor_id = uuid4()
     course_id = uuid4()

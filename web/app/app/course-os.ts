@@ -611,3 +611,120 @@ export function visibleBlueprintNodeIds(
   });
   return ids;
 }
+
+export type BlueprintConceptOccurrence = {
+  id: string;
+  concept: BlueprintNode;
+  topic: BlueprintNode;
+  sharedTopicCount: number;
+  clipCount: number;
+  questionCount: number;
+  evidence: BlueprintConceptEvidence | null;
+};
+
+export type BlueprintTopicLane = {
+  topic: BlueprintNode;
+  concepts: BlueprintConceptOccurrence[];
+};
+
+export function buildBlueprintTopicLanes(
+  blueprint: CourseBlueprint,
+  evidence: BlueprintConceptEvidence[],
+): BlueprintTopicLane[] {
+  const nodeById = new Map(blueprint.nodes.map((node) => [node.id, node]));
+  const evidenceByConcept = new Map(evidence.map((item) => [item.concept_id, item]));
+  const topicIdsByConcept = new Map<string, Set<string>>();
+  const artifactCounts = new Map<string, { clips: Set<string>; questions: Set<string> }>();
+
+  blueprint.edges.forEach((edge) => {
+    if (edge.kind === "contains") {
+      const source = nodeById.get(edge.source_id);
+      const target = nodeById.get(edge.target_id);
+      if (source?.kind === "topic" && target?.kind === "concept") {
+        const topicIds = topicIdsByConcept.get(target.id) ?? new Set<string>();
+        topicIds.add(source.id);
+        topicIdsByConcept.set(target.id, topicIds);
+      }
+    }
+    const source = nodeById.get(edge.source_id);
+    const target = nodeById.get(edge.target_id);
+    const concept = source?.kind === "concept" ? source : target?.kind === "concept" ? target : null;
+    const artifact = source?.kind === "concept" ? target : source;
+    if (!concept || !artifact) return;
+    const counts = artifactCounts.get(concept.id) ?? {
+      clips: new Set<string>(),
+      questions: new Set<string>(),
+    };
+    if (artifact.kind === "clip") counts.clips.add(artifact.id);
+    if (artifact.kind === "question") counts.questions.add(artifact.id);
+    artifactCounts.set(concept.id, counts);
+  });
+
+  return blueprint.nodes
+    .filter((node) => node.kind === "topic")
+    .sort(compareBlueprintSequence)
+    .map((topic) => {
+      const concepts = blueprint.edges
+        .filter((edge) => edge.kind === "contains" && edge.source_id === topic.id)
+        .map((edge) => nodeById.get(edge.target_id))
+        .filter((node): node is BlueprintNode => node?.kind === "concept")
+        .sort(compareBlueprintSequence)
+        .map((concept) => {
+          const counts = artifactCounts.get(concept.id);
+          return {
+            id: `occurrence:${topic.logical_id}:${concept.logical_id}`,
+            concept,
+            topic,
+            sharedTopicCount: topicIdsByConcept.get(concept.id)?.size ?? 1,
+            clipCount: counts?.clips.size ?? 0,
+            questionCount: counts?.questions.size ?? 0,
+            evidence: evidenceByConcept.get(concept.id) ?? null,
+          };
+        });
+      return { topic, concepts };
+    });
+}
+
+export function topicLogicalIdsForConcept(
+  blueprint: CourseBlueprint,
+  conceptId: string,
+): string[] {
+  const topicsById = new Map(
+    blueprint.nodes
+      .filter((node) => node.kind === "topic")
+      .map((node) => [node.id, node.logical_id]),
+  );
+  return blueprint.edges
+    .filter(
+      (edge) => edge.kind === "contains"
+        && edge.target_id === conceptId
+        && topicsById.has(edge.source_id),
+    )
+    .map((edge) => topicsById.get(edge.source_id) as string);
+}
+
+export function reorderBlueprintConcepts(
+  concepts: BlueprintNode[],
+  movedLogicalId: string,
+  targetLogicalId: string | null,
+): string[] {
+  const ordered = [...concepts].sort(compareBlueprintSequence).map((concept) => concept.logical_id);
+  const withoutMoved = ordered.filter((logicalId) => logicalId !== movedLogicalId);
+  if (!targetLogicalId) return [...withoutMoved, movedLogicalId];
+  const targetIndex = withoutMoved.indexOf(targetLogicalId);
+  if (targetIndex < 0) return ordered;
+  withoutMoved.splice(targetIndex, 0, movedLogicalId);
+  return withoutMoved;
+}
+
+export function blueprintConceptNeighborhoodIds(
+  blueprint: CourseBlueprint,
+  conceptId: string,
+): Set<string> {
+  const ids = new Set<string>([conceptId]);
+  blueprint.edges.forEach((edge) => {
+    if (edge.source_id === conceptId) ids.add(edge.target_id);
+    if (edge.target_id === conceptId) ids.add(edge.source_id);
+  });
+  return ids;
+}

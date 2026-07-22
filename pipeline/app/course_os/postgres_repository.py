@@ -2391,6 +2391,152 @@ class PostgresCourseOSRepository(CourseOSRepository):
                 ),
             )
 
+    async def update_blueprint_concept_topics(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        concept_id: UUID,
+        topic_ids: tuple[UUID, ...],
+    ) -> None:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            concept = await (
+                await conn.execute(
+                    """
+                    select id, logical_id
+                    from concepts
+                    where course_id = %s and revision_id = %s
+                      and review_status <> 'dismissed'
+                      and (id = %s or logical_id = %s)
+                    limit 1
+                    """,
+                    (course_id, revision_id, concept_id, concept_id),
+                )
+            ).fetchone()
+            if concept is None:
+                raise ValueError("Concept not found in the editable revision.")
+
+            topic_rows = await (
+                await conn.execute(
+                    """
+                    select id, logical_id
+                    from topics
+                    where course_id = %s and revision_id = %s
+                      and review_status <> 'dismissed'
+                      and (id = any(%s::uuid[]) or logical_id = any(%s::uuid[]))
+                    """,
+                    (course_id, revision_id, list(topic_ids), list(topic_ids)),
+                )
+            ).fetchall()
+            topics_by_identifier: dict[UUID, Any] = {}
+            for topic in topic_rows:
+                topics_by_identifier[UUID(str(topic["id"]))] = topic
+                topics_by_identifier[UUID(str(topic["logical_id"]))] = topic
+            resolved_topics = [topics_by_identifier.get(topic_id) for topic_id in topic_ids]
+            if any(topic is None for topic in resolved_topics):
+                raise ValueError("Every topic assignment must belong to this revision.")
+
+            previous_rows = await (
+                await conn.execute(
+                    """
+                    select t.id, t.logical_id
+                    from topic_concepts tc
+                    join topics t on t.id = tc.topic_id
+                    where tc.concept_id = %s
+                    order by t.sequence_rank, t.title
+                    """,
+                    (concept["id"],),
+                )
+            ).fetchall()
+            previous_topic_ids = {UUID(str(row["id"])) for row in previous_rows}
+            previous_logical_ids = [str(row["logical_id"]) for row in previous_rows]
+            next_topic_ids = {
+                UUID(str(topic["id"])) for topic in resolved_topics if topic is not None
+            }
+            next_logical_ids = [
+                str(topic["logical_id"]) for topic in resolved_topics if topic is not None
+            ]
+
+            await conn.execute(
+                "delete from topic_concepts where concept_id = %s",
+                (concept["id"],),
+            )
+            for topic in resolved_topics:
+                assert topic is not None
+                await conn.execute(
+                    """
+                    insert into topic_concepts (topic_id, concept_id)
+                    values (%s, %s)
+                    """,
+                    (topic["id"], concept["id"]),
+                )
+
+            await conn.execute(
+                """
+                update concepts
+                set instructor_revision = coalesce(instructor_revision, '{}'::jsonb)
+                      || %s::jsonb,
+                    review_status = 'edited', approved_at = now(),
+                    dismissed_at = null, updated_at = now()
+                where id = %s
+                """,
+                (
+                    Jsonb(
+                        {
+                            "action": "edit_topic_links",
+                            "topic_logical_ids": next_logical_ids,
+                        }
+                    ),
+                    concept["id"],
+                ),
+            )
+
+            if previous_topic_ids != next_topic_ids:
+                affected_topic_ids = tuple(previous_topic_ids | next_topic_ids)
+                await conn.execute(
+                    """
+                    update clips
+                    set status = 'superseded',
+                        instructor_revision = coalesce(instructor_revision, '{}'::jsonb)
+                          || %s::jsonb,
+                        updated_at = now()
+                    where topic_id = any(%s::uuid[])
+                      and status in ('active', 'flagged')
+                    """,
+                    (
+                        Jsonb(
+                            {
+                                "action": "invalidate",
+                                "reason": "concept_topic_links_changed",
+                                "concept_logical_id": str(concept["logical_id"]),
+                            }
+                        ),
+                        list(affected_topic_ids),
+                    ),
+                )
+
+            await conn.execute(
+                """
+                insert into audit_events (
+                  course_id, actor_type, actor_id, artifact_type, artifact_id,
+                  action, source, previous_state, new_state, instructor_note,
+                  scope, revision_id
+                ) values (
+                  %s, 'instructor', %s, 'concept', %s, 'edit', 'instructor',
+                  %s::jsonb, %s::jsonb, %s, 'revision', %s
+                )
+                """,
+                (
+                    course_id,
+                    instructor_id,
+                    concept["logical_id"],
+                    Jsonb({"topic_logical_ids": previous_logical_ids}),
+                    Jsonb({"topic_logical_ids": next_logical_ids}),
+                    "Changed a concept's topic placement in Blueprint Design mode.",
+                    revision_id,
+                ),
+            )
+
     async def revision_diff(
         self,
         active_revision_id: UUID | None,
