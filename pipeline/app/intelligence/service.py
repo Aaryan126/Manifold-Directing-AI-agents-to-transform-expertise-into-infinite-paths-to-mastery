@@ -175,10 +175,10 @@ class CourseIntelligenceService:
         positions: dict[UUID, tuple[float, float]],
     ) -> None:
         course = await self._editable_course(course_id, instructor_id)
-        course_map = await self._course_os.course_map(course_id, instructor_id)
-        allowed = {node.logical_id for node in course_map.nodes}
+        blueprint = await self._course_os.blueprint(course_id, instructor_id, "working")
+        allowed = {node.logical_id for node in blueprint.nodes}
         if not set(positions).issubset(allowed):
-            raise IntelligenceValidationError("Course map layout contains an unknown artifact.")
+            raise IntelligenceValidationError("Blueprint layout contains an unknown artifact.")
         await self._repository.save_map_layout(_current_revision(course), positions)
 
     async def _editable_course(self, course_id: UUID, instructor_id: UUID) -> CourseSummary:

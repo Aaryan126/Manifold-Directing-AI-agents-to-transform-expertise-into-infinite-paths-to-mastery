@@ -1352,16 +1352,10 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 
 /* Unified adaptive Blueprint */
 .blueprintWorkspace { background: #fbfaf7; color: #202126; height: 100%; overflow: auto; }
-.blueprintHeader { align-items: flex-end; background: #fff; border-bottom: 1px solid #dedbd3; display: flex; gap: 28px; justify-content: space-between; padding: 26px 32px 22px; }
+.blueprintHeader { background: #fff; border-bottom: 1px solid #dedbd3; display: block; padding: 26px 32px 22px; }
 .blueprintHeader > div:first-child > span { color: #9a561d; font-size: 12px; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
 .blueprintHeader h2 { font-family: var(--font-display), Georgia, serif; font-size: clamp(30px, 3vw, 44px); font-weight: 500; letter-spacing: -.035em; line-height: 1.05; margin: 7px 0 6px; }
 .blueprintHeader p { color: #6f6d75; font-size: 15px; margin: 0; }
-.blueprintHeader > div:last-child { align-items: center; display: flex; gap: 12px; }
-.blueprintHeader nav { background: #f1efea; border-radius: 10px; display: flex; padding: 4px; }
-.blueprintHeader nav button { background: transparent; border: 0; border-radius: 7px; color: #67656c; font: inherit; font-size: 13px; font-weight: 700; padding: 9px 13px; }
-.blueprintHeader nav button[aria-pressed="true"] { background: #fff; box-shadow: 0 1px 4px rgb(20 20 20 / 8%); color: #202126; }
-.blueprintHeader > div:last-child > button { align-items: center; background: #fff; border: 1px solid #d8d4ca; border-radius: 9px; display: flex; gap: 8px; font: inherit; font-size: 13px; font-weight: 700; padding: 10px 12px; }
-.blueprintHeader svg { height: 17px; width: 17px; }
 .blueprintBrief { background: #fff; border-bottom: 1px solid #dedbd3; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 0 32px; }
 .blueprintBrief article { display: grid; gap: 4px; padding: 18px 22px 20px 0; }
 .blueprintBrief article + article { border-left: 1px solid #e4e1da; padding-left: 22px; }
@@ -1371,7 +1365,15 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintNotice { align-items: center; background: #fff7eb; border-bottom: 1px solid #e8c79f; color: #7b4618; display: flex; gap: 11px; padding: 11px 32px; }
 .blueprintNotice svg { flex: 0 0 auto; height: 18px; width: 18px; }
 .blueprintNotice p { font-size: 13px; margin: 0; }
-.blueprintBody { display: grid; grid-template-columns: 248px minmax(520px, 1fr) 320px; height: max(680px, calc(100dvh - 320px)); min-height: 0; }
+.blueprintMapToolbar { align-items: center; background: #fff; border-bottom: 1px solid #dedbd3; display: flex; gap: 24px; justify-content: space-between; padding: 12px 20px 12px 32px; }
+.blueprintMapToolbar > div { display: grid; gap: 2px; }
+.blueprintMapToolbar small { color: #77747b; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.blueprintMapToolbar strong { font-size: 13px; font-weight: 650; }
+.blueprintMapToolbar nav { background: #f1efea; border: 1px solid #e7e3db; border-radius: 10px; display: flex; padding: 4px; }
+.blueprintMapToolbar nav button { background: transparent; border: 0; border-radius: 7px; color: #67656c; font: inherit; font-size: 12px; font-weight: 700; padding: 8px 13px; white-space: nowrap; }
+.blueprintMapToolbar nav button:hover { color: #202126; }
+.blueprintMapToolbar nav button[aria-pressed="true"] { background: #fff; box-shadow: 0 2px 8px rgb(20 20 20 / 9%); color: #202126; }
+.blueprintBody { display: grid; grid-template-columns: 268px minmax(0, 1fr); height: max(680px, calc(100dvh - 370px)); min-height: 0; }
 .blueprintOutline { background: #f5f3ee; border-right: 1px solid #dedbd3; overflow: auto; padding: 16px 12px; }
 .blueprintOutline button { align-items: flex-start; background: transparent; border: 0; border-radius: 9px; color: #57565d; display: flex; font: inherit; gap: 10px; padding: 10px 11px; text-align: left; width: 100%; }
 .blueprintOutline button:hover,.blueprintOutline button[aria-pressed="true"],.blueprintOutline button[aria-current="true"] { background: #e9e6df; color: #1f2025; }
@@ -1388,6 +1390,8 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintOutline i[data-state="practiced"] { background: #4d68a8; }
 .blueprintCanvas { background: #fff; min-height: 0; overflow: hidden; position: relative; }
 .blueprintCanvas > :global(.react-flow) { inset: 0; position: absolute; }
+.blueprintLayoutLoading { align-items: center; color: #68666d; display: flex; font-size: 12px; gap: 9px; left: 50%; pointer-events: none; position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 6; }
+.blueprintLayoutLoading svg { height: 17px; width: 17px; }
 .blueprintFlowNode { border: 1px solid #d9d5cc !important; border-radius: 11px !important; box-shadow: 0 7px 18px rgb(33 34 38 / 5%); padding: 0 !important; }
 .blueprintNodeLabel { display: grid; gap: 5px; padding: 14px; text-align: left; }
 .blueprintNodeLabel small { font-size: 10px; font-weight: 800; letter-spacing: .05em; opacity: .72; text-transform: uppercase; }
@@ -1395,14 +1399,19 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintNodeLabel span { font-size: 11px; opacity: .72; }
 .blueprintCanvasHint { align-items: center; background: rgb(255 255 255 / 92%); border: 1px solid #dcd8d0; border-radius: 8px; bottom: 18px; box-shadow: 0 4px 14px rgb(20 20 20 / 7%); display: flex; font-size: 11px; gap: 8px; left: 50%; margin: 0; padding: 9px 12px; position: absolute; transform: translateX(-50%); z-index: 5; }
 .blueprintCanvasHint svg { height: 15px; width: 15px; }
-.blueprintInspector { background: #fff; border-left: 1px solid #dedbd3; overflow: auto; padding: 20px; }
+.blueprintInspector { animation: blueprintInspectorIn 150ms ease-out; background: #fff; border: 1px solid #d8d4cb; border-radius: 15px; box-shadow: 0 18px 48px rgb(28 29 33 / 18%); box-sizing: border-box; max-height: calc(100% - 36px); overflow: auto; padding: 20px; position: absolute; right: 18px; top: 18px; width: min(380px, calc(100% - 36px)); z-index: 10; }
 .blueprintInspector > header { align-items: flex-start; border-bottom: 1px solid #e3e0d9; display: flex; gap: 12px; padding-bottom: 17px; }
 .blueprintInspector > header > span { align-items: center; background: #f0eee9; border-radius: 9px; display: flex; height: 40px; justify-content: center; width: 40px; }
 .blueprintInspector > header > span svg { height: 19px; width: 19px; }
-.blueprintInspector > header > div { display: grid; gap: 3px; min-width: 0; }
+.blueprintInspector > header > div { display: grid; flex: 1; gap: 3px; min-width: 0; }
 .blueprintInspector > header small { color: #8b571e; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-.blueprintInspector h3 { font-size: 16px; line-height: 1.35; margin: 0; }
+.blueprintInspector h3 { font-size: 18px; line-height: 1.3; margin: 0; }
 .blueprintInspector em { color: #747179; font-size: 11px; font-style: normal; text-transform: capitalize; }
+.inspectorClose { align-items: center; background: transparent; border: 0; border-radius: 7px; color: #6f6d74; display: flex; flex: 0 0 auto; height: 30px; justify-content: center; margin: -4px -5px 0 0; padding: 0; width: 30px; }
+.inspectorClose:hover { background: #f0eee9; color: #202126; }
+.inspectorClose svg { height: 17px; width: 17px; }
+.blueprintWorkspace[data-mode="learner"] .blueprintInspector,.blueprintWorkspace[data-mode="revision"] .blueprintInspector { top: 76px; max-height: calc(100% - 94px); }
+@keyframes blueprintInspectorIn { from { opacity: 0; transform: translateY(-6px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .conceptEvidence,.artifactCoverage { border-bottom: 1px solid #e3e0d9; padding: 18px 0; }
 .conceptEvidence h4,.artifactCoverage h4 { font-size: 12px; margin: 0 0 12px; }
 .conceptEvidence > div { display: grid; gap: 6px; grid-template-columns: repeat(3, 1fr); }
@@ -1488,14 +1497,14 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .proposalPack footer svg { height: 11px; width: 11px; }
 
 @media (max-width: 1180px) {
-  .blueprintBody { grid-template-columns: 210px minmax(460px, 1fr) 285px; }
-  .blueprintHeader { align-items: flex-start; flex-direction: column; }
+  .blueprintBody { grid-template-columns: 220px minmax(0, 1fr); }
 }
 
 @media (max-width: 900px) {
   .blueprintBody { display: grid; grid-template-columns: 190px minmax(500px, 1fr); overflow-x: auto; }
-  .blueprintInspector { display: none; }
-  .blueprintHeader > div:last-child { align-items: flex-start; flex-direction: column; }
+  .blueprintMapToolbar { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .blueprintMapToolbar nav { max-width: 100%; overflow-x: auto; }
+  .blueprintInspector { right: 12px; top: 12px; width: min(350px, calc(100% - 24px)); }
   .blueprintBrief { grid-template-columns: 1fr; }
   .blueprintBrief article + article { border-left: 0; border-top: 1px solid #e4e1da; padding-left: 0; }
 }

@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 
@@ -122,7 +122,7 @@ class DashboardEvidenceReference:
 
 @dataclass(frozen=True)
 class DashboardCommandResult:
-    kind: str
+    kind: Literal["evidence", "proposal", "empty"]
     message: str
     course_id: UUID | None = None
     course_title: str | None = None

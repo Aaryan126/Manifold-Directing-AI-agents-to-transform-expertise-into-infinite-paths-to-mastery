@@ -619,6 +619,23 @@ test("published course unifies artifacts, evidence, learner path, and atomic pro
   await expect(page.getByRole("button", { name: "Blueprint" })).toBeVisible();
   await expect(page.getByText("Structure, teaching, assessment, evidence, and routing in one inspectable model.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("dialog", { name: /artifact inspector/ })).toHaveCount(0);
+  const conceptNode = page.getByTestId("rf__node-concept-1");
+  const sourceNode = page.getByTestId("rf__node-source-1");
+  await expect(conceptNode).toBeInViewport();
+  await expect(sourceNode).toBeInViewport();
+  await expect.poll(() => page.locator(".react-flow__node").evaluateAll((nodes) => {
+    const canvas = document.querySelector(".react-flow")?.getBoundingClientRect();
+    if (!canvas || !nodes.length) return false;
+    return nodes.every((node) => {
+      const rect = node.getBoundingClientRect();
+      return rect.left >= canvas.left - 1
+        && rect.right <= canvas.right + 1
+        && rect.top >= canvas.top - 1
+        && rect.bottom <= canvas.bottom + 1;
+    });
+  })).toBe(true);
+  await conceptNode.click();
   await expect(page.getByRole("heading", { name: "Net force" })).toBeVisible();
   await expect(page.getByText("50%", { exact: true })).toBeVisible();
   await expect(page.getByText("Private proposal pack")).toBeVisible();
@@ -637,12 +654,16 @@ test("published course unifies artifacts, evidence, learner path, and atomic pro
   await expect.poll(() => state.proposalDecisions.map((item) => item.decision).sort())
     .toEqual(["accepted", "dismissed", "edited"]);
   await expect(pack.getByText("0 decisions")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close artifact inspector" })).toBeVisible();
+  await page.locator(".react-flow__pane").click({ position: { x: 8, y: 8 } });
+  await expect(page.getByRole("dialog", { name: /artifact inspector/ })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Design" }).click();
+  await conceptNode.click();
   await expect(page.getByRole("heading", { name: "Net force" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit concept fields" })).toBeVisible();
-  const conceptNode = page.getByTestId("rf__node-concept-1");
   await expect(conceptNode).toHaveClass(/draggable/);
+  await expect(sourceNode).not.toHaveClass(/connectable/);
   await page.getByRole("button", { name: "Move artifact right" }).click();
   await expect.poll(() => state.savedLayout()?.positions?.[0]?.logical_artifact_id).toBe("concept-logical");
   await page.getByRole("button", { name: "Edit concept fields" }).click();
@@ -653,14 +674,14 @@ test("published course unifies artifacts, evidence, learner path, and atomic pro
   await page.getByRole("button", { name: "Move concept later" }).click();
   await expect.poll(() => state.savedSequence()).toEqual(["concept-logical-2", "concept-logical"]);
   await page.getByRole("button", { name: "Learner path" }).click();
-  await expect(page.getByText("Learner journey")).toBeVisible();
+  await expect(page.getByText("Learner journey", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Net force" })).toBeVisible();
   await page.getByRole("button", { name: "Revision" }).click();
   await expect(page.getByText("Private revision open", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Net force vectors" })).toBeVisible();
   await expect(page.getByText(/to review/i)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Publish updates" })).toBeEnabled();
-  await page.getByRole("button", { name: /1 sources/ }).click();
+  await page.getByRole("button", { name: /sources.*1/i }).click();
   await expect(page.getByRole("heading", { name: "Sources & materials" })).toBeVisible();
   await expect(page.getByLabel("Course sources", { exact: true }).getByText("Force diagrams.pdf")).toBeVisible();
   await page.getByRole("button", { name: "Close course sources" }).click();

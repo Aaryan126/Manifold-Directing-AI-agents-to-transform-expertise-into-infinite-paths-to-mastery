@@ -1887,6 +1887,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
                         "difficulty": row["difficulty"],
                         "start_seconds": float(row["start_seconds"]),
                         "end_seconds": float(row["end_seconds"]),
+                        "layout": layout.get(logical_id),
                     },
                 )
             )
@@ -1908,6 +1909,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
                         "primary_concept_id": (
                             str(row["primary_concept_id"]) if row["primary_concept_id"] else None
                         ),
+                        "layout": layout.get(logical_id),
                     },
                 )
             )
@@ -1928,6 +1930,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
                         "purpose": str(row["purpose"]),
                         "learner_visible": bool(row["learner_visible"]),
                         "extraction_status": str(row["extraction_status"]),
+                        "layout": layout.get(logical_id),
                     },
                 )
             )
