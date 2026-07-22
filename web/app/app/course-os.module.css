@@ -239,7 +239,7 @@
 }
 
 .dashboardHeader {
-  align-items: flex-end;
+  align-items: center;
   display: flex;
   gap: 30px;
   justify-content: space-between;
@@ -313,7 +313,14 @@
 .commandResultCopy > div { align-items: center; display: flex; gap: 9px; }
 .commandResultCopy > div > strong { color: #222228; font-size: 13px; }
 .commandResultCopy > div > span { border-left: 1px solid #d7d4cd; color: #74727a; font-size: 10px; padding-left: 9px; }
-.commandResult p { color: #4f4e55; font-size: 13px; line-height: 1.55; margin: 0; }
+.commandMarkdown { color: #444349; font-size: 15px; line-height: 1.58; }
+.commandMarkdown > :first-child { margin-top: 0; }
+.commandMarkdown > :last-child { margin-bottom: 0; }
+.commandMarkdown p { margin: 0 0 8px; }
+.commandMarkdown strong { color: #24242a; font-weight: 700; }
+.commandMarkdown ul,
+.commandMarkdown ol { display: grid; gap: 4px; margin: 8px 0; padding-left: 20px; }
+.commandMarkdown li { padding-left: 2px; }
 .commandResult a { align-items: center; border: 1px solid #d8d5ce; border-radius: 8px; color: #35343a; display: flex; flex: none; font-size: 11px; font-weight: 680; gap: 6px; min-height: 34px; padding: 0 11px; text-decoration: none; white-space: nowrap; }
 .commandResult a:hover { background: #f2f0eb; border-color: #c5c1b9; }
 .commandResult a svg { height: 15px; width: 15px; }
@@ -449,6 +456,7 @@
 .radarRow { align-items: stretch; display: grid; grid-template-columns: minmax(230px, 1.55fr) 135px repeat(4, minmax(112px, .78fr)) 96px minmax(155px, 1fr); }
 .radarTableHead { background: #f7f6f2; border-block: 1px solid #ebe8e1; color: #65636a; font-size: 10px; font-weight: 720; letter-spacing: .045em; text-transform: uppercase; }
 .radarTableHead span { align-items: center; display: flex; justify-content: center; line-height: 1.25; min-height: 44px; padding: 9px 12px; text-align: center; }
+.radarTableHead span:last-child { justify-content: center; text-align: center; width: 100%; }
 .radarRow { border-bottom: 1px solid #efede8; min-height: 104px; }
 .radarRow:last-child { border-bottom: 0; }
 .radarRow > a { border-right: 1px solid #f0eee9; color: inherit; min-width: 0; text-decoration: none; }

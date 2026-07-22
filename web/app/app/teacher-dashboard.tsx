@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import ReactMarkdown from "react-markdown";
 import {
   Activity,
   ArrowUpRight,
@@ -462,7 +463,7 @@ function IntelligenceBrief({
             autoComplete="off"
             id="dashboard-command"
             onChange={(event) => onChange(event.target.value)}
-            placeholder="Ask about your courses or request a change…"
+            placeholder="Ask Manifold anything…"
             value={command}
           />
           <button aria-label="Ask Manifold" disabled={commanding || !command.trim()} type="submit">
@@ -486,7 +487,9 @@ function IntelligenceBrief({
                   ? "Awaiting your review"
                   : `${result.searched_course_count} course${result.searched_course_count === 1 ? "" : "s"} checked`}</span>
               </div>
-              <p>{result.message}</p>
+              <div aria-label="Manifold answer" className={styles.commandMarkdown}>
+                <ReactMarkdown>{result.message}</ReactMarkdown>
+              </div>
             </div>
             {result.course_id && result.action_label ? (
               <Link href={`/app/courses/${result.course_id}`}>{result.action_label}<ArrowUpRight aria-hidden="true" /></Link>

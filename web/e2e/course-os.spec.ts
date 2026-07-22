@@ -42,7 +42,7 @@ async function mockCourseOS(page: Page) {
       await route.fulfill({
         json: {
           kind: "evidence",
-          message: "Forces and motion has 2 confident-but-incorrect attempts.",
+          message: "**Forces and motion** has 2 confident-but-incorrect attempts.",
           course_id: course.id,
           course_title: course.title,
           action_label: "Inspect evidence",
@@ -376,15 +376,28 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(
     page.getByRole("heading", { name: /Good (morning|afternoon|evening), Ada\./ }),
   ).toBeVisible();
+  const greetingBlock = await page.getByRole("heading", { name: /Good (morning|afternoon|evening), Ada\./ }).locator("..").boundingBox();
+  const newCourseButton = await page.getByRole("button", { name: "New course" }).boundingBox();
+  expect(greetingBlock).not.toBeNull();
+  expect(newCourseButton).not.toBeNull();
+  expect(Math.abs(
+    (greetingBlock!.y + greetingBlock!.height / 2)
+      - (newCourseButton!.y + newCourseButton!.height / 2),
+  )).toBeLessThanOrEqual(1);
   await expect(page.getByRole("heading", { name: "Needs your judgment", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Course radar" })).toBeVisible();
   await expect(page.getByRole("heading", { name: /carries 2 of 2 open issues/i })).toBeVisible();
   await expect(page.getByText("Portfolio summary", { exact: true })).toHaveCount(0);
+  await expect(page.getByPlaceholder("Ask Manifold anything…")).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Clip completion" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Agent" })).toHaveCSS("text-align", "center");
   await expect(page.getByLabel("Suggested commands").getByRole("button")).toHaveCount(4);
   await page.getByRole("button", { name: "Find confident misconceptions" }).click();
   await page.getByRole("button", { name: "Ask Manifold" }).click();
   await expect(page.getByText("Forces and motion has 2 confident-but-incorrect attempts.")).toBeVisible();
+  await expect(
+    page.getByLabel("Manifold answer").getByText("Forces and motion", { exact: true }),
+  ).toHaveCSS("font-weight", "700");
   await page.getByText("Evidence used", { exact: true }).click();
   await expect(page.getByRole("list", { name: "Evidence used" })).toContainText("Confident but incorrect");
   const dashboardAccessibility = await new AxeBuilder({ page })
