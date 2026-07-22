@@ -41,7 +41,7 @@ class _EvidenceRecord:
 
 class _CommandOutput(BaseModel):
     intent: Literal["question", "change_request"]
-    answer: str = Field(min_length=1, max_length=900)
+    answer: str = Field(min_length=1, max_length=360)
     target_course_id: str | None = None
     evidence_ids: list[str] = Field(default_factory=list, max_length=8)
     action_label: str | None = Field(default=None, max_length=60)
@@ -72,7 +72,11 @@ class OpenAIDashboardAssistant:
                         "A change request is only a private proposal and must not imply that a "
                         "live "
                         "course changed. Cite the evidence IDs that directly support the answer. "
-                        "Prefer a concise conclusion with exact course names and measurements."
+                        "Write at most two short sentences and 45 words. Lead with the practical "
+                        "conclusion, then the most important supporting fact. Never mention "
+                        "database IDs, raw record IDs, unchanged zero-value details, or enumerate "
+                        "every course when a portfolio-level comparison is enough. The interface "
+                        "shows the cited evidence separately."
                     ),
                 },
                 {

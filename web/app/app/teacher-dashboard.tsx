@@ -409,10 +409,9 @@ function ConfirmDeleteDialog({
 
 const suggestedCommands = [
   "What changed since yesterday?",
-  "Where are learners confident but incorrect?",
-  "Prepare improvements for my weakest topic.",
-  "Find clips with high drop-off.",
-  "Compare confidence across my courses.",
+  "Find confident misconceptions",
+  "Improve my weakest topic",
+  "Find high-drop-off clips",
 ];
 
 function IntelligenceBrief({
@@ -480,24 +479,36 @@ function IntelligenceBrief({
       {result ? (
         <div className={styles.commandResult} data-kind={result.kind} role="status">
           <div className={styles.commandResultSummary}>
-            <p>
-              <strong>{result.kind === "proposal" ? "Private proposal prepared" : `Manifold searched ${result.searched_course_count} course${result.searched_course_count === 1 ? "" : "s"}`}</strong>
-              {result.message}
-            </p>
+            <div className={styles.commandResultCopy}>
+              <div>
+                <strong>{result.kind === "proposal" ? "Private proposal" : "Manifold"}</strong>
+                <span>{result.kind === "proposal"
+                  ? "Awaiting your review"
+                  : `${result.searched_course_count} course${result.searched_course_count === 1 ? "" : "s"} checked`}</span>
+              </div>
+              <p>{result.message}</p>
+            </div>
             {result.course_id && result.action_label ? (
               <Link href={`/app/courses/${result.course_id}`}>{result.action_label}<ArrowUpRight aria-hidden="true" /></Link>
             ) : null}
           </div>
           {result.evidence?.length ? (
-            <ul className={styles.commandEvidence} aria-label="Evidence used">
-              {result.evidence.map((item) => (
-                <li key={item.id}>
-                  <span>{item.course_title ?? "Portfolio"}</span>
-                  <strong>{item.label}</strong>
-                  <small>{item.value}</small>
-                </li>
-              ))}
-            </ul>
+            <details className={styles.commandEvidence}>
+              <summary>
+                <span>Evidence used</span>
+                <small>{result.evidence.length} saved signal{result.evidence.length === 1 ? "" : "s"}</small>
+                <ChevronRight aria-hidden="true" />
+              </summary>
+              <ul aria-label="Evidence used">
+                {result.evidence.map((item) => (
+                  <li key={item.id}>
+                    <span>{item.course_title ?? "Portfolio"}</span>
+                    <strong>{item.label}</strong>
+                    <small>{item.value}</small>
+                  </li>
+                ))}
+              </ul>
+            </details>
           ) : null}
         </div>
       ) : null}

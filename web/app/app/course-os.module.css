@@ -302,23 +302,34 @@
 .dashboardCommand > div:first-of-type > button { align-items: center; background: #202127; border: 0; border-radius: 8px; color: white; cursor: pointer; display: flex; height: 44px; justify-content: center; width: 44px; }
 .dashboardCommand > div:first-of-type > button:disabled { cursor: default; opacity: .35; }
 .dashboardCommand svg { height: 18px; width: 18px; }
-.commandSuggestions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
-.commandSuggestions button { background: #fff; border: 1px solid #e1ded7; border-radius: 999px; color: #65636a; cursor: pointer; font: inherit; font-size: 11px; padding: 7px 11px; }
+.commandSuggestions { display: grid; gap: 7px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 10px; }
+.commandSuggestions button { background: #fff; border: 1px solid #e1ded7; border-radius: 999px; color: #65636a; cursor: pointer; font: inherit; font-size: 11px; overflow: hidden; padding: 7px 11px; text-overflow: ellipsis; white-space: nowrap; }
 .commandSuggestions button:hover { background: #f7f5f1; border-color: #c8c4bc; color: #28282e; }
 .commandError { color: #a33e32; font-size: 13px; margin: 14px 0 0; }
-.commandResult { background: #f5f7f2; border: 1px solid #d9e2d3; border-radius: 10px; margin: 14px 0 0; max-width: 1120px; padding: 15px; }
-.commandResult[data-kind="proposal"] { background: #fff8f0; border-color: #ead5bd; }
-.commandResultSummary { align-items: center; display: flex; gap: 18px; justify-content: space-between; }
-.commandResult p { color: #5e5c63; display: grid; font-size: 12px; gap: 3px; line-height: 1.5; margin: 0; }
-.commandResult strong { color: #26262c; font-size: 13px; }
-.commandResult a { align-items: center; color: #3b3a40; display: flex; font-size: 12px; font-weight: 680; gap: 6px; text-decoration: none; }
+.commandResult { background: #fbfaf7; border: 1px solid #dedbd4; border-radius: 10px; margin: 14px 0 0; max-width: 1120px; overflow: hidden; }
+.commandResult[data-kind="proposal"] { background: #fffaf4; border-color: #e6d8c7; }
+.commandResultSummary { align-items: flex-start; display: flex; gap: 28px; justify-content: space-between; padding: 18px 20px; }
+.commandResultCopy { display: grid; gap: 10px; max-width: 820px; min-width: 0; }
+.commandResultCopy > div { align-items: center; display: flex; gap: 9px; }
+.commandResultCopy > div > strong { color: #222228; font-size: 13px; }
+.commandResultCopy > div > span { border-left: 1px solid #d7d4cd; color: #74727a; font-size: 10px; padding-left: 9px; }
+.commandResult p { color: #4f4e55; font-size: 13px; line-height: 1.55; margin: 0; }
+.commandResult a { align-items: center; border: 1px solid #d8d5ce; border-radius: 8px; color: #35343a; display: flex; flex: none; font-size: 11px; font-weight: 680; gap: 6px; min-height: 34px; padding: 0 11px; text-decoration: none; white-space: nowrap; }
+.commandResult a:hover { background: #f2f0eb; border-color: #c5c1b9; }
 .commandResult a svg { height: 15px; width: 15px; }
-.commandEvidence { display: flex; flex-wrap: wrap; gap: 7px; list-style: none; margin: 13px 0 0; padding: 0; }
-.commandEvidence li { background: rgb(255 255 255 / 72%); border: 1px solid #dfe5da; border-radius: 8px; display: grid; gap: 2px; min-width: 150px; padding: 8px 10px; }
-.commandResult[data-kind="proposal"] .commandEvidence li { border-color: #eadbc9; }
-.commandEvidence span { color: #66646b; font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.commandEvidence strong { font-size: 10px; }
-.commandEvidence small { color: #4f4e54; font-size: 11px; }
+.commandEvidence { border-top: 1px solid #e4e1da; }
+.commandEvidence summary { align-items: center; color: #4b4a50; cursor: pointer; display: flex; gap: 8px; list-style: none; min-height: 42px; padding: 0 20px; }
+.commandEvidence summary::-webkit-details-marker { display: none; }
+.commandEvidence summary > span { font-size: 11px; font-weight: 680; }
+.commandEvidence summary > small { color: #68666d; font-size: 10px; }
+.commandEvidence summary > svg { height: 14px; margin-left: auto; transition: transform 150ms ease; width: 14px; }
+.commandEvidence[open] summary > svg { transform: rotate(90deg); }
+.commandEvidence ul { border-top: 1px solid #ebe8e1; list-style: none; margin: 0; padding: 0 20px 10px; }
+.commandEvidence li { align-items: center; border-bottom: 1px solid #ebe8e1; display: grid; gap: 16px; grid-template-columns: minmax(140px, .8fr) minmax(160px, 1fr) minmax(200px, 1.35fr); min-height: 42px; }
+.commandEvidence li:last-child { border-bottom: 0; }
+.commandEvidence li > span { color: #67656c; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commandEvidence li > strong { color: #38373d; font-size: 11px; }
+.commandEvidence li > small { color: #57565d; font-size: 11px; }
 
 .coursesSection { margin-top: 48px; }
 
@@ -438,7 +449,6 @@
 .radarRow { align-items: stretch; display: grid; grid-template-columns: minmax(230px, 1.55fr) 135px repeat(4, minmax(112px, .78fr)) 96px minmax(155px, 1fr); }
 .radarTableHead { background: #f7f6f2; border-block: 1px solid #ebe8e1; color: #65636a; font-size: 10px; font-weight: 720; letter-spacing: .045em; text-transform: uppercase; }
 .radarTableHead span { align-items: center; display: flex; justify-content: center; line-height: 1.25; min-height: 44px; padding: 9px 12px; text-align: center; }
-.radarTableHead span:first-child,.radarTableHead span:last-child { justify-content: flex-start; text-align: left; }
 .radarRow { border-bottom: 1px solid #efede8; min-height: 104px; }
 .radarRow:last-child { border-bottom: 0; }
 .radarRow > a { border-right: 1px solid #f0eee9; color: inherit; min-width: 0; text-decoration: none; }
@@ -651,9 +661,10 @@
   .dashboardHeader .primaryButton { width: 100%; }
   .intelligenceBrief { padding: 22px 18px; }
   .dashboardCommand,.commandResult { margin-left: 0; }
-  .commandSuggestions { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .commandSuggestions { display: flex; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
   .commandSuggestions button { flex: none; }
   .commandResultSummary { align-items: flex-start; flex-direction: column; }
+  .commandEvidence li { gap: 4px; grid-template-columns: 1fr; padding: 9px 0; }
   .courseGrid { grid-template-columns: 1fr; }
   .priorityItem { grid-template-columns: 40px minmax(0, 1fr) 15px; }
   .priorityItem em { display: none; }

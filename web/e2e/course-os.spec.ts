@@ -381,9 +381,11 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(page.getByRole("heading", { name: /carries 2 of 2 open issues/i })).toBeVisible();
   await expect(page.getByText("Portfolio summary", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("columnheader", { name: "Clip completion" })).toBeVisible();
-  await page.getByRole("button", { name: "Where are learners confident but incorrect?" }).click();
+  await expect(page.getByLabel("Suggested commands").getByRole("button")).toHaveCount(4);
+  await page.getByRole("button", { name: "Find confident misconceptions" }).click();
   await page.getByRole("button", { name: "Ask Manifold" }).click();
   await expect(page.getByText("Forces and motion has 2 confident-but-incorrect attempts.")).toBeVisible();
+  await page.getByText("Evidence used", { exact: true }).click();
   await expect(page.getByRole("list", { name: "Evidence used" })).toContainText("Confident but incorrect");
   const dashboardAccessibility = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
