@@ -1,0 +1,108 @@
+import AxeBuilder from "@axe-core/playwright";
+import { expect, test } from "@playwright/test";
+
+const pipeline = "http://localhost:8000";
+const learner = {
+  id: "11111111-1111-4111-8111-111111111112",
+  display_name: "Brian",
+  role: "learner",
+};
+
+test("learner Blueprint path explains remediation, advancement, and locked prerequisites", async ({ page }) => {
+  let firstState: "not_started" | "struggling" | "mastered" = "not_started";
+  let secondCurrent = false;
+
+  await page.addInitScript((identity) => {
+    window.localStorage.setItem("manifold.development-session", JSON.stringify(identity));
+    window.localStorage.setItem("manifold.learner-id", identity.id);
+  }, learner);
+
+  await page.route(`${pipeline}/**`, async (route) => {
+    const url = new URL(route.request().url());
+    const path = url.pathname;
+    if (path === "/learners/me/courses/course-1") {
+      return route.fulfill({ json: {
+        id: "course-1",
+        title: "Vector Foundations",
+        description: "A reviewed adaptive mechanics course.",
+        topics: [
+          { id: "topic-1", title: "Vector direction", summary: "Use magnitude and direction together." },
+          { id: "topic-2", title: "Net force", summary: "Combine reviewed vector ideas." },
+        ],
+        clips: [
+          { id: "clip-1", topic_id: "topic-1", video_id: "video-1", title: "Vector direction", start_seconds: 10, end_seconds: 42, type: "explanation", difficulty: "introductory", playback_provider: "local", playback_id: null, playback_url: "/videos/video-1/media", delivery_asset_id: null, materialization_status: "source_reference" },
+          { id: "clip-2", topic_id: "topic-2", video_id: "video-1", title: "Net force", start_seconds: 43, end_seconds: 74, type: "worked_example", difficulty: "intermediate", playback_provider: "local", playback_id: null, playback_url: "/videos/video-1/media", delivery_asset_id: null, materialization_status: "source_reference" },
+        ],
+        questions: [
+          { id: "question-1", topic_id: "topic-1", body: "What makes a vector different from a scalar?", type: "short_answer", choices: [], confidence_prompt: "How confident are you?" },
+          { id: "question-2", topic_id: "topic-2", body: "How is net force calculated?", type: "short_answer", choices: [], confidence_prompt: "How confident are you?" },
+        ],
+        resources: [{ id: "resource-1", filename: "Vector notes.pdf", source_type: "pdf", size_bytes: 2400 }],
+      } });
+    }
+    if (path === `/learners/${learner.id}/courses/course-1/progress`) {
+      return route.fulfill({ json: [
+        { concept_id: "concept-1", name: "Vector direction", state: firstState, topic_id: "topic-1" },
+        { concept_id: "concept-2", name: "Net force", state: "not_started", topic_id: "topic-2" },
+      ] });
+    }
+    if (path === "/learners/me/courses/course-1/path") {
+      return route.fulfill({ json: {
+        course_id: "course-1",
+        revision_id: "revision-1",
+        current_concept_id: secondCurrent ? "concept-2" : "concept-1",
+        last_route_action: firstState === "struggling" ? "remediate" : secondCurrent ? "advance" : null,
+        last_route_why: firstState === "struggling"
+          ? "The answer missed direction, so the reviewed recovery clip is next."
+          : secondCurrent ? "Vector direction is mastered; net force is now eligible." : null,
+        items: [
+          { concept_id: "concept-1", name: "Vector direction", description: "Magnitude plus direction", sequence_rank: 1, state: firstState, topic_id: "topic-1", topic_title: "Vector direction", prerequisite_ids: [], clip_ids: ["clip-1"], question_ids: ["question-1"], aids: [{ source_id: "source-1", title: "Vector notes", page_number: 2, excerpt: "Direction is part of the vector definition." }], eligible: true, current: !secondCurrent },
+          { concept_id: "concept-2", name: "Net force", description: "Combine vectors", sequence_rank: 2, state: "not_started", topic_id: "topic-2", topic_title: "Net force", prerequisite_ids: ["concept-1"], clip_ids: ["clip-2"], question_ids: ["question-2"], aids: [], eligible: secondCurrent, current: secondCurrent },
+        ],
+      } });
+    }
+    if (path === "/questions/question-1/grade") {
+      const body = JSON.parse(route.request().postData() ?? "{}") as { answer?: string };
+      const correct = body.answer === "It has direction";
+      return route.fulfill({ json: { is_correct: correct, feedback: correct ? "Correct." : "Direction is essential.", wrong_answer_pattern: correct ? null : "omits direction" } });
+    }
+    if (path === `/learners/${learner.id}/questions/question-1/attempt`) {
+      const body = JSON.parse(route.request().postData() ?? "{}") as { correctness?: boolean };
+      if (body.correctness) {
+        firstState = "mastered";
+        secondCurrent = true;
+        return route.fulfill({ json: { action: "advance", mastery_state: "mastered", why: "Correct and confident; net force is now the next eligible concept.", target_concept_id: "concept-2", target_clip_id: null, dashboard_signal_id: null, route_event_id: "route-2" } });
+      }
+      firstState = "struggling";
+      return route.fulfill({ json: { action: "remediate", mastery_state: "struggling", why: "The answer missed direction, so the reviewed recovery clip is next.", target_concept_id: "concept-1", target_clip_id: "clip-1", dashboard_signal_id: null, route_event_id: "route-1" } });
+    }
+    if (path.endsWith("/watch-events")) return route.fulfill({ status: 204, body: "" });
+    return route.fulfill({ status: 404, json: { detail: "Not mocked" } });
+  });
+
+  await page.goto("/learn/courses/course-1");
+  await expect(page.getByRole("heading", { name: "Vector direction", level: 1 })).toBeVisible();
+  await expect(page.getByLabel("Adaptive learning path")).toContainText("Step 1 of 2");
+  await expect(page.getByRole("heading", { name: "Mastery map" })).toBeVisible();
+  await expect(page.getByLabel("Mastery map").getByRole("button", { name: /Net force/ })).toBeDisabled();
+  await expect(page.getByText("Vector notes · page 2")).toBeVisible();
+
+  await page.getByLabel("Your answer").fill("It has magnitude");
+  await page.getByRole("button", { name: "Unsure" }).click();
+  await page.getByRole("button", { name: "Submit answer" }).click();
+  await expect(page.getByText("The answer missed direction, so the reviewed recovery clip is next.")).toBeVisible();
+  await expect(page.getByLabel("Mastery map").getByRole("button", { name: /Vector direction.*struggling/ })).toBeVisible();
+
+  await page.getByLabel("Your answer").fill("It has direction");
+  await page.getByRole("button", { name: "Confident" }).click();
+  await page.getByRole("button", { name: "Submit answer" }).click();
+  await expect(page.getByText("Correct and confident; net force is now the next eligible concept.")).toBeVisible();
+  await expect(page.getByLabel("Adaptive learning path")).toContainText("Step 2 of 2");
+  await expect(page.getByRole("heading", { name: "Net force", level: 1 })).toBeVisible();
+
+  const accessibility = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(accessibility.violations).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});

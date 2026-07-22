@@ -1,15 +1,22 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from app.dependencies import get_routing_service
-from app.routing.models import AdvancementMode, AttemptSubmission, RouteDecision, RoutingPolicy
+from app.routing.models import (
+    AdvancementMode,
+    AttemptSubmission,
+    LearnerPath,
+    RouteDecision,
+    RoutingPolicy,
+)
 from app.routing.service import RoutingService, RoutingValidationError
 
 router = APIRouter(tags=["routing"])
 RoutingServiceDependency = Annotated[RoutingService, Depends(get_routing_service)]
+UserContext = Annotated[UUID, Header(alias="X-User-ID")]
 
 
 class AttemptRequest(BaseModel):
@@ -26,6 +33,7 @@ class RouteDecisionResponse(BaseModel):
     target_concept_id: UUID | None
     target_clip_id: UUID | None
     dashboard_signal_id: UUID | None
+    route_event_id: UUID | None
 
 
 class RoutingPolicyRequest(BaseModel):
@@ -52,6 +60,38 @@ class LearnerConceptProgressResponse(BaseModel):
     name: str
     state: str
     topic_id: UUID | None
+
+
+class LearnerPathAidResponse(BaseModel):
+    source_id: UUID
+    title: str
+    page_number: int
+    excerpt: str
+
+
+class LearnerPathItemResponse(BaseModel):
+    concept_id: UUID
+    name: str
+    description: str
+    sequence_rank: int
+    state: str
+    topic_id: UUID | None
+    topic_title: str | None
+    prerequisite_ids: list[UUID]
+    clip_ids: list[UUID]
+    question_ids: list[UUID]
+    aids: list[LearnerPathAidResponse]
+    eligible: bool
+    current: bool
+
+
+class LearnerPathResponse(BaseModel):
+    course_id: UUID
+    revision_id: UUID
+    current_concept_id: UUID | None
+    items: list[LearnerPathItemResponse]
+    last_route_action: str | None
+    last_route_why: str | None
 
 
 @router.post(
@@ -127,6 +167,22 @@ async def learner_progress(
     ]
 
 
+@router.get(
+    "/learners/me/courses/{course_id}/path",
+    response_model=LearnerPathResponse,
+)
+async def learner_path(
+    course_id: UUID,
+    user_id: UserContext,
+    service: RoutingServiceDependency,
+) -> LearnerPathResponse:
+    try:
+        path = await service.learner_path(user_id, course_id)
+    except RoutingValidationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return _path_response(path)
+
+
 @router.put(
     "/courses/{course_id}/routing/policies/default",
     response_model=RoutingPolicyResponse,
@@ -192,4 +248,33 @@ def _decision_response(decision: RouteDecision) -> RouteDecisionResponse:
         target_concept_id=decision.target_concept_id,
         target_clip_id=decision.target_clip_id,
         dashboard_signal_id=decision.dashboard_signal_id,
+        route_event_id=decision.route_event_id,
+    )
+
+
+def _path_response(path: LearnerPath) -> LearnerPathResponse:
+    return LearnerPathResponse(
+        course_id=path.course_id,
+        revision_id=path.revision_id,
+        current_concept_id=path.current_concept_id,
+        items=[
+            LearnerPathItemResponse(
+                concept_id=item.concept_id,
+                name=item.name,
+                description=item.description,
+                sequence_rank=item.sequence_rank,
+                state=item.state.value,
+                topic_id=item.topic_id,
+                topic_title=item.topic_title,
+                prerequisite_ids=list(item.prerequisite_ids),
+                clip_ids=list(item.clip_ids),
+                question_ids=list(item.question_ids),
+                aids=[LearnerPathAidResponse(**aid.__dict__) for aid in item.aids],
+                eligible=item.eligible,
+                current=item.current,
+            )
+            for item in path.items
+        ],
+        last_route_action=path.last_route_action,
+        last_route_why=path.last_route_why,
     )

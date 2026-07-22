@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from time import perf_counter
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -15,6 +16,24 @@ class _Cursor:
 
     async def fetchone(self) -> dict[str, Any] | None:
         return self._row
+
+
+class _RowsCursor:
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        self._rows = rows
+
+    async def fetchall(self) -> list[dict[str, Any]]:
+        return self._rows
+
+
+class _BlueprintEvidenceConnection:
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        self.rows = rows
+        self.statements: list[str] = []
+
+    async def execute(self, query: str, parameters: object = None) -> _RowsCursor:
+        self.statements.append(" ".join(query.split()))
+        return _RowsCursor(self.rows)
 
 
 class _RoutingDeleteConnection:
@@ -81,6 +100,42 @@ async def test_deleting_last_override_persists_the_displayed_course_default(
         if statement.startswith("delete from routing_policies")
     )
     assert default_insert < override_delete
+
+
+@pytest.mark.anyio
+async def test_blueprint_evidence_aggregates_300_concepts_in_one_warm_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = [
+        {
+            "id": uuid4(),
+            "attempts": 40,
+            "touched_learners": 20,
+            "correct_percent": 72.5,
+            "confident_percent": 65.0,
+            "confident_incorrect": 3,
+            "mastery": {"mastered": 12, "practiced": 6, "struggling": 2},
+            "route_actions": {"advance": 28, "reinforce": 7, "remediate": 5},
+        }
+        for _ in range(300)
+    ]
+    connection = _BlueprintEvidenceConnection(rows)
+
+    @asynccontextmanager
+    async def fake_connection(*_args: object, **_kwargs: object) -> AsyncIterator[object]:
+        yield connection
+
+    monkeypatch.setattr(repository_module, "pooled_connection", fake_connection)
+    repository = PostgresCourseOSRepository("postgresql://unused")
+
+    started = perf_counter()
+    evidence = await repository.blueprint_evidence(uuid4(), uuid4(), 14, None)
+    elapsed_ms = (perf_counter() - started) * 1000
+
+    assert len(evidence) == 300
+    assert len(connection.statements) == 1
+    assert "left join lateral" in connection.statements[0]
+    assert elapsed_ms < 250
 
 
 def test_published_update_does_not_reuse_first_publication_bundle_gate() -> None:

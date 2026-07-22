@@ -2,14 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
   answerOutcomeSummary,
   canPrepareImprovement,
+  compareBlueprintSequence,
   courseState,
   evidenceTitle,
   generationPhaseLabel,
   orderedGenerationTasks,
   performancePercent,
+  masteryStateForConcept,
   shouldHydrateGenerationRun,
   shouldCenterCreationComposer,
   studioPresentationMode,
+  visibleBlueprintNodeIds,
+  type BlueprintConceptEvidence,
+  type BlueprintNode,
+  type CourseBlueprint,
   type CourseSummary,
   type CourseAgentTask,
   type CoursePriority,
@@ -41,6 +47,87 @@ describe("Course OS presentation", () => {
   it("prioritizes failed and review states over a generic draft label", () => {
     expect(courseState({ ...course, generation_status: "failed" }).label).toBe("Needs help");
     expect(courseState({ ...course, pending_review_count: 12 }).label).toBe("Ready to review");
+  });
+
+  it("keeps Blueprint order and mastery presentation grounded in saved evidence", () => {
+    const node = (id: string, rank: number): BlueprintNode => ({
+      id,
+      logical_id: `logical-${id}`,
+      kind: "concept",
+      title: id,
+      status: "accepted",
+      parent_id: null,
+      metadata: { sequence_rank: rank },
+    });
+    const evidence: BlueprintConceptEvidence[] = [{
+      concept_id: "concept-2",
+      attempts: 2,
+      touched_learners: 1,
+      correct_percent: 50,
+      confident_percent: 100,
+      confident_incorrect: 1,
+      mastery: { struggling: 1 },
+      route_actions: { remediate: 1 },
+    }];
+
+    expect([node("concept-2", 2), node("concept-1", 1)].sort(compareBlueprintSequence)
+      .map((item) => item.id)).toEqual(["concept-1", "concept-2"]);
+    expect(masteryStateForConcept("concept-1", evidence)).toBe("not_started");
+    expect(masteryStateForConcept("concept-2", evidence)).toBe("struggling");
+  });
+
+  it("limits a 300-concept Blueprint to the selected topic's visible neighborhood", () => {
+    const topics: BlueprintNode[] = Array.from({ length: 60 }, (_, index) => ({
+      id: `topic-${index}`,
+      logical_id: `topic-logical-${index}`,
+      kind: "topic",
+      title: `Topic ${index}`,
+      status: "accepted",
+      parent_id: null,
+      metadata: {},
+    }));
+    const concepts: BlueprintNode[] = Array.from({ length: 300 }, (_, index) => ({
+      id: `concept-${index}`,
+      logical_id: `concept-logical-${index}`,
+      kind: "concept",
+      title: `Concept ${index}`,
+      status: "accepted",
+      parent_id: `topic-${Math.floor(index / 5)}`,
+      metadata: { sequence_rank: index },
+    }));
+    const blueprint: CourseBlueprint = {
+      course_id: "course",
+      revision_id: "revision",
+      revision_kind: "active",
+      nodes: [...topics, ...concepts],
+      edges: [
+        ...concepts.map((concept, index) => ({
+          id: `contains-${index}`,
+          source_id: `topic-${Math.floor(index / 5)}`,
+          target_id: concept.id,
+          kind: "contains" as const,
+          status: "accepted",
+        })),
+        ...concepts.slice(1).map((concept, index) => ({
+          id: `next-${index}`,
+          source_id: concepts[index].id,
+          target_id: concept.id,
+          kind: "next" as const,
+          status: "accepted",
+        })),
+      ],
+      uncovered_concept_ids: [],
+    };
+
+    const started = performance.now();
+    const visible = visibleBlueprintNodeIds(blueprint, "topic-logical-30");
+
+    expect(visible?.size).toBe(8);
+    expect(visible?.has("topic-30")).toBe(true);
+    expect(visible?.has("concept-150")).toBe(true);
+    expect(visible?.has("concept-149")).toBe(true);
+    expect(visible?.has("concept-155")).toBe(true);
+    expect(performance.now() - started).toBeLessThan(100);
   });
 
   it("turns durable task names into teacher-facing activity", () => {

@@ -233,6 +233,48 @@ class CourseMap:
 
 
 @dataclass(frozen=True)
+class BlueprintNode:
+    id: UUID
+    logical_id: UUID
+    kind: str
+    title: str
+    status: str
+    parent_id: UUID | None
+    metadata: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class BlueprintEdge:
+    id: str
+    source_id: UUID
+    target_id: UUID
+    kind: str
+    status: str
+
+
+@dataclass(frozen=True)
+class CourseBlueprint:
+    course_id: UUID
+    revision_id: UUID
+    revision_kind: str
+    nodes: tuple[BlueprintNode, ...]
+    edges: tuple[BlueprintEdge, ...]
+    uncovered_concept_ids: tuple[UUID, ...]
+
+
+@dataclass(frozen=True)
+class BlueprintConceptEvidence:
+    concept_id: UUID
+    attempts: int
+    touched_learners: int
+    correct_percent: float | None
+    confident_percent: float | None
+    confident_incorrect: int
+    mastery: dict[str, int]
+    route_actions: dict[str, int]
+
+
+@dataclass(frozen=True)
 class RevisionChange:
     artifact_type: str
     logical_artifact_id: UUID
@@ -295,6 +337,8 @@ class AssessmentDraft:
     correct_answer: dict[str, Any]
     confidence_prompt: str
     remediation_rules: tuple[AssessmentRuleDraft, ...]
+    primary_concept_id: UUID | None = None
+    concept_ids: tuple[UUID, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -309,6 +353,8 @@ class CourseAssessment:
     confidence_prompt: str
     review_status: str
     remediation_rules: tuple[dict[str, Any], ...]
+    primary_concept_id: UUID | None = None
+    concept_ids: tuple[UUID, ...] = ()
 
 
 @dataclass(frozen=True)

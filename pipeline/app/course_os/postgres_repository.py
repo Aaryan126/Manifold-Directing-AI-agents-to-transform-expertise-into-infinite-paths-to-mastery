@@ -15,8 +15,12 @@ from app.course_os.models import (
     AssessmentTopicOption,
     AssessmentWorkspace,
     AttentionItem,
+    BlueprintConceptEvidence,
+    BlueprintEdge,
+    BlueprintNode,
     ConversationMessage,
     CourseAssessment,
+    CourseBlueprint,
     CourseCreate,
     CourseMap,
     CourseMapEdge,
@@ -220,10 +224,12 @@ class PostgresCourseOSRepository(CourseOSRepository):
                 """
                 insert into concepts (
                   course_id, name, description, ai_proposal, instructor_revision,
-                  approved_at, review_status, dismissed_at, revision_id, logical_id
+                  approved_at, review_status, dismissed_at, revision_id, logical_id,
+                  sequence_rank
                 )
                 select course_id, name, description, ai_proposal, instructor_revision,
-                       approved_at, review_status, dismissed_at, %s, logical_id
+                       approved_at, review_status, dismissed_at, %s, logical_id,
+                       sequence_rank
                 from concepts where revision_id = %s
                 """,
                 (working_revision_id, active_revision_id),
@@ -376,6 +382,30 @@ class PostgresCourseOSRepository(CourseOSRepository):
                 """,
                 (
                     working_revision_id,
+                    working_revision_id,
+                    working_revision_id,
+                    working_revision_id,
+                    active_revision_id,
+                ),
+            )
+            await conn.execute(
+                """
+                insert into question_concepts (
+                  question_id, concept_id, revision_id, is_primary
+                )
+                select new_question.id, new_concept.id, %s, old_link.is_primary
+                from question_concepts old_link
+                join questions old_question on old_question.id = old_link.question_id
+                join concepts old_concept on old_concept.id = old_link.concept_id
+                join questions new_question
+                  on new_question.revision_id = %s
+                 and new_question.logical_id = old_question.logical_id
+                join concepts new_concept
+                  on new_concept.revision_id = %s
+                 and new_concept.logical_id = old_concept.logical_id
+                where old_link.revision_id = %s
+                """,
+                (
                     working_revision_id,
                     working_revision_id,
                     working_revision_id,
@@ -842,9 +872,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
                 accuracy_percent=_percentage(row[5], row[4]),
                 confidence_percent=_percentage(row[6], row[4]),
                 confident_incorrect_attempts=int(row[7] or 0),
-                clip_completion_percent=(
-                    round(float(row[8]), 1) if row[8] is not None else None
-                ),
+                clip_completion_percent=(round(float(row[8]), 1) if row[8] is not None else None),
                 mastery_percent=_percentage(row[10], row[9]),
                 mastery_movement=int(row[11] or 0),
                 open_issues=(
@@ -1653,6 +1681,713 @@ class PostgresCourseOSRepository(CourseOSRepository):
             ),
         )
 
+    async def blueprint(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        revision_kind: str,
+    ) -> CourseBlueprint:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            topics = await (
+                await conn.execute(
+                    """
+                    select id, logical_id, title, summary, review_status,
+                           start_seconds, end_seconds
+                    from topics
+                    where course_id = %s and revision_id = %s
+                      and review_status <> 'dismissed'
+                    order by start_seconds, title
+                    """,
+                    (course_id, revision_id),
+                )
+            ).fetchall()
+            concepts = await (
+                await conn.execute(
+                    """
+                    select c.id, c.logical_id, c.name, c.description, c.review_status,
+                           c.sequence_rank,
+                           coalesce(array_agg(tc.topic_id order by t.start_seconds, tc.topic_id)
+                             filter (where tc.topic_id is not null), '{}') as topic_ids
+                    from concepts c
+                    left join topic_concepts tc
+                      on tc.concept_id = c.id and tc.revision_id = c.revision_id
+                    left join topics t on t.id = tc.topic_id
+                    where c.course_id = %s and c.revision_id = %s
+                      and c.review_status <> 'dismissed'
+                    group by c.id
+                    order by c.sequence_rank, c.name
+                    """,
+                    (course_id, revision_id),
+                )
+            ).fetchall()
+            clips = await (
+                await conn.execute(
+                    """
+                    select clip.id, clip.logical_id, clip.topic_id, clip.type,
+                           clip.difficulty, clip.status, clip.start_seconds,
+                           clip.end_seconds,
+                           coalesce(array_agg(cc.concept_id order by cc.concept_id)
+                             filter (where cc.concept_id is not null), '{}') as concept_ids
+                    from clips clip
+                    left join clip_concepts cc
+                      on cc.clip_id = clip.id and cc.revision_id = clip.revision_id
+                    where clip.revision_id = %s and clip.status <> 'superseded'
+                    group by clip.id
+                    order by clip.start_seconds
+                    """,
+                    (revision_id,),
+                )
+            ).fetchall()
+            questions = await (
+                await conn.execute(
+                    """
+                    select q.id, q.logical_id, q.topic_id, q.body, q.type,
+                           q.review_status,
+                           coalesce(array_agg(qc.concept_id order by qc.is_primary desc,
+                             qc.concept_id) filter (where qc.concept_id is not null), '{}')
+                             as concept_ids,
+                           (array_agg(qc.concept_id) filter (where qc.is_primary))[1]
+                             as primary_concept_id
+                    from questions q
+                    left join question_concepts qc on qc.question_id = q.id
+                    where q.revision_id = %s and q.review_status <> 'dismissed'
+                    group by q.id
+                    order by q.created_at
+                    """,
+                    (revision_id,),
+                )
+            ).fetchall()
+            sources = await (
+                await conn.execute(
+                    """
+                    select source.id, source.logical_id, source.filename,
+                           source.source_type, source.extraction_status,
+                           link.purpose, link.review_status, link.learner_visible
+                    from course_revision_sources link
+                    join course_sources source on source.id = link.source_id
+                    where link.revision_id = %s and link.removed_at is null
+                    order by source.created_at
+                    """,
+                    (revision_id,),
+                )
+            ).fetchall()
+            prerequisite_rows = await (
+                await conn.execute(
+                    """
+                    select id, from_concept_id, to_concept_id, review_status
+                    from concept_edges
+                    where revision_id = %s and review_status <> 'dismissed'
+                    order by created_at
+                    """,
+                    (revision_id,),
+                )
+            ).fetchall()
+            remediation_rows = await (
+                await conn.execute(
+                    """
+                    select rr.id, rr.question_id, rr.target_clip_id, rr.target_concept_id
+                    from remediation_rules rr
+                    join questions q on q.id = rr.question_id
+                    where rr.revision_id = %s and q.review_status <> 'dismissed'
+                    order by rr.created_at
+                    """,
+                    (revision_id,),
+                )
+            ).fetchall()
+            citation_rows = await (
+                await conn.execute(
+                    """
+                    select citation.id, citation.logical_artifact_id, source.logical_id
+                    from source_citations citation
+                    join source_sections section on section.id = citation.source_section_id
+                    join course_sources source on source.id = section.source_id
+                    join course_revision_sources link
+                      on link.source_id = source.id and link.revision_id = citation.revision_id
+                    where citation.revision_id = %s
+                      and citation.logical_artifact_id is not null
+                      and link.removed_at is null
+                    """,
+                    (revision_id,),
+                )
+            ).fetchall()
+            layout_rows = await (
+                await conn.execute(
+                    """
+                    select logical_artifact_id, x, y
+                    from course_map_layouts where revision_id = %s
+                    """,
+                    (revision_id,),
+                )
+            ).fetchall()
+
+        layout = {
+            UUID(str(row["logical_artifact_id"])): {
+                "x": float(row["x"]),
+                "y": float(row["y"]),
+            }
+            for row in layout_rows
+        }
+        nodes: list[BlueprintNode] = []
+        logical_to_id: dict[UUID, UUID] = {}
+        for row in topics:
+            logical_id = UUID(str(row["logical_id"]))
+            node_id = UUID(str(row["id"]))
+            logical_to_id[logical_id] = node_id
+            nodes.append(
+                BlueprintNode(
+                    id=node_id,
+                    logical_id=logical_id,
+                    kind="topic",
+                    title=str(row["title"]),
+                    status=str(row["review_status"]),
+                    parent_id=None,
+                    metadata={
+                        "summary": str(row["summary"] or ""),
+                        "start_seconds": float(row["start_seconds"]),
+                        "end_seconds": float(row["end_seconds"]),
+                        "layout": layout.get(logical_id),
+                    },
+                )
+            )
+        for row in concepts:
+            logical_id = UUID(str(row["logical_id"]))
+            node_id = UUID(str(row["id"]))
+            logical_to_id[logical_id] = node_id
+            topic_ids = tuple(UUID(str(value)) for value in row["topic_ids"])
+            nodes.append(
+                BlueprintNode(
+                    id=node_id,
+                    logical_id=logical_id,
+                    kind="concept",
+                    title=str(row["name"]),
+                    status=str(row["review_status"]),
+                    parent_id=topic_ids[0] if topic_ids else None,
+                    metadata={
+                        "description": str(row["description"] or ""),
+                        "topic_ids": [str(value) for value in topic_ids],
+                        "sequence_rank": int(row["sequence_rank"]),
+                        "layout": layout.get(logical_id),
+                    },
+                )
+            )
+        for row in clips:
+            logical_id = UUID(str(row["logical_id"]))
+            node_id = UUID(str(row["id"]))
+            logical_to_id[logical_id] = node_id
+            nodes.append(
+                BlueprintNode(
+                    id=node_id,
+                    logical_id=logical_id,
+                    kind="clip",
+                    title=str(row["type"]).replace("_", " ").title(),
+                    status=str(row["status"]),
+                    parent_id=UUID(str(row["topic_id"])),
+                    metadata={
+                        "concept_ids": [str(value) for value in row["concept_ids"]],
+                        "difficulty": row["difficulty"],
+                        "start_seconds": float(row["start_seconds"]),
+                        "end_seconds": float(row["end_seconds"]),
+                    },
+                )
+            )
+        for row in questions:
+            logical_id = UUID(str(row["logical_id"]))
+            node_id = UUID(str(row["id"]))
+            logical_to_id[logical_id] = node_id
+            nodes.append(
+                BlueprintNode(
+                    id=node_id,
+                    logical_id=logical_id,
+                    kind="question",
+                    title=str(row["body"]),
+                    status=str(row["review_status"]),
+                    parent_id=UUID(str(row["topic_id"])),
+                    metadata={
+                        "type": str(row["type"]),
+                        "concept_ids": [str(value) for value in row["concept_ids"]],
+                        "primary_concept_id": (
+                            str(row["primary_concept_id"]) if row["primary_concept_id"] else None
+                        ),
+                    },
+                )
+            )
+        for row in sources:
+            logical_id = UUID(str(row["logical_id"]))
+            node_id = UUID(str(row["id"]))
+            logical_to_id[logical_id] = node_id
+            nodes.append(
+                BlueprintNode(
+                    id=node_id,
+                    logical_id=logical_id,
+                    kind="source",
+                    title=str(row["filename"]),
+                    status=str(row["review_status"]),
+                    parent_id=None,
+                    metadata={
+                        "source_type": str(row["source_type"]),
+                        "purpose": str(row["purpose"]),
+                        "learner_visible": bool(row["learner_visible"]),
+                        "extraction_status": str(row["extraction_status"]),
+                    },
+                )
+            )
+
+        edges: list[BlueprintEdge] = []
+        for row in concepts:
+            concept_id = UUID(str(row["id"]))
+            for topic_id in row["topic_ids"]:
+                edges.append(
+                    BlueprintEdge(
+                        id=f"contains:{topic_id}:{concept_id}",
+                        source_id=UUID(str(topic_id)),
+                        target_id=concept_id,
+                        kind="contains",
+                        status="accepted",
+                    )
+                )
+        for row in prerequisite_rows:
+            edges.append(
+                BlueprintEdge(
+                    id=f"requires:{row['id']}",
+                    source_id=UUID(str(row["from_concept_id"])),
+                    target_id=UUID(str(row["to_concept_id"])),
+                    kind="requires",
+                    status=str(row["review_status"]),
+                )
+            )
+        for row in clips:
+            for concept_id in row["concept_ids"]:
+                edges.append(
+                    BlueprintEdge(
+                        id=f"teaches:{concept_id}:{row['id']}",
+                        source_id=UUID(str(concept_id)),
+                        target_id=UUID(str(row["id"])),
+                        kind="teaches",
+                        status=str(row["status"]),
+                    )
+                )
+        for row in questions:
+            for concept_id in row["concept_ids"]:
+                edges.append(
+                    BlueprintEdge(
+                        id=f"assesses:{concept_id}:{row['id']}",
+                        source_id=UUID(str(concept_id)),
+                        target_id=UUID(str(row["id"])),
+                        kind="assesses",
+                        status=str(row["review_status"]),
+                    )
+                )
+        ordered_concepts = sorted(
+            concepts,
+            key=lambda value: (int(value["sequence_rank"]), str(value["name"])),
+        )
+        for current, following in zip(ordered_concepts, ordered_concepts[1:], strict=False):
+            edges.append(
+                BlueprintEdge(
+                    id=f"next:{current['id']}:{following['id']}",
+                    source_id=UUID(str(current["id"])),
+                    target_id=UUID(str(following["id"])),
+                    kind="next",
+                    status="accepted",
+                )
+            )
+        for row in remediation_rows:
+            target = row["target_clip_id"] or row["target_concept_id"]
+            if target:
+                edges.append(
+                    BlueprintEdge(
+                        id=f"remediates_to:{row['id']}",
+                        source_id=UUID(str(row["question_id"])),
+                        target_id=UUID(str(target)),
+                        kind="remediates_to",
+                        status="accepted",
+                    )
+                )
+        for row in citation_rows:
+            source_id = logical_to_id.get(UUID(str(row["logical_id"])))
+            artifact_id = logical_to_id.get(UUID(str(row["logical_artifact_id"])))
+            if source_id and artifact_id:
+                edges.append(
+                    BlueprintEdge(
+                        id=f"cites:{row['id']}",
+                        source_id=artifact_id,
+                        target_id=source_id,
+                        kind="cites",
+                        status="accepted",
+                    )
+                )
+        covered = {
+            UUID(str(concept_id))
+            for row in questions
+            if str(row["review_status"]) in {"accepted", "edited"}
+            for concept_id in row["concept_ids"]
+        }
+        uncovered = tuple(
+            UUID(str(row["id"]))
+            for row in concepts
+            if str(row["review_status"]) in {"accepted", "edited"}
+            and UUID(str(row["id"])) not in covered
+        )
+        return CourseBlueprint(
+            course_id=course_id,
+            revision_id=revision_id,
+            revision_kind=revision_kind,
+            nodes=tuple(nodes),
+            edges=tuple(edges),
+            uncovered_concept_ids=uncovered,
+        )
+
+    async def blueprint_evidence(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        days: int,
+        learner_id: UUID | None,
+    ) -> tuple[BlueprintConceptEvidence, ...]:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            rows = await (
+                await conn.execute(
+                    """
+                    select c.id,
+                           count(distinct a.id)::int as attempts,
+                           count(distinct a.learner_id)::int as touched_learners,
+                           round(100.0 * avg(a.correctness::int), 1) as correct_percent,
+                           round(100.0 * avg((a.confidence >= 3)::int), 1)
+                             as confident_percent,
+                           count(distinct a.id) filter (
+                             where not a.correctness and a.confidence >= 3
+                           )::int as confident_incorrect,
+                           coalesce(jsonb_object_agg(m.state, m.count)
+                             filter (where m.state is not null), '{}'::jsonb) as mastery,
+                           coalesce(jsonb_object_agg(route.action, route.count)
+                             filter (where route.action is not null), '{}'::jsonb)
+                             as route_actions
+                    from concepts c
+                    left join question_concepts qc on qc.concept_id = c.id
+                    left join attempts a
+                      on a.question_id = qc.question_id
+                     and a.created_at >= now() - make_interval(days => %s)
+                     and (%s::uuid is null or a.learner_id = %s)
+                    left join lateral (
+                      select mastery.state::text as state, count(*)::int as count
+                      from learner_concept_mastery mastery
+                      where mastery.concept_id = c.id
+                        and (%s::uuid is null or mastery.learner_id = %s)
+                      group by mastery.state
+                    ) m on true
+                    left join lateral (
+                      select event.action, count(*)::int as count
+                      from learner_route_events event
+                      where event.concept_id = c.id
+                        and event.created_at >= now() - make_interval(days => %s)
+                        and (%s::uuid is null or event.learner_id = %s)
+                      group by event.action
+                    ) route on true
+                    where c.course_id = %s and c.revision_id = %s
+                      and c.review_status <> 'dismissed'
+                    group by c.id
+                    order by c.sequence_rank, c.name
+                    """,
+                    (
+                        days,
+                        learner_id,
+                        learner_id,
+                        learner_id,
+                        learner_id,
+                        days,
+                        learner_id,
+                        learner_id,
+                        course_id,
+                        revision_id,
+                    ),
+                )
+            ).fetchall()
+        return tuple(
+            BlueprintConceptEvidence(
+                concept_id=UUID(str(row["id"])),
+                attempts=int(row["attempts"]),
+                touched_learners=int(row["touched_learners"]),
+                correct_percent=(
+                    float(row["correct_percent"]) if row["correct_percent"] is not None else None
+                ),
+                confident_percent=(
+                    float(row["confident_percent"])
+                    if row["confident_percent"] is not None
+                    else None
+                ),
+                confident_incorrect=int(row["confident_incorrect"]),
+                mastery={str(key): int(value) for key, value in row["mastery"].items()},
+                route_actions={str(key): int(value) for key, value in row["route_actions"].items()},
+            )
+            for row in rows
+        )
+
+    async def update_concept_sequence(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        concept_ids: tuple[UUID, ...],
+    ) -> None:
+        if len(concept_ids) != len(set(concept_ids)):
+            raise ValueError("Concept sequence cannot contain duplicates.")
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            rows = await (
+                await conn.execute(
+                    """
+                    select c.id, c.logical_id, c.sequence_rank
+                    from concepts c
+                    where c.course_id = %s and c.revision_id = %s
+                      and c.review_status <> 'dismissed'
+                    order by c.sequence_rank, c.name
+                    """,
+                    (course_id, revision_id),
+                )
+            ).fetchall()
+            by_id = {UUID(str(row["id"])): row for row in rows}
+            by_logical = {UUID(str(row["logical_id"])): row for row in rows}
+            resolved = [by_id.get(value) or by_logical.get(value) for value in concept_ids]
+            if any(row is None for row in resolved) or len(resolved) != len(rows):
+                raise ValueError("Sequence must contain every active concept exactly once.")
+            previous = [str(row["logical_id"]) for row in rows]
+            for rank, row in enumerate(resolved):
+                assert row is not None
+                await conn.execute(
+                    "update concepts set sequence_rank = %s, updated_at = now() where id = %s",
+                    (rank, row["id"]),
+                )
+            await conn.execute(
+                """
+                insert into audit_events (
+                  course_id, actor_type, actor_id, artifact_type, artifact_id,
+                  action, source, previous_state, new_state, instructor_note,
+                  scope, revision_id
+                ) values (
+                  %s, 'instructor', %s, 'course_sequence', %s, 'edit', 'instructor',
+                  %s::jsonb, %s::jsonb, %s, 'revision', %s
+                )
+                """,
+                (
+                    course_id,
+                    instructor_id,
+                    revision_id,
+                    Jsonb({"concept_logical_ids": previous}),
+                    Jsonb(
+                        {
+                            "concept_logical_ids": [
+                                str(row["logical_id"]) for row in resolved if row is not None
+                            ]
+                        }
+                    ),
+                    "Reordered concepts in Blueprint Design mode.",
+                    revision_id,
+                ),
+            )
+
+    async def add_blueprint_prerequisite(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        from_concept_id: UUID,
+        to_concept_id: UUID,
+    ) -> None:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            rows = await (
+                await conn.execute(
+                    """
+                    select id, logical_id, name
+                    from concepts
+                    where course_id = %s and revision_id = %s
+                      and review_status <> 'dismissed'
+                      and (id = any(%s) or logical_id = any(%s))
+                    """,
+                    (
+                        course_id,
+                        revision_id,
+                        [from_concept_id, to_concept_id],
+                        [from_concept_id, to_concept_id],
+                    ),
+                )
+            ).fetchall()
+            by_identifier: dict[UUID, Any] = {}
+            for row in rows:
+                by_identifier[UUID(str(row["id"]))] = row
+                by_identifier[UUID(str(row["logical_id"]))] = row
+            from_row = by_identifier.get(from_concept_id)
+            to_row = by_identifier.get(to_concept_id)
+            if from_row is None or to_row is None:
+                raise ValueError("Both prerequisite concepts must belong to this revision.")
+            resolved_from = UUID(str(from_row["id"]))
+            resolved_to = UUID(str(to_row["id"]))
+            if resolved_from == resolved_to:
+                raise ValueError("A concept cannot require itself.")
+            duplicate = await (
+                await conn.execute(
+                    """
+                    select 1 from concept_edges
+                    where revision_id = %s and from_concept_id = %s
+                      and to_concept_id = %s and relationship = 'requires'
+                      and review_status <> 'dismissed'
+                    """,
+                    (revision_id, resolved_from, resolved_to),
+                )
+            ).fetchone()
+            if duplicate:
+                raise ValueError("That prerequisite relationship already exists.")
+            cycle = await (
+                await conn.execute(
+                    """
+                    with recursive reachable(id) as (
+                      select to_concept_id
+                      from concept_edges
+                      where revision_id = %s and from_concept_id = %s
+                        and review_status <> 'dismissed'
+                      union
+                      select edge.to_concept_id
+                      from concept_edges edge
+                      join reachable path on path.id = edge.from_concept_id
+                      where edge.revision_id = %s and edge.review_status <> 'dismissed'
+                    )
+                    select 1 from reachable where id = %s limit 1
+                    """,
+                    (revision_id, resolved_to, revision_id, resolved_from),
+                )
+            ).fetchone()
+            if cycle:
+                raise ValueError("That prerequisite would create a cycle.")
+            edge = await (
+                await conn.execute(
+                    """
+                    insert into concept_edges (
+                      from_concept_id, to_concept_id, relationship, instructor_revision,
+                      review_status, approved_at, revision_id
+                    ) values (%s, %s, 'requires', %s::jsonb, 'edited', now(), %s)
+                    returning id
+                    """,
+                    (
+                        resolved_from,
+                        resolved_to,
+                        Jsonb(
+                            {
+                                "action": "add",
+                                "rationale": "Instructor-authored in Blueprint Design mode.",
+                            }
+                        ),
+                        revision_id,
+                    ),
+                )
+            ).fetchone()
+            assert edge is not None
+            await conn.execute(
+                """
+                insert into audit_events (
+                  course_id, actor_type, actor_id, artifact_type, artifact_id,
+                  action, source, previous_state, new_state, instructor_note,
+                  scope, revision_id
+                ) values (
+                  %s, 'instructor', %s, 'concept_edge', %s, 'add', 'instructor',
+                  null, %s::jsonb, %s, 'revision', %s
+                )
+                """,
+                (
+                    course_id,
+                    instructor_id,
+                    edge["id"],
+                    Jsonb(
+                        {
+                            "from_concept_logical_id": str(from_row["logical_id"]),
+                            "to_concept_logical_id": str(to_row["logical_id"]),
+                            "relationship": "requires",
+                        }
+                    ),
+                    "Added a prerequisite in Blueprint Design mode.",
+                    revision_id,
+                ),
+            )
+
+    async def update_blueprint_concept(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        concept_id: UUID,
+        name: str,
+        description: str,
+    ) -> None:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            row = await (
+                await conn.execute(
+                    """
+                    select id, logical_id, name, description
+                    from concepts
+                    where course_id = %s and revision_id = %s
+                      and review_status <> 'dismissed'
+                      and (id = %s or logical_id = %s)
+                    limit 1
+                    """,
+                    (course_id, revision_id, concept_id, concept_id),
+                )
+            ).fetchone()
+            if row is None:
+                raise ValueError("Concept not found in the editable revision.")
+            duplicate = await (
+                await conn.execute(
+                    """
+                    select 1 from concepts
+                    where course_id = %s and revision_id = %s and id <> %s
+                      and review_status <> 'dismissed' and lower(name) = lower(%s)
+                    limit 1
+                    """,
+                    (course_id, revision_id, row["id"], name),
+                )
+            ).fetchone()
+            if duplicate:
+                raise ValueError("Another active concept already uses that name.")
+            await conn.execute(
+                """
+                update concepts
+                set name = %s, description = %s,
+                    instructor_revision = coalesce(instructor_revision, '{}'::jsonb)
+                      || %s::jsonb,
+                    review_status = 'edited', approved_at = now(), updated_at = now()
+                where id = %s
+                """,
+                (
+                    name,
+                    description,
+                    Jsonb(
+                        {
+                            "action": "edit",
+                            "name": name,
+                            "description": description,
+                        }
+                    ),
+                    row["id"],
+                ),
+            )
+            await conn.execute(
+                """
+                insert into audit_events (
+                  course_id, actor_type, actor_id, artifact_type, artifact_id,
+                  action, source, previous_state, new_state, instructor_note,
+                  scope, revision_id
+                ) values (
+                  %s, 'instructor', %s, 'concept', %s, 'edit', 'instructor',
+                  %s::jsonb, %s::jsonb, %s, 'revision', %s
+                )
+                """,
+                (
+                    course_id,
+                    instructor_id,
+                    row["logical_id"],
+                    Jsonb({"name": row["name"], "description": row["description"] or ""}),
+                    Jsonb({"name": name, "description": description}),
+                    "Edited a concept in the Blueprint inspector.",
+                    revision_id,
+                ),
+            )
+
     async def revision_diff(
         self,
         active_revision_id: UUID | None,
@@ -1988,6 +2723,12 @@ class PostgresCourseOSRepository(CourseOSRepository):
             ).fetchone()
             if row is None:
                 raise RuntimeError("Failed to create assessment.")
+            await _replace_question_concepts(
+                conn,
+                UUID(str(row["id"])),
+                revision_id,
+                draft,
+            )
             await _replace_assessment_rules(conn, UUID(str(row["id"])), revision_id, draft)
             row["topic_title"] = await _topic_title(conn, draft.topic_id)
             question = await _course_assessment_from_row(conn, row)
@@ -2058,6 +2799,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
             ).fetchone()
             if row is None:
                 return None
+            await _replace_question_concepts(conn, question_id, revision_id, draft)
             await _replace_assessment_rules(conn, question_id, revision_id, draft)
             row["topic_title"] = await _topic_title(conn, draft.topic_id)
             question = await _course_assessment_from_row(conn, row)
@@ -2357,6 +3099,17 @@ async def _course_assessment_from_row(
             (row["id"],),
         )
     ).fetchall()
+    concept_rows = await (
+        await conn.execute(
+            """
+            select concept_id, is_primary
+            from question_concepts
+            where question_id = %s
+            order by is_primary desc, created_at, concept_id
+            """,
+            (row["id"],),
+        )
+    ).fetchall()
     return CourseAssessment(
         id=UUID(str(row["id"])),
         logical_id=UUID(str(row["logical_id"])),
@@ -2378,6 +3131,11 @@ async def _course_assessment_from_row(
             }
             for rule in rule_rows
         ),
+        primary_concept_id=next(
+            (UUID(str(link["concept_id"])) for link in concept_rows if bool(link["is_primary"])),
+            None,
+        ),
+        concept_ids=tuple(UUID(str(link["concept_id"])) for link in concept_rows),
     )
 
 
@@ -2408,6 +3166,22 @@ async def _validate_assessment_scope(
     ).fetchone()
     if topic is None:
         raise ValueError("Assessment topic is not part of the working revision.")
+    if draft.primary_concept_id is None:
+        raise ValueError("Assessment needs a primary concept.")
+    for concept_id in draft.concept_ids:
+        linked = await (
+            await conn.execute(
+                """
+                select 1 from concepts c
+                join topic_concepts tc on tc.concept_id = c.id
+                where c.id = %s and c.course_id = %s and c.revision_id = %s
+                  and tc.topic_id = %s and c.review_status <> 'dismissed'
+                """,
+                (concept_id, course_id, revision_id, draft.topic_id),
+            )
+        ).fetchone()
+        if linked is None:
+            raise ValueError("Assessment concepts must belong to its topic.")
     for rule in draft.remediation_rules:
         if rule.target_clip_id is not None:
             target = await (
@@ -2446,6 +3220,41 @@ async def _map_assessment_draft(
     topic_id = await _revision_artifact_id(conn, "topics", draft.topic_id, revision_id)
     if topic_id is None:
         raise ValueError("Assessment topic is not part of the working revision.")
+    mapped_concepts: list[UUID] = []
+    requested_concepts = list(draft.concept_ids)
+    if draft.primary_concept_id and draft.primary_concept_id not in requested_concepts:
+        requested_concepts.insert(0, draft.primary_concept_id)
+    for concept_id in requested_concepts:
+        mapped = await _revision_artifact_id(conn, "concepts", concept_id, revision_id)
+        if mapped is None:
+            raise ValueError("Assessment concept is not part of the working revision.")
+        if mapped not in mapped_concepts:
+            mapped_concepts.append(mapped)
+    mapped_primary = (
+        await _revision_artifact_id(conn, "concepts", draft.primary_concept_id, revision_id)
+        if draft.primary_concept_id
+        else None
+    )
+    if mapped_primary is None:
+        fallback = await (
+            await conn.execute(
+                """
+                select c.id
+                from topic_concepts tc
+                join concepts c on c.id = tc.concept_id
+                where tc.topic_id = %s and c.revision_id = %s
+                  and c.review_status <> 'dismissed'
+                order by c.sequence_rank, c.name, c.id
+                limit 1
+                """,
+                (topic_id, revision_id),
+            )
+        ).fetchone()
+        if fallback is None:
+            raise ValueError("Assessment topic has no reviewable concept coverage.")
+        mapped_primary = UUID(str(fallback["id"]))
+    if mapped_primary not in mapped_concepts:
+        mapped_concepts.insert(0, mapped_primary)
     rules: list[AssessmentRuleDraft] = []
     for rule in draft.remediation_rules:
         clip_id = (
@@ -2453,7 +3262,7 @@ async def _map_assessment_draft(
             if rule.target_clip_id
             else None
         )
-        concept_id = (
+        remediation_concept_id = (
             await _revision_artifact_id(
                 conn,
                 "concepts",
@@ -2465,13 +3274,13 @@ async def _map_assessment_draft(
         )
         if rule.target_clip_id and clip_id is None:
             raise ValueError("A remediation clip is not part of the working revision.")
-        if rule.target_concept_id and concept_id is None:
+        if rule.target_concept_id and remediation_concept_id is None:
             raise ValueError("A remediation concept is not part of the working revision.")
         rules.append(
             AssessmentRuleDraft(
                 wrong_answer_pattern=rule.wrong_answer_pattern,
                 target_clip_id=clip_id,
-                target_concept_id=concept_id,
+                target_concept_id=remediation_concept_id,
             )
         )
     return AssessmentDraft(
@@ -2481,7 +3290,29 @@ async def _map_assessment_draft(
         correct_answer=draft.correct_answer,
         confidence_prompt=draft.confidence_prompt,
         remediation_rules=tuple(rules),
+        primary_concept_id=mapped_primary,
+        concept_ids=tuple(mapped_concepts),
     )
+
+
+async def _replace_question_concepts(
+    conn: Any,
+    question_id: UUID,
+    revision_id: UUID,
+    draft: AssessmentDraft,
+) -> None:
+    if draft.primary_concept_id is None:
+        raise ValueError("Assessment needs a primary concept.")
+    await conn.execute("delete from question_concepts where question_id = %s", (question_id,))
+    for concept_id in draft.concept_ids:
+        await conn.execute(
+            """
+            insert into question_concepts (
+              question_id, concept_id, revision_id, is_primary
+            ) values (%s, %s, %s, %s)
+            """,
+            (question_id, concept_id, revision_id, concept_id == draft.primary_concept_id),
+        )
 
 
 async def _revision_artifact_id(
@@ -2543,6 +3374,10 @@ def _assessment_snapshot(question: CourseAssessment) -> dict[str, Any]:
         "confidence_prompt": question.confidence_prompt,
         "review_status": question.review_status,
         "remediation_rules": list(question.remediation_rules),
+        "primary_concept_id": (
+            str(question.primary_concept_id) if question.primary_concept_id else None
+        ),
+        "concept_ids": [str(value) for value in question.concept_ids],
     }
 
 
@@ -2665,6 +3500,7 @@ def _publication_blockers(
 def _readiness_count(readiness: Mapping[str, object], key: str) -> int:
     value = readiness.get(key, 0)
     return int(value) if isinstance(value, (int, float, str)) else 0
+
 
 _TASK_ORDER = (
     "source_ready",

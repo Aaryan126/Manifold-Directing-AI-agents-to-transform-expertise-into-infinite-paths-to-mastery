@@ -5,8 +5,10 @@ from uuid import UUID
 from app.course_os.models import (
     AssessmentDraft,
     AssessmentWorkspace,
+    BlueprintConceptEvidence,
     ConversationMessage,
     CourseAssessment,
+    CourseBlueprint,
     CourseCreate,
     CourseMap,
     CourseProposal,
@@ -160,6 +162,53 @@ class CourseOSRepository(ABC):
 
     @abstractmethod
     async def course_map(self, course_id: UUID, revision_id: UUID) -> CourseMap: ...
+
+    @abstractmethod
+    async def blueprint(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        revision_kind: str,
+    ) -> CourseBlueprint: ...
+
+    @abstractmethod
+    async def blueprint_evidence(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        days: int,
+        learner_id: UUID | None,
+    ) -> tuple[BlueprintConceptEvidence, ...]: ...
+
+    @abstractmethod
+    async def update_concept_sequence(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        concept_ids: tuple[UUID, ...],
+    ) -> None: ...
+
+    @abstractmethod
+    async def add_blueprint_prerequisite(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        from_concept_id: UUID,
+        to_concept_id: UUID,
+    ) -> None: ...
+
+    @abstractmethod
+    async def update_blueprint_concept(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        concept_id: UUID,
+        name: str,
+        description: str,
+    ) -> None: ...
 
     @abstractmethod
     async def revision_diff(

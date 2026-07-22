@@ -110,3 +110,16 @@ class ImprovementDraft:
     before_state: dict[str, Any]
     proposed_state: dict[str, Any]
     rationale: str
+
+
+@dataclass(frozen=True)
+class AgentTaskProposal:
+    id: UUID
+    proposal_type: str
+    artifact_type: str | None
+    logical_artifact_id: UUID | None
+    before_state: dict[str, Any] | None
+    proposed_state: dict[str, Any]
+    rationale: str
+    status: str
+    citations: tuple[SourceCitation, ...] = ()

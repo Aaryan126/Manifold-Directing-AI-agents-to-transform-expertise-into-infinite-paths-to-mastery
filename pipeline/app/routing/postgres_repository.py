@@ -12,6 +12,9 @@ from app.routing.models import (
     AttemptSubmission,
     LearnerConceptProgress,
     LearnerMastery,
+    LearnerPath,
+    LearnerPathAid,
+    LearnerPathItem,
     MasteryState,
     RouteableClip,
     RouteableConcept,
@@ -35,9 +38,12 @@ class PostgresRoutingRepository(RoutingRepository):
             question = await (
                 await conn.execute(
                     """
-                    select q.id, q.topic_id, t.course_id
+                    select q.id, q.topic_id, q.revision_id, t.course_id,
+                           qc.concept_id
                     from questions q
                     join topics t on t.id = q.topic_id
+                    join question_concepts qc
+                      on qc.question_id = q.id and qc.is_primary
                     where q.id = %s
                       and q.review_status in ('accepted', 'edited')
                       and t.review_status in ('accepted', 'edited')
@@ -59,9 +65,7 @@ class PostgresRoutingRepository(RoutingRepository):
                 return None
             topic_id = UUID(str(question["topic_id"]))
             course_id = UUID(str(question["course_id"]))
-            current_concept_id = await self._primary_topic_concept(conn, topic_id)
-            if current_concept_id is None:
-                return None
+            current_concept_id = UUID(str(question["concept_id"]))
             mastery = await self._get_mastery(conn, learner_id, current_concept_id)
             mastered = await self._mastered_concept_ids(conn, learner_id, course_id)
             rules = await self._remediation_rules(conn, question_id)
@@ -76,6 +80,7 @@ class PostgresRoutingRepository(RoutingRepository):
                 mastery=mastery,
                 mastered_concept_ids=mastered,
                 remediation_rules=rules,
+                revision_id=UUID(str(question["revision_id"])),
             )
 
     async def record_attempt(self, submission: AttemptSubmission) -> UUID:
@@ -163,6 +168,93 @@ class PostgresRoutingRepository(RoutingRepository):
             )
             return UUID(str(row[0]))
 
+    async def record_attempt_mastery_and_route(
+        self,
+        context: AttemptContext,
+        submission: AttemptSubmission,
+        mastery: LearnerMastery,
+        decision: RouteDecision,
+    ) -> tuple[UUID, UUID | None]:
+        if context.revision_id is None:
+            raise RuntimeError("Attempt routing context has no course revision.")
+        async with pooled_connection(self._database_url) as conn:
+            row = await (
+                await conn.execute(
+                    """
+                    insert into attempts (
+                      learner_id, question_id, answer, correctness, confidence
+                    )
+                    values (%s, %s, %s::jsonb, %s, %s)
+                    returning id
+                    """,
+                    (
+                        submission.learner_id,
+                        submission.question_id,
+                        Jsonb(
+                            {
+                                **submission.answer,
+                                "wrong_answer_pattern": submission.wrong_answer_pattern,
+                            }
+                        ),
+                        submission.correctness,
+                        submission.confidence,
+                    ),
+                )
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("Failed to record attempt.")
+            attempt_id = UUID(str(row[0]))
+            await conn.execute(
+                """
+                insert into learner_concept_mastery (learner_id, concept_id, state)
+                values (%s, %s, %s)
+                on conflict (learner_id, concept_id) do update
+                set state = excluded.state,
+                    updated_at = now()
+                """,
+                (submission.learner_id, mastery.concept_id, mastery.state.value),
+            )
+            event = await (
+                await conn.execute(
+                    """
+                    insert into learner_route_events (
+                      course_id, revision_id, learner_id, attempt_id, concept_id,
+                      mastery_before, mastery_after, action, target_concept_id,
+                      target_clip_id, why, evidence_snapshot
+                    ) values (
+                      %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
+                    ) returning id
+                    """,
+                    (
+                        context.course_id,
+                        context.revision_id,
+                        submission.learner_id,
+                        attempt_id,
+                        context.current_concept_id,
+                        context.mastery.state.value,
+                        mastery.state.value,
+                        decision.action.value,
+                        decision.target_concept_id,
+                        decision.target_clip_id,
+                        decision.why,
+                        Jsonb(
+                            {
+                                "question_id": str(context.question_id),
+                                "correctness": submission.correctness,
+                                "confidence": submission.confidence,
+                                "wrong_answer_pattern": submission.wrong_answer_pattern,
+                                "mastered_concept_ids": sorted(
+                                    str(value) for value in context.mastered_concept_ids
+                                ),
+                            }
+                        ),
+                    ),
+                )
+            ).fetchone()
+            if event is None:
+                raise RuntimeError("Failed to record route event.")
+            return attempt_id, UUID(str(event[0]))
+
     async def eligible_next_concepts(
         self,
         course_id: UUID,
@@ -172,7 +264,8 @@ class PostgresRoutingRepository(RoutingRepository):
             rows = await (
                 await conn.execute(
                     """
-                    select c.id, c.name, min(tc.topic_id::text) as topic_id
+                    select c.id, c.name, c.sequence_rank,
+                           min(tc.topic_id::text) as topic_id
                     from concepts c
                     join courses course on course.id = c.course_id
                     left join topic_concepts tc on tc.concept_id = c.id
@@ -192,8 +285,8 @@ class PostgresRoutingRepository(RoutingRepository):
                           and prereq.review_status in ('accepted', 'edited')
                           and not (e.from_concept_id = any(%s::uuid[]))
                       )
-                    group by c.id, c.name
-                    order by c.name
+                    group by c.id, c.name, c.sequence_rank
+                    order by c.sequence_rank, c.name
                     """,
                     (
                         course_id,
@@ -207,6 +300,7 @@ class PostgresRoutingRepository(RoutingRepository):
                     id=UUID(str(row["id"])),
                     name=str(row["name"]),
                     topic_id=UUID(str(row["topic_id"])) if row["topic_id"] else None,
+                    sequence_rank=int(row["sequence_rank"]),
                 )
                 for row in rows
             )
@@ -405,6 +499,174 @@ class PostgresRoutingRepository(RoutingRepository):
                 for row in rows
             )
 
+    async def learner_path(self, learner_id: UUID, course_id: UUID) -> LearnerPath | None:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            enrollment = await (
+                await conn.execute(
+                    """
+                    select e.revision_id
+                    from enrollments e
+                    join courses course on course.id = e.course_id
+                    join users learner on learner.id = e.learner_id
+                    where e.learner_id = %s and e.course_id = %s
+                      and (course.status = 'published' or learner.is_simulated)
+                    """,
+                    (learner_id, course_id),
+                )
+            ).fetchone()
+            if enrollment is None:
+                return None
+            revision_id = UUID(str(enrollment["revision_id"]))
+            rows = await (
+                await conn.execute(
+                    """
+                    select c.id, c.logical_id, c.name, c.description, c.sequence_rank,
+                           coalesce(m.state, 'not_started') as state,
+                           topic.id as topic_id, topic.title as topic_title,
+                           coalesce((
+                             select array_agg(edge.from_concept_id order by prereq.sequence_rank)
+                             from concept_edges edge
+                             join concepts prereq on prereq.id = edge.from_concept_id
+                             where edge.to_concept_id = c.id
+                               and edge.review_status in ('accepted', 'edited')
+                               and prereq.review_status in ('accepted', 'edited')
+                           ), '{}') as prerequisite_ids,
+                           coalesce((
+                             select array_agg(distinct clip.id order by clip.id)
+                             from clip_concepts cc
+                             join clips clip on clip.id = cc.clip_id
+                             where cc.concept_id = c.id and clip.status = 'active'
+                           ), '{}') as clip_ids,
+                           coalesce((
+                             select array_agg(distinct q.id order by q.id)
+                             from question_concepts qc
+                             join questions q on q.id = qc.question_id
+                             where qc.concept_id = c.id
+                               and q.review_status in ('accepted', 'edited')
+                           ), '{}') as question_ids
+                    from concepts c
+                    left join learner_concept_mastery m
+                      on m.concept_id = c.id and m.learner_id = %s
+                    left join lateral (
+                      select t.id, t.title
+                      from topic_concepts tc
+                      join topics t on t.id = tc.topic_id
+                      where tc.concept_id = c.id
+                        and t.review_status in ('accepted', 'edited')
+                      order by t.start_seconds, t.id
+                      limit 1
+                    ) topic on true
+                    where c.course_id = %s and c.revision_id = %s
+                      and c.review_status in ('accepted', 'edited')
+                    order by c.sequence_rank, c.name
+                    """,
+                    (learner_id, course_id, revision_id),
+                )
+            ).fetchall()
+            aid_rows = await (
+                await conn.execute(
+                    """
+                    select citation.logical_artifact_id, source.id as source_id,
+                           source.filename, section.page_number, citation.excerpt
+                    from source_citations citation
+                    join source_sections section on section.id = citation.source_section_id
+                    join course_sources source on source.id = section.source_id
+                    join course_revision_sources link
+                      on link.source_id = source.id and link.revision_id = citation.revision_id
+                    where citation.revision_id = %s
+                      and citation.artifact_type = 'concept'
+                      and link.learner_visible
+                      and link.review_status in ('accepted', 'edited')
+                      and link.removed_at is null
+                    order by source.filename, section.page_number
+                    """,
+                    (revision_id,),
+                )
+            ).fetchall()
+            latest_route = await (
+                await conn.execute(
+                    """
+                    select action, why
+                    from learner_route_events
+                    where learner_id = %s and course_id = %s and revision_id = %s
+                    order by created_at desc limit 1
+                    """,
+                    (learner_id, course_id, revision_id),
+                )
+            ).fetchone()
+
+        mastered = {
+            UUID(str(row["id"])) for row in rows if str(row["state"]) == MasteryState.MASTERED.value
+        }
+        prerequisites = {
+            UUID(str(row["id"])): tuple(UUID(str(value)) for value in row["prerequisite_ids"])
+            for row in rows
+        }
+        eligible = {
+            concept_id
+            for concept_id, required in prerequisites.items()
+            if all(value in mastered for value in required)
+        }
+        current_row = next(
+            (
+                row
+                for row in rows
+                if str(row["state"])
+                in {
+                    MasteryState.STRUGGLING.value,
+                    MasteryState.PRACTICED.value,
+                }
+                and UUID(str(row["id"])) in eligible
+            ),
+            None,
+        )
+        if current_row is None:
+            current_row = next(
+                (
+                    row
+                    for row in rows
+                    if UUID(str(row["id"])) in eligible and UUID(str(row["id"])) not in mastered
+                ),
+                None,
+            )
+        current_id = UUID(str(current_row["id"])) if current_row else None
+        aids_by_logical: dict[UUID, list[LearnerPathAid]] = {}
+        for row in aid_rows:
+            logical_id = UUID(str(row["logical_artifact_id"]))
+            aids_by_logical.setdefault(logical_id, []).append(
+                LearnerPathAid(
+                    source_id=UUID(str(row["source_id"])),
+                    title=str(row["filename"]),
+                    page_number=int(row["page_number"]),
+                    excerpt=str(row["excerpt"]),
+                )
+            )
+        return LearnerPath(
+            course_id=course_id,
+            revision_id=revision_id,
+            current_concept_id=current_id,
+            items=tuple(
+                LearnerPathItem(
+                    concept_id=UUID(str(row["id"])),
+                    name=str(row["name"]),
+                    description=str(row["description"] or ""),
+                    sequence_rank=int(row["sequence_rank"]),
+                    state=MasteryState(str(row["state"])),
+                    topic_id=UUID(str(row["topic_id"])) if row["topic_id"] else None,
+                    topic_title=str(row["topic_title"]) if row["topic_title"] else None,
+                    prerequisite_ids=prerequisites[UUID(str(row["id"]))],
+                    clip_ids=tuple(UUID(str(value)) for value in row["clip_ids"]),
+                    question_ids=tuple(UUID(str(value)) for value in row["question_ids"]),
+                    aids=tuple(aids_by_logical.get(UUID(str(row["logical_id"])), [])),
+                    eligible=UUID(str(row["id"])) in eligible,
+                    current=UUID(str(row["id"])) == current_id,
+                )
+                for row in rows
+            ),
+            last_route_action=str(latest_route["action"]) if latest_route else None,
+            last_route_why=str(latest_route["why"]) if latest_route else None,
+        )
+
     async def _primary_topic_concept(
         self,
         conn: psycopg.AsyncConnection[Any],
@@ -544,9 +806,8 @@ class PostgresRoutingRepository(RoutingRepository):
                     as correct_confident,
                   count(*) filter (where not a.correctness) as remediation
                 from attempts a
-                join questions q on q.id = a.question_id
-                join topic_concepts tc on tc.topic_id = q.topic_id
-                where a.learner_id = %s and tc.concept_id = %s
+                join question_concepts qc on qc.question_id = a.question_id
+                where a.learner_id = %s and qc.concept_id = %s and qc.is_primary
                 """,
                 (learner_id, concept_id),
             )

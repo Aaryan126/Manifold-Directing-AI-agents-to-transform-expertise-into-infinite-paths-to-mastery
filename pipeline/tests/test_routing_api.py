@@ -86,6 +86,30 @@ async def test_routing_api_returns_stuck_signal_when_loop_limit_is_hit() -> None
         app.dependency_overrides.clear()
 
 
+@pytest.mark.anyio
+async def test_learner_path_exposes_current_step_and_prerequisite_gates() -> None:
+    repository = MemoryRoutingRepository()
+    service = RoutingService(repository)
+    app.dependency_overrides[get_routing_service] = lambda: service
+
+    try:
+        async with _client() as client:
+            response = await client.get(
+                f"/learners/me/courses/{repository.course_id}/path",
+                headers={"X-User-ID": str(repository.learner_id)},
+            )
+
+            assert response.status_code == 200
+            payload = response.json()
+            assert payload["current_concept_id"] == str(repository.current_concept_id)
+            assert payload["items"][0]["current"] is True
+            assert payload["items"][0]["clip_ids"] == [str(repository.active_clip.id)]
+            assert payload["items"][1]["eligible"] is False
+            assert payload["items"][1]["prerequisite_ids"] == [str(repository.current_concept_id)]
+    finally:
+        app.dependency_overrides.clear()
+
+
 @asynccontextmanager
 async def _client() -> AsyncIterator[AsyncClient]:
     transport = ASGITransport(app=app)

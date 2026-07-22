@@ -44,6 +44,7 @@ class RouteableConcept:
     id: UUID
     name: str
     topic_id: UUID | None
+    sequence_rank: int = 0
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,41 @@ class LearnerConceptProgress:
     name: str
     state: MasteryState
     topic_id: UUID | None
+
+
+@dataclass(frozen=True)
+class LearnerPathAid:
+    source_id: UUID
+    title: str
+    page_number: int
+    excerpt: str
+
+
+@dataclass(frozen=True)
+class LearnerPathItem:
+    concept_id: UUID
+    name: str
+    description: str
+    sequence_rank: int
+    state: MasteryState
+    topic_id: UUID | None
+    topic_title: str | None
+    prerequisite_ids: tuple[UUID, ...]
+    clip_ids: tuple[UUID, ...]
+    question_ids: tuple[UUID, ...]
+    aids: tuple[LearnerPathAid, ...]
+    eligible: bool
+    current: bool
+
+
+@dataclass(frozen=True)
+class LearnerPath:
+    course_id: UUID
+    revision_id: UUID
+    current_concept_id: UUID | None
+    items: tuple[LearnerPathItem, ...]
+    last_route_action: str | None
+    last_route_why: str | None
 
 
 @dataclass(frozen=True)
@@ -83,6 +119,7 @@ class AttemptContext:
     mastery: LearnerMastery
     mastered_concept_ids: frozenset[UUID]
     remediation_rules: tuple[RouteableRemediationRule, ...]
+    revision_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -103,6 +140,7 @@ class RouteDecision:
     target_concept_id: UUID | None = None
     target_clip_id: UUID | None = None
     dashboard_signal_id: UUID | None = None
+    route_event_id: UUID | None = None
 
 
 @dataclass(frozen=True)

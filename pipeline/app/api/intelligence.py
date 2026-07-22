@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
@@ -8,6 +10,7 @@ from pydantic import BaseModel, Field
 from app.dependencies import get_course_intelligence_service
 from app.intelligence.models import (
     AgentTask,
+    AgentTaskProposal,
     CourseSource,
     SourceCitation,
     SourcePurpose,
@@ -81,6 +84,23 @@ class AgentTaskResponse(BaseModel):
     error_message: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class AgentTaskProposalResponse(BaseModel):
+    id: UUID
+    proposal_type: str
+    artifact_type: str | None
+    logical_artifact_id: UUID | None
+    before_state: dict[str, Any] | None
+    proposed_state: dict[str, Any]
+    rationale: str
+    status: str
+    citations: list[SourceCitationResponse]
+
+
+class AgentTaskPackResponse(BaseModel):
+    task: AgentTaskResponse
+    proposals: list[AgentTaskProposalResponse]
 
 
 class SourceCitationResponse(BaseModel):
@@ -176,6 +196,23 @@ async def list_agent_tasks(
     return [_task(task) for task in await _call(service.tasks(course_id, user_id))]
 
 
+@router.get(
+    "/courses/{course_id}/agent-tasks/{task_id}",
+    response_model=AgentTaskPackResponse,
+)
+async def get_agent_task(
+    course_id: UUID,
+    task_id: UUID,
+    user_id: UserContext,
+    service: IntelligenceDependency,
+) -> AgentTaskPackResponse:
+    task, proposals = await _call(service.task(course_id, task_id, user_id))
+    return AgentTaskPackResponse(
+        task=_task(task),
+        proposals=[_task_proposal(proposal) for proposal in proposals],
+    )
+
+
 @router.post(
     "/courses/{course_id}/agent-tasks",
     response_model=AgentTaskResponse,
@@ -268,6 +305,20 @@ def _task(task: AgentTask) -> AgentTaskResponse:
         error_message=task.error_message,
         created_at=task.created_at,
         updated_at=task.updated_at,
+    )
+
+
+def _task_proposal(proposal: AgentTaskProposal) -> AgentTaskProposalResponse:
+    return AgentTaskProposalResponse(
+        id=proposal.id,
+        proposal_type=proposal.proposal_type,
+        artifact_type=proposal.artifact_type,
+        logical_artifact_id=proposal.logical_artifact_id,
+        before_state=proposal.before_state,
+        proposed_state=proposal.proposed_state,
+        rationale=proposal.rationale,
+        status=proposal.status,
+        citations=[_citation(value) for value in proposal.citations],
     )
 
 

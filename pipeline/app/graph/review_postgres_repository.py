@@ -129,7 +129,7 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
                 (course_id, course_id),
             )
             key_to_id: dict[str, UUID] = {}
-            for concept in proposal.concepts:
+            for sequence_rank, concept in enumerate(proposal.concepts):
                 reviewed_match = next(
                     (
                         row
@@ -149,9 +149,10 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
                     await conn.execute(
                         """
                         insert into concepts (
-                          course_id, name, description, ai_proposal, review_status
+                          course_id, name, description, ai_proposal, review_status,
+                          sequence_rank
                         )
-                        values (%s, %s, %s, %s::jsonb, 'proposed')
+                        values (%s, %s, %s, %s::jsonb, 'proposed', %s)
                         returning id
                         """,
                         (
@@ -159,6 +160,7 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
                             concept.name,
                             concept.description,
                             Jsonb(_concept_proposal_json(concept)),
+                            sequence_rank,
                         ),
                     )
                 ).fetchone()
@@ -284,12 +286,26 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
                     """
                     insert into concepts (
                       course_id, name, description, instructor_revision,
-                      review_status, approved_at
+                      review_status, approved_at, sequence_rank
                     )
-                    values (%s, %s, %s, %s::jsonb, 'edited', now())
+                    values (
+                      %s, %s, %s, %s::jsonb, 'edited', now(),
+                      (select coalesce(max(sequence_rank), -1) + 1
+                       from concepts where course_id = %s and revision_id = (
+                         select coalesce(working_revision_id, active_revision_id)
+                         from courses where id = %s
+                       ))
+                    )
                     returning *
                     """,
-                    (course_id, create.name, create.description, Jsonb(revision)),
+                    (
+                        course_id,
+                        create.name,
+                        create.description,
+                        Jsonb(revision),
+                        course_id,
+                        course_id,
+                    ),
                 )
             ).fetchone()
             if row is None:

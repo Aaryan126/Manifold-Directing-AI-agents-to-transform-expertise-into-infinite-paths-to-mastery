@@ -125,6 +125,26 @@ async function mockCourseOS(page: Page) {
       });
       return;
     }
+    if (path.endsWith("/blueprint/evidence")) {
+      await route.fulfill({ json: [] });
+      return;
+    }
+    if (path.endsWith("/blueprint")) {
+      await route.fulfill({
+        json: {
+          course_id: course.id,
+          revision_id: course.working_revision_id,
+          revision_kind: "working",
+          nodes: [
+            { id: "topic-1", logical_id: "topic-logical", kind: "topic", title: "Net force", status: "accepted", parent_id: null, metadata: {} },
+            { id: "concept-1", logical_id: "concept-logical", kind: "concept", title: "Vector addition", status: "accepted", parent_id: "topic-1", metadata: { sequence_rank: 1 } },
+          ],
+          edges: [{ id: "contains-1", source_id: "topic-1", target_id: "concept-1", kind: "contains", status: "accepted" }],
+          uncovered_concept_ids: ["concept-1"],
+        },
+      });
+      return;
+    }
     if (path.endsWith("/map")) {
       await route.fulfill({
         json: {
@@ -188,6 +208,12 @@ async function mockCourseOS(page: Page) {
 
 async function mockPublishedCourseOS(page: Page) {
   await setInstructorSession(page);
+  let savedLayout: { positions?: Array<{ logical_artifact_id?: string; x?: number; y?: number }> } | null = null;
+  const proposalDecisions: Array<{ proposal_id: string; decision: string }> = [];
+  let editedConcept: { name?: string; description?: string } | null = null;
+  let savedSequence: string[] = [];
+  let workingRevisionOpen = false;
+  const workingRevisionId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
   const published = {
     ...course,
     id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -205,8 +231,38 @@ async function mockPublishedCourseOS(page: Page) {
   await page.route("http://localhost:8000/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === "/development/identities") return route.fulfill({ json: [instructor] });
-    if (path.endsWith("/studio")) return route.fulfill({ json: published });
+    if (path.endsWith("/studio")) return route.fulfill({
+      json: {
+        ...published,
+        working_revision_id: workingRevisionOpen ? workingRevisionId : null,
+        revision_status: workingRevisionOpen ? "working" : "published",
+      },
+    });
     if (path.endsWith("/messages") || path.endsWith("/review-bundles")) return route.fulfill({ json: [] });
+    if (path.endsWith("/map/layout") && route.request().method() === "PUT") {
+      savedLayout = JSON.parse(route.request().postData() ?? "{}") as typeof savedLayout;
+      workingRevisionOpen = true;
+      return route.fulfill({ status: 204, body: "" });
+    }
+    if (path.endsWith("/blueprint/sequence") && route.request().method() === "PUT") {
+      const body = JSON.parse(route.request().postData() ?? "{}") as { concept_ids?: string[] };
+      savedSequence = body.concept_ids ?? [];
+      workingRevisionOpen = true;
+      return route.fulfill({ json: publishedBlueprint(editedConcept, "working") });
+    }
+    if (path.includes("/blueprint/concepts/") && route.request().method() === "PATCH") {
+      editedConcept = JSON.parse(route.request().postData() ?? "{}") as typeof editedConcept;
+      workingRevisionOpen = true;
+      return route.fulfill({ json: publishedBlueprint(editedConcept, "working") });
+    }
+    if (path.includes("/proposals/") && path.endsWith("/resolve")) {
+      const body = JSON.parse(route.request().postData() ?? "{}") as { decision?: string };
+      proposalDecisions.push({
+        proposal_id: path.split("/").at(-2) ?? "",
+        decision: body.decision ?? "",
+      });
+      return route.fulfill({ json: { status: body.decision } });
+    }
     if (path.endsWith("/sources")) return route.fulfill({
       json: [{
         id: "source-1",
@@ -225,13 +281,37 @@ async function mockPublishedCourseOS(page: Page) {
         updated_at: "2026-07-21T00:00:00Z",
       }],
     });
+    if (path.endsWith("/agent-tasks/task-1")) return route.fulfill({
+      json: {
+        task: {
+          id: "task-1",
+          specialist_role: "learning_analyst",
+          task_type: "prepare_improvement",
+          target_artifact_type: "concept",
+          target_logical_artifact_id: "concept-logical",
+          request_context: { instruction: "Clarify vector addition." },
+          evidence_snapshot: { incorrect_attempts: 4 },
+          status: "waiting_review",
+          result: { summary: "A coordinated recovery pack is ready." },
+          proposal_ids: ["proposal-1", "proposal-2", "proposal-3"],
+          error_message: null,
+          created_at: "2026-07-21T00:00:00Z",
+          updated_at: "2026-07-21T00:00:00Z",
+        },
+        proposals: [
+          { id: "proposal-1", task_id: "task-1", proposal_type: "artifact_update", artifact_type: "concept", target_logical_artifact_id: "concept-logical", before_state: { description: "Combine forces." }, proposed_state: { description: "Combine force vectors by magnitude and direction." }, rationale: "Clarify the misconception.", citations: [{ source_id: "source-1", section: 2 }], status: "proposed" },
+          { id: "proposal-2", task_id: "task-1", proposal_type: "artifact_update", artifact_type: "question", target_logical_artifact_id: "question-logical", before_state: { body: "What is net force?" }, proposed_state: { body: "How do vector directions determine net force?" }, rationale: "Check vector direction explicitly.", citations: [], status: "proposed" },
+          { id: "proposal-3", task_id: "task-1", proposal_type: "artifact_update", artifact_type: "clip", target_logical_artifact_id: "clip-logical", before_state: { end_seconds: 60 }, proposed_state: { end_seconds: 48 }, rationale: "Focus the recovery clip.", citations: [], status: "proposed" },
+        ],
+      },
+    });
     if (path.endsWith("/agent-tasks")) return route.fulfill({
       json: [{
         id: "task-1",
         specialist_role: "learning_analyst",
         task_type: "prepare_improvement",
-        target_artifact_type: "topic",
-        target_logical_artifact_id: "topic-logical",
+        target_artifact_type: "concept",
+        target_logical_artifact_id: "concept-logical",
         request_context: { instruction: "Clarify vector addition." },
         evidence_snapshot: { incorrect_attempts: 4 },
         status: "waiting_review",
@@ -245,6 +325,37 @@ async function mockPublishedCourseOS(page: Page) {
         created_at: "2026-07-21T00:00:00Z",
         updated_at: "2026-07-21T00:00:00Z",
       }],
+    });
+    if (path.endsWith("/blueprint/evidence")) return route.fulfill({
+      json: [{
+        concept_id: "concept-1",
+        attempts: 8,
+        touched_learners: 4,
+        correct_percent: 50,
+        confident_percent: 75,
+        confident_incorrect: 2,
+        mastery: { mastered: 2, practiced: 1, struggling: 1 },
+        route_actions: { remediate: 3, advance: 2 },
+      }],
+    });
+    if (path.endsWith("/blueprint")) {
+      const revision = new URL(route.request().url()).searchParams.get("revision") === "working"
+        ? "working"
+        : "active";
+      return route.fulfill({ json: publishedBlueprint(editedConcept, revision) });
+    }
+    if (path.endsWith("/revision-diff")) return route.fulfill({
+      json: {
+        active_revision_id: published.active_revision_id,
+        working_revision_id: workingRevisionId,
+        changes: workingRevisionOpen ? [{
+          artifact_type: "concept",
+          logical_artifact_id: "concept-logical",
+          change_type: "changed",
+          before_state: { name: "Net force" },
+          after_state: { name: editedConcept?.name ?? "Net force" },
+        }] : [],
+      },
     });
     if (path.endsWith("/map")) return route.fulfill({
       json: {
@@ -286,6 +397,8 @@ async function mockPublishedCourseOS(page: Page) {
           topic_id: "topic-1",
           topic_title: "Force systems",
           body: "What determines the direction of net force?",
+          primary_concept_id: "concept-1",
+          concept_ids: ["concept-1"],
           type: "short_answer",
           correct_answer: { answer: "vector sum" },
           confidence_prompt: "How confident are you?",
@@ -358,7 +471,47 @@ async function mockPublishedCourseOS(page: Page) {
     });
     return route.fulfill({ json: {} });
   });
-  return published;
+  function publishedBlueprint(
+    conceptEdit: typeof editedConcept,
+    revisionKind: "active" | "working" = "active",
+  ) {
+    const working = revisionKind === "working";
+    const topicId = working ? "topic-working" : "topic-1";
+    const conceptId = working ? "concept-working" : "concept-1";
+    const conceptTwoId = working ? "concept-working-2" : "concept-2";
+    const clipId = working ? "clip-working" : "clip-1";
+    const questionId = working ? "question-working" : "question-1";
+    const sourceId = working ? "source-working" : "source-1";
+    return {
+      course_id: published.id,
+      revision_id: working ? workingRevisionId : published.active_revision_id,
+      revision_kind: revisionKind,
+      nodes: [
+        { id: topicId, logical_id: "topic-logical", kind: "topic", title: "Force systems", status: "accepted", parent_id: null, metadata: {} },
+        { id: conceptId, logical_id: "concept-logical", kind: "concept", title: conceptEdit?.name ?? "Net force", status: "accepted", parent_id: topicId, metadata: { sequence_rank: 1, description: conceptEdit?.description ?? "Combine force vectors." } },
+        { id: conceptTwoId, logical_id: "concept-logical-2", kind: "concept", title: "Balanced forces", status: "accepted", parent_id: topicId, metadata: { sequence_rank: 2, description: "Recognize equilibrium." } },
+        { id: clipId, logical_id: "clip-logical", kind: "clip", title: "Vector direction", status: "accepted", parent_id: topicId, metadata: { duration_seconds: 60 } },
+        { id: questionId, logical_id: "question-logical", kind: "question", title: "What determines the direction of net force?", status: "accepted", parent_id: topicId, metadata: { type: "short_answer" } },
+        { id: sourceId, logical_id: "source-logical", kind: "source", title: "Force diagrams.pdf", status: "accepted", parent_id: null, metadata: { source_type: "pdf" } },
+      ],
+      edges: [
+        { id: "contains-1", source_id: topicId, target_id: conceptId, kind: "contains", status: "accepted" },
+        { id: "contains-2", source_id: topicId, target_id: conceptTwoId, kind: "contains", status: "accepted" },
+        { id: "next-1", source_id: conceptId, target_id: conceptTwoId, kind: "next", status: "accepted" },
+        { id: "teaches-1", source_id: clipId, target_id: conceptId, kind: "teaches", status: "accepted" },
+        { id: "assesses-1", source_id: questionId, target_id: conceptId, kind: "assesses", status: "accepted" },
+        { id: "cites-1", source_id: sourceId, target_id: conceptId, kind: "cites", status: "accepted" },
+      ],
+      uncovered_concept_ids: [conceptTwoId],
+    };
+  }
+  return {
+    published,
+    proposalDecisions,
+    savedLayout: () => savedLayout,
+    editedConcept: () => editedConcept,
+    savedSequence: () => savedSequence,
+  };
 }
 
 async function setInstructorSession(page: Page) {
@@ -411,20 +564,21 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
 
   await page.getByRole("heading", { name: "Forces and motion", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/app/courses/${course.id}$`));
-  await expect(page.getByRole("heading", { name: "Forces and motion" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Forces and motion", level: 1 })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open Course Director" })).toBeVisible();
   await page.getByRole("button", { name: "Open Course Director" }).click();
   await expect(page.getByText("Your complete private draft is ready for review.")).toBeVisible();
 });
 
-test("course studio exposes map, review decisions, and a mobile-safe layout", async ({ page }) => {
+test("course studio exposes Blueprint, review decisions, and a mobile-safe layout", async ({ page }) => {
   await mockCourseOS(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/app/courses/${course.id}`);
 
-  await expect(page.getByRole("button", { name: "Course map" })).toBeVisible();
-  await page.getByRole("button", { name: "Course map" }).click();
-  await page.getByRole("button", { name: /Net force accepted/ }).click();
+  await expect(page.getByRole("button", { name: "Blueprint" })).toBeVisible();
+  await page.getByRole("button", { name: "Blueprint" }).click();
+  await expect(page.getByRole("heading", { name: "Forces and motion", level: 2 })).toBeVisible();
+  await page.getByRole("button", { name: /Net force/ }).click();
   await expect(page.getByRole("button", { name: "Vector addition", exact: true })).toBeVisible();
   await page.getByRole("button", { name: /^Review/ }).click();
   await expect(page.getByRole("heading", { name: "Course structure" })).toBeVisible();
@@ -456,25 +610,59 @@ test("course deletion requires a separate destructive confirmation", async ({ pa
   expect(state.deleted()).toBe(true);
 });
 
-test("published course combines insights with overview and exposes durable assessment and policy workspaces", async ({ page }) => {
-  const published = await mockPublishedCourseOS(page);
+test("published course unifies artifacts, evidence, learner path, and atomic proposals in Blueprint", async ({ page }) => {
+  const state = await mockPublishedCourseOS(page);
+  const { published } = state;
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto(`/app/courses/${published.id}`);
 
-  await expect(page.getByRole("heading", { name: "Priority brief" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Your course team" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Evidence inspector" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Course structure × performance" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Topic health" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Learning patterns" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Blueprint" })).toBeVisible();
+  await expect(page.getByText("Structure, teaching, assessment, evidence, and routing in one inspectable model.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("heading", { name: "Net force" })).toBeVisible();
+  await expect(page.getByText("50%", { exact: true })).toBeVisible();
+  await expect(page.getByText("Private proposal pack")).toBeVisible();
+  await expect(page.getByText("3 decisions")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Accept" })).toHaveCount(3);
+  await expect(page.getByRole("button", { name: /accept all/i })).toHaveCount(0);
+  const pack = page.locator('section[class*="proposalPack"]');
+  const conceptProposal = pack.locator("article").filter({ hasText: "Clarify the misconception." });
+  const questionProposal = pack.locator("article").filter({ hasText: "Check vector direction explicitly." });
+  const clipProposal = pack.locator("article").filter({ hasText: "Focus the recovery clip." });
+  await conceptProposal.getByRole("button", { name: "Accept" }).click();
+  await clipProposal.getByRole("button", { name: "Dismiss" }).click();
+  await questionProposal.getByRole("button", { name: "Edit" }).click();
+  await questionProposal.getByLabel("Edit proposed artifact JSON").fill('{"body":"Which direction does the vector sum point?"}');
+  await questionProposal.getByRole("button", { name: "Save edit" }).click();
+  await expect.poll(() => state.proposalDecisions.map((item) => item.decision).sort())
+    .toEqual(["accepted", "dismissed", "edited"]);
+  await expect(pack.getByText("0 decisions")).toBeVisible();
+
+  await page.getByRole("button", { name: "Design" }).click();
+  await expect(page.getByRole("heading", { name: "Net force" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit concept fields" })).toBeVisible();
+  const conceptNode = page.getByTestId("rf__node-concept-1");
+  await expect(conceptNode).toHaveClass(/draggable/);
+  await page.getByRole("button", { name: "Move artifact right" }).click();
+  await expect.poll(() => state.savedLayout()?.positions?.[0]?.logical_artifact_id).toBe("concept-logical");
+  await page.getByRole("button", { name: "Edit concept fields" }).click();
+  await page.getByLabel("Name").fill("Net force vectors");
+  await page.getByLabel("Description").fill("Combine vectors by magnitude and direction.");
+  await page.getByRole("button", { name: "Save private edit" }).click();
+  await expect.poll(() => state.editedConcept()?.name).toBe("Net force vectors");
+  await page.getByRole("button", { name: "Move concept later" }).click();
+  await expect.poll(() => state.savedSequence()).toEqual(["concept-logical-2", "concept-logical"]);
+  await page.getByRole("button", { name: "Learner path" }).click();
+  await expect(page.getByText("Learner journey")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Net force" })).toBeVisible();
+  await page.getByRole("button", { name: "Revision" }).click();
+  await expect(page.getByText("Private revision open", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Net force vectors" })).toBeVisible();
   await expect(page.getByText(/to review/i)).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Publish updates" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Review proposal" })).toBeEnabled();
-  await expect(page.getByText("Learner uncertainty is concentrated in vector direction.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Accept" })).toBeVisible();
-  await page.getByRole("button", { name: /Course sources/ }).click();
+  await expect(page.getByRole("button", { name: "Publish updates" })).toBeEnabled();
+  await page.getByRole("button", { name: /1 sources/ }).click();
   await expect(page.getByRole("heading", { name: "Sources & materials" })).toBeVisible();
-  await expect(page.getByText("Force diagrams.pdf")).toBeVisible();
+  await expect(page.getByLabel("Course sources", { exact: true }).getByText("Force diagrams.pdf")).toBeVisible();
   await page.getByRole("button", { name: "Close course sources" }).click();
   const overviewAccessibility = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
@@ -484,7 +672,6 @@ test("published course combines insights with overview and exposes durable asses
   await expect(page.getByRole("button", { name: "Edit course" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Changes" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Review", exact: true })).toHaveCount(0);
-  await expect(page.getByText("Live revision", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Human checkpoint", { exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Assessments" }).click();

@@ -6,6 +6,7 @@ from app.routing.models import (
     AttemptSubmission,
     LearnerConceptProgress,
     LearnerMastery,
+    LearnerPath,
     RouteableClip,
     RouteableConcept,
     RouteDecision,
@@ -38,6 +39,16 @@ class RoutingRepository(ABC):
         attempt_id = await self.record_attempt(submission)
         await self.update_mastery(submission.learner_id, mastery)
         return attempt_id
+
+    async def record_attempt_mastery_and_route(
+        self,
+        context: AttemptContext,
+        submission: AttemptSubmission,
+        mastery: LearnerMastery,
+        decision: RouteDecision,
+    ) -> tuple[UUID, UUID | None]:
+        del context, decision
+        return await self.record_attempt_and_update_mastery(submission, mastery), None
 
     @abstractmethod
     async def eligible_next_concepts(
@@ -88,3 +99,7 @@ class RoutingRepository(ABC):
         course_id: UUID,
     ) -> tuple[LearnerConceptProgress, ...]:
         raise NotImplementedError
+
+    async def learner_path(self, learner_id: UUID, course_id: UUID) -> LearnerPath | None:
+        del learner_id, course_id
+        return None

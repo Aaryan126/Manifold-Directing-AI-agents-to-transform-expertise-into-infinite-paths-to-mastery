@@ -6,8 +6,10 @@ import {
   MarkerType,
   ReactFlow,
   type Edge,
+  type Connection,
   type Node,
 } from "@xyflow/react";
+import ELK from "elkjs/lib/elk.bundled.js";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
@@ -37,7 +39,6 @@ import {
   FileVideo,
   GitFork,
   LoaderCircle,
-  Map as MapIcon,
   MessageCircleMore,
   MessageSquareText,
   Network,
@@ -59,17 +60,26 @@ import {
 import {
   answerOutcomeSummary,
   canPrepareImprovement,
+  compareBlueprintSequence,
   evidenceTitle,
   generationPhaseLabel,
   orderedGenerationTasks,
   performancePercent,
+  masteryStateForConcept,
   shouldHydrateGenerationRun,
   shouldCenterCreationComposer,
   studioPresentationMode,
+  visibleBlueprintNodeIds,
   type CourseMap,
   type CourseAssessment,
   type CourseMessage,
   type CourseAgentTask,
+  type AgentTaskPack,
+  type AgentTaskProposal,
+  type BlueprintConceptEvidence,
+  type BlueprintEdge,
+  type BlueprintNode,
+  type CourseBlueprint,
   type CoursePriority,
   type CourseSource,
   type CourseSummary,
@@ -90,10 +100,13 @@ import { ProviderVideo, type PlaybackInfo } from "../../../ProviderVideo";
 import { readDevelopmentSession } from "../../../developmentSession";
 
 const pipelineBase = process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localhost:8000";
-type CanvasView = "overview" | "map" | "review" | "assessments" | "preview" | "settings";
+type CanvasView = "blueprint" | "review" | "assessments" | "preview" | "settings";
+type BlueprintMode = "live" | "design" | "learner" | "revision";
 type Decision = "accepted" | "edited" | "dismissed";
 type AssessmentDraftPayload = {
   topic_id: string;
+  primary_concept_id: string;
+  concept_ids: string[];
   body: string;
   type: CourseAssessment["type"];
   correct_answer: Record<string, unknown>;
@@ -117,7 +130,9 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   const [course, setCourse] = useState<CourseSummary | null>(null);
   const [messages, setMessages] = useState<CourseMessage[]>([]);
   const [run, setRun] = useState<GenerationRun | null>(null);
-  const [courseMap, setCourseMap] = useState<CourseMap | null>(null);
+  const [activeBlueprint, setActiveBlueprint] = useState<CourseBlueprint | null>(null);
+  const [workingBlueprint, setWorkingBlueprint] = useState<CourseBlueprint | null>(null);
+  const [blueprintEvidence, setBlueprintEvidence] = useState<BlueprintConceptEvidence[]>([]);
   const [bundles, setBundles] = useState<ReviewBundle[]>([]);
   const [revisionDiff, setRevisionDiff] = useState<RevisionDiff | null>(null);
   const [assessmentWorkspace, setAssessmentWorkspace] = useState<AssessmentWorkspace | null>(null);
@@ -125,7 +140,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary | null>(null);
   const [sources, setSources] = useState<CourseSource[]>([]);
   const [agentTasks, setAgentTasks] = useState<CourseAgentTask[]>([]);
-  const [canvasView, setCanvasView] = useState<CanvasView>("map");
+  const [canvasView, setCanvasView] = useState<CanvasView>("blueprint");
   const [composer, setComposer] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -176,12 +191,26 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   }, [courseId, request]);
 
   const refreshArtifacts = useCallback(async (user: DevelopmentIdentity) => {
-    const [mapResult, bundleResult] = await Promise.all([
-      request<CourseMap>(`/courses/${courseId}/map`, user),
-      request<ReviewBundle[]>(`/courses/${courseId}/review-bundles`, user),
-    ]);
-    setCourseMap(mapResult);
-    setBundles(bundleResult);
+    setBundles(await request<ReviewBundle[]>(`/courses/${courseId}/review-bundles`, user));
+  }, [courseId, request]);
+
+  const refreshBlueprint = useCallback(async (
+    user: DevelopmentIdentity,
+    summary: CourseSummary,
+  ) => {
+    const active = summary.active_revision_id
+      ? request<CourseBlueprint>(`/courses/${courseId}/blueprint?revision=active`, user)
+      : Promise.resolve(null);
+    const working = summary.working_revision_id
+      ? request<CourseBlueprint>(`/courses/${courseId}/blueprint?revision=working`, user)
+      : Promise.resolve(null);
+    const evidence = summary.active_revision_id
+      ? request<BlueprintConceptEvidence[]>(`/courses/${courseId}/blueprint/evidence?revision=active&days=14`, user)
+      : Promise.resolve([]);
+    const [activeResult, workingResult, evidenceResult] = await Promise.all([active, working, evidence]);
+    setActiveBlueprint(activeResult);
+    setWorkingBlueprint(workingResult);
+    setBlueprintEvidence(evidenceResult);
   }, [courseId, request]);
 
   const refreshRevisionDiff = useCallback(async (
@@ -228,6 +257,9 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         setRun(runResult);
       }
       await refreshArtifacts(user);
+      if (courseResult.active_revision_id || courseResult.working_revision_id) {
+        await refreshBlueprint(user, courseResult);
+      }
       await refreshRevisionDiff(user, courseResult);
       if (courseResult.active_revision_id || courseResult.working_revision_id) {
         await refreshIntelligence(user);
@@ -237,9 +269,9 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       }
       if (courseResult.status === "published") {
         setCanvasView(
-          requestedCanvasView && ["overview", "map", "assessments", "preview", "settings"].includes(requestedCanvasView)
+          requestedCanvasView && ["assessments", "preview", "settings"].includes(requestedCanvasView)
             ? requestedCanvasView as CanvasView
-            : "overview",
+            : "blueprint",
         );
       }
       else if (courseResult.pending_review_count > 0) setCanvasView("review");
@@ -248,7 +280,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [courseId, refreshArtifacts, refreshIntelligence, refreshStructuredWorkspace, refreshRevisionDiff, request, requestedCanvasView, router]);
+  }, [courseId, refreshArtifacts, refreshBlueprint, refreshIntelligence, refreshStructuredWorkspace, refreshRevisionDiff, request, requestedCanvasView, router]);
 
   useEffect(() => {
     void loadStudio();
@@ -428,7 +460,8 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       setRevisionDiff(null);
       await refreshArtifacts(identity);
       await refreshStructuredWorkspace(identity);
-      setCanvasView("overview");
+      await refreshBlueprint(identity, nextCourse);
+      setCanvasView("blueprint");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not publish this revision.");
     } finally {
@@ -564,37 +597,6 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     }
   }
 
-  async function resolveDashboardSignal(
-    signalId: string,
-    decision: Decision,
-    note?: string,
-  ) {
-    if (!identity) return;
-    const path = decision === "accepted"
-      ? `/dashboard/signals/${signalId}/accept`
-      : decision === "dismissed"
-        ? `/dashboard/signals/${signalId}/dismiss`
-        : `/dashboard/signals/${signalId}`;
-    try {
-      await request(path, identity, {
-        method: decision === "edited" ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: decision === "accepted"
-            ? "acknowledge_diagnosis"
-            : decision === "edited"
-              ? "manual_edit"
-              : "dismiss_diagnosis",
-          note: note ?? null,
-          retroactive: false,
-        }),
-      });
-      setDashboardSummary(await request<DashboardSummary>(`/courses/${courseId}/dashboard`, identity));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not save the insight decision.");
-    }
-  }
-
   async function uploadSupplementalSource(file: File, purpose: CourseSource["purpose"]) {
     if (!identity) return;
     setSending(true);
@@ -671,8 +673,112 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     }
   }
 
-  async function requestSpecialist(priority: CoursePriority) {
-    if (!identity || !priority.target_artifact_type || !priority.target_logical_artifact_id) return;
+  async function updateBlueprintSequence(conceptIds: string[]) {
+    if (!identity) return;
+    setSending(true);
+    try {
+      const next = await request<CourseBlueprint>(`/courses/${courseId}/blueprint/sequence`, identity, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ concept_ids: conceptIds }),
+      });
+      setWorkingBlueprint(next);
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
+      await refreshRevisionDiff(identity, nextCourse);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not update the learner sequence.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function createPrerequisite(fromConceptId: string, toConceptId: string) {
+    if (!identity) return;
+    setSending(true);
+    try {
+      const next = await request<CourseBlueprint>(`/courses/${courseId}/blueprint/prerequisites`, identity, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from_concept_id: fromConceptId,
+          to_concept_id: toConceptId,
+        }),
+      });
+      setWorkingBlueprint(next);
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
+      await Promise.all([refreshBlueprint(identity, nextCourse), refreshArtifacts(identity)]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not add that prerequisite.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function updateBlueprintConcept(node: BlueprintNode, name: string, description: string) {
+    if (!identity) return;
+    setSending(true);
+    try {
+      const next = await request<CourseBlueprint>(`/courses/${courseId}/blueprint/concepts/${node.logical_id}`, identity, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, description }),
+      });
+      setWorkingBlueprint(next);
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
+      await refreshRevisionDiff(identity, nextCourse);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not update that concept.");
+      throw caught;
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function saveBlueprintPosition(node: BlueprintNode, x: number, y: number) {
+    if (!identity) return;
+    try {
+      await request(`/courses/${courseId}/map/layout`, identity, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          positions: [{ logical_artifact_id: node.logical_id, x, y }],
+        }),
+      });
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
+      await Promise.all([
+        refreshBlueprint(identity, nextCourse),
+        refreshRevisionDiff(identity, nextCourse),
+      ]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not save the Blueprint position.");
+      throw caught;
+    }
+  }
+
+  async function resolvePrerequisite(edge: BlueprintEdge, decision: "accepted" | "dismissed") {
+    if (!identity || !edge.id.startsWith("requires:")) return;
+    setSending(true);
+    try {
+      const edgeId = edge.id.slice("requires:".length);
+      await request(`/courses/graph/edges/${edgeId}/${decision === "accepted" ? "accept" : "dismiss"}`, identity, {
+        method: "POST",
+      });
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
+      await Promise.all([refreshBlueprint(identity, nextCourse), refreshArtifacts(identity)]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not review that relationship.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function requestBlueprintImprovement(node: BlueprintNode, neighboringNodes: BlueprintNode[]) {
+    if (!identity) return;
     setSending(true);
     setError(null);
     try {
@@ -680,70 +786,47 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          specialist_role: priority.specialist_role,
+          specialist_role: node.kind === "clip" ? "clip_editor" : node.kind === "question" ? "assessment_designer" : "curriculum_architect",
           task_type: "prepare_improvement",
-          target_artifact_type: priority.target_artifact_type,
-          target_logical_artifact_id: priority.target_logical_artifact_id,
-          instruction: priority.recommended_action,
-          evidence: priority.evidence,
+          target_artifact_type: node.kind,
+          target_logical_artifact_id: node.logical_id,
+          instruction: `Prepare a misconception-recovery improvement pack for ${node.title}. Keep every artifact independently reviewable.`,
+          evidence: {
+            pack_targets: neighboringNodes.slice(0, 5).map((item) => ({
+              artifact_type: item.kind,
+              logical_artifact_id: item.logical_id,
+              title: item.title,
+            })),
+          },
         }),
       });
-      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
-      setCourse(nextCourse);
-      await Promise.all([
-        refreshIntelligence(identity),
-        refreshArtifacts(identity),
-        refreshRevisionDiff(identity, nextCourse),
-      ]);
+      await refreshIntelligence(identity);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not brief the specialist.");
+      setError(caught instanceof Error ? caught.message : "Could not brief the course team.");
     } finally {
       setSending(false);
     }
   }
 
-  function askDirectorAbout(priority: CoursePriority) {
-    setComposer(
-      `Help me evaluate “${priority.title}”. Use the evidence (${priority.evidence_count} observations) and recommend the smallest effective private course change.`,
-    );
-    setDirectorOpen(true);
+  async function loadAgentTaskPack(taskId: string) {
+    if (!identity) throw new Error("Sign in as an instructor to inspect this proposal pack.");
+    return request<AgentTaskPack>(`/courses/${courseId}/agent-tasks/${taskId}`, identity);
   }
 
-  async function resolveSpecialistProposal(
-    task: CourseAgentTask,
+  async function resolvePackProposal(
+    proposal: AgentTaskProposal,
     decision: Decision,
     instructorRevision?: Record<string, unknown>,
   ) {
-    const proposalId = task.proposal_ids[0];
-    if (!proposalId || !identity) return;
-    await resolveProposal(proposalId, decision, instructorRevision);
-    await Promise.all([
-      refreshIntelligence(identity),
-      refreshArtifacts(identity),
-      refreshStructuredWorkspace(identity),
-    ]);
+    await resolveProposal(proposal.id, decision, instructorRevision);
+    if (!identity) return;
     const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
     setCourse(nextCourse);
-    await refreshRevisionDiff(identity, nextCourse);
-  }
-
-  async function saveCourseMapPosition(logicalId: string, x: number, y: number) {
-    if (!identity) return;
-    try {
-      await request(`/courses/${courseId}/map/layout`, identity, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ positions: [{ logical_artifact_id: logicalId, x, y }] }),
-      });
-      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
-      setCourse(nextCourse);
-      await Promise.all([
-        refreshArtifacts(identity),
-        refreshRevisionDiff(identity, nextCourse),
-      ]);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not save the course map layout.");
-    }
+    await Promise.all([
+      refreshBlueprint(identity, nextCourse),
+      refreshIntelligence(identity),
+      refreshRevisionDiff(identity, nextCourse),
+    ]);
   }
 
   async function leaveStudio() {
@@ -905,8 +988,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
             <div className={styles.workspaceStage}>
               <section className={styles.canvasPanel} aria-label="Course workspace canvas">
               <nav className={styles.canvasTabs} aria-label="Course views">
-                {course?.status === "published" ? <CanvasTab active={canvasView === "overview"} icon={<Activity />} label="Overview" onClick={() => setCanvasView("overview")} /> : null}
-                <CanvasTab active={canvasView === "map"} icon={<MapIcon />} label="Course map" onClick={() => setCanvasView("map")} />
+                <CanvasTab active={canvasView === "blueprint"} icon={<Network />} label="Blueprint" onClick={() => setCanvasView("blueprint")} />
                 {course?.status !== "published" ? <CanvasTab active={canvasView === "review"} badge={course?.pending_review_count || undefined} icon={<ClipboardCheck />} label="Review" onClick={() => setCanvasView("review")} /> : null}
                 {course?.status === "published" ? <CanvasTab active={canvasView === "assessments"} icon={<Check />} label="Assessments" onClick={() => setCanvasView("assessments")} /> : null}
                 <CanvasTab active={canvasView === "preview"} icon={<Eye />} label="Preview" onClick={() => setCanvasView("preview")} />
@@ -918,22 +1000,32 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                 ) : null}
               </nav>
               <div className={styles.canvasBody}>
-                {canvasView === "overview" ? (
-                  <OverviewCanvas
+                {canvasView === "blueprint" ? (
+                  <BlueprintWorkspace
+                    activeBlueprint={activeBlueprint}
                     agentTasks={agentTasks}
+                    blueprintEvidence={blueprintEvidence}
                     course={course}
-                    courseMap={courseMap}
                     dashboard={dashboardSummary}
-                    onAskDirector={askDirectorAbout}
-                    onPrepare={requestSpecialist}
-                    onResolveProposal={resolveSpecialistProposal}
-                    onSignal={resolveDashboardSignal}
+                    disabled={sending}
+                    onAddPrerequisite={createPrerequisite}
+                    onAskDirector={(node) => {
+                      setComposer(`Help me improve “${node.title}”. Trace the learner evidence and propose the smallest effective private change.`);
+                      setDirectorOpen(true);
+                    }}
+                    onLoadPack={loadAgentTaskPack}
+                    onLayout={saveBlueprintPosition}
+                    onPrepare={requestBlueprintImprovement}
+                    onResolvePrerequisite={resolvePrerequisite}
+                    onResolveProposal={resolvePackProposal}
+                    onSequence={updateBlueprintSequence}
                     onSources={() => setSourcesOpen(true)}
+                    onUpdateConcept={updateBlueprintConcept}
                     revisionDiff={revisionDiff}
                     sources={sources}
+                    workingBlueprint={workingBlueprint}
                   />
                 ) : null}
-                {canvasView === "map" ? <CourseMapCanvas courseMap={courseMap} onLayout={saveCourseMapPosition} run={run} /> : null}
                 {canvasView === "review" && course?.status !== "published" ? <ReviewCanvas bundles={bundles} onBundle={decideBundle} onItem={decideItem} /> : null}
                 {canvasView === "assessments" ? <AssessmentsCanvas disabled={sending} onRemove={removeAssessment} onSave={saveAssessment} workspace={assessmentWorkspace} /> : null}
                 {canvasView === "preview" ? <PreviewCanvas course={course} workspace={assessmentWorkspace} /> : null}
@@ -1110,7 +1202,400 @@ function CanvasTab({ active, badge, icon, label, onClick }: { active: boolean; b
   return <button aria-pressed={active} onClick={onClick} type="button">{icon}<span>{label}</span>{badge ? <i>{badge}</i> : null}</button>;
 }
 
-function CourseMapCanvas({ courseMap, onLayout, run }: {
+const blueprintModes: Array<{ id: BlueprintMode; label: string }> = [
+  { id: "live", label: "Live" },
+  { id: "design", label: "Design" },
+  { id: "learner", label: "Learner path" },
+  { id: "revision", label: "Revision" },
+];
+
+function BlueprintWorkspace({
+  activeBlueprint,
+  agentTasks,
+  blueprintEvidence,
+  course,
+  dashboard,
+  disabled,
+  onAddPrerequisite,
+  onAskDirector,
+  onLoadPack,
+  onLayout,
+  onPrepare,
+  onResolvePrerequisite,
+  onResolveProposal,
+  onSequence,
+  onSources,
+  onUpdateConcept,
+  revisionDiff,
+  sources,
+  workingBlueprint,
+}: {
+  activeBlueprint: CourseBlueprint | null;
+  agentTasks: CourseAgentTask[];
+  blueprintEvidence: BlueprintConceptEvidence[];
+  course: CourseSummary | null;
+  dashboard: DashboardSummary | null;
+  disabled: boolean;
+  onAddPrerequisite: (fromConceptId: string, toConceptId: string) => Promise<void>;
+  onAskDirector: (node: BlueprintNode) => void;
+  onLoadPack: (taskId: string) => Promise<AgentTaskPack>;
+  onLayout: (node: BlueprintNode, x: number, y: number) => Promise<void>;
+  onPrepare: (node: BlueprintNode, neighbors: BlueprintNode[]) => Promise<void>;
+  onResolvePrerequisite: (edge: BlueprintEdge, decision: "accepted" | "dismissed") => Promise<void>;
+  onResolveProposal: (proposal: AgentTaskProposal, decision: Decision, revision?: Record<string, unknown>) => Promise<void>;
+  onSequence: (conceptIds: string[]) => Promise<void>;
+  onSources: () => void;
+  onUpdateConcept: (node: BlueprintNode, name: string, description: string) => Promise<void>;
+  revisionDiff: RevisionDiff | null;
+  sources: CourseSource[];
+  workingBlueprint: CourseBlueprint | null;
+}) {
+  const [mode, setMode] = useState<BlueprintMode>(course?.status === "published" ? "live" : "design");
+  const [selectedLogicalId, setSelectedLogicalId] = useState<string | null>(null);
+  const [focusTopicLogicalId, setFocusTopicLogicalId] = useState<string | null>(null);
+  const blueprint = mode === "live" || mode === "learner"
+    ? (activeBlueprint ?? workingBlueprint)
+    : (workingBlueprint ?? activeBlueprint);
+  const selected = blueprint?.nodes.find((node) => node.logical_id === selectedLogicalId) ?? null;
+  const topics = useMemo(
+    () => blueprint?.nodes.filter((node) => node.kind === "topic") ?? [],
+    [blueprint],
+  );
+  const concepts = useMemo(
+    () => (blueprint?.nodes.filter((node) => node.kind === "concept") ?? []).sort(compareBlueprintSequence),
+    [blueprint],
+  );
+  const visibleNodeIds = useMemo(
+    () => blueprint ? visibleBlueprintNodeIds(blueprint, focusTopicLogicalId) : null,
+    [blueprint, focusTopicLogicalId],
+  );
+  const flow = useBlueprintFlow(blueprint, blueprintEvidence, mode, visibleNodeIds, selected?.id ?? null);
+  const evidence = selected?.kind === "concept"
+    ? blueprintEvidence.find((item) => item.concept_id === selected.id) ?? null
+    : null;
+  const neighbors = selected && blueprint
+    ? blueprint.edges
+      .filter((edge) => edge.source_id === selected.id || edge.target_id === selected.id)
+      .map((edge) => blueprint.nodes.find((node) => node.id === (edge.source_id === selected.id ? edge.target_id : edge.source_id)))
+      .filter((node): node is BlueprintNode => Boolean(node))
+    : [];
+  const pendingEdges = blueprint?.edges.filter((edge) => edge.kind === "requires" && edge.status === "proposed") ?? [];
+  const coverageGaps = blueprint?.uncovered_concept_ids.length ?? 0;
+  const selectedTask = selected
+    ? agentTasks.find((task) => task.target_logical_artifact_id === selected.logical_id && task.task_type === "prepare_improvement")
+    : null;
+
+  useEffect(() => {
+    if (!blueprint?.nodes.some((node) => node.logical_id === selectedLogicalId)) {
+      setSelectedLogicalId(concepts[0]?.logical_id ?? topics[0]?.logical_id ?? null);
+    }
+    if (focusTopicLogicalId && !topics.some((topic) => topic.logical_id === focusTopicLogicalId)) {
+      setFocusTopicLogicalId(null);
+    }
+  }, [blueprint, concepts, focusTopicLogicalId, selectedLogicalId, topics]);
+
+  const connectConcepts = useCallback((connection: Connection) => {
+    if (!blueprint || !connection.source || !connection.target || connection.source === connection.target) return;
+    const source = blueprint.nodes.find((node) => node.id === connection.source);
+    const target = blueprint.nodes.find((node) => node.id === connection.target);
+    if (source?.kind === "concept" && target?.kind === "concept") {
+      void onAddPrerequisite(source.logical_id, target.logical_id);
+    }
+  }, [blueprint, onAddPrerequisite]);
+
+  if (!blueprint) {
+    return <div className={styles.canvasEmpty}><LoaderCircle className={styles.spin} /><h2>Loading the course Blueprint</h2><p>The structure, learning evidence, and adaptive routes are being assembled.</p></div>;
+  }
+
+  return (
+    <div className={styles.blueprintWorkspace} data-mode={mode}>
+      <header className={styles.blueprintHeader}>
+        <div>
+          <span>Adaptive course system</span>
+          <h2>{course?.title}</h2>
+          <p>Structure, teaching, assessment, evidence, and routing in one inspectable model.</p>
+        </div>
+        <div>
+          <nav aria-label="Blueprint mode">
+            {blueprintModes.map((item) => <button aria-pressed={mode === item.id} key={item.id} onClick={() => setMode(item.id)} type="button">{item.label}</button>)}
+          </nav>
+          <button onClick={onSources} type="button"><FileText />{sources.length} sources</button>
+        </div>
+      </header>
+
+      <section className={styles.blueprintBrief}>
+        <article><small>Coverage</small><strong>{coverageGaps ? `${coverageGaps} gaps` : "Complete"}</strong><span>{concepts.length} concepts linked to teaching and checks</span></article>
+        <article><small>Learner evidence</small><strong>{dashboard?.attempt_count ?? 0} attempts</strong><span>{blueprintEvidence.filter((item) => item.confident_incorrect > 0).length} confident misconceptions</span></article>
+        <article><small>Private work</small><strong>{agentTasks.filter((task) => ["queued", "running", "waiting_review"].includes(task.status)).length} active</strong><span>{revisionDiff?.changes.length ?? 0} unpublished artifact changes</span></article>
+      </section>
+
+      {coverageGaps || pendingEdges.length ? (
+        <div className={styles.blueprintNotice}>
+          <CircleAlert />
+          <p><strong>{coverageGaps ? `${coverageGaps} concepts need an assessment or teaching artifact.` : `${pendingEdges.length} prerequisite relationships need review.`}</strong> These remain private until you confirm them.</p>
+        </div>
+      ) : null}
+
+      <div className={styles.blueprintBody}>
+        <nav className={styles.blueprintOutline} aria-label="Course Blueprint outline">
+          <button aria-pressed={!focusTopicLogicalId} onClick={() => setFocusTopicLogicalId(null)} type="button"><BookOpenCheck /><span><strong>Whole course</strong><small>{topics.length} topics · {concepts.length} concepts</small></span></button>
+          {topics.map((topic, topicIndex) => {
+            const topicConcepts = concepts.filter((concept) => blueprint.edges.some((edge) => edge.kind === "contains" && edge.source_id === topic.id && edge.target_id === concept.id));
+            return (
+              <div key={topic.id}>
+                <button aria-pressed={focusTopicLogicalId === topic.logical_id} onClick={() => { setFocusTopicLogicalId(topic.logical_id); setSelectedLogicalId(topic.logical_id); }} type="button"><span>{String(topicIndex + 1).padStart(2, "0")}</span><span><strong>{topic.title}</strong><small>{topicConcepts.length} concepts</small></span></button>
+                {focusTopicLogicalId === topic.logical_id ? topicConcepts.map((concept) => (
+                  <button aria-current={selectedLogicalId === concept.logical_id ? "true" : undefined} key={concept.id} onClick={() => setSelectedLogicalId(concept.logical_id)} type="button"><i data-state={masteryStateForConcept(concept.id, blueprintEvidence)} />{concept.title}</button>
+                )) : null}
+              </div>
+            );
+          })}
+        </nav>
+
+        <div className={styles.blueprintCanvas}>
+          {mode === "learner" ? <LearnerBlueprintStrip concepts={concepts} evidence={blueprintEvidence} onSelect={setSelectedLogicalId} selectedLogicalId={selectedLogicalId} /> : null}
+          {mode === "revision" ? <RevisionBlueprintSummary diff={revisionDiff} active={activeBlueprint} working={workingBlueprint} /> : null}
+          <ReactFlow
+            edges={flow.edges}
+            fitView
+            fitViewOptions={{ padding: 0.18 }}
+            nodes={flow.nodes}
+            nodesConnectable={mode === "design"}
+            nodesDraggable={mode === "design"}
+            onConnect={connectConcepts}
+            onNodesChange={(changes) => {
+              changes.forEach((change) => {
+                if (change.type === "position" && change.position) {
+                  flow.setPosition(change.id, change.position);
+                }
+              });
+            }}
+            onNodeDrag={(_, node) => flow.setPosition(node.id, node.position)}
+            onNodeDragStop={(_, node) => {
+              const artifact = blueprint.nodes.find((item) => item.id === node.id);
+              if (artifact) void onLayout(artifact, node.position.x, node.position.y);
+            }}
+            onNodeClick={(_, node) => {
+              const selectedNode = blueprint.nodes.find((item) => item.id === node.id);
+              setSelectedLogicalId(selectedNode?.logical_id ?? null);
+            }}
+            panOnScroll
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background color="#e2ded6" gap={22} size={1} />
+            <Controls showInteractive={false} />
+          </ReactFlow>
+          {mode === "design" ? <p className={styles.blueprintCanvasHint}><GitFork />Move an artifact to save its position, or connect concept handles to add a prerequisite. Use the inspector to set learner order.</p> : null}
+        </div>
+
+        <aside className={styles.blueprintInspector}>
+          {selected ? (
+            <>
+              <header><span data-kind={selected.kind}>{blueprintKindIcon(selected.kind)}</span><div><small>{selected.kind}</small><h3>{selected.title}</h3><em data-status={selected.status}>{selected.status}</em></div></header>
+              {selected.kind === "concept" ? <ConceptEvidencePanel evidence={evidence} /> : <ArtifactCoveragePanel node={selected} neighbors={neighbors} />}
+              {mode === "design" && selected.kind === "concept" ? (
+                <>
+                  <ConceptInspectorEditor disabled={disabled} node={selected} onSave={onUpdateConcept} />
+                  <SequenceControls concepts={concepts} disabled={disabled} onChange={onSequence} selected={selected} />
+                  <LayoutControls disabled={disabled} node={selected} onMove={onLayout} />
+                </>
+              ) : null}
+              {pendingEdges.filter((edge) => edge.source_id === selected.id || edge.target_id === selected.id).map((edge) => {
+                const other = blueprint.nodes.find((node) => node.id === (edge.source_id === selected.id ? edge.target_id : edge.source_id));
+                return <article className={styles.relationshipReview} key={edge.id}><small>Proposed prerequisite</small><strong>{edge.source_id === selected.id ? `${selected.title} → ${other?.title}` : `${other?.title} → ${selected.title}`}</strong><div><button disabled={disabled} onClick={() => void onResolvePrerequisite(edge, "dismissed")} type="button"><X />Dismiss</button><button disabled={disabled} onClick={() => void onResolvePrerequisite(edge, "accepted")} type="button"><Check />Accept</button></div></article>;
+              })}
+              <div className={styles.blueprintActions}>
+                <button onClick={() => onAskDirector(selected)} type="button"><MessageCircleMore />Ask Director</button>
+                <button disabled={disabled || Boolean(selectedTask && ["queued", "running"].includes(selectedTask.status))} onClick={() => void onPrepare(selected, neighbors)} type="button"><Wand2 />{selectedTask?.status === "waiting_review" ? "Refresh proposal pack" : "Prepare improvement"}</button>
+              </div>
+              {selectedTask ? <ProposalPack task={selectedTask} load={onLoadPack} onResolve={onResolveProposal} /> : null}
+            </>
+          ) : <div className={styles.inspectorEmpty}><Search /><p>Select any artifact to inspect its evidence, relationships, and available actions.</p></div>}
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function useBlueprintFlow(
+  blueprint: CourseBlueprint | null,
+  evidence: BlueprintConceptEvidence[],
+  mode: BlueprintMode,
+  visibleNodeIds: Set<string> | null,
+  selectedId: string | null,
+) {
+  const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
+  const visibleNodes = useMemo(() => blueprint?.nodes.filter((node) => !visibleNodeIds || visibleNodeIds.has(node.id)) ?? [], [blueprint, visibleNodeIds]);
+  const visibleEdges = useMemo(() => blueprint?.edges.filter((edge) => visibleNodes.some((node) => node.id === edge.source_id) && visibleNodes.some((node) => node.id === edge.target_id)) ?? [], [blueprint, visibleNodes]);
+
+  useEffect(() => {
+    if (!visibleNodes.length) return;
+    let cancelled = false;
+    const elk = new ELK();
+    void elk.layout({
+      id: "blueprint",
+      layoutOptions: {
+        "elk.algorithm": "layered",
+        "elk.direction": mode === "learner" ? "RIGHT" : "DOWN",
+        "elk.spacing.nodeNode": "54",
+        "elk.layered.spacing.nodeNodeBetweenLayers": "72",
+      },
+      children: visibleNodes.map((node) => ({ id: node.id, width: node.kind === "topic" ? 250 : 220, height: node.kind === "concept" ? 104 : 86 })),
+      edges: visibleEdges.map((edge) => ({ id: edge.id, sources: [edge.source_id], targets: [edge.target_id] })),
+    }).then((layout) => {
+      if (cancelled) return;
+      setPositions(Object.fromEntries((layout.children ?? []).map((node) => {
+        const artifact = visibleNodes.find((item) => item.id === node.id);
+        const saved = artifact && isRecord(artifact.metadata.layout)
+          ? artifact.metadata.layout
+          : null;
+        return [node.id, {
+          x: typeof saved?.x === "number" ? saved.x : node.x ?? 0,
+          y: typeof saved?.y === "number" ? saved.y : node.y ?? 0,
+        }];
+      })));
+    });
+    return () => { cancelled = true; };
+  }, [mode, visibleEdges, visibleNodes]);
+
+  const nodes: Node[] = visibleNodes.map((node) => {
+    const conceptEvidence = evidence.find((item) => item.concept_id === node.id);
+    const risk = conceptEvidence?.correct_percent == null ? null : 100 - conceptEvidence.correct_percent;
+    return {
+      id: node.id,
+      position: positions[node.id] ?? { x: 0, y: 0 },
+      data: { label: <div className={styles.blueprintNodeLabel}><small>{node.kind}{conceptEvidence?.attempts ? ` · ${conceptEvidence.attempts} attempts` : ""}</small><strong>{node.title}</strong>{node.kind === "concept" ? <span>{conceptEvidence?.correct_percent == null ? "Awaiting evidence" : `${Math.round(conceptEvidence.correct_percent)}% correct · ${conceptEvidence.confident_incorrect} misconceptions`}</span> : <span>{coverageLabel(node)}</span>}</div> },
+      className: styles.blueprintFlowNode,
+      style: {
+        background: selectedId === node.id ? "#222328" : risk != null && risk >= 40 ? "#fff5e9" : "#fff",
+        borderColor: selectedId === node.id ? "#222328" : risk != null && risk >= 40 ? "#d88432" : "#d9d5cc",
+        color: selectedId === node.id ? "#fff" : "#202126",
+        width: node.kind === "topic" ? 250 : 220,
+      },
+    };
+  });
+  const edges: Edge[] = visibleEdges.map((edge) => ({
+    id: edge.id,
+    source: edge.source_id,
+    target: edge.target_id,
+    label: edge.kind === "contains" || edge.kind === "next" ? undefined : edge.kind.replaceAll("_", " "),
+    markerEnd: edge.kind === "contains" ? undefined : { type: MarkerType.ArrowClosed, color: edge.status === "proposed" ? "#d77a25" : "#77736b" },
+    animated: edge.kind === "remediates_to",
+    style: { stroke: edge.status === "proposed" ? "#d77a25" : edge.kind === "next" ? "#25262b" : "#aaa69d", strokeDasharray: edge.status === "proposed" ? "6 5" : undefined },
+  }));
+  const setPosition = useCallback(
+    (id: string, position: { x: number; y: number }) => {
+      setPositions((current) => ({ ...current, [id]: position }));
+    },
+    [],
+  );
+  return { nodes, edges, setPosition };
+}
+
+function ConceptEvidencePanel({ evidence }: { evidence: BlueprintConceptEvidence | null }) {
+  if (!evidence?.attempts) return <div className={styles.blueprintEmptyEvidence}><Activity /><p><strong>No learner evidence yet</strong>Manifold is monitoring this concept. Structure and coverage checks remain available.</p></div>;
+  const masteryTotal = Object.values(evidence.mastery).reduce((total, value) => total + value, 0);
+  return <section className={styles.conceptEvidence}><h4>Learning evidence</h4><div><article><strong>{Math.round(evidence.correct_percent ?? 0)}%</strong><span>Correct</span></article><article><strong>{Math.round(evidence.confident_percent ?? 0)}%</strong><span>Confident</span></article><article data-alert={evidence.confident_incorrect > 0}><strong>{evidence.confident_incorrect}</strong><span>Confident + incorrect</span></article></div><dl><div><dt>Learners reached</dt><dd>{evidence.touched_learners}</dd></div><div><dt>Mastered</dt><dd>{evidence.mastery.mastered ?? 0}/{masteryTotal}</dd></div><div><dt>Remediation routes</dt><dd>{evidence.route_actions.remediate ?? 0}</dd></div></dl></section>;
+}
+
+function ConceptInspectorEditor({ disabled, node, onSave }: { disabled: boolean; node: BlueprintNode; onSave: (node: BlueprintNode, name: string, description: string) => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(node.title);
+  const [description, setDescription] = useState(String(node.metadata.description ?? ""));
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setName(node.title); setDescription(String(node.metadata.description ?? "")); setEditing(false); }, [node]);
+  if (!editing) return <button className={styles.inspectorEditButton} disabled={disabled} onClick={() => setEditing(true)} type="button"><Pencil />Edit concept fields</button>;
+  return <form className={styles.inspectorEditor} onSubmit={(event) => { event.preventDefault(); setSaving(true); void onSave(node, name, description).then(() => setEditing(false)).finally(() => setSaving(false)); }}><label>Name<input disabled={saving} onChange={(event) => setName(event.target.value)} required value={name} /></label><label>Description<textarea disabled={saving} onChange={(event) => setDescription(event.target.value)} rows={4} value={description} /></label><div><button disabled={saving} onClick={() => setEditing(false)} type="button">Cancel</button><button disabled={saving || !name.trim()} type="submit">{saving ? <LoaderCircle className={styles.spin} /> : <Check />}Save private edit</button></div></form>;
+}
+
+function ArtifactCoveragePanel({ node, neighbors }: { node: BlueprintNode; neighbors: BlueprintNode[] }) {
+  const grouped = neighbors.reduce<Record<string, number>>((result, item) => ({ ...result, [item.kind]: (result[item.kind] ?? 0) + 1 }), {});
+  return <section className={styles.artifactCoverage}><h4>Connected system</h4><p>{String(node.metadata.description ?? node.metadata.summary ?? "This artifact participates in the adaptive learning path.")}</p><dl>{Object.entries(grouped).map(([kind, count]) => <div key={kind}><dt>{kind}</dt><dd>{count}</dd></div>)}</dl></section>;
+}
+
+function SequenceControls({ concepts, disabled, onChange, selected }: { concepts: BlueprintNode[]; disabled: boolean; onChange: (ids: string[]) => Promise<void>; selected: BlueprintNode }) {
+  const index = concepts.findIndex((concept) => concept.id === selected.id);
+  function move(offset: number) {
+    const next = [...concepts];
+    const [item] = next.splice(index, 1);
+    next.splice(index + offset, 0, item);
+    void onChange(next.map((concept) => concept.logical_id));
+  }
+  return <section className={styles.sequenceControl}><div><small>Learner sequence</small><strong>Step {index + 1} of {concepts.length}</strong></div><div><button aria-label="Move concept earlier" disabled={disabled || index <= 0} onClick={() => move(-1)} type="button"><ArrowUp /></button><button aria-label="Move concept later" disabled={disabled || index < 0 || index >= concepts.length - 1} onClick={() => move(1)} type="button"><ArrowUp /></button></div></section>;
+}
+
+function LayoutControls({ disabled, node, onMove }: {
+  disabled: boolean;
+  node: BlueprintNode;
+  onMove: (node: BlueprintNode, x: number, y: number) => Promise<void>;
+}) {
+  const saved = isRecord(node.metadata.layout) ? node.metadata.layout : null;
+  const x = typeof saved?.x === "number" ? saved.x : 0;
+  const y = typeof saved?.y === "number" ? saved.y : 0;
+  const move = (nextX: number, nextY: number) => void onMove(node, nextX, nextY);
+  return <section className={styles.layoutControl}><div><small>Canvas position</small><strong>Drag or nudge</strong></div><div><button aria-label="Move artifact left" disabled={disabled} onClick={() => move(x - 40, y)} type="button">←</button><button aria-label="Move artifact up" disabled={disabled} onClick={() => move(x, y - 40)} type="button">↑</button><button aria-label="Move artifact down" disabled={disabled} onClick={() => move(x, y + 40)} type="button">↓</button><button aria-label="Move artifact right" disabled={disabled} onClick={() => move(x + 40, y)} type="button">→</button></div></section>;
+}
+
+function LearnerBlueprintStrip({ concepts, evidence, onSelect, selectedLogicalId }: { concepts: BlueprintNode[]; evidence: BlueprintConceptEvidence[]; onSelect: (logicalId: string) => void; selectedLogicalId: string | null }) {
+  return <div className={styles.learnerBlueprintStrip}><span>Learner journey</span>{concepts.map((concept, index) => <button aria-current={selectedLogicalId === concept.logical_id ? "step" : undefined} key={concept.id} onClick={() => onSelect(concept.logical_id)} type="button"><i data-state={masteryStateForConcept(concept.id, evidence)}>{index + 1}</i><strong>{concept.title}</strong></button>)}</div>;
+}
+
+function RevisionBlueprintSummary({ active, diff, working }: { active: CourseBlueprint | null; diff: RevisionDiff | null; working: CourseBlueprint | null }) {
+  return <div className={styles.revisionBlueprintSummary}><FilePenLine /><p><strong>{working ? "Private revision open" : "Live revision"}</strong>{diff?.changes.length ? `${diff.changes.length} artifact changes are staged. Select an artifact to inspect it; publish only after reviewing each generated proposal.` : "There are no unpublished changes."}</p><span>{active?.nodes.length ?? 0} live → {working?.nodes.length ?? active?.nodes.length ?? 0} working artifacts</span></div>;
+}
+
+function ProposalPack({ load, onResolve, task }: { load: (taskId: string) => Promise<AgentTaskPack>; onResolve: (proposal: AgentTaskProposal, decision: Decision, revision?: Record<string, unknown>) => Promise<void>; task: CourseAgentTask }) {
+  const [pack, setPack] = useState<AgentTaskPack | null>(null);
+  const [loadingPack, setLoadingPack] = useState(false);
+  const loadRef = useRef(load);
+  useEffect(() => { loadRef.current = load; }, [load]);
+  useEffect(() => {
+    if (task.status !== "waiting_review") return;
+    setLoadingPack(true);
+    void loadRef.current(task.id).then(setPack).finally(() => setLoadingPack(false));
+  }, [task.id, task.status]);
+  const resolvePackItem = useCallback(async (
+    proposal: AgentTaskProposal,
+    decision: Decision,
+    revision?: Record<string, unknown>,
+  ) => {
+    await onResolve(proposal, decision, revision);
+    setPack((current) => current ? {
+      ...current,
+      proposals: current.proposals.map((item) => item.id === proposal.id
+        ? { ...item, status: decision }
+        : item),
+    } : current);
+  }, [onResolve]);
+  if (["queued", "running"].includes(task.status)) return <div className={styles.proposalPackStatus}><LoaderCircle className={styles.spin} /><p><strong>The course team is preparing a coordinated pack.</strong>Each artifact will arrive as its own Accept / Edit / Dismiss decision.</p></div>;
+  if (loadingPack) return <div className={styles.proposalPackStatus}><LoaderCircle className={styles.spin} /><p>Loading private proposals…</p></div>;
+  if (!pack?.proposals.length) return null;
+  return <section className={styles.proposalPack}><header><span>Private proposal pack</span><strong>{pack.proposals.filter((proposal) => proposal.status === "proposed").length} decisions</strong></header>{pack.proposals.map((proposal) => <ProposalPackItem key={proposal.id} onResolve={resolvePackItem} proposal={proposal} />)}</section>;
+}
+
+function ProposalPackItem({ onResolve, proposal }: { onResolve: (proposal: AgentTaskProposal, decision: Decision, revision?: Record<string, unknown>) => Promise<void>; proposal: AgentTaskProposal }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(() => JSON.stringify(proposal.proposed_state, null, 2));
+  const [error, setError] = useState<string | null>(null);
+  return <article data-status={proposal.status}><div><small>{proposal.artifact_type ?? proposal.proposal_type}</small><strong>{proposal.rationale}</strong>{proposal.citations.length ? <span><FileText />{proposal.citations.length} cited source sections</span> : null}</div>{editing ? <textarea aria-label="Edit proposed artifact JSON" onChange={(event) => setDraft(event.target.value)} rows={7} value={draft} /> : <ProposalDiff after={proposal.proposed_state} before={proposal.before_state} />}{error ? <p role="alert">{error}</p> : null}{proposal.status === "proposed" ? <footer><button onClick={() => void onResolve(proposal, "dismissed")} type="button"><X />Dismiss</button><button onClick={() => setEditing((current) => !current)} type="button"><Pencil />Edit</button><button onClick={() => { if (!editing) { void onResolve(proposal, "accepted"); return; } try { void onResolve(proposal, "edited", JSON.parse(draft) as Record<string, unknown>); } catch { setError("Enter valid JSON before saving."); } }} type="button"><Check />{editing ? "Save edit" : "Accept"}</button></footer> : <em>{proposal.status}</em>}</article>;
+}
+
+function coverageLabel(node: BlueprintNode) {
+  if (node.kind === "clip") return `${Math.round(Number(node.metadata.duration_seconds ?? 0) / 60)} min teaching moment`;
+  if (node.kind === "question") return String(node.metadata.type ?? "assessment").replaceAll("_", " ");
+  if (node.kind === "source") return String(node.metadata.source_type ?? "source").toUpperCase();
+  return node.status;
+}
+
+function blueprintKindIcon(kind: BlueprintNode["kind"]) {
+  if (kind === "topic") return <BookOpenCheck />;
+  if (kind === "concept") return <BrainCircuit />;
+  if (kind === "clip") return <FileVideo />;
+  if (kind === "question") return <ClipboardCheck />;
+  return <FileText />;
+}
+
+export function CourseMapCanvas({ courseMap, onLayout, run }: {
   courseMap: CourseMap | null;
   onLayout: (logicalId: string, x: number, y: number) => Promise<void>;
   run: GenerationRun | null;
@@ -1226,7 +1711,7 @@ function EvidenceSummary({ item }: { item: ReviewItem }) {
   return <dl>{entries.map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd>{String(value)}</dd></div>)}</dl>;
 }
 
-function OverviewCanvas({
+export function OverviewCanvas({
   agentTasks,
   course,
   courseMap,
@@ -1659,6 +2144,7 @@ function AssessmentEditor({ question, workspace, onCancel, onSave }: {
   const firstTopic = question?.topic_id ?? workspace.topics[0]?.id ?? "";
   const defaultTarget = workspace.concepts.find((concept) => concept.topic_ids.includes(firstTopic))?.id ?? workspace.concepts[0]?.id ?? "";
   const [topicId, setTopicId] = useState(firstTopic);
+  const [primaryConceptId, setPrimaryConceptId] = useState(question?.primary_concept_id ?? defaultTarget);
   const [body, setBody] = useState(question?.body ?? "");
   const [type, setType] = useState<CourseAssessment["type"]>(question?.type ?? "short_answer");
   const [answer, setAnswer] = useState(JSON.stringify(question?.correct_answer ?? { answer: "" }, null, 2));
@@ -1681,6 +2167,8 @@ function AssessmentEditor({ question, workspace, onCancel, onSave }: {
     try {
       await onSave({
         topic_id: topicId,
+        primary_concept_id: primaryConceptId,
+        concept_ids: [primaryConceptId],
         body,
         type,
         correct_answer: parsed,
@@ -1697,7 +2185,8 @@ function AssessmentEditor({ question, workspace, onCancel, onSave }: {
     <form className={styles.structuredEditor} onSubmit={submit}>
       <header><div><h3>{question ? "Edit assessment" : "Add assessment"}</h3></div><button aria-label="Close assessment editor" onClick={onCancel} type="button"><X /></button></header>
       <div className={styles.editorGrid}>
-        <label>Topic<select onChange={(event) => setTopicId(event.target.value)} value={topicId}>{workspace.topics.map((topic) => <option key={topic.id} value={topic.id}>{topic.title}</option>)}</select></label>
+        <label>Topic<select onChange={(event) => { const nextTopicId = event.target.value; setTopicId(nextTopicId); setPrimaryConceptId(workspace.concepts.find((concept) => concept.topic_ids.includes(nextTopicId))?.id ?? ""); }} value={topicId}>{workspace.topics.map((topic) => <option key={topic.id} value={topic.id}>{topic.title}</option>)}</select></label>
+        <label>Assessed concept<select onChange={(event) => setPrimaryConceptId(event.target.value)} required value={primaryConceptId}>{workspace.concepts.filter((concept) => concept.topic_ids.includes(topicId)).map((concept) => <option key={concept.id} value={concept.id}>{concept.name}</option>)}</select></label>
         <label>Question type<select onChange={(event) => setType(event.target.value as CourseAssessment["type"])} value={type}><option value="mcq">Multiple choice</option><option value="short_answer">Short answer</option><option value="worked_problem">Worked problem</option></select></label>
         <label className={styles.editorWide}>Prompt<textarea onChange={(event) => setBody(event.target.value)} required rows={3} value={body} /></label>
         <label>Correct answer (JSON)<textarea className={styles.monoInput} onChange={(event) => setAnswer(event.target.value)} required rows={5} value={answer} /></label>

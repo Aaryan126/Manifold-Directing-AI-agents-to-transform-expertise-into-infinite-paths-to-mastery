@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import suppress
+from uuid import UUID
 
 from app.intelligence.agent import CourseImprovementAgent
 from app.intelligence.extractor import DocumentExtractor
@@ -76,14 +77,45 @@ class CourseIntelligenceWorker:
                         }
                         for citation in citations
                     ]
-                draft = await self._improvement_agent.prepare(
-                    artifact_type=task.target_artifact_type,
-                    logical_artifact_id=task.target_logical_artifact_id,
-                    current_state=current,
-                    evidence=evidence,
-                    instruction=instruction,
-                )
-                await self._repository.save_improvement(task, draft, citations)
+                drafts = [
+                    await self._improvement_agent.prepare(
+                        artifact_type=task.target_artifact_type,
+                        logical_artifact_id=task.target_logical_artifact_id,
+                        current_state=current,
+                        evidence=evidence,
+                        instruction=instruction,
+                    )
+                ]
+                pack_targets = task.evidence_snapshot.get("pack_targets", [])
+                if isinstance(pack_targets, list):
+                    for target in pack_targets[:5]:
+                        if not isinstance(target, dict):
+                            continue
+                        artifact_type = str(target.get("artifact_type", ""))
+                        raw_logical_id = target.get("logical_artifact_id")
+                        if not artifact_type or not raw_logical_id:
+                            continue
+                        logical_id = UUID(str(raw_logical_id))
+                        if (
+                            artifact_type == task.target_artifact_type
+                            and logical_id == task.target_logical_artifact_id
+                        ):
+                            continue
+                        target_state = await self._repository.target_state_by_identity(
+                            task.revision_id,
+                            artifact_type,
+                            logical_id,
+                        )
+                        drafts.append(
+                            await self._improvement_agent.prepare(
+                                artifact_type=artifact_type,
+                                logical_artifact_id=logical_id,
+                                current_state=target_state,
+                                evidence=evidence,
+                                instruction=instruction,
+                            )
+                        )
+                await self._repository.save_improvement_pack(task, tuple(drafts), citations)
             elif task.task_type == "investigate":
                 await self._repository.complete_task(
                     task.id,

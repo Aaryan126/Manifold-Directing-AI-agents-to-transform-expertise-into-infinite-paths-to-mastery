@@ -46,6 +46,9 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     intelligence_migration = Path("migrations/019_course_intelligence_and_sources.sql").read_text(
         encoding="utf-8"
     )
+    blueprint_migration = Path("migrations/020_unified_adaptive_blueprint.sql").read_text(
+        encoding="utf-8"
+    )
 
     for table_name in [
         "users",
@@ -126,6 +129,11 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     ]:
         assert f"create table {table_name}" in intelligence_migration
     assert "revision_source_visibility_reviewed" in intelligence_migration
+    assert "add column sequence_rank integer" in blueprint_migration
+    assert "create table question_concepts" in blueprint_migration
+    assert "question_concepts_one_primary_idx" in blueprint_migration
+    assert "create table learner_route_events" in blueprint_migration
+    assert "evidence_snapshot jsonb" in blueprint_migration
 
 
 def test_legacy_schema_baseline_covers_every_migration() -> None:

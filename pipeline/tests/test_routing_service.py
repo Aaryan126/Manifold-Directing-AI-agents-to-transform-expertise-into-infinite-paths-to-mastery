@@ -7,6 +7,8 @@ from app.routing.models import (
     AttemptSubmission,
     LearnerConceptProgress,
     LearnerMastery,
+    LearnerPath,
+    LearnerPathItem,
     MasteryState,
     RouteableClip,
     RouteableConcept,
@@ -259,6 +261,50 @@ class MemoryRoutingRepository(RoutingRepository):
                 topic_id=self.topic_id,
             )
             for concept_id, mastery in self.mastery.items()
+        )
+
+    async def learner_path(self, learner_id: UUID, course_id: UUID) -> LearnerPath | None:
+        assert learner_id == self.learner_id
+        assert course_id == self.course_id
+        current_mastery = self.mastery[self.current_concept_id]
+        return LearnerPath(
+            course_id=course_id,
+            revision_id=uuid4(),
+            current_concept_id=self.current_concept_id,
+            items=(
+                LearnerPathItem(
+                    concept_id=self.current_concept_id,
+                    name="Current",
+                    description="The active concept",
+                    sequence_rank=1,
+                    state=current_mastery.state,
+                    topic_id=self.topic_id,
+                    topic_title="Foundations",
+                    prerequisite_ids=(),
+                    clip_ids=(self.active_clip.id,),
+                    question_ids=(self.question_id,),
+                    aids=(),
+                    eligible=True,
+                    current=True,
+                ),
+                LearnerPathItem(
+                    concept_id=self.next_concept_id,
+                    name="Next",
+                    description="The next concept",
+                    sequence_rank=2,
+                    state=MasteryState.NOT_STARTED,
+                    topic_id=self.topic_id,
+                    topic_title="Foundations",
+                    prerequisite_ids=(self.current_concept_id,),
+                    clip_ids=(),
+                    question_ids=(),
+                    aids=(),
+                    eligible=current_mastery.state == MasteryState.MASTERED,
+                    current=False,
+                ),
+            ),
+            last_route_action=None,
+            last_route_why=None,
         )
 
 

@@ -273,6 +273,19 @@ class PostgresAssessmentRepository(AssessmentRepository):
         if row is None:
             raise RuntimeError("Failed to insert question.")
         question_id = UUID(str(row["id"]))
+        await conn.execute(
+            """
+            insert into question_concepts (question_id, concept_id, revision_id, is_primary)
+            select %s, c.id, q.revision_id,
+                   row_number() over (order by c.sequence_rank, c.name, c.id) = 1
+            from questions q
+            join topic_concepts tc on tc.topic_id = q.topic_id
+            join concepts c on c.id = tc.concept_id
+            where q.id = %s and c.review_status <> 'dismissed'
+            order by c.sequence_rank, c.name, c.id
+            """,
+            (question_id, question_id),
+        )
         await self._replace_rules(
             conn,
             question_id,

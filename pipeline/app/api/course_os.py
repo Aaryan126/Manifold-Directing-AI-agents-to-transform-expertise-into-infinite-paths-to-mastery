@@ -11,6 +11,7 @@ from app.course_os.models import (
     AssessmentWorkspace,
     ConversationMessage,
     CourseAssessment,
+    CourseBlueprint,
     CourseCreate,
     CourseMap,
     CourseProposal,
@@ -252,6 +253,58 @@ class CourseMapResponse(BaseModel):
     edges: list[MapEdgeResponse]
 
 
+class BlueprintNodeResponse(BaseModel):
+    id: UUID
+    logical_id: UUID
+    kind: str
+    title: str
+    status: str
+    parent_id: UUID | None
+    metadata: dict[str, Any]
+
+
+class BlueprintEdgeResponse(BaseModel):
+    id: str
+    source_id: UUID
+    target_id: UUID
+    kind: str
+    status: str
+
+
+class CourseBlueprintResponse(BaseModel):
+    course_id: UUID
+    revision_id: UUID
+    revision_kind: str
+    nodes: list[BlueprintNodeResponse]
+    edges: list[BlueprintEdgeResponse]
+    uncovered_concept_ids: list[UUID]
+
+
+class BlueprintConceptEvidenceResponse(BaseModel):
+    concept_id: UUID
+    attempts: int
+    touched_learners: int
+    correct_percent: float | None
+    confident_percent: float | None
+    confident_incorrect: int
+    mastery: dict[str, int]
+    route_actions: dict[str, int]
+
+
+class ConceptSequenceRequest(BaseModel):
+    concept_ids: list[UUID] = Field(min_length=1)
+
+
+class BlueprintPrerequisiteRequest(BaseModel):
+    from_concept_id: UUID
+    to_concept_id: UUID
+
+
+class BlueprintConceptUpdateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=240)
+    description: str = Field(default="", max_length=4000)
+
+
 class AssessmentRuleRequest(BaseModel):
     wrong_answer_pattern: str = Field(min_length=1, max_length=500)
     target_clip_id: UUID | None = None
@@ -260,6 +313,8 @@ class AssessmentRuleRequest(BaseModel):
 
 class AssessmentDraftRequest(BaseModel):
     topic_id: UUID
+    primary_concept_id: UUID | None = None
+    concept_ids: list[UUID] = Field(default_factory=list)
     body: str = Field(min_length=1, max_length=4000)
     type: Literal["mcq", "short_answer", "worked_problem"]
     correct_answer: dict[str, Any]
@@ -278,6 +333,8 @@ class CourseAssessmentResponse(BaseModel):
     confidence_prompt: str
     review_status: str
     remediation_rules: list[dict[str, Any]]
+    primary_concept_id: UUID | None
+    concept_ids: list[UUID]
 
 
 class AssessmentTopicOptionResponse(BaseModel):
@@ -552,6 +609,108 @@ async def course_map(
     return _map_response(await _call(service.course_map(course_id, user_id)))
 
 
+@router.get("/courses/{course_id}/blueprint", response_model=CourseBlueprintResponse)
+async def course_blueprint(
+    course_id: UUID,
+    user_id: UserContext,
+    service: CourseOSDependency,
+    revision: Literal["active", "working"] = "active",
+) -> CourseBlueprintResponse:
+    return _blueprint_response(await _call(service.blueprint(course_id, user_id, revision)))
+
+
+@router.get(
+    "/courses/{course_id}/blueprint/evidence",
+    response_model=list[BlueprintConceptEvidenceResponse],
+)
+async def course_blueprint_evidence(
+    course_id: UUID,
+    user_id: UserContext,
+    service: CourseOSDependency,
+    revision: Literal["active", "working"] = "active",
+    days: int = 14,
+    learner_id: UUID | None = None,
+) -> list[BlueprintConceptEvidenceResponse]:
+    evidence = await _call(
+        service.blueprint_evidence(
+            course_id,
+            user_id,
+            revision,
+            days,
+            learner_id,
+        )
+    )
+    return [BlueprintConceptEvidenceResponse(**item.__dict__) for item in evidence]
+
+
+@router.put(
+    "/courses/{course_id}/blueprint/sequence",
+    response_model=CourseBlueprintResponse,
+)
+async def update_blueprint_sequence(
+    course_id: UUID,
+    request: ConceptSequenceRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseBlueprintResponse:
+    return _blueprint_response(
+        await _call(
+            service.update_concept_sequence(
+                course_id,
+                user_id,
+                tuple(request.concept_ids),
+            )
+        )
+    )
+
+
+@router.post(
+    "/courses/{course_id}/blueprint/prerequisites",
+    response_model=CourseBlueprintResponse,
+    status_code=201,
+)
+async def add_blueprint_prerequisite(
+    course_id: UUID,
+    request: BlueprintPrerequisiteRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseBlueprintResponse:
+    return _blueprint_response(
+        await _call(
+            service.add_blueprint_prerequisite(
+                course_id,
+                user_id,
+                request.from_concept_id,
+                request.to_concept_id,
+            )
+        )
+    )
+
+
+@router.patch(
+    "/courses/{course_id}/blueprint/concepts/{concept_id}",
+    response_model=CourseBlueprintResponse,
+)
+async def update_blueprint_concept(
+    course_id: UUID,
+    concept_id: UUID,
+    request: BlueprintConceptUpdateRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseBlueprintResponse:
+    return _blueprint_response(
+        await _call(
+            service.update_blueprint_concept(
+                course_id,
+                user_id,
+                concept_id,
+                request.name,
+                request.description,
+            )
+        )
+    )
+
+
 @router.get(
     "/courses/{course_id}/assessment-workspace",
     response_model=AssessmentWorkspaceResponse,
@@ -629,9 +788,7 @@ async def routing_workspace(
     user_id: UserContext,
     service: CourseOSDependency,
 ) -> RoutingWorkspaceResponse:
-    return _routing_workspace_response(
-        await _call(service.routing_workspace(course_id, user_id))
-    )
+    return _routing_workspace_response(await _call(service.routing_workspace(course_id, user_id)))
 
 
 @router.put(
@@ -873,6 +1030,17 @@ def _map_response(course_map: CourseMap) -> CourseMapResponse:
     )
 
 
+def _blueprint_response(blueprint: CourseBlueprint) -> CourseBlueprintResponse:
+    return CourseBlueprintResponse(
+        course_id=blueprint.course_id,
+        revision_id=blueprint.revision_id,
+        revision_kind=blueprint.revision_kind,
+        nodes=[BlueprintNodeResponse(**node.__dict__) for node in blueprint.nodes],
+        edges=[BlueprintEdgeResponse(**edge.__dict__) for edge in blueprint.edges],
+        uncovered_concept_ids=list(blueprint.uncovered_concept_ids),
+    )
+
+
 def _assessment_draft(request: AssessmentDraftRequest) -> AssessmentDraft:
     return AssessmentDraft(
         topic_id=request.topic_id,
@@ -880,6 +1048,8 @@ def _assessment_draft(request: AssessmentDraftRequest) -> AssessmentDraft:
         type=request.type,
         correct_answer=request.correct_answer,
         confidence_prompt=request.confidence_prompt,
+        primary_concept_id=request.primary_concept_id,
+        concept_ids=tuple(request.concept_ids),
         remediation_rules=tuple(
             AssessmentRuleDraft(
                 wrong_answer_pattern=rule.wrong_answer_pattern,
@@ -896,6 +1066,7 @@ def _assessment_response(question: CourseAssessment) -> CourseAssessmentResponse
         **{
             **question.__dict__,
             "remediation_rules": list(question.remediation_rules),
+            "concept_ids": list(question.concept_ids),
         }
     )
 

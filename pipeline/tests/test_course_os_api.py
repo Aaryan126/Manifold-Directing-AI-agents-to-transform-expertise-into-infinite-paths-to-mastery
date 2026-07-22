@@ -9,7 +9,11 @@ from app.course_os.models import (
     AssessmentConceptOption,
     AssessmentTopicOption,
     AssessmentWorkspace,
+    BlueprintConceptEvidence,
+    BlueprintEdge,
+    BlueprintNode,
     CourseAssessment,
+    CourseBlueprint,
     CourseRoutingPolicy,
     CourseSummary,
     DashboardCommandResult,
@@ -132,6 +136,217 @@ def test_create_course_returns_working_revision() -> None:
         app.dependency_overrides.clear()
 
 
+def test_blueprint_returns_typed_artifact_graph_and_evidence() -> None:
+    instructor_id = uuid4()
+    course_id = uuid4()
+    revision_id = uuid4()
+    topic_id = uuid4()
+    concept_id = uuid4()
+    clip_id = uuid4()
+    service = AsyncMock()
+    service.blueprint.return_value = CourseBlueprint(
+        course_id=course_id,
+        revision_id=revision_id,
+        revision_kind="active",
+        nodes=(
+            BlueprintNode(topic_id, uuid4(), "topic", "Foundations", "accepted", None, {}),
+            BlueprintNode(
+                concept_id,
+                uuid4(),
+                "concept",
+                "Core idea",
+                "accepted",
+                topic_id,
+                {"sequence_rank": 1},
+            ),
+            BlueprintNode(
+                clip_id,
+                uuid4(),
+                "clip",
+                "Focused explanation",
+                "active",
+                topic_id,
+                {"duration_seconds": 75},
+            ),
+        ),
+        edges=(
+            BlueprintEdge(
+                f"contains:{topic_id}:{concept_id}",
+                topic_id,
+                concept_id,
+                "contains",
+                "accepted",
+            ),
+            BlueprintEdge(
+                f"teaches:{concept_id}:{clip_id}",
+                concept_id,
+                clip_id,
+                "teaches",
+                "accepted",
+            ),
+        ),
+        uncovered_concept_ids=(),
+    )
+    service.blueprint_evidence.return_value = (
+        BlueprintConceptEvidence(
+            concept_id=concept_id,
+            attempts=4,
+            touched_learners=2,
+            correct_percent=50.0,
+            confident_percent=75.0,
+            confident_incorrect=1,
+            mastery={"struggling": 1, "mastered": 1},
+            route_actions={"remediate": 2},
+        ),
+    )
+    app.dependency_overrides[get_course_os_service] = lambda: service
+    client = TestClient(app)
+
+    try:
+        graph_response = client.get(
+            f"/courses/{course_id}/blueprint?revision=active",
+            headers={"X-User-ID": str(instructor_id)},
+        )
+        evidence_response = client.get(
+            f"/courses/{course_id}/blueprint/evidence?revision=active&days=14",
+            headers={"X-User-ID": str(instructor_id)},
+        )
+
+        assert graph_response.status_code == 200
+        assert {node["kind"] for node in graph_response.json()["nodes"]} == {
+            "topic",
+            "concept",
+            "clip",
+        }
+        assert {edge["kind"] for edge in graph_response.json()["edges"]} == {
+            "contains",
+            "teaches",
+        }
+        assert evidence_response.status_code == 200
+        assert evidence_response.json()[0]["confident_incorrect"] == 1
+        service.blueprint.assert_awaited_once_with(course_id, instructor_id, "active")
+        service.blueprint_evidence.assert_awaited_once_with(
+            course_id,
+            instructor_id,
+            "active",
+            14,
+            None,
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_blueprint_sequence_forwards_complete_instructor_order() -> None:
+    instructor_id = uuid4()
+    course_id = uuid4()
+    revision_id = uuid4()
+    first_id = uuid4()
+    second_id = uuid4()
+    service = AsyncMock()
+    service.update_concept_sequence.return_value = CourseBlueprint(
+        course_id=course_id,
+        revision_id=revision_id,
+        revision_kind="working",
+        nodes=(),
+        edges=(),
+        uncovered_concept_ids=(),
+    )
+    app.dependency_overrides[get_course_os_service] = lambda: service
+    client = TestClient(app)
+
+    try:
+        response = client.put(
+            f"/courses/{course_id}/blueprint/sequence",
+            headers={"X-User-ID": str(instructor_id)},
+            json={"concept_ids": [str(first_id), str(second_id)]},
+        )
+
+        assert response.status_code == 200
+        service.update_concept_sequence.assert_awaited_once_with(
+            course_id,
+            instructor_id,
+            (first_id, second_id),
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_blueprint_prerequisite_opens_a_reviewable_working_graph_edit() -> None:
+    instructor_id = uuid4()
+    course_id = uuid4()
+    revision_id = uuid4()
+    from_concept_id = uuid4()
+    to_concept_id = uuid4()
+    service = AsyncMock()
+    service.add_blueprint_prerequisite.return_value = CourseBlueprint(
+        course_id=course_id,
+        revision_id=revision_id,
+        revision_kind="working",
+        nodes=(),
+        edges=(),
+        uncovered_concept_ids=(),
+    )
+    app.dependency_overrides[get_course_os_service] = lambda: service
+    client = TestClient(app)
+
+    try:
+        response = client.post(
+            f"/courses/{course_id}/blueprint/prerequisites",
+            headers={"X-User-ID": str(instructor_id)},
+            json={
+                "from_concept_id": str(from_concept_id),
+                "to_concept_id": str(to_concept_id),
+            },
+        )
+
+        assert response.status_code == 201
+        assert response.json()["revision_kind"] == "working"
+        service.add_blueprint_prerequisite.assert_awaited_once_with(
+            course_id,
+            instructor_id,
+            from_concept_id,
+            to_concept_id,
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_blueprint_concept_edit_is_forwarded_as_private_instructor_work() -> None:
+    instructor_id = uuid4()
+    course_id = uuid4()
+    revision_id = uuid4()
+    concept_id = uuid4()
+    service = AsyncMock()
+    service.update_blueprint_concept.return_value = CourseBlueprint(
+        course_id=course_id,
+        revision_id=revision_id,
+        revision_kind="working",
+        nodes=(),
+        edges=(),
+        uncovered_concept_ids=(),
+    )
+    app.dependency_overrides[get_course_os_service] = lambda: service
+    client = TestClient(app)
+
+    try:
+        response = client.patch(
+            f"/courses/{course_id}/blueprint/concepts/{concept_id}",
+            headers={"X-User-ID": str(instructor_id)},
+            json={"name": "Revised concept", "description": "Clearer scope."},
+        )
+
+        assert response.status_code == 200
+        service.update_blueprint_concept.assert_awaited_once_with(
+            course_id,
+            instructor_id,
+            concept_id,
+            "Revised concept",
+            "Clearer scope.",
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_delete_course_returns_no_content_after_confirmation_request() -> None:
     instructor_id = uuid4()
     course_id = uuid4()
@@ -226,9 +441,9 @@ def test_assessment_workspace_returns_current_revision_questions_and_targets() -
         assert payload["revision_id"] == str(revision_id)
         assert payload["is_working_revision"] is False
         assert payload["questions"][0]["body"] == "Explain the core idea."
-        assert payload["questions"][0]["remediation_rules"][0][
-            "target_concept_id"
-        ] == str(concept_id)
+        assert payload["questions"][0]["remediation_rules"][0]["target_concept_id"] == str(
+            concept_id
+        )
         assert payload["clips"][0]["topic_title"] == "Foundations"
         assert payload["clips"][0]["video_id"]
         assert payload["clips"][0]["playback_provider"] == "mux"

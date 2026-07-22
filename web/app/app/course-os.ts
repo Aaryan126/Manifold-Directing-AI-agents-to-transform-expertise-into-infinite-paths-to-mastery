@@ -155,6 +155,55 @@ export type CourseMap = {
   }>;
 };
 
+export type BlueprintNodeKind = "topic" | "concept" | "clip" | "question" | "source";
+
+export type BlueprintNode = {
+  id: string;
+  logical_id: string;
+  kind: BlueprintNodeKind;
+  title: string;
+  status: string;
+  parent_id: string | null;
+  metadata: Record<string, unknown>;
+};
+
+export type BlueprintEdgeKind =
+  | "contains"
+  | "requires"
+  | "teaches"
+  | "assesses"
+  | "next"
+  | "remediates_to"
+  | "cites";
+
+export type BlueprintEdge = {
+  id: string;
+  source_id: string;
+  target_id: string;
+  kind: BlueprintEdgeKind;
+  status: string;
+};
+
+export type CourseBlueprint = {
+  course_id: string;
+  revision_id: string;
+  revision_kind: "active" | "working";
+  nodes: BlueprintNode[];
+  edges: BlueprintEdge[];
+  uncovered_concept_ids: string[];
+};
+
+export type BlueprintConceptEvidence = {
+  concept_id: string;
+  attempts: number;
+  touched_learners: number;
+  correct_percent: number | null;
+  confident_percent: number | null;
+  confident_incorrect: number;
+  mastery: Record<string, number>;
+  route_actions: Record<string, number>;
+};
+
 export type RevisionDiff = {
   active_revision_id: string | null;
   working_revision_id: string;
@@ -296,6 +345,29 @@ export type CourseAgentTask = {
   updated_at: string;
 };
 
+export type AgentTaskProposal = {
+  id: string;
+  proposal_type: string;
+  artifact_type: string | null;
+  logical_artifact_id: string | null;
+  before_state: Record<string, unknown> | null;
+  proposed_state: Record<string, unknown>;
+  rationale: string;
+  status: string;
+  citations: Array<{
+    source_id: string;
+    source_title: string;
+    section_id: string;
+    page_number: number;
+    excerpt: string;
+  }>;
+};
+
+export type AgentTaskPack = {
+  task: CourseAgentTask;
+  proposals: AgentTaskProposal[];
+};
+
 export function performancePercent(part: number, total: number): number {
   return total > 0 ? Math.round((part / total) * 100) : 0;
 }
@@ -330,6 +402,8 @@ export type CourseAssessment = {
   confidence_prompt: string;
   review_status: "proposed" | "accepted" | "edited" | "dismissed";
   remediation_rules: AssessmentRule[];
+  primary_concept_id: string | null;
+  concept_ids: string[];
 };
 
 export type AssessmentWorkspace = {
@@ -490,4 +564,50 @@ export function evidenceTitle(item: ReviewItem): string {
   return typeof candidate === "string" && candidate.trim()
     ? candidate
     : item.artifact_type.replaceAll("_", " ");
+}
+
+export function compareBlueprintSequence(left: BlueprintNode, right: BlueprintNode): number {
+  const leftRank = typeof left.metadata.sequence_rank === "number"
+    ? left.metadata.sequence_rank
+    : Number.MAX_SAFE_INTEGER;
+  const rightRank = typeof right.metadata.sequence_rank === "number"
+    ? right.metadata.sequence_rank
+    : Number.MAX_SAFE_INTEGER;
+  return leftRank - rightRank || left.title.localeCompare(right.title);
+}
+
+export function masteryStateForConcept(
+  conceptId: string,
+  evidence: BlueprintConceptEvidence[],
+): "not_started" | "mastered" | "struggling" | "practiced" {
+  const record = evidence.find((item) => item.concept_id === conceptId);
+  if (!record || !record.attempts) return "not_started";
+  if ((record.mastery.mastered ?? 0) > 0) return "mastered";
+  if ((record.mastery.struggling ?? 0) > 0 || (record.correct_percent ?? 100) < 60) {
+    return "struggling";
+  }
+  return "practiced";
+}
+
+export function visibleBlueprintNodeIds(
+  blueprint: CourseBlueprint,
+  topicLogicalId: string | null,
+): Set<string> | null {
+  if (!topicLogicalId) return null;
+  const topic = blueprint.nodes.find(
+    (node) => node.kind === "topic" && node.logical_id === topicLogicalId,
+  );
+  if (!topic) return null;
+  const ids = new Set<string>([topic.id]);
+  const conceptIds = new Set(
+    blueprint.edges
+      .filter((edge) => edge.kind === "contains" && edge.source_id === topic.id)
+      .map((edge) => edge.target_id),
+  );
+  conceptIds.forEach((id) => ids.add(id));
+  blueprint.edges.forEach((edge) => {
+    if (conceptIds.has(edge.source_id)) ids.add(edge.target_id);
+    if (conceptIds.has(edge.target_id)) ids.add(edge.source_id);
+  });
+  return ids;
 }

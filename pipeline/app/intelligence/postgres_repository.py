@@ -9,6 +9,7 @@ from psycopg.types.json import Jsonb
 from app.db.pool import pooled_connection
 from app.intelligence.models import (
     AgentTask,
+    AgentTaskProposal,
     AgentTaskStatus,
     CourseSource,
     ExtractedSection,
@@ -241,6 +242,48 @@ class PostgresIntelligenceRepository:
             ).fetchall()
         return tuple(_agent_task(row) for row in rows)
 
+    async def get_agent_task(self, course_id: UUID, task_id: UUID) -> AgentTask | None:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            row = await (
+                await conn.execute(
+                    "select * from course_agent_tasks where course_id = %s and id = %s",
+                    (course_id, task_id),
+                )
+            ).fetchone()
+        return _agent_task(row) if row else None
+
+    async def agent_task_proposals(
+        self,
+        task: AgentTask,
+    ) -> tuple[AgentTaskProposal, ...]:
+        if not task.proposal_ids:
+            return ()
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            rows = await (
+                await conn.execute(
+                    """
+                    select proposal.*,
+                           coalesce(jsonb_agg(jsonb_build_object(
+                             'source_id', source.id,
+                             'source_title', source.filename,
+                             'section_id', section.id,
+                             'page_number', section.page_number,
+                             'excerpt', citation.excerpt
+                           ) order by section.page_number)
+                           filter (where citation.id is not null), '[]'::jsonb) as citations
+                    from course_proposals proposal
+                    left join source_citations citation on citation.proposal_id = proposal.id
+                    left join source_sections section on section.id = citation.source_section_id
+                    left join course_sources source on source.id = section.source_id
+                    where proposal.id = any(%s::uuid[])
+                    group by proposal.id
+                    order by array_position(%s::uuid[], proposal.id)
+                    """,
+                    (list(task.proposal_ids), list(task.proposal_ids)),
+                )
+            ).fetchall()
+        return tuple(_agent_task_proposal(row) for row in rows)
+
     async def claim_agent_task(self, worker_id: str, lease_seconds: int) -> AgentTask | None:
         async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
             row = await (
@@ -330,14 +373,26 @@ class PostgresIntelligenceRepository:
     async def target_state(self, task: AgentTask) -> dict[str, Any]:
         if task.target_artifact_type is None or task.target_logical_artifact_id is None:
             return {}
-        table = _ARTIFACT_TABLES.get(task.target_artifact_type)
+        return await self.target_state_by_identity(
+            task.revision_id,
+            task.target_artifact_type,
+            task.target_logical_artifact_id,
+        )
+
+    async def target_state_by_identity(
+        self,
+        revision_id: UUID,
+        artifact_type: str,
+        logical_artifact_id: UUID,
+    ) -> dict[str, Any]:
+        table = _ARTIFACT_TABLES.get(artifact_type)
         if table is None:
-            raise ValueError(f"Unsupported improvement target: {task.target_artifact_type}")
+            raise ValueError(f"Unsupported improvement target: {artifact_type}")
         async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
             row = await (
                 await conn.execute(
                     f"select * from {table} where revision_id = %s and logical_id = %s",  # noqa: S608
-                    (task.revision_id, task.target_logical_artifact_id),
+                    (revision_id, logical_artifact_id),
                 )
             ).fetchone()
         if row is None:
@@ -350,60 +405,74 @@ class PostgresIntelligenceRepository:
         draft: ImprovementDraft,
         citations: tuple[SourceCitation, ...] = (),
     ) -> UUID:
+        proposal_ids = await self.save_improvement_pack(task, (draft,), citations)
+        return proposal_ids[0]
+
+    async def save_improvement_pack(
+        self,
+        task: AgentTask,
+        drafts: tuple[ImprovementDraft, ...],
+        citations: tuple[SourceCitation, ...] = (),
+    ) -> tuple[UUID, ...]:
+        if not drafts or len(drafts) > 6:
+            raise ValueError("A specialist pack must contain between one and six proposals.")
         async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
-            row = await (
-                await conn.execute(
-                    """
+            proposal_ids: list[UUID] = []
+            for draft in drafts:
+                row = await (
+                    await conn.execute(
+                        """
                     insert into course_proposals (
                       course_id, revision_id, proposal_type, artifact_type,
                       logical_artifact_id, before_state, proposed_state, rationale
                     ) values (%s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s)
                     returning id
                     """,
-                    (
-                        task.course_id,
-                        task.revision_id,
-                        draft.proposal_type,
-                        draft.artifact_type,
-                        draft.logical_artifact_id,
-                        Jsonb(draft.before_state),
-                        Jsonb(draft.proposed_state),
-                        draft.rationale,
-                    ),
-                )
-            ).fetchone()
-            if row is None:
-                raise RuntimeError("Failed to save specialist proposal.")
-            proposal_id = UUID(str(row["id"]))
-            if citations:
-                await conn.cursor().executemany(
-                    """
-                    insert into source_citations (
-                      revision_id, source_section_id, proposal_id, excerpt, metadata
-                    ) values (%s, %s, %s, %s, %s::jsonb)
-                    """,
-                    [
                         (
+                            task.course_id,
                             task.revision_id,
-                            citation.section_id,
-                            proposal_id,
-                            citation.excerpt,
-                            Jsonb(
-                                {
-                                    "source_id": str(citation.source_id),
-                                    "source_title": citation.source_title,
-                                    "page_number": citation.page_number,
-                                }
-                            ),
-                        )
-                        for citation in citations
-                    ],
-                )
+                            draft.proposal_type,
+                            draft.artifact_type,
+                            draft.logical_artifact_id,
+                            Jsonb(draft.before_state),
+                            Jsonb(draft.proposed_state),
+                            draft.rationale,
+                        ),
+                    )
+                ).fetchone()
+                if row is None:
+                    raise RuntimeError("Failed to save specialist proposal.")
+                proposal_id = UUID(str(row["id"]))
+                proposal_ids.append(proposal_id)
+                if citations:
+                    await conn.cursor().executemany(
+                        """
+                        insert into source_citations (
+                          revision_id, source_section_id, proposal_id, excerpt, metadata
+                        ) values (%s, %s, %s, %s, %s::jsonb)
+                        """,
+                        [
+                            (
+                                task.revision_id,
+                                citation.section_id,
+                                proposal_id,
+                                citation.excerpt,
+                                Jsonb(
+                                    {
+                                        "source_id": str(citation.source_id),
+                                        "source_title": citation.source_title,
+                                        "page_number": citation.page_number,
+                                    }
+                                ),
+                            )
+                            for citation in citations
+                        ],
+                    )
             await conn.execute(
                 """
                 update course_agent_tasks
                 set status = 'waiting_review', result = %s::jsonb,
-                    proposal_ids = array_append(proposal_ids, %s),
+                    proposal_ids = %s::uuid[],
                     lease_owner = null, lease_expires_at = null,
                     completed_at = now(), updated_at = now()
                 where id = %s
@@ -411,14 +480,9 @@ class PostgresIntelligenceRepository:
                 (
                     Jsonb(
                         {
-                            "summary": draft.rationale,
-                            "proposal_id": str(proposal_id),
-                            "proposal_type": draft.proposal_type,
-                            "artifact_type": draft.artifact_type,
-                            "logical_artifact_id": str(draft.logical_artifact_id),
-                            "before_state": draft.before_state,
-                            "proposed_state": draft.proposed_state,
-                            "rationale": draft.rationale,
+                            "summary": drafts[0].rationale,
+                            "proposal_count": len(drafts),
+                            "proposal_ids": [str(value) for value in proposal_ids],
                             "citations": [
                                 {
                                     "source_id": str(citation.source_id),
@@ -431,11 +495,11 @@ class PostgresIntelligenceRepository:
                             ],
                         }
                     ),
-                    proposal_id,
+                    proposal_ids,
                     task.id,
                 ),
             )
-        return proposal_id
+        return tuple(proposal_ids)
 
     async def complete_task(self, task_id: UUID, result: dict[str, Any]) -> None:
         async with pooled_connection(self._database_url) as conn:
@@ -614,6 +678,31 @@ def _agent_task(row: dict[str, Any]) -> AgentTask:
         error_message=str(row["error_message"]) if row.get("error_message") else None,
         created_at=_datetime(row["created_at"]),
         updated_at=_datetime(row["updated_at"]),
+    )
+
+
+def _agent_task_proposal(row: dict[str, Any]) -> AgentTaskProposal:
+    return AgentTaskProposal(
+        id=UUID(str(row["id"])),
+        proposal_type=str(row["proposal_type"]),
+        artifact_type=str(row["artifact_type"]) if row.get("artifact_type") else None,
+        logical_artifact_id=(
+            UUID(str(row["logical_artifact_id"])) if row.get("logical_artifact_id") else None
+        ),
+        before_state=_dict(row.get("before_state")) if row.get("before_state") else None,
+        proposed_state=_dict(row.get("proposed_state")),
+        rationale=str(row["rationale"]),
+        status=str(row["status"]),
+        citations=tuple(
+            SourceCitation(
+                source_id=UUID(str(value["source_id"])),
+                source_title=str(value["source_title"]),
+                section_id=UUID(str(value["section_id"])),
+                page_number=int(value["page_number"]),
+                excerpt=str(value["excerpt"]),
+            )
+            for value in row.get("citations", [])
+        ),
     )
 
 

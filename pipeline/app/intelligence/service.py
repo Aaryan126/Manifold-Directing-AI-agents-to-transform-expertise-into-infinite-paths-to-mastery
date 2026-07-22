@@ -7,6 +7,7 @@ from app.course_os.models import CourseSummary
 from app.course_os.service import CourseOSService
 from app.intelligence.models import (
     AgentTask,
+    AgentTaskProposal,
     CourseSource,
     SourceCitation,
     SourcePurpose,
@@ -108,6 +109,18 @@ class CourseIntelligenceService:
     async def tasks(self, course_id: UUID, instructor_id: UUID) -> tuple[AgentTask, ...]:
         await self._course_os.course(course_id, instructor_id)
         return await self._repository.list_agent_tasks(course_id)
+
+    async def task(
+        self,
+        course_id: UUID,
+        task_id: UUID,
+        instructor_id: UUID,
+    ) -> tuple[AgentTask, tuple[AgentTaskProposal, ...]]:
+        await self._course_os.course(course_id, instructor_id)
+        task = await self._repository.get_agent_task(course_id, task_id)
+        if task is None:
+            raise IntelligenceValidationError("Specialist task not found.")
+        return task, await self._repository.agent_task_proposals(task)
 
     async def request_task(
         self,

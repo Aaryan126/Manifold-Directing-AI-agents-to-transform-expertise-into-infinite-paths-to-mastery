@@ -68,6 +68,39 @@ export type LearnerRouteDecision = {
   target_concept_id: string | null;
   target_clip_id: string | null;
   dashboard_signal_id: string | null;
+  route_event_id?: string | null;
+};
+
+export type LearnerPathAid = {
+  source_id: string;
+  title: string;
+  page_number: number;
+  excerpt: string;
+};
+
+export type LearnerPathItem = {
+  concept_id: string;
+  name: string;
+  description: string;
+  sequence_rank: number;
+  state: LearnerProgress["state"];
+  topic_id: string | null;
+  topic_title: string | null;
+  prerequisite_ids: string[];
+  clip_ids: string[];
+  question_ids: string[];
+  aids: LearnerPathAid[];
+  eligible: boolean;
+  current: boolean;
+};
+
+export type LearnerPath = {
+  course_id: string;
+  revision_id: string;
+  current_concept_id: string | null;
+  items: LearnerPathItem[];
+  last_route_action: LearnerRouteDecision["action"] | null;
+  last_route_why: string | null;
 };
 
 export function courseProgressPercent(course: LearnerCourseSummary) {

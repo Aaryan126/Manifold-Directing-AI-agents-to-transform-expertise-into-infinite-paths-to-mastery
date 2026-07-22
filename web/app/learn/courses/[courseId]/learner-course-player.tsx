@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, Download, FileText, LoaderCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, Download, FileText, LockKeyhole, LoaderCircle, Route } from "lucide-react";
 
 import { ProviderVideo } from "../../../ProviderVideo";
 import { readDevelopmentSession, type DevelopmentSession } from "../../../developmentSession";
@@ -12,6 +12,7 @@ import {
   nextTopicId,
   topicForDecision,
   type LearnerCourseExperience,
+  type LearnerPath,
   type LearnerProgress,
   type LearnerRouteDecision,
 } from "../../learner-course";
@@ -24,6 +25,7 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
   const [session, setSession] = useState<DevelopmentSession | null>(null);
   const [course, setCourse] = useState<LearnerCourseExperience | null>(null);
   const [progress, setProgress] = useState<LearnerProgress[]>([]);
+  const [path, setPath] = useState<LearnerPath | null>(null);
   const [activeTopicId, setActiveTopicId] = useState<string | null>(null);
   const [preferredClipId, setPreferredClipId] = useState<string | null>(null);
   const [answer, setAnswer] = useState("");
@@ -42,6 +44,14 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
     return (await response.json()) as LearnerProgress[];
   }, [courseId]);
 
+  const loadPath = useCallback(async (identity: DevelopmentSession) => {
+    const response = await fetch(`${pipelineBase}/learners/me/courses/${courseId}/path`, {
+      headers: { "X-User-ID": identity.id },
+    });
+    if (!response.ok) throw new Error("Could not load your adaptive path.");
+    return (await response.json()) as LearnerPath;
+  }, [courseId]);
+
   const load = useCallback(async () => {
     const identity = readDevelopmentSession(window.localStorage);
     if (!identity || identity.role !== "learner") {
@@ -52,11 +62,12 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
     setLoading(true);
     setError(null);
     try {
-      const [courseResponse, nextProgress] = await Promise.all([
+      const [courseResponse, nextProgress, nextPath] = await Promise.all([
         fetch(`${pipelineBase}/learners/me/courses/${courseId}`, {
           headers: { "X-User-ID": identity.id },
         }),
         loadProgress(identity),
+        loadPath(identity),
       ]);
       if (courseResponse.status === 403) {
         router.replace("/learn");
@@ -66,13 +77,16 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
       const nextCourse = (await courseResponse.json()) as LearnerCourseExperience;
       setCourse(nextCourse);
       setProgress(nextProgress);
-      setActiveTopicId((current) => current ?? nextTopicId(nextCourse, nextProgress));
+      setPath(nextPath);
+      const currentPathItem = nextPath.items.find((item) => item.current)
+        ?? nextPath.items.find((item) => item.concept_id === nextPath.current_concept_id);
+      setActiveTopicId((current) => current ?? currentPathItem?.topic_id ?? nextTopicId(nextCourse, nextProgress));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not open this course.");
     } finally {
       setLoading(false);
     }
-  }, [courseId, loadProgress, router]);
+  }, [courseId, loadPath, loadProgress, router]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -85,13 +99,20 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
   }, [activeTopicId]);
 
   const activeTopic = course?.topics.find((topic) => topic.id === activeTopicId) ?? course?.topics[0] ?? null;
+  const activePathItem = path?.items.find((item) => item.current && item.topic_id === activeTopic?.id)
+    ?? path?.items.find((item) => item.topic_id === activeTopic?.id && item.state !== "mastered")
+    ?? path?.items.find((item) => item.topic_id === activeTopic?.id)
+    ?? null;
   const activeClip = useMemo(() => {
     if (!course || !activeTopic) return null;
     return course.clips.find((clip) => clip.id === preferredClipId)
+      ?? course.clips.find((clip) => activePathItem?.clip_ids.includes(clip.id))
       ?? course.clips.find((clip) => clip.topic_id === activeTopic.id)
       ?? null;
-  }, [activeTopic, course, preferredClipId]);
-  const question = course?.questions.find((item) => item.topic_id === activeTopic?.id) ?? null;
+  }, [activePathItem, activeTopic, course, preferredClipId]);
+  const question = course?.questions.find((item) => activePathItem?.question_ids.includes(item.id))
+    ?? course?.questions.find((item) => item.topic_id === activeTopic?.id)
+    ?? null;
   const mastered = progress.filter((item) => item.state === "mastered").length;
 
   async function recordWatch(watchedSeconds: number) {
@@ -146,8 +167,9 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
       if (!attemptResponse.ok || !nextDecision?.action) {
         throw new Error(nextDecision?.detail ?? "Could not save your progress.");
       }
-      const nextProgress = await loadProgress(session);
+      const [nextProgress, nextPath] = await Promise.all([loadProgress(session), loadPath(session)]);
       setProgress(nextProgress);
+      setPath(nextPath);
       setFeedback(grade.feedback ?? (grade.is_correct ? "Correct." : "Review the focused clip and try again."));
       setDecision(nextDecision);
       setPreferredClipId(nextDecision.target_clip_id);
@@ -201,6 +223,10 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
                 <span className={styles.duration}>{mastered} of {progress.length} concepts mastered</span>
               </header>
 
+              {path ? <LearnerPathStrip activeConceptId={activePathItem?.concept_id ?? path.current_concept_id} items={path.items} onSelect={(item) => {
+                if (item.eligible && item.topic_id) setActiveTopicId(item.topic_id);
+              }} /> : null}
+
               <div className={styles.player}>
                 {activeClip ? <ProviderVideo
                   clipId={activeClip.id}
@@ -223,8 +249,10 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
 
               <div className={styles.routeNotice} data-tone={decisionTone(decision)}>
                 <strong>{decision ? routeTitle(decision) : "Why this is next"}</strong>
-                {decision?.why ?? "This is the next eligible concept in your reviewed course path. Watch the focused clip before answering the check-in."}
+                {decision?.why ?? path?.last_route_why ?? "This is the next eligible concept in your reviewed course path. Watch the focused clip before answering the check-in."}
               </div>
+
+              {activePathItem?.aids.length ? <section className={styles.pathAids}><header><FileText /><div><small>Instructor-approved evidence</small><strong>Helpful course materials</strong></div></header>{activePathItem.aids.map((aid) => <article key={`${aid.source_id}:${aid.page_number}`}><span>{aid.title} · page {aid.page_number}</span><p>{aid.excerpt}</p></article>)}</section> : null}
 
               {question ? <form className={styles.assessment} onSubmit={submit}>
                 <span>Check your understanding</span>
@@ -244,17 +272,30 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
           </section>
 
           <aside className={styles.outline} aria-labelledby="course-outline-title">
-            <header><small>Your path</small><h2 id="course-outline-title">Course outline</h2></header>
+            <header><small>Your path</small><h2 id="course-outline-title">Mastery map</h2></header>
+            {path ? <div className={styles.masteryMap}>{path.items.map((item, index) => <button aria-current={item.concept_id === activePathItem?.concept_id ? "step" : undefined} disabled={!item.eligible} key={item.concept_id} onClick={() => item.topic_id && setActiveTopicId(item.topic_id)} type="button"><span data-state={item.state}>{item.eligible ? index + 1 : <LockKeyhole />}</span><span><strong>{item.name}</strong><em>{item.state.replace("_", " ")}{item.current ? " · current" : ""}</em></span></button>)}</div> : null}
+            <details className={styles.topicDisclosure}><summary>Course topics <ChevronDown /></summary>
             <nav aria-label="Course topics">{course.topics.map((topic, index) => {
               const state = topicState(topic.id, progress);
               return <button aria-current={topic.id === activeTopic.id ? "true" : undefined} key={topic.id} onClick={() => setActiveTopicId(topic.id)} type="button"><span>{String(index + 1).padStart(2, "0")}</span><span><strong>{topic.title}</strong><em>{state.replace("_", " ")}</em></span></button>;
-            })}</nav>
+            })}</nav></details>
             {course.resources.length ? <section className={styles.learnerResources}><header><small>From your instructor</small><h3>Course resources</h3></header>{course.resources.map((resource) => <button key={resource.id} onClick={() => void downloadResource(resource)} type="button"><FileText /><span><strong>{resource.filename}</strong><small>{resource.source_type.toUpperCase()}</small></span><Download /></button>)}</section> : null}
           </aside>
         </div>
       </main>
     </div>
   );
+}
+
+function LearnerPathStrip({ activeConceptId, items, onSelect }: {
+  activeConceptId: string | null;
+  items: LearnerPath["items"];
+  onSelect: (item: LearnerPath["items"][number]) => void;
+}) {
+  const activeIndex = items.findIndex((item) => item.concept_id === activeConceptId);
+  const windowStart = Math.max(0, activeIndex - 1);
+  const visible = items.slice(windowStart, Math.min(items.length, windowStart + 4));
+  return <section className={styles.pathStrip} aria-label="Adaptive learning path"><header><Route /><span><small>Adaptive path</small><strong>{activeIndex >= 0 ? `Step ${activeIndex + 1} of ${items.length}` : `${items.length} concepts`}</strong></span></header><div>{visible.map((item) => <button aria-current={item.concept_id === activeConceptId ? "step" : undefined} disabled={!item.eligible} key={item.concept_id} onClick={() => onSelect(item)} type="button"><i data-state={item.state}>{item.eligible ? items.indexOf(item) + 1 : <LockKeyhole />}</i><span><strong>{item.name}</strong><small>{item.current ? "Why this is next" : item.state.replace("_", " ")}</small></span></button>)}</div></section>;
 }
 
 function topicState(topicId: string, progress: LearnerProgress[]) {

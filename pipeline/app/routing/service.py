@@ -4,6 +4,7 @@ from app.access.service import AccessService
 from app.routing.models import (
     AttemptSubmission,
     LearnerConceptProgress,
+    LearnerPath,
     RouteAction,
     RouteDecision,
     RoutingPolicy,
@@ -39,15 +40,10 @@ class RoutingService:
             raise RoutingValidationError("Learner is not enrolled in this published course.")
 
         evaluation = evaluate_attempt(submission, context)
-        await self._repository.record_attempt_and_update_mastery(
-            submission,
-            evaluation.mastery,
-        )
-
         decision = evaluation.decision
         if evaluation.needs_instructor_signal:
             signal_id = await self._repository.create_stuck_signal(context, decision)
-            return RouteDecision(
+            decision = RouteDecision(
                 action=decision.action,
                 mastery_state=decision.mastery_state,
                 why=decision.why,
@@ -55,30 +51,46 @@ class RoutingService:
                 target_clip_id=decision.target_clip_id,
                 dashboard_signal_id=signal_id,
             )
+        else:
+            next_concept_id = None
+            if decision.action == RouteAction.ADVANCE:
+                mastered = context.mastered_concept_ids | {evaluation.mastery.concept_id}
+                next_concepts = await self._repository.eligible_next_concepts(
+                    context.course_id,
+                    mastered,
+                )
+                next_concept_id = next_concepts[0].id if next_concepts else None
 
-        next_concept_id = None
-        if decision.action == RouteAction.ADVANCE:
-            mastered = context.mastered_concept_ids | {evaluation.mastery.concept_id}
-            next_concepts = await self._repository.eligible_next_concepts(
-                context.course_id,
-                mastered,
+            resolved_clip_id = None
+            if decision.action in {RouteAction.REINFORCE, RouteAction.REMEDIATE}:
+                target_concept_id = decision.target_concept_id or context.current_concept_id
+                clip = await self._repository.resolve_active_clip(
+                    target_concept_id,
+                    context.topic_id,
+                    decision.target_clip_id,
+                )
+                resolved_clip_id = clip.id if clip else None
+
+            decision = apply_next_target(
+                decision,
+                next_concept_id=next_concept_id,
+                resolved_clip_id=resolved_clip_id,
             )
-            next_concept_id = next_concepts[0].id if next_concepts else None
 
-        resolved_clip_id = None
-        if decision.action in {RouteAction.REINFORCE, RouteAction.REMEDIATE}:
-            target_concept_id = decision.target_concept_id or context.current_concept_id
-            clip = await self._repository.resolve_active_clip(
-                target_concept_id,
-                context.topic_id,
-                decision.target_clip_id,
-            )
-            resolved_clip_id = clip.id if clip else None
-
-        return apply_next_target(
+        _, route_event_id = await self._repository.record_attempt_mastery_and_route(
+            context,
+            submission,
+            evaluation.mastery,
             decision,
-            next_concept_id=next_concept_id,
-            resolved_clip_id=resolved_clip_id,
+        )
+        return RouteDecision(
+            action=decision.action,
+            mastery_state=decision.mastery_state,
+            why=decision.why,
+            target_concept_id=decision.target_concept_id,
+            target_clip_id=decision.target_clip_id,
+            dashboard_signal_id=decision.dashboard_signal_id,
+            route_event_id=route_event_id,
         )
 
     async def list_policies(self, course_id: UUID) -> dict[UUID | None, RoutingPolicy]:
@@ -107,6 +119,17 @@ class RoutingService:
         ):
             raise RoutingValidationError("Learner is not enrolled in this published course.")
         return await self._repository.learner_progress(learner_id, course_id)
+
+    async def learner_path(self, learner_id: UUID, course_id: UUID) -> LearnerPath:
+        if self._access_service is not None and not await self._access_service.is_enrolled(
+            course_id,
+            learner_id,
+        ):
+            raise RoutingValidationError("Learner is not enrolled in this published course.")
+        path = await self._repository.learner_path(learner_id, course_id)
+        if path is None:
+            raise RoutingValidationError("Learner path is not available for this course.")
+        return path
 
 
 def validate_policy(policy: RoutingPolicy) -> None:

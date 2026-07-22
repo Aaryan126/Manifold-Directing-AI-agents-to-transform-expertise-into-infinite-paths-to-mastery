@@ -5,8 +5,10 @@ from app.course_os.dashboard_assistant import DashboardAssistant, LocalDashboard
 from app.course_os.models import (
     AssessmentDraft,
     AssessmentWorkspace,
+    BlueprintConceptEvidence,
     ConversationMessage,
     CourseAssessment,
+    CourseBlueprint,
     CourseCreate,
     CourseMap,
     CourseProposal,
@@ -420,6 +422,107 @@ class CourseOSService:
         course = await self._require_owned_course(course_id, instructor_id)
         return await self._repository.course_map(course_id, _current_revision(course))
 
+    async def blueprint(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        revision_kind: str,
+    ) -> CourseBlueprint:
+        course = await self._require_owned_course(course_id, instructor_id)
+        revision_id = _selected_revision(course, revision_kind)
+        return await self._repository.blueprint(
+            course_id,
+            revision_id,
+            revision_kind,
+        )
+
+    async def blueprint_evidence(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        revision_kind: str,
+        days: int,
+        learner_id: UUID | None,
+    ) -> tuple[BlueprintConceptEvidence, ...]:
+        if days < 1 or days > 365:
+            raise CourseOSValidationError("Evidence range must be between 1 and 365 days.")
+        course = await self._require_owned_course(course_id, instructor_id)
+        revision_id = _selected_revision(course, revision_kind)
+        return await self._repository.blueprint_evidence(
+            course_id,
+            revision_id,
+            days,
+            learner_id,
+        )
+
+    async def update_concept_sequence(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        concept_ids: tuple[UUID, ...],
+    ) -> CourseBlueprint:
+        course = await self._require_editable_course(course_id, instructor_id)
+        revision_id = _current_revision(course)
+        try:
+            await self._repository.update_concept_sequence(
+                course_id,
+                revision_id,
+                instructor_id,
+                concept_ids,
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        return await self._repository.blueprint(course_id, revision_id, "working")
+
+    async def add_blueprint_prerequisite(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        from_concept_id: UUID,
+        to_concept_id: UUID,
+    ) -> CourseBlueprint:
+        if from_concept_id == to_concept_id:
+            raise CourseOSValidationError("A concept cannot require itself.")
+        course = await self._require_editable_course(course_id, instructor_id)
+        revision_id = _current_revision(course)
+        try:
+            await self._repository.add_blueprint_prerequisite(
+                course_id,
+                revision_id,
+                instructor_id,
+                from_concept_id,
+                to_concept_id,
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        return await self._repository.blueprint(course_id, revision_id, "working")
+
+    async def update_blueprint_concept(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        concept_id: UUID,
+        name: str,
+        description: str,
+    ) -> CourseBlueprint:
+        cleaned_name = name.strip()
+        if not cleaned_name:
+            raise CourseOSValidationError("Concept name is required.")
+        course = await self._require_editable_course(course_id, instructor_id)
+        revision_id = _current_revision(course)
+        try:
+            await self._repository.update_blueprint_concept(
+                course_id,
+                revision_id,
+                instructor_id,
+                concept_id,
+                cleaned_name[:240],
+                description.strip()[:4000],
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        return await self._repository.blueprint(course_id, revision_id, "working")
+
     async def revision_diff(self, course_id: UUID, instructor_id: UUID) -> RevisionDiff:
         course = await self._require_owned_course(course_id, instructor_id)
         if course.working_revision_id is None:
@@ -519,6 +622,18 @@ def _current_revision(course: CourseSummary) -> UUID:
     if revision_id is None:
         raise CourseOSValidationError("Course has no active or working revision.")
     return revision_id
+
+
+def _selected_revision(course: CourseSummary, revision_kind: str) -> UUID:
+    if revision_kind == "active":
+        if course.active_revision_id is None:
+            raise CourseOSValidationError("Course has no active published revision.")
+        return course.active_revision_id
+    if revision_kind == "working":
+        if course.working_revision_id is None:
+            raise CourseOSValidationError("Course has no private working revision.")
+        return course.working_revision_id
+    raise CourseOSValidationError("Revision must be active or working.")
 
 
 def _validate_assessment_draft(draft: AssessmentDraft) -> None:

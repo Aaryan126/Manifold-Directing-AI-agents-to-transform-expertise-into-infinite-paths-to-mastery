@@ -56,7 +56,7 @@
 .lessonHeader small { color: #a15a20; font-size: 10px; font-weight: 740; letter-spacing: .08em; text-transform: uppercase; }
 .lessonHeader h1 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: clamp(34px, 4vw, 48px); font-weight: 470; letter-spacing: -.04em; line-height: 1.03; margin: 7px 0 8px; }
 .lessonHeader p { color: #747279; font-size: 13px; line-height: 1.5; margin: 0; max-width: 650px; }
-.duration { color: #77757c; font-size: 11px; white-space: nowrap; }
+.duration { color: #68666d; font-size: 11px; white-space: nowrap; }
 .player { background: #111; border-radius: 12px; overflow: hidden; }
 .player > :global(.clipPreview) { display: block; width: 100%; }
 .noMedia { align-items: center; color: rgb(255 255 255 / 68%); display: flex; justify-content: center; min-height: 420px; }
@@ -82,7 +82,7 @@
 .feedback { color: #55545b; font-size: 12px; margin: 13px 0 0; }
 .outline { background: #f2f0eb; border-left: 1px solid #dedbd3; position: sticky; top: 72px; height: calc(100dvh - 72px); overflow: auto; }
 .outline > header { border-bottom: 1px solid #dedbd3; padding: 24px 20px 18px; }
-.outline small { color: #8b898f; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.outline small { color: #625f66; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .outline h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 23px; font-weight: 480; letter-spacing: -.03em; margin: 5px 0 0; }
 .outline nav { padding: 8px; }
 .outline nav button { align-items: flex-start; background: transparent; border: 1px solid transparent; border-radius: 9px; color: #45444a; cursor: pointer; display: grid; font: inherit; gap: 10px; grid-template-columns: 26px minmax(0, 1fr); padding: 11px; text-align: left; width: 100%; }
@@ -91,7 +91,7 @@
 .outline nav button > span:first-child { align-items: center; background: #e8e5de; border-radius: 50%; color: #77757c; display: flex; font-size: 9px; height: 26px; justify-content: center; }
 .outline nav button > span:last-child { display: grid; gap: 3px; min-width: 0; }
 .outline nav strong { font-size: 11px; line-height: 1.35; }
-.outline nav em { color: #7f7d84; font-size: 9px; font-style: normal; text-transform: capitalize; }
+.outline nav em { color: #66636b; font-size: 9px; font-style: normal; text-transform: capitalize; }
 .learnerResources { border-top: 1px solid #dedbd3; margin-top: 10px; padding: 18px 8px; }
 .learnerResources > header { padding: 0 11px 9px; }
 .learnerResources h3 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 17px; font-weight: 480; margin: 4px 0 0; }
@@ -101,6 +101,52 @@
 .learnerResources > button span { display: grid; min-width: 0; }
 .learnerResources > button strong { font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .learnerResources > button small { font-size: 8px; }
+
+.pathStrip { background: #fff; border: 1px solid #dedbd3; border-radius: 11px; display: grid; grid-template-columns: auto minmax(0, 1fr); margin: 0 0 18px; overflow: hidden; }
+.pathStrip > header { align-items: center; border-right: 1px solid #e3e0d9; display: flex; gap: 9px; padding: 12px 14px; }
+.pathStrip > header svg { color: #a15a20; height: 17px; width: 17px; }
+.pathStrip > header span { display: grid; gap: 2px; white-space: nowrap; }
+.pathStrip > header small { color: #625f66; font-size: 8px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.pathStrip > header strong { font-size: 10px; }
+.pathStrip > div { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.pathStrip button { align-items: center; background: transparent; border: 0; color: #616067; display: flex; font: inherit; gap: 8px; min-width: 0; padding: 10px; text-align: left; }
+.pathStrip button + button { border-left: 1px solid #ece9e3; }
+.pathStrip button[aria-current="step"] { background: #f5efe8; color: #24252a; }
+.pathStrip button:disabled { color: #69666d; }
+.pathStrip button i { align-items: center; background: #e7e4dd; border-radius: 50%; display: flex; flex: 0 0 auto; font-size: 8px; font-style: normal; height: 24px; justify-content: center; width: 24px; }
+.pathStrip button i[data-state="mastered"] { background: #dcebd7; color: #3f6d37; }
+.pathStrip button i[data-state="struggling"] { background: #ffead8; color: #9e4e12; }
+.pathStrip button i svg { height: 10px; width: 10px; }
+.pathStrip button span { display: grid; gap: 2px; min-width: 0; }
+.pathStrip button strong,.pathStrip button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pathStrip button strong { font-size: 9px; }
+.pathStrip button small { color: #625f66; font-size: 8px; text-transform: capitalize; }
+.pathAids { background: #fff; border: 1px solid #dedbd3; border-radius: 10px; margin-top: 16px; padding: 14px; }
+.pathAids > header { align-items: center; display: flex; gap: 9px; margin-bottom: 10px; }
+.pathAids > header svg { color: #a15a20; height: 17px; width: 17px; }
+.pathAids > header div { display: grid; }
+.pathAids > header small { color: #625f66; font-size: 8px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.pathAids > header strong { font-size: 11px; }
+.pathAids article { background: #f5f3ef; border-radius: 7px; padding: 10px; }
+.pathAids article + article { margin-top: 7px; }
+.pathAids article span { color: #706e75; font-size: 9px; font-weight: 700; }
+.pathAids article p { color: #5f5d64; font-size: 10px; line-height: 1.5; margin: 5px 0 0; }
+.masteryMap { padding: 9px; }
+.masteryMap > button { align-items: flex-start; background: transparent; border: 0; border-radius: 8px; color: #57565d; display: grid; font: inherit; gap: 9px; grid-template-columns: 26px minmax(0, 1fr); padding: 9px; text-align: left; width: 100%; }
+.masteryMap > button:hover:not(:disabled),.masteryMap > button[aria-current="step"] { background: #fff; }
+.masteryMap > button:disabled { color: #69666d; }
+.masteryMap > button > span:first-child { align-items: center; background: #e4e1da; border-radius: 50%; display: flex; font-size: 8px; height: 25px; justify-content: center; }
+.masteryMap > button > span:first-child[data-state="mastered"] { background: #dcebd7; color: #3f6d37; }
+.masteryMap > button > span:first-child[data-state="struggling"] { background: #ffead8; color: #9e4e12; }
+.masteryMap > button > span:first-child svg { height: 10px; width: 10px; }
+.masteryMap > button > span:last-child { display: grid; gap: 3px; min-width: 0; }
+.masteryMap strong { font-size: 10px; line-height: 1.35; }
+.masteryMap em { color: #625f66; font-size: 8px; font-style: normal; text-transform: capitalize; }
+.topicDisclosure { border-top: 1px solid #dedbd3; }
+.topicDisclosure summary { align-items: center; color: #68666e; cursor: pointer; display: flex; font-size: 10px; font-weight: 700; justify-content: space-between; list-style: none; padding: 13px 18px; }
+.topicDisclosure summary::-webkit-details-marker { display: none; }
+.topicDisclosure summary svg { height: 13px; transition: transform 150ms ease; width: 13px; }
+.topicDisclosure[open] summary svg { transform: rotate(180deg); }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 1050px) { .courseGrid { grid-template-columns: repeat(2, 1fr); } .courseLayout { grid-template-columns: minmax(0, 1fr) 270px; } }
