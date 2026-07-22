@@ -985,19 +985,21 @@
 .priorityBrief header p,.courseTeam header p,.evidenceWorkspace header p,.overviewMapSection header p,.topicHealthSection header p,.learningHealth header p { color: #66646b; font-size: 11px; line-height: 1.45; margin: 3px 0 0; }
 .priorityBrief > header > span,.evidenceWorkspace > header > span,.overviewMapSection > header > span,.topicHealthSection > header > span { color: #66646b; flex: none; font-size: 10px; padding-top: 5px; }
 .priorityBrief > div { display: grid; }
-.priorityBrief > div > article { border-bottom: 1px solid #e6e3dd; }
+.priorityBrief > div > article { background: #fff; border-bottom: 1px solid #e6e3dd; }
 .priorityBrief > div > article:last-child { border-bottom: 0; }
-.priorityEvidenceButton { align-items: flex-start; background: #fff; border: 0; color: inherit; cursor: pointer; display: grid; font: inherit; gap: 13px; grid-template-columns: 30px minmax(0, 1fr) 18px; padding: 17px 18px 12px; text-align: left; width: 100%; }
+.priorityEvidenceButton { align-items: flex-start; background: transparent; border: 0; color: inherit; cursor: pointer; display: grid; font: inherit; gap: 14px; grid-template-columns: 34px minmax(0, 1fr) 18px; padding: 18px 19px 12px; text-align: left; width: 100%; }
 .priorityBrief article[aria-current="true"] .priorityEvidenceButton { background: #fbf8f3; }
 .priorityEvidenceButton:hover { background: #faf9f6; }
-.priorityEvidenceButton > span { align-items: center; background: #efede8; border-radius: 7px; color: #66646b; display: flex; font-family: ui-monospace, monospace; font-size: 10px; height: 30px; justify-content: center; }
+.priorityEvidenceButton > span { align-items: center; background: #efede8; border-radius: 8px; color: #66646b; display: flex; font-family: ui-monospace, monospace; font-size: 10px; height: 34px; justify-content: center; }
 .priorityEvidenceButton div { min-width: 0; }
-.priorityEvidenceButton small { color: #9a5a20; font-size: 9px; font-weight: 720; letter-spacing: .04em; text-transform: uppercase; }
-.priorityEvidenceButton h4 { font-size: 14px; line-height: 1.35; margin: 5px 0 4px; }
+.priorityEvidenceButton small { display: flex; flex-wrap: wrap; gap: 6px; }
+.priorityEvidenceButton small span { background: #f0eee9; border-radius: 999px; color: #66646b; font-size: 9px; font-weight: 680; padding: 4px 7px; text-transform: none; }
+.priorityEvidenceButton small span:last-child { background: #fff3e7; color: #92561e; text-transform: capitalize; }
+.priorityEvidenceButton h4 { font-size: 15px; line-height: 1.35; margin: 8px 0 4px; }
 .priorityEvidenceButton p { color: #727078; font-size: 11px; line-height: 1.45; margin: 0; }
 .priorityEvidenceButton em { color: #66646b; display: block; font-size: 10px; font-style: normal; margin-top: 7px; }
 .priorityEvidenceButton > svg { color: #8a888f; height: 16px; margin-top: 7px; width: 16px; }
-.priorityBrief article > footer { align-items: center; background: #fff; display: flex; gap: 7px; justify-content: flex-end; padding: 0 18px 14px; }
+.priorityBrief article > footer { align-items: center; background: transparent; display: flex; gap: 7px; justify-content: flex-end; padding: 0 19px 16px; }
 .priorityBrief article > footer button { align-items: center; background: #fff; border: 1px solid #d7d4cd; border-radius: 7px; color: #55545b; cursor: pointer; display: flex; font: inherit; font-size: 10px; font-weight: 650; gap: 5px; min-height: 31px; padding: 0 9px; }
 .priorityBrief article > footer button:last-child { background: #27282d; border-color: #27282d; color: #fff; }
 .priorityBrief article > footer button:disabled { cursor: not-allowed; opacity: .55; }
@@ -1050,6 +1052,9 @@
 .evidenceDecisionActions button { align-items: center; background: #fff; border: 1px solid #d5d2ca; border-radius: 7px; display: flex; font: inherit; font-size: 10px; gap: 5px; min-height: 31px; padding: 0 9px; }
 .evidenceDecisionActions button:first-child { background: #26272c; color: #fff; }
 .evidenceDecisionActions svg { height: 10px; width: 10px; }
+.evidenceDecision { border-top: 1px solid #e4e1da; margin-top: 16px; padding-top: 13px; }
+.evidenceDecision > p { color: #66646b; font-size: 10px; line-height: 1.5; margin: 0; max-width: 620px; }
+.evidenceDecision > p strong { color: #36363c; }
 .topicPulseBars { display: grid; gap: 11px; margin: 18px 0; }
 .topicPulseBars > div > span { color: #6b6971; display: flex; font-size: 10px; justify-content: space-between; }
 .topicPulseBars strong { color: #2a2a30; }

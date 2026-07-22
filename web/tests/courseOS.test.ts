@@ -172,5 +172,6 @@ describe("Course OS presentation", () => {
     expect(performancePercent(1, 0)).toBe(0);
     expect(canPrepareImprovement(priority, [])).toBe(true);
     expect(canPrepareImprovement(priority, [task])).toBe(false);
+    expect(canPrepareImprovement(priority, [{ ...task, status: "waiting_review" }])).toBe(false);
   });
 });

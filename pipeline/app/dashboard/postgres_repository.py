@@ -217,6 +217,7 @@ class PostgresDashboardRepository(DashboardRepository):
                     )
                     select
                       c.id,
+                      c.logical_id,
                       c.name,
                       coalesce(touched.learner_count, 0) as touched_learners,
                       coalesce(mastery.struggling_count, 0) as struggling_learners,
@@ -248,6 +249,7 @@ class PostgresDashboardRepository(DashboardRepository):
                 ConceptSignalStats(
                     concept_id=UUID(str(row["id"])),
                     concept_name=str(row["name"]),
+                    logical_id=UUID(str(row["logical_id"])),
                     touched_learners=int(row["touched_learners"] or 0),
                     struggling_learners=int(row["struggling_learners"] or 0),
                     mastered_prerequisite_struggling_learners=int(
@@ -391,6 +393,7 @@ class PostgresDashboardRepository(DashboardRepository):
                     """
                     select
                       q.id,
+                      q.logical_id,
                       q.topic_id,
                       q.body,
                       count(a.id) as attempts,
@@ -420,6 +423,7 @@ class PostgresDashboardRepository(DashboardRepository):
                     low_confidence_correct_attempts=int(
                         row["low_confidence_correct_attempts"] or 0,
                     ),
+                    logical_id=UUID(str(row["logical_id"])),
                 )
                 for row in rows
             )
@@ -449,6 +453,7 @@ class PostgresDashboardRepository(DashboardRepository):
                     )
                     select
                       clip.id,
+                      clip.logical_id,
                       clip.topic_id,
                       cc.concept_id,
                       coalesce(remediation.attempt_count, 0) as remediation_attempts,
@@ -481,6 +486,7 @@ class PostgresDashboardRepository(DashboardRepository):
                     concept_id=UUID(str(row["concept_id"])),
                     remediation_attempts=int(row["remediation_attempts"] or 0),
                     struggling_learners=int(row["struggling_learners"] or 0),
+                    logical_id=UUID(str(row["logical_id"])),
                 )
                 for row in rows
             )
@@ -593,7 +599,7 @@ class PostgresDashboardRepository(DashboardRepository):
                            ai_diagnosis, status, instructor_action
                     from dashboard_signals
                     where course_id = %s and status = 'open'
-                    order by created_at desc
+                    order by (status = 'open') desc, created_at desc
                     """,
                     (course_id,),
                 )
@@ -613,13 +619,28 @@ class PostgresDashboardRepository(DashboardRepository):
                            ai_diagnosis, status, instructor_action
                     from dashboard_signals
                     where course_id = %s
-                      and status = 'open'
                       and ai_diagnosis->>'fingerprint' = %s
+                    order by created_at desc
                     limit 1
                     """,
                     (course_id, proposal.fingerprint),
                 )
             ).fetchone()
+            if existing and str(existing["status"]) == DashboardSignalStatus.OPEN.value:
+                refreshed = await (
+                    await conn.execute(
+                        """
+                        update dashboard_signals
+                        set ai_diagnosis = %s::jsonb
+                        where id = %s
+                        returning id, course_id, type, related_entity_type,
+                                  related_entity_id, ai_diagnosis, status,
+                                  instructor_action
+                        """,
+                        (Jsonb(_proposal_json(proposal)), existing["id"]),
+                    )
+                ).fetchone()
+                return _signal_from_row(refreshed or existing)
             if existing:
                 return _signal_from_row(existing)
             row = await (
@@ -657,16 +678,37 @@ class PostgresDashboardRepository(DashboardRepository):
             rows = await (
                 await conn.execute(
                     """
-                    select ai_diagnosis->>'fingerprint' as fingerprint
+                    select id, status, ai_diagnosis->>'fingerprint' as fingerprint
                     from dashboard_signals
                     where course_id = %s
-                      and status = 'open'
                       and ai_diagnosis->>'fingerprint' = any(%s::text[])
                     """,
                     (course_id, fingerprints),
                 )
             ).fetchall()
             existing = {str(row["fingerprint"]) for row in rows}
+            proposal_by_fingerprint = {proposal.fingerprint: proposal for proposal in proposals}
+            open_rows = [row for row in rows if str(row["status"]) == "open"]
+            if open_rows:
+                cursor = conn.cursor()
+                await cursor.executemany(
+                    """
+                    update dashboard_signals
+                    set ai_diagnosis = %s::jsonb
+                    where id = %s
+                    """,
+                    [
+                        (
+                            Jsonb(
+                                _proposal_json(
+                                    proposal_by_fingerprint[str(row["fingerprint"])],
+                                ),
+                            ),
+                            row["id"],
+                        )
+                        for row in open_rows
+                    ],
+                )
             missing = [proposal for proposal in proposals if proposal.fingerprint not in existing]
             if not missing:
                 return
@@ -779,8 +821,6 @@ class PostgresDashboardRepository(DashboardRepository):
             signal = await self._get_signal(conn, signal_id)
             if signal is None:
                 return None
-            if status is not DashboardSignalStatus.DISMISSED:
-                await self._apply_signal_action(conn, signal, status, action)
             row = await (
                 await conn.execute(
                     """
@@ -830,113 +870,6 @@ class PostgresDashboardRepository(DashboardRepository):
         ).fetchone()
         return _signal_from_row(row) if row else None
 
-    async def _apply_signal_action(
-        self,
-        conn: psycopg.AsyncConnection[Any],
-        signal: DashboardSignal,
-        status: DashboardSignalStatus,
-        action: DashboardAction,
-    ) -> None:
-        note = action.note or signal.ai_diagnosis.get("recommended_action") or ""
-        if (
-            signal.type is DashboardSignalType.STUCK_COHORT
-            and signal.related_entity_type == "concept"
-        ):
-            await conn.execute(
-                """
-                insert into routing_policies (course_id, concept_id, policy)
-                values (%s, %s, %s::jsonb)
-                on conflict (revision_id, concept_id) do update
-                set policy = excluded.policy,
-                    updated_at = now()
-                """,
-                (
-                    signal.course_id,
-                    signal.related_entity_id,
-                    Jsonb(
-                        {
-                            "confidence_threshold": 3,
-                            "correct_attempts_for_mastery": 1,
-                            "advancement_mode": "require_mastery",
-                            "max_remediation_attempts": 3,
-                            "dashboard_signal_id": str(signal.id),
-                            "instructor_note": note,
-                            "review_status": status.value,
-                        },
-                    ),
-                ),
-            )
-        elif (
-            signal.type is DashboardSignalType.UNDERPERFORMING_CONTENT
-            and signal.related_entity_type == "clip"
-        ):
-            await conn.execute(
-                """
-                update clips
-                set status = 'flagged',
-                    flagged_at = now(),
-                    flag_note = %s,
-                    instructor_revision = coalesce(instructor_revision, '{}'::jsonb)
-                      || %s::jsonb,
-                    updated_at = now()
-                where id = %s and status = 'active'
-                """,
-                (
-                    note,
-                    Jsonb({"dashboard_signal_id": str(signal.id), "review_status": status.value}),
-                    signal.related_entity_id,
-                ),
-            )
-        elif (
-            signal.type is DashboardSignalType.UNDERPERFORMING_CONTENT
-            and signal.related_entity_type == "question"
-        ):
-            await conn.execute(
-                """
-                update questions
-                set review_status = 'edited',
-                    instructor_revision = coalesce(instructor_revision, '{}'::jsonb)
-                      || %s::jsonb,
-                    updated_at = now()
-                where id = %s
-                """,
-                (
-                    Jsonb(
-                        {
-                            "dashboard_signal_id": str(signal.id),
-                            "instructor_note": note,
-                            "review_status": status.value,
-                        },
-                    ),
-                    signal.related_entity_id,
-                ),
-            )
-        elif (
-            signal.type is DashboardSignalType.GRAPH_DRIFT
-            and signal.related_entity_type == "concept"
-        ):
-            await conn.execute(
-                """
-                update concepts
-                set instructor_revision = coalesce(instructor_revision, '{}'::jsonb)
-                  || %s::jsonb,
-                    updated_at = now()
-                where id = %s
-                """,
-                (
-                    Jsonb(
-                        {
-                            "dashboard_signal_id": str(signal.id),
-                            "instructor_note": note,
-                            "suggested_graph_review": True,
-                            "review_status": status.value,
-                        },
-                    ),
-                    signal.related_entity_id,
-                ),
-            )
-
-
 def _proposal_json(proposal: DashboardSignalProposal) -> dict[str, object]:
     return {
         "title": proposal.title,
@@ -944,6 +877,11 @@ def _proposal_json(proposal: DashboardSignalProposal) -> dict[str, object]:
         "recommended_action": proposal.recommended_action,
         "fingerprint": proposal.fingerprint,
         "metrics": proposal.metrics,
+        "target_logical_artifact_id": (
+            str(proposal.target_logical_artifact_id)
+            if proposal.target_logical_artifact_id
+            else None
+        ),
     }
 
 

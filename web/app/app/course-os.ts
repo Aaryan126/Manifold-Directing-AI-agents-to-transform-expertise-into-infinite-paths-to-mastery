@@ -308,7 +308,7 @@ export function canPrepareImprovement(
   return !tasks.some((task) => (
     task.task_type === "prepare_improvement"
     && task.target_logical_artifact_id === priority.target_logical_artifact_id
-    && ["queued", "running"].includes(task.status)
+    && ["queued", "running", "waiting_review"].includes(task.status)
   ));
 }
 

@@ -64,7 +64,7 @@ async def test_refresh_returns_underlying_performance_evidence() -> None:
 
 
 @pytest.mark.anyio
-async def test_accept_signal_mutates_underlying_entity_and_records_scope() -> None:
+async def test_accept_signal_acknowledges_without_mutating_course_artifact() -> None:
     repository = MemoryDashboardRepository()
     service = DashboardService(repository)
     summary = await service.refresh_dashboard(repository.course_id)
@@ -82,7 +82,19 @@ async def test_accept_signal_mutates_underlying_entity_and_records_scope() -> No
     assert signal.status is DashboardSignalStatus.ACCEPTED
     assert signal.instructor_action
     assert signal.instructor_action["applied_scope"] == "going_forward"
-    assert repository.mutations == [("accepted", summary.signals[0].related_entity_id)]
+    assert repository.mutations == []
+
+
+@pytest.mark.anyio
+async def test_resolved_signal_does_not_reopen_when_evidence_is_unchanged() -> None:
+    repository = MemoryDashboardRepository()
+    service = DashboardService(repository)
+    first = await service.refresh_dashboard(repository.course_id)
+    await service.accept_signal(first.signals[0].id, DashboardAction(action="acknowledge"))
+
+    second = await service.refresh_dashboard(repository.course_id)
+
+    assert second.signals == ()
 
 
 @pytest.mark.anyio
@@ -217,8 +229,7 @@ class MemoryDashboardRepository(DashboardRepository):
             (
                 signal
                 for signal in self.signals
-                if signal.status is DashboardSignalStatus.OPEN
-                and signal.ai_diagnosis.get("fingerprint") == proposal.fingerprint
+                if signal.ai_diagnosis.get("fingerprint") == proposal.fingerprint
             ),
             None,
         )
@@ -237,14 +248,14 @@ class MemoryDashboardRepository(DashboardRepository):
         signal_id: UUID,
         action: DashboardAction,
     ) -> DashboardSignal | None:
-        return self._resolve(signal_id, DashboardSignalStatus.ACCEPTED, action, mutate=True)
+        return self._resolve(signal_id, DashboardSignalStatus.ACCEPTED, action, mutate=False)
 
     async def edit_signal(
         self,
         signal_id: UUID,
         action: DashboardAction,
     ) -> DashboardSignal | None:
-        return self._resolve(signal_id, DashboardSignalStatus.EDITED, action, mutate=True)
+        return self._resolve(signal_id, DashboardSignalStatus.EDITED, action, mutate=False)
 
     async def dismiss_signal(
         self,

@@ -46,7 +46,11 @@ async def test_dashboard_api_refresh_accept_and_override_flow() -> None:
             )
             assert accepted.status_code == 200
             assert accepted.json()["status"] == DashboardSignalStatus.ACCEPTED.value
-            assert repository.mutations
+            assert repository.mutations == []
+
+            refreshed = await client.get(f"/courses/{repository.course_id}/dashboard")
+            assert refreshed.status_code == 200
+            assert refreshed.json()["signals"] == []
 
             override = await client.post(
                 f"/courses/{repository.course_id}/dashboard/learner-override",

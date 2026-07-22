@@ -37,7 +37,7 @@ def _stuck_cohort_signals(
                     related_entity_id=stats.concept_id,
                     title=f"Learners are stuck on {stats.concept_name}",
                     summary=(
-                        f"{stats.struggling_learners} of {stats.touched_learners} learner(s) "
+                        f"{stats.struggling_learners} of {stats.touched_learners} learners "
                         "who touched this concept are struggling."
                     ),
                     recommended_action="Review routing policy and remediation coverage.",
@@ -47,6 +47,7 @@ def _stuck_cohort_signals(
                         "struggling_learners": stats.struggling_learners,
                         "struggling_rate": struggling_rate,
                     },
+                    target_logical_artifact_id=stats.logical_id,
                 ),
             )
     return tuple(proposals)
@@ -80,6 +81,7 @@ def _underperforming_question_signals(
                         "incorrect_rate": incorrect_rate,
                         "low_confidence_rate": low_confidence_rate,
                     },
+                    target_logical_artifact_id=stats.logical_id,
                 ),
             )
     return tuple(proposals)
@@ -107,6 +109,7 @@ def _underperforming_clip_signals(
                         "remediation_attempts": stats.remediation_attempts,
                         "struggling_learners": stats.struggling_learners,
                     },
+                    target_logical_artifact_id=stats.logical_id,
                 ),
             )
     return tuple(proposals)
@@ -138,6 +141,7 @@ def _graph_drift_signals(
                             stats.mastered_prerequisite_struggling_learners
                         ),
                     },
+                    target_logical_artifact_id=stats.logical_id,
                 ),
             )
     return tuple(proposals)

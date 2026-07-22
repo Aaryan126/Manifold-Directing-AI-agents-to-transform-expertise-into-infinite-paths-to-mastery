@@ -84,6 +84,7 @@ def test_priority_brief_combines_persisted_signals_and_topic_learning_risk() -> 
             "title": "Question is producing uncertainty",
             "summary": "Learner evidence crossed the review threshold.",
             "metrics": {"attempts": 8, "struggling_learners": 2},
+            "target_logical_artifact_id": str(logical_id),
         },
         instructor_action=None,
     )
@@ -111,6 +112,7 @@ def test_priority_brief_combines_persisted_signals_and_topic_learning_risk() -> 
     priorities = generate_priorities((signal,), (topic,))
 
     assert priorities[0].specialist_role == "assessment_designer"
+    assert priorities[0].target_logical_artifact_id == logical_id
     assert any(item.target_logical_artifact_id == logical_id for item in priorities)
     assert any(item.affected_learners == 3 for item in priorities)
 

@@ -199,7 +199,7 @@ async function mockPublishedCourseOS(page: Page) {
     generation_run_id: null,
     generation_status: "complete",
     generation_phase: "complete",
-    pending_review_count: 0,
+    pending_review_count: 64,
     open_signal_count: 1,
   };
   await page.route("http://localhost:8000/**", async (route) => {
@@ -465,6 +465,9 @@ test("published course combines insights with overview and exposes durable asses
   await expect(page.getByRole("heading", { name: "Course structure × performance" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Topic health" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Learning patterns" })).toBeVisible();
+  await expect(page.getByText(/to review/i)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Publish updates" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Review proposal" })).toBeEnabled();
   await expect(page.getByText("Learner uncertainty is concentrated in vector direction.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Accept" })).toBeVisible();
   await page.getByRole("button", { name: /Course sources/ }).click();

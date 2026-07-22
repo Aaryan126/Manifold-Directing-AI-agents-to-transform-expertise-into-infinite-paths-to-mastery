@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 import pytest
 
 import app.course_os.postgres_repository as repository_module
-from app.course_os.postgres_repository import PostgresCourseOSRepository
+from app.course_os.postgres_repository import PostgresCourseOSRepository, _publication_blockers
 
 
 class _Cursor:
@@ -81,3 +81,23 @@ async def test_deleting_last_override_persists_the_displayed_course_default(
         if statement.startswith("delete from routing_policies")
     )
     assert default_insert < override_delete
+
+
+def test_published_update_does_not_reuse_first_publication_bundle_gate() -> None:
+    readiness: dict[str, object] = {
+        "bundle_count": 0,
+        "pending_items": 64,
+        "proposed_topics": 0,
+        "proposed_concepts": 0,
+        "proposed_edges": 0,
+        "proposed_questions": 0,
+        "reviewed_topics": 5,
+        "reviewed_concepts": 8,
+        "topics_without_question": 0,
+        "concepts_without_policy": 0,
+    }
+
+    assert _publication_blockers(readiness, is_update=True) == []
+    assert _publication_blockers(readiness, is_update=False) == [
+        "Review bundles have not been assembled.",
+    ]

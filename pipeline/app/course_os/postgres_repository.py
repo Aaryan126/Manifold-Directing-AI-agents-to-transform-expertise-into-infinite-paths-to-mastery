@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -445,7 +446,6 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     working_revision_id,
                 ),
             )
-        await self.assemble_review_bundles(course_id, working_revision_id)
         summary = await self.get_course(course_id)
         if summary is None:
             raise RuntimeError("Working revision could not be loaded.")
@@ -522,29 +522,10 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     (working_revision_id,) * 10,
                 )
             ).fetchone()
-            blockers: list[str] = []
-            if readiness is None or int(readiness["bundle_count"]) < 3:
-                blockers.append("Review bundles have not been assembled.")
-            elif int(readiness["pending_items"]) > 0:
-                blockers.append("Resolve every remaining review decision before publishing.")
-            if readiness is not None and any(
-                int(readiness[key]) > 0
-                for key in (
-                    "proposed_topics",
-                    "proposed_concepts",
-                    "proposed_edges",
-                    "proposed_questions",
-                )
-            ):
-                blockers.append("Accept, edit, or dismiss every AI proposal before publishing.")
-            if readiness is None or int(readiness["reviewed_topics"]) == 0:
-                blockers.append("At least one reviewed topic is required.")
-            if readiness is None or int(readiness["reviewed_concepts"]) == 0:
-                blockers.append("At least one reviewed concept is required.")
-            if readiness is not None and int(readiness["topics_without_question"]) > 0:
-                blockers.append("Every reviewed topic needs an accepted or edited question.")
-            if readiness is not None and int(readiness["concepts_without_policy"]) > 0:
-                blockers.append("Every reviewed concept needs confirmed routing settings.")
+            blockers = _publication_blockers(
+                readiness,
+                is_update=active_revision_id is not None,
+            )
             if blockers:
                 raise ValueError(" ".join(blockers))
 
@@ -2633,8 +2614,10 @@ select c.id, c.instructor_id, c.title, c.description, c.status,
          where t.revision_id = cr.id and t.review_status <> 'dismissed') as topic_count,
        (select count(*) from concepts x
          where x.revision_id = cr.id and x.review_status <> 'dismissed') as concept_count,
-       (select count(*) from review_items ri join review_bundles rb on rb.id = ri.bundle_id
-         where rb.revision_id = cr.id and ri.status = 'pending') as pending_review_count,
+       case when c.status = 'published' then 0 else
+         (select count(*) from review_items ri join review_bundles rb on rb.id = ri.bundle_id
+           where rb.revision_id = cr.id and ri.status = 'pending')
+       end as pending_review_count,
        (select count(*) from dashboard_signals ds
          where ds.course_id = c.id and ds.status = 'open') as open_signal_count
 from courses c
@@ -2645,6 +2628,43 @@ left join lateral (
   order by created_at desc limit 1
 ) gr on true
 """
+
+
+def _publication_blockers(
+    readiness: Mapping[str, object] | None,
+    *,
+    is_update: bool,
+) -> list[str]:
+    blockers: list[str] = []
+    if not is_update:
+        if readiness is None or _readiness_count(readiness, "bundle_count") < 3:
+            blockers.append("Review bundles have not been assembled.")
+        elif _readiness_count(readiness, "pending_items") > 0:
+            blockers.append("Resolve every remaining review decision before publishing.")
+    if readiness is not None and any(
+        _readiness_count(readiness, key) > 0
+        for key in (
+            "proposed_topics",
+            "proposed_concepts",
+            "proposed_edges",
+            "proposed_questions",
+        )
+    ):
+        blockers.append("Accept, edit, or dismiss every AI proposal before publishing.")
+    if readiness is None or _readiness_count(readiness, "reviewed_topics") == 0:
+        blockers.append("At least one reviewed topic is required.")
+    if readiness is None or _readiness_count(readiness, "reviewed_concepts") == 0:
+        blockers.append("At least one reviewed concept is required.")
+    if readiness is not None and _readiness_count(readiness, "topics_without_question") > 0:
+        blockers.append("Every reviewed topic needs an accepted or edited question.")
+    if readiness is not None and _readiness_count(readiness, "concepts_without_policy") > 0:
+        blockers.append("Every reviewed concept needs confirmed routing settings.")
+    return blockers
+
+
+def _readiness_count(readiness: Mapping[str, object], key: str) -> int:
+    value = readiness.get(key, 0)
+    return int(value) if isinstance(value, (int, float, str)) else 0
 
 _TASK_ORDER = (
     "source_ready",

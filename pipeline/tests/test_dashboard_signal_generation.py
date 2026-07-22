@@ -9,6 +9,9 @@ def test_dashboard_signal_generation_emits_all_signal_types() -> None:
     question_id = uuid4()
     clip_id = uuid4()
     topic_id = uuid4()
+    concept_logical_id = uuid4()
+    question_logical_id = uuid4()
+    clip_logical_id = uuid4()
 
     proposals = generate_signal_proposals(
         concept_stats=(
@@ -18,6 +21,7 @@ def test_dashboard_signal_generation_emits_all_signal_types() -> None:
                 touched_learners=5,
                 struggling_learners=3,
                 mastered_prerequisite_struggling_learners=2,
+                logical_id=concept_logical_id,
             ),
         ),
         question_stats=(
@@ -28,6 +32,7 @@ def test_dashboard_signal_generation_emits_all_signal_types() -> None:
                 attempts=4,
                 incorrect_attempts=3,
                 low_confidence_correct_attempts=0,
+                logical_id=question_logical_id,
             ),
         ),
         clip_stats=(
@@ -37,6 +42,7 @@ def test_dashboard_signal_generation_emits_all_signal_types() -> None:
                 topic_id=topic_id,
                 remediation_attempts=3,
                 struggling_learners=1,
+                logical_id=clip_logical_id,
             ),
         ),
     )
@@ -49,6 +55,11 @@ def test_dashboard_signal_generation_emits_all_signal_types() -> None:
     assert any(proposal.related_entity_id == concept_id for proposal in proposals)
     assert any(proposal.related_entity_id == question_id for proposal in proposals)
     assert any(proposal.related_entity_id == clip_id for proposal in proposals)
+    assert {proposal.target_logical_artifact_id for proposal in proposals} == {
+        concept_logical_id,
+        question_logical_id,
+        clip_logical_id,
+    }
 
 
 def test_dashboard_signal_generation_ignores_low_sample_question_data() -> None:

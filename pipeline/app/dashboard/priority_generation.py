@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from app.dashboard.models import DashboardPriority, DashboardSignal, TopicHealth
 
 
@@ -25,7 +27,7 @@ def generate_priorities(
                 specialist_role=_specialist(signal.related_entity_type),
                 target_artifact_type=signal.related_entity_type,
                 target_artifact_id=signal.related_entity_id,
-                target_logical_artifact_id=None,
+                target_logical_artifact_id=_uuid(diagnosis.get("target_logical_artifact_id")),
                 affected_learners=affected,
                 evidence_count=evidence_count,
                 evidence={"signal_id": str(signal.id), **metrics},
@@ -131,3 +133,10 @@ def _object_dict(value: object) -> dict[str, object]:
     if not isinstance(value, dict):
         return {}
     return {str(key): item for key, item in value.items()}
+
+
+def _uuid(value: object) -> UUID | None:
+    try:
+        return UUID(str(value)) if value else None
+    except ValueError:
+        return None

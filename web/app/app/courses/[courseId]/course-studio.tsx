@@ -580,7 +580,11 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         method: decision === "edited" ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: decision === "edited" ? "manual_edit" : `${decision}_ai_suggestion`,
+          action: decision === "accepted"
+            ? "acknowledge_diagnosis"
+            : decision === "edited"
+              ? "manual_edit"
+              : "dismiss_diagnosis",
           note: note ?? null,
           retroactive: false,
         }),
@@ -764,13 +768,18 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   }
 
   const editingLocked = course?.status === "published" && !course.working_revision_id;
+  const hasUnpublishedChanges = Boolean(revisionDiff?.changes.length);
   const canPublish = Boolean(
     course?.working_revision_id
     && course.topic_count > 0
-    && course.pending_review_count === 0
-    && bundles.length >= 3
-    && bundles.every((bundle) => bundle.status === "complete")
-    && !isBuilding,
+    && !isBuilding
+    && (
+      course.status === "published"
+        ? hasUnpublishedChanges
+        : course.pending_review_count === 0
+          && bundles.length >= 3
+          && bundles.every((bundle) => bundle.status === "complete")
+    )
   );
 
   const courseDirector = (
@@ -876,10 +885,10 @@ export function CourseStudio({ courseId }: { courseId: string }) {
           </div>
           <div className={styles.studioStatus}>
             {isBuilding ? <span data-tone="building"><LoaderCircle className={styles.spin} />{Math.round(run?.progress ?? course?.generation_progress ?? 0)}% building</span>
-              : course?.pending_review_count ? <span data-tone="review"><ClipboardCheck />{course.pending_review_count} to review</span>
-                : course?.status === "published" ? <span data-tone="live"><Check />Live</span>
-                  : <span><Activity />Private</span>}
-            {!editingLocked ? (
+              : course?.status !== "published" && course?.pending_review_count ? <span data-tone="review"><ClipboardCheck />{course.pending_review_count} to review</span>
+                : course?.status !== "published" ? <span><Activity />Private</span>
+                  : null}
+            {!editingLocked && (course?.status !== "published" || hasUnpublishedChanges) ? (
               <button disabled={!canPublish || sending} onClick={() => void publishRevision()} type="button">
                 {course?.status === "published" ? "Publish updates" : "Publish course"}
               </button>
@@ -1253,9 +1262,21 @@ function OverviewCanvas({
   const selectedPriority = priorities.find((item) => item.id === selectedPriorityId)
     ?? priorities[0]
     ?? null;
+  const selectedArtifactLogicalId = selectedTopicId
+    ?? selectedPriority?.target_logical_artifact_id
+    ?? null;
+  const selectedArtifactNode = courseMap?.nodes.find((node) => (
+    node.logical_id === selectedArtifactLogicalId
+  ));
+  const selectedTopicNode = selectedArtifactNode?.kind === "topic"
+    ? selectedArtifactNode
+    : courseMap?.nodes.find((node) => (
+      node.kind === "topic" && node.id === selectedArtifactNode?.topic_id
+    ));
   const selectedTopic = dashboard?.topic_health?.find((topic) => (
     topic.logical_id === selectedTopicId
     || topic.logical_id === selectedPriority?.target_logical_artifact_id
+    || topic.logical_id === selectedTopicNode?.logical_id
   )) ?? null;
   const activeTasks = agentTasks.filter((task) => task.task_type !== "extract_source").slice(0, 8);
   const readySources = sources.filter((source) => source.extraction_status === "ready");
@@ -1283,6 +1304,9 @@ function OverviewCanvas({
                 task.target_logical_artifact_id === priority.target_logical_artifact_id
                 && task.task_type === "prepare_improvement"
               ));
+              const specialistWorking = matchingTask
+                && ["queued", "running"].includes(matchingTask.status);
+              const proposalReady = matchingTask?.status === "waiting_review";
               return (
                 <article aria-current={selectedPriority?.id === priority.id ? "true" : undefined} key={priority.id}>
                   <button className={styles.priorityEvidenceButton} onClick={() => {
@@ -1290,14 +1314,28 @@ function OverviewCanvas({
                     setSelectedTopicId(priority.target_logical_artifact_id);
                   }} type="button">
                     <span>{String(index + 1).padStart(2, "0")}</span>
-                    <div><small>{specialistLabel(priority.specialist_role)} · {priority.severity} priority</small><h4>{priority.title}</h4><p>{priority.summary}</p><em>{priority.affected_learners ? `${priority.affected_learners} learners` : `${priority.evidence_count} design checks`}</em></div>
+                    <div>
+                      <small><span>{specialistLabel(priority.specialist_role)}</span><span>{priority.severity} priority</span></small>
+                      <h4>{priority.title}</h4><p>{priority.summary}</p>
+                      <em>{priority.affected_learners ? `${priority.affected_learners} learners affected` : `${priority.evidence_count} design checks`}</em>
+                    </div>
                     <BarChart3 />
                   </button>
                   <footer>
                     <button onClick={() => onAskDirector(priority)} type="button"><MessageCircleMore />Ask Director</button>
-                    <button disabled={!canPrepareImprovement(priority, agentTasks)} onClick={() => void onPrepare(priority)} type="button">
-                      {matchingTask && ["queued", "running"].includes(matchingTask.status) ? <LoaderCircle className={styles.spin} /> : <Wand2 />}
-                      {matchingTask && ["queued", "running"].includes(matchingTask.status) ? "Specialist working" : "Prepare improvement"}
+                    <button
+                      disabled={!proposalReady && !canPrepareImprovement(priority, agentTasks)}
+                      onClick={() => {
+                        if (proposalReady) {
+                          document.getElementById("course-team")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                        } else {
+                          void onPrepare(priority);
+                        }
+                      }}
+                      type="button"
+                    >
+                      {specialistWorking ? <LoaderCircle className={styles.spin} /> : proposalReady ? <ClipboardCheck /> : <Wand2 />}
+                      {specialistWorking ? "Specialist working" : proposalReady ? "Review proposal" : "Prepare improvement"}
                     </button>
                   </footer>
                 </article>
@@ -1318,7 +1356,7 @@ function OverviewCanvas({
                 {task.status === "waiting_review" ? <SpecialistProposalCard onResolve={onResolveProposal} task={task} /> : null}
               </article>
             ))}
-            {!activeTasks.length ? <div className={styles.teamEmpty}><BrainCircuit /><p><strong>The team is listening.</strong> Choose Prepare improvement on a priority to brief the right specialist.</p></div> : null}
+            {!activeTasks.length ? <div className={styles.teamEmpty}><BrainCircuit /><p><strong>No specialist work is in progress.</strong> Choose Prepare improvement to create a private proposal. Nothing enters the live course until you accept or edit it.</p></div> : null}
           </div>
         </section>
       </div>
@@ -1327,19 +1365,20 @@ function OverviewCanvas({
         <header><div><h3>Evidence inspector</h3><p>Trace a recommendation to actual learner behavior and course coverage.</p></div><span>{selectedTopic ? selectedTopic.title : "Choose a priority or topic"}</span></header>
         <div>
           <article>
-            <small>Selected evidence</small>
             <h4>{selectedPriority?.title ?? selectedTopic?.title ?? "No evidence selected"}</h4>
             <p>{selectedPriority?.summary ?? "Select a topic below to inspect its confidence, correctness, mastery, clips, and checks."}</p>
-            {selectedPriority ? <dl>{Object.entries(selectedPriority.evidence).slice(0, 6).map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd>{String(value)}</dd></div>)}</dl> : null}
+            {selectedPriority ? <dl>{visibleEvidence(selectedPriority.evidence).map(([key, value]) => <div key={key}><dt>{evidenceMetricLabel(key)}</dt><dd>{evidenceMetricValue(key, value)}</dd></div>)}</dl> : null}
             {selectedPriority?.id.startsWith("signal:") ? (
-              <div className={styles.evidenceDecisionActions}>
-                <button onClick={() => void onSignal(selectedPriority.id.slice(7), "accepted")} type="button"><Check />Accept diagnosis</button>
-                <button onClick={() => void onSignal(selectedPriority.id.slice(7), "dismissed")} type="button"><X />Dismiss</button>
+              <div className={styles.evidenceDecision}>
+                <p><strong>This is a diagnosis, not a course change.</strong> Acknowledge removes it from your queue. Prepare improvement creates a separate private proposal for your review.</p>
+                <div className={styles.evidenceDecisionActions}>
+                  <button onClick={() => void onSignal(selectedPriority.id.slice(7), "accepted")} type="button"><Check />Acknowledge</button>
+                  <button onClick={() => void onSignal(selectedPriority.id.slice(7), "dismissed")} type="button"><X />Dismiss</button>
+                </div>
               </div>
             ) : null}
           </article>
           <article>
-            <small>Topic pulse</small>
             {selectedTopic ? (
               <>
                 <h4>{topicHealthLabel(selectedTopic)}</h4>
@@ -2007,6 +2046,19 @@ function taskStatusLabel(status: CourseAgentTask["status"]): string {
     failed: "Needs attention",
     cancelled: "Cancelled",
   }[status];
+}
+function visibleEvidence(evidence: Record<string, unknown>): [string, unknown][] {
+  return Object.entries(evidence)
+    .filter(([key]) => !key.endsWith("_id") && key !== "fingerprint")
+    .slice(0, 6);
+}
+function evidenceMetricLabel(key: string): string {
+  return key.replaceAll("_", " ");
+}
+function evidenceMetricValue(key: string, value: unknown): string {
+  if (typeof value === "number" && key.endsWith("_rate")) return `${Math.round(value * 100)}%`;
+  if (typeof value === "number") return value.toLocaleString();
+  return shortValue(value);
 }
 function topicHealthLabel(topic: DashboardSummary["topic_health"][number]): string {
   if (!topic.attempts) return "Awaiting learner evidence";

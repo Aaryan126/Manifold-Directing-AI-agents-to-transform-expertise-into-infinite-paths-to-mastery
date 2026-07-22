@@ -22,6 +22,7 @@ class ConceptSignalStats:
     concept_name: str
     touched_learners: int
     struggling_learners: int
+    logical_id: UUID | None = None
     mastered_prerequisite_struggling_learners: int = 0
     attempts: int = 0
     correct_attempts: int = 0
@@ -41,6 +42,7 @@ class QuestionSignalStats:
     attempts: int
     incorrect_attempts: int
     low_confidence_correct_attempts: int
+    logical_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -50,6 +52,7 @@ class ClipSignalStats:
     topic_id: UUID
     remediation_attempts: int
     struggling_learners: int
+    logical_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -116,6 +119,7 @@ class DashboardSignalProposal:
     recommended_action: str
     fingerprint: str
     metrics: dict[str, object]
+    target_logical_artifact_id: UUID | None = None
 
 
 @dataclass(frozen=True)
