@@ -290,8 +290,8 @@
   padding: clamp(22px, 2.4vw, 30px);
 }
 
-.briefHeading { max-width: 1120px; }
-.briefHeading h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: clamp(26px, 2.25vw, 35px); font-weight: 470; letter-spacing: -.035em; line-height: 1.12; margin: 0 0 7px; }
+.briefHeading { width: 100%; }
+.briefHeading h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: clamp(26px, 2.25vw, 35px); font-weight: 470; letter-spacing: -.035em; line-height: 1.12; margin: 0 0 7px; white-space: nowrap; }
 .briefHeading p { color: var(--os-subtle); font-size: 13px; line-height: 1.5; margin: 0; max-width: 880px; }
 
 .dashboardCommand { margin: 20px 0 0; max-width: 1120px; }
@@ -653,6 +653,7 @@
 
 @media (max-width: 1050px) {
   .courseGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .briefHeading h2 { white-space: normal; }
 }
 
 @media (max-width: 720px) {
@@ -1159,6 +1160,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .inlineEmpty > svg { background: #f0eee9; border-radius: 9px; height: 40px; padding: 10px; width: 40px; }
 .inlineEmpty strong { font-size: 13px; }
 .inlineEmpty p { color: #88868d; font-size: 11px; margin: 4px 0 0; }
+.priorityBrief .inlineEmpty { justify-content: flex-start; padding-inline: 24px; }
 
 .editorReveal { scroll-margin-block-start: 18px; }
 .structuredEditor { background: #f8f7f4; border: 1px solid #dad7cf; border-radius: 12px; margin-bottom: 18px; padding: 18px; }
