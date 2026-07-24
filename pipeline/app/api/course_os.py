@@ -160,6 +160,24 @@ class MessageRequest(BaseModel):
     content: str = Field(min_length=1, max_length=8000)
 
 
+class BlueprintRelationshipRequest(BaseModel):
+    relationship: Literal[
+        "contains",
+        "requires",
+        "teaches",
+        "assesses",
+        "remediates_to",
+        "cites",
+    ]
+    source_logical_id: UUID
+    target_logical_id: UUID
+
+
+class BlueprintRelationshipReconnectRequest(BaseModel):
+    previous: BlueprintRelationshipRequest
+    replacement: BlueprintRelationshipRequest
+
+
 class MessageResponse(BaseModel):
     id: UUID
     role: str
@@ -730,6 +748,79 @@ async def remove_blueprint_prerequisite(
 ) -> CourseBlueprintResponse:
     return _blueprint_response(
         await _call(service.remove_blueprint_prerequisite(course_id, user_id, edge_id))
+    )
+
+
+@router.post(
+    "/courses/{course_id}/blueprint/relationships",
+    response_model=CourseBlueprintResponse,
+    status_code=201,
+)
+async def create_blueprint_relationship(
+    course_id: UUID,
+    request: BlueprintRelationshipRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseBlueprintResponse:
+    return _blueprint_response(
+        await _call(
+            service.create_blueprint_relationship(
+                course_id,
+                user_id,
+                request.relationship,
+                request.source_logical_id,
+                request.target_logical_id,
+            )
+        )
+    )
+
+
+@router.delete(
+    "/courses/{course_id}/blueprint/relationships",
+    response_model=CourseBlueprintResponse,
+)
+async def remove_blueprint_relationship(
+    course_id: UUID,
+    request: BlueprintRelationshipRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseBlueprintResponse:
+    return _blueprint_response(
+        await _call(
+            service.remove_blueprint_relationship(
+                course_id,
+                user_id,
+                request.relationship,
+                request.source_logical_id,
+                request.target_logical_id,
+            )
+        )
+    )
+
+
+@router.patch(
+    "/courses/{course_id}/blueprint/relationships",
+    response_model=CourseBlueprintResponse,
+)
+async def reconnect_blueprint_relationship(
+    course_id: UUID,
+    request: BlueprintRelationshipReconnectRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseBlueprintResponse:
+    return _blueprint_response(
+        await _call(
+            service.reconnect_blueprint_relationship(
+                course_id,
+                user_id,
+                request.previous.relationship,
+                request.previous.source_logical_id,
+                request.previous.target_logical_id,
+                request.replacement.relationship,
+                request.replacement.source_logical_id,
+                request.replacement.target_logical_id,
+            )
+        )
     )
 
 

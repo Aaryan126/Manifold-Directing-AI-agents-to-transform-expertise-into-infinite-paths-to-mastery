@@ -1447,6 +1447,48 @@ class PostgresCourseOSRepository(CourseOSRepository):
             raise RuntimeError("Failed to create course proposal.")
         return _proposal(row)
 
+    async def create_typed_proposal(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        message_id: UUID,
+        *,
+        proposal_type: str,
+        artifact_type: str,
+        logical_artifact_id: UUID,
+        before_state: dict[str, Any] | None,
+        proposed_state: dict[str, Any],
+        rationale: str,
+    ) -> CourseProposal:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            row = await (
+                await conn.execute(
+                    """
+                    insert into course_proposals (
+                      course_id, revision_id, message_id, proposal_type, artifact_type,
+                      logical_artifact_id, before_state, proposed_state, rationale
+                    ) values (
+                      %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s
+                    )
+                    returning *
+                    """,
+                    (
+                        course_id,
+                        revision_id,
+                        message_id,
+                        proposal_type,
+                        artifact_type,
+                        logical_artifact_id,
+                        Jsonb(before_state) if before_state is not None else None,
+                        Jsonb(proposed_state),
+                        rationale,
+                    ),
+                )
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("Failed to create typed course proposal.")
+        return _proposal(row)
+
     async def course_evidence(
         self,
         course_id: UUID,
@@ -1533,6 +1575,8 @@ class PostgresCourseOSRepository(CourseOSRepository):
                 if artifact_type and logical_artifact_id:
                     await _apply_typed_proposal(
                         conn,
+                        course_id=course_id,
+                        instructor_id=instructor_id,
                         artifact_type=artifact_type,
                         logical_artifact_id=UUID(str(logical_artifact_id)),
                         revision_id=UUID(str(proposal["revision_id"])),
@@ -2597,6 +2641,82 @@ class PostgresCourseOSRepository(CourseOSRepository):
                 },
                 new_state={"review_status": "dismissed"},
                 note="Removed a prerequisite in Blueprint Design mode.",
+            )
+
+    async def create_blueprint_relationship(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        relationship: str,
+        source_logical_id: UUID,
+        target_logical_id: UUID,
+    ) -> None:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            await _create_blueprint_relationship(
+                conn,
+                course_id=course_id,
+                revision_id=revision_id,
+                instructor_id=instructor_id,
+                relationship=relationship,
+                source_logical_id=source_logical_id,
+                target_logical_id=target_logical_id,
+                mutation_source="instructor",
+            )
+
+    async def remove_blueprint_relationship(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        relationship: str,
+        source_logical_id: UUID,
+        target_logical_id: UUID,
+    ) -> None:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            await _remove_blueprint_relationship(
+                conn,
+                course_id=course_id,
+                revision_id=revision_id,
+                instructor_id=instructor_id,
+                relationship=relationship,
+                source_logical_id=source_logical_id,
+                target_logical_id=target_logical_id,
+                mutation_source="instructor",
+            )
+
+    async def reconnect_blueprint_relationship(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        previous_relationship: str,
+        previous_source_logical_id: UUID,
+        previous_target_logical_id: UUID,
+        relationship: str,
+        source_logical_id: UUID,
+        target_logical_id: UUID,
+    ) -> None:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            await _create_blueprint_relationship(
+                conn,
+                course_id=course_id,
+                revision_id=revision_id,
+                instructor_id=instructor_id,
+                relationship=relationship,
+                source_logical_id=source_logical_id,
+                target_logical_id=target_logical_id,
+                mutation_source="instructor",
+            )
+            await _remove_blueprint_relationship(
+                conn,
+                course_id=course_id,
+                revision_id=revision_id,
+                instructor_id=instructor_id,
+                relationship=previous_relationship,
+                source_logical_id=previous_source_logical_id,
+                target_logical_id=previous_target_logical_id,
+                mutation_source="instructor",
             )
 
     async def create_blueprint_topic(
@@ -4217,6 +4337,445 @@ def _assessment_snapshot(question: CourseAssessment) -> dict[str, Any]:
     }
 
 
+_BLUEPRINT_RELATIONSHIP_TYPES: dict[str, tuple[str, frozenset[str]]] = {
+    "contains": ("topic", frozenset({"concept"})),
+    "requires": ("concept", frozenset({"concept"})),
+    "teaches": ("concept", frozenset({"clip"})),
+    "assesses": ("concept", frozenset({"question"})),
+    "remediates_to": ("question", frozenset({"clip", "concept"})),
+    "cites": ("artifact", frozenset({"source"})),
+}
+
+
+async def _blueprint_relationship_nodes(
+    conn: Any,
+    revision_id: UUID,
+    logical_ids: tuple[UUID, UUID],
+) -> dict[UUID, dict[str, Any]]:
+    rows = await (
+        await conn.execute(
+            """
+            select 'topic' as kind, id, logical_id
+            from topics
+            where revision_id = %s and review_status <> 'dismissed'
+              and logical_id = any(%s::uuid[])
+            union all
+            select 'concept' as kind, id, logical_id
+            from concepts
+            where revision_id = %s and review_status <> 'dismissed'
+              and logical_id = any(%s::uuid[])
+            union all
+            select 'clip' as kind, id, logical_id
+            from clips
+            where revision_id = %s and status <> 'superseded'
+              and logical_id = any(%s::uuid[])
+            union all
+            select 'question' as kind, id, logical_id
+            from questions
+            where revision_id = %s and review_status <> 'dismissed'
+              and logical_id = any(%s::uuid[])
+            union all
+            select 'source' as kind, source.id, source.logical_id
+            from course_sources source
+            join course_revision_sources link on link.source_id = source.id
+            where link.revision_id = %s and link.removed_at is null
+              and source.logical_id = any(%s::uuid[])
+            """,
+            (
+                revision_id,
+                list(logical_ids),
+                revision_id,
+                list(logical_ids),
+                revision_id,
+                list(logical_ids),
+                revision_id,
+                list(logical_ids),
+                revision_id,
+                list(logical_ids),
+            ),
+        )
+    ).fetchall()
+    return {UUID(str(row["logical_id"])): row for row in rows}
+
+
+def _validate_blueprint_relationship_nodes(
+    relationship: str,
+    source: dict[str, Any],
+    target: dict[str, Any],
+) -> None:
+    specification = _BLUEPRINT_RELATIONSHIP_TYPES.get(relationship)
+    if specification is None:
+        raise ValueError("That relationship type is not editable in Blueprint Design.")
+    required_source, allowed_targets = specification
+    source_kind = str(source["kind"])
+    target_kind = str(target["kind"])
+    if required_source != "artifact" and source_kind != required_source:
+        raise ValueError(
+            f"{relationship.replace('_', ' ').title()} must start from a "
+            f"{required_source} node."
+        )
+    if required_source == "artifact" and source_kind == "source":
+        raise ValueError("A citation must start from a course artifact, not a source.")
+    if target_kind not in allowed_targets:
+        readable = " or ".join(sorted(allowed_targets))
+        raise ValueError(
+            f"{relationship.replace('_', ' ').title()} must connect to {readable}."
+        )
+
+
+async def _create_blueprint_relationship(
+    conn: Any,
+    *,
+    course_id: UUID,
+    revision_id: UUID,
+    instructor_id: UUID,
+    relationship: str,
+    source_logical_id: UUID,
+    target_logical_id: UUID,
+    mutation_source: str,
+) -> None:
+    if source_logical_id == target_logical_id:
+        raise ValueError("A relationship cannot connect an artifact to itself.")
+    nodes = await _blueprint_relationship_nodes(
+        conn,
+        revision_id,
+        (source_logical_id, target_logical_id),
+    )
+    source_node = nodes.get(source_logical_id)
+    target_node = nodes.get(target_logical_id)
+    if source_node is None or target_node is None:
+        raise ValueError("Both relationship endpoints must belong to this private revision.")
+    _validate_blueprint_relationship_nodes(relationship, source_node, target_node)
+    source_id = UUID(str(source_node["id"]))
+    target_id = UUID(str(target_node["id"]))
+
+    if relationship == "contains":
+        duplicate = await (
+            await conn.execute(
+                "select 1 from topic_concepts where topic_id = %s and concept_id = %s",
+                (source_id, target_id),
+            )
+        ).fetchone()
+        if duplicate:
+            raise ValueError("That concept already belongs to this topic.")
+        await conn.execute(
+            "insert into topic_concepts (topic_id, concept_id, revision_id) values (%s, %s, %s)",
+            (source_id, target_id, revision_id),
+        )
+    elif relationship == "requires":
+        duplicate = await (
+            await conn.execute(
+                """
+                select 1 from concept_edges
+                where revision_id = %s and from_concept_id = %s and to_concept_id = %s
+                  and relationship = 'requires' and review_status <> 'dismissed'
+                """,
+                (revision_id, source_id, target_id),
+            )
+        ).fetchone()
+        if duplicate:
+            raise ValueError("That prerequisite relationship already exists.")
+        cycle = await (
+            await conn.execute(
+                """
+                with recursive reachable(id) as (
+                  select to_concept_id from concept_edges
+                  where revision_id = %s and from_concept_id = %s
+                    and review_status <> 'dismissed'
+                  union
+                  select edge.to_concept_id
+                  from concept_edges edge
+                  join reachable path on path.id = edge.from_concept_id
+                  where edge.revision_id = %s and edge.review_status <> 'dismissed'
+                )
+                select 1 from reachable where id = %s limit 1
+                """,
+                (revision_id, target_id, revision_id, source_id),
+            )
+        ).fetchone()
+        if cycle:
+            raise ValueError("That prerequisite would create a cycle.")
+        await conn.execute(
+            """
+            insert into concept_edges (
+              from_concept_id, to_concept_id, relationship, instructor_revision,
+              review_status, approved_at, revision_id
+            ) values (%s, %s, 'requires', %s::jsonb, 'edited', now(), %s)
+            """,
+            (
+                source_id,
+                target_id,
+                Jsonb({"action": "add", "source": mutation_source}),
+                revision_id,
+            ),
+        )
+    elif relationship == "teaches":
+        duplicate = await (
+            await conn.execute(
+                "select 1 from clip_concepts where concept_id = %s and clip_id = %s",
+                (source_id, target_id),
+            )
+        ).fetchone()
+        if duplicate:
+            raise ValueError("That clip already teaches this concept.")
+        await conn.execute(
+            "insert into clip_concepts (clip_id, concept_id, revision_id) values (%s, %s, %s)",
+            (target_id, source_id, revision_id),
+        )
+    elif relationship == "assesses":
+        duplicate = await (
+            await conn.execute(
+                "select 1 from question_concepts where concept_id = %s and question_id = %s",
+                (source_id, target_id),
+            )
+        ).fetchone()
+        if duplicate:
+            raise ValueError("That question already assesses this concept.")
+        primary = await (
+            await conn.execute(
+                "select 1 from question_concepts where question_id = %s and is_primary",
+                (target_id,),
+            )
+        ).fetchone()
+        await conn.execute(
+            """
+            insert into question_concepts (
+              question_id, concept_id, revision_id, is_primary
+            ) values (%s, %s, %s, %s)
+            """,
+            (target_id, source_id, revision_id, primary is None),
+        )
+    elif relationship == "remediates_to":
+        clip_target = target_id if target_node["kind"] == "clip" else None
+        concept_target = target_id if target_node["kind"] == "concept" else None
+        duplicate = await (
+            await conn.execute(
+                """
+                select 1 from remediation_rules
+                where revision_id = %s and question_id = %s
+                  and (
+                    (%s::uuid is not null and target_clip_id = %s)
+                    or (%s::uuid is not null and target_concept_id = %s)
+                  )
+                """,
+                (
+                    revision_id,
+                    source_id,
+                    clip_target,
+                    clip_target,
+                    concept_target,
+                    concept_target,
+                ),
+            )
+        ).fetchone()
+        if duplicate:
+            raise ValueError("That remediation route already exists.")
+        await conn.execute(
+            """
+            insert into remediation_rules (
+              question_id, wrong_answer_pattern, target_clip_id, target_concept_id,
+              instructor_revision, approved_at, revision_id
+            ) values (%s, %s, %s, %s, %s::jsonb, now(), %s)
+            """,
+            (
+                source_id,
+                "Instructor-connected misconception route",
+                clip_target,
+                concept_target,
+                Jsonb({"action": "add", "source": mutation_source}),
+                revision_id,
+            ),
+        )
+    else:
+        section = await (
+            await conn.execute(
+                """
+                select section.id, section.native_text
+                from source_sections section
+                where section.source_id = %s
+                order by section.section_index
+                limit 1
+                """,
+                (target_id,),
+            )
+        ).fetchone()
+        if section is None:
+            raise ValueError("This source has no extracted section to cite yet.")
+        duplicate = await (
+            await conn.execute(
+                """
+                select 1
+                from source_citations citation
+                join source_sections section on section.id = citation.source_section_id
+                where citation.revision_id = %s
+                  and citation.logical_artifact_id = %s
+                  and section.source_id = %s
+                """,
+                (revision_id, source_logical_id, target_id),
+            )
+        ).fetchone()
+        if duplicate:
+            raise ValueError("That artifact already cites this source.")
+        await conn.execute(
+            """
+            insert into source_citations (
+              revision_id, source_section_id, artifact_type, logical_artifact_id,
+              excerpt, metadata
+            ) values (%s, %s, %s, %s, %s, %s::jsonb)
+            """,
+            (
+                revision_id,
+                section["id"],
+                source_node["kind"],
+                source_logical_id,
+                str(section["native_text"] or "").strip()[:500],
+                Jsonb({"action": "add", "source": mutation_source}),
+            ),
+        )
+    await _record_workspace_audit(
+        conn,
+        course_id=course_id,
+        revision_id=revision_id,
+        instructor_id=instructor_id,
+        artifact_type="blueprint_relationship",
+        artifact_id=source_logical_id,
+        action="add",
+        previous_state=None,
+        new_state={
+            "relationship": relationship,
+            "source_logical_id": str(source_logical_id),
+            "target_logical_id": str(target_logical_id),
+        },
+        note=f"Added a {relationship.replace('_', ' ')} relationship in Blueprint Design.",
+    )
+
+
+async def _remove_blueprint_relationship(
+    conn: Any,
+    *,
+    course_id: UUID,
+    revision_id: UUID,
+    instructor_id: UUID,
+    relationship: str,
+    source_logical_id: UUID,
+    target_logical_id: UUID,
+    mutation_source: str,
+) -> None:
+    nodes = await _blueprint_relationship_nodes(
+        conn,
+        revision_id,
+        (source_logical_id, target_logical_id),
+    )
+    source_node = nodes.get(source_logical_id)
+    target_node = nodes.get(target_logical_id)
+    if source_node is None or target_node is None:
+        raise ValueError("Both relationship endpoints must belong to this private revision.")
+    _validate_blueprint_relationship_nodes(relationship, source_node, target_node)
+    source_id = UUID(str(source_node["id"]))
+    target_id = UUID(str(target_node["id"]))
+    if relationship == "contains":
+        cursor = await conn.execute(
+            "delete from topic_concepts where topic_id = %s and concept_id = %s",
+            (source_id, target_id),
+        )
+    elif relationship == "requires":
+        cursor = await conn.execute(
+            """
+            update concept_edges
+            set review_status = 'dismissed', dismissed_at = now(), updated_at = now(),
+                instructor_revision = coalesce(instructor_revision, '{}'::jsonb)
+                  || %s::jsonb
+            where revision_id = %s and from_concept_id = %s and to_concept_id = %s
+              and relationship = 'requires' and review_status <> 'dismissed'
+            """,
+            (
+                Jsonb({"action": "remove", "source": mutation_source}),
+                revision_id,
+                source_id,
+                target_id,
+            ),
+        )
+    elif relationship == "teaches":
+        cursor = await conn.execute(
+            "delete from clip_concepts where concept_id = %s and clip_id = %s",
+            (source_id, target_id),
+        )
+    elif relationship == "assesses":
+        primary = await (
+            await conn.execute(
+                """
+                select is_primary from question_concepts
+                where concept_id = %s and question_id = %s
+                """,
+                (source_id, target_id),
+            )
+        ).fetchone()
+        cursor = await conn.execute(
+            "delete from question_concepts where concept_id = %s and question_id = %s",
+            (source_id, target_id),
+        )
+        if primary and bool(primary["is_primary"]):
+            await conn.execute(
+                """
+                update question_concepts set is_primary = true
+                where (question_id, concept_id) = (
+                  select question_id, concept_id from question_concepts
+                  where question_id = %s order by created_at limit 1
+                )
+                """,
+                (target_id,),
+            )
+    elif relationship == "remediates_to":
+        cursor = await conn.execute(
+            """
+            delete from remediation_rules
+            where revision_id = %s and question_id = %s
+              and (
+                (target_clip_id = %s and %s = 'clip')
+                or (target_concept_id = %s and %s = 'concept')
+              )
+            """,
+            (
+                revision_id,
+                source_id,
+                target_id,
+                target_node["kind"],
+                target_id,
+                target_node["kind"],
+            ),
+        )
+    else:
+        cursor = await conn.execute(
+            """
+            delete from source_citations citation
+            using source_sections section
+            where citation.source_section_id = section.id
+              and citation.revision_id = %s
+              and citation.logical_artifact_id = %s
+              and section.source_id = %s
+            """,
+            (revision_id, source_logical_id, target_id),
+        )
+    if cursor.rowcount == 0:
+        raise ValueError("That relationship no longer exists in this private revision.")
+    await _record_workspace_audit(
+        conn,
+        course_id=course_id,
+        revision_id=revision_id,
+        instructor_id=instructor_id,
+        artifact_type="blueprint_relationship",
+        artifact_id=source_logical_id,
+        action="remove",
+        previous_state={
+            "relationship": relationship,
+            "source_logical_id": str(source_logical_id),
+            "target_logical_id": str(target_logical_id),
+        },
+        new_state=None,
+        note=f"Removed a {relationship.replace('_', ' ')} relationship in Blueprint Design.",
+    )
+
+
 def _routing_policy_json(policy: RoutingPolicyDraft) -> dict[str, Any]:
     return {
         "confidence_threshold": policy.confidence_threshold,
@@ -5006,11 +5565,230 @@ _TYPED_PROPOSAL_FIELDS: dict[str, tuple[str, frozenset[str], frozenset[str]]] = 
 async def _apply_typed_proposal(
     conn: Any,
     *,
+    course_id: UUID,
+    instructor_id: UUID,
     artifact_type: str,
     logical_artifact_id: UUID,
     revision_id: UUID,
     resolved_state: dict[str, Any],
 ) -> None:
+    if artifact_type in {
+        "blueprint_relationship_create",
+        "blueprint_relationship_reconnect",
+        "blueprint_relationship_remove",
+    }:
+        try:
+            relationship = str(resolved_state["relationship_type"])
+            source_logical_id = UUID(str(resolved_state["source_logical_id"]))
+            target_logical_id = UUID(str(resolved_state["target_logical_id"]))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("The relationship proposal is incomplete.") from exc
+        if artifact_type.endswith("_reconnect"):
+            try:
+                previous_relationship = str(resolved_state["previous_relationship_type"])
+                previous_source_logical_id = UUID(
+                    str(resolved_state["previous_source_logical_id"])
+                )
+                previous_target_logical_id = UUID(
+                    str(resolved_state["previous_target_logical_id"])
+                )
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError("The previous relationship is incomplete.") from exc
+            await _create_blueprint_relationship(
+                conn,
+                course_id=course_id,
+                revision_id=revision_id,
+                instructor_id=instructor_id,
+                relationship=relationship,
+                source_logical_id=source_logical_id,
+                target_logical_id=target_logical_id,
+                mutation_source="course_director",
+            )
+            await _remove_blueprint_relationship(
+                conn,
+                course_id=course_id,
+                revision_id=revision_id,
+                instructor_id=instructor_id,
+                relationship=previous_relationship,
+                source_logical_id=previous_source_logical_id,
+                target_logical_id=previous_target_logical_id,
+                mutation_source="course_director",
+            )
+        else:
+            operation = (
+                _create_blueprint_relationship
+                if artifact_type.endswith("_create")
+                else _remove_blueprint_relationship
+            )
+            await operation(
+                conn,
+                course_id=course_id,
+                revision_id=revision_id,
+                instructor_id=instructor_id,
+                relationship=relationship,
+                source_logical_id=source_logical_id,
+                target_logical_id=target_logical_id,
+                mutation_source="course_director",
+            )
+        return
+    if artifact_type == "topic_create":
+        title = str(resolved_state.get("title", "")).strip()
+        summary = str(resolved_state.get("summary", "")).strip()
+        start_seconds = float(resolved_state.get("start_seconds", 0))
+        end_seconds = float(resolved_state.get("end_seconds", start_seconds + 60))
+        if not title or end_seconds <= start_seconds:
+            raise ValueError("A new topic needs a title and valid lecture range.")
+        video = await (
+            await conn.execute(
+                """
+                select id, duration_seconds from videos
+                where course_id = %s order by created_at limit 1
+                """,
+                (course_id,),
+            )
+        ).fetchone()
+        if video is None:
+            raise ValueError("Add a lecture source before adding a topic.")
+        if video["duration_seconds"] is not None and end_seconds > float(
+            video["duration_seconds"]
+        ):
+            raise ValueError("Topic end time cannot exceed the lecture duration.")
+        await conn.execute(
+            """
+            insert into topics (
+              logical_id, course_id, video_id, title, summary, start_seconds,
+              end_seconds, instructor_revision, review_status, approved_at, revision_id
+            ) values (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, 'edited', now(), %s)
+            """,
+            (
+                logical_artifact_id,
+                course_id,
+                video["id"],
+                title,
+                summary,
+                start_seconds,
+                end_seconds,
+                Jsonb({"action": "add", "source": "course_director"}),
+                revision_id,
+            ),
+        )
+        return
+    if artifact_type == "concept_create":
+        name = str(resolved_state.get("name", "")).strip()
+        description = str(resolved_state.get("description", "")).strip()
+        try:
+            topic_logical_ids = [
+                UUID(str(value))
+                for value in resolved_state.get("topic_logical_ids", [])
+            ]
+        except (TypeError, ValueError) as exc:
+            raise ValueError("A new concept must reference valid topics.") from exc
+        if not name or not topic_logical_ids:
+            raise ValueError("A new concept needs a name and at least one topic.")
+        topic_rows = await (
+            await conn.execute(
+                """
+                select id from topics where revision_id = %s
+                  and logical_id = any(%s::uuid[]) and review_status <> 'dismissed'
+                """,
+                (revision_id, topic_logical_ids),
+            )
+        ).fetchall()
+        if len(topic_rows) != len(set(topic_logical_ids)):
+            raise ValueError("Every concept topic must belong to this revision.")
+        rank = await (
+            await conn.execute(
+                """
+                select coalesce(max(sequence_rank), -1) + 1 as value
+                from concepts where revision_id = %s and review_status <> 'dismissed'
+                """,
+                (revision_id,),
+            )
+        ).fetchone()
+        concept = await (
+            await conn.execute(
+                """
+                insert into concepts (
+                  logical_id, course_id, name, description, sequence_rank,
+                  instructor_revision, review_status, approved_at, revision_id
+                ) values (%s, %s, %s, %s, %s, %s::jsonb, 'edited', now(), %s)
+                returning id
+                """,
+                (
+                    logical_artifact_id,
+                    course_id,
+                    name,
+                    description,
+                    int(rank["value"]),
+                    Jsonb({"action": "add", "source": "course_director"}),
+                    revision_id,
+                ),
+            )
+        ).fetchone()
+        assert concept is not None
+        for topic in topic_rows:
+            await conn.execute(
+                "insert into topic_concepts (topic_id, concept_id) values (%s, %s)",
+                (topic["id"], concept["id"]),
+            )
+        return
+    if artifact_type.endswith("_remove"):
+        kind = artifact_type.removesuffix("_remove")
+        table = {
+            "topic": "topics",
+            "concept": "concepts",
+            "clip": "clips",
+            "question": "questions",
+        }.get(kind)
+        if table is None:
+            raise ValueError("That Blueprint artifact cannot be removed.")
+        artifact = await (
+            await conn.execute(
+                f"""
+                select id from {table}
+                where revision_id = %s and logical_id = %s limit 1
+                """,  # noqa: S608 - table comes exclusively from the allowlist above.
+                (revision_id, logical_artifact_id),
+            )
+        ).fetchone()
+        if artifact is None:
+            raise ValueError("The proposed artifact is no longer present.")
+        row_id = artifact["id"]
+        if kind == "concept":
+            await conn.execute(
+                """
+                update concept_edges set review_status = 'dismissed', dismissed_at = now()
+                where revision_id = %s and (from_concept_id = %s or to_concept_id = %s)
+                """,
+                (revision_id, row_id, row_id),
+            )
+        if kind == "topic":
+            await conn.execute(
+                "update clips set status = 'superseded' where topic_id = %s",
+                (row_id,),
+            )
+            await conn.execute(
+                """
+                update questions set review_status = 'dismissed', dismissed_at = now()
+                where topic_id = %s
+                """,
+                (row_id,),
+            )
+        if kind == "clip":
+            await conn.execute(
+                "update clips set status = 'superseded', updated_at = now() where id = %s",
+                (row_id,),
+            )
+        else:
+            await conn.execute(
+                f"""
+                update {table}
+                set review_status = 'dismissed', dismissed_at = now(), updated_at = now()
+                where id = %s
+                """,  # noqa: S608 - table comes exclusively from the allowlist above.
+                (row_id,),
+            )
+        return
     if artifact_type == "concept_edge_create":
         try:
             from_logical_id = UUID(str(resolved_state["from_concept_logical_id"]))

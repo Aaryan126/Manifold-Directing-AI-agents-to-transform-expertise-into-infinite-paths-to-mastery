@@ -10,7 +10,6 @@ import {
   ReactFlow,
   type EdgeProps,
   type Edge,
-  type Connection,
   type Node,
   type NodeProps,
   type ReactFlowInstance,
@@ -66,6 +65,7 @@ import {
 
 import {
   answerOutcomeSummary,
+  availableBlueprintRelationshipKinds,
   blueprintEdgeKinds,
   blueprintNodeLayer,
   blueprintConceptNeighborhoodIds,
@@ -76,6 +76,7 @@ import {
   evidenceTitle,
   findBlueprintClip,
   generationPhaseLabel,
+  isValidBlueprintRelationshipTarget,
   orderedGenerationTasks,
   performancePercent,
   masteryStateForConcept,
@@ -121,6 +122,19 @@ const pipelineBase = process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localh
 type CanvasView = "blueprint" | "review" | "assessments" | "preview" | "settings";
 type BlueprintMode = "live" | "design";
 type Decision = "accepted" | "edited" | "dismissed";
+type EditableBlueprintRelationship = Exclude<BlueprintEdgeKind, "next">;
+type BlueprintPortSide = "top" | "right" | "bottom" | "left";
+type BlueprintRelationshipSpec = {
+  relationship: EditableBlueprintRelationship;
+  source_logical_id: string;
+  target_logical_id: string;
+};
+type BlueprintRelationshipDraft = {
+  source: BlueprintNode;
+  side: BlueprintPortSide;
+  kind: EditableBlueprintRelationship | null;
+  replacing: BlueprintEdge | null;
+};
 type AssessmentDraftPayload = {
   topic_id: string;
   primary_concept_id: string;
@@ -711,48 +725,37 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     }
   }
 
-  async function createPrerequisite(fromConceptId: string, toConceptId: string) {
-    if (!identity) return;
+  async function mutateBlueprintRelationship(
+    method: "POST" | "DELETE" | "PATCH",
+    body: BlueprintRelationshipSpec | {
+      previous: BlueprintRelationshipSpec;
+      replacement: BlueprintRelationshipSpec;
+    },
+  ) {
+    if (!identity) return null;
     setSending(true);
-    try {
-      const next = await request<CourseBlueprint>(`/courses/${courseId}/blueprint/prerequisites`, identity, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          from_concept_id: fromConceptId,
-          to_concept_id: toConceptId,
-        }),
-      });
-      setWorkingBlueprint(next);
-      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
-      setCourse(nextCourse);
-      await Promise.all([refreshBlueprint(identity, nextCourse), refreshArtifacts(identity)]);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not add that prerequisite.");
-    } finally {
-      setSending(false);
-    }
-  }
-
-  async function removePrerequisite(edge: BlueprintEdge) {
-    if (!identity || !edge.id.startsWith("requires:")) return;
-    const edgeId = edge.id.slice("requires:".length);
-    setSending(true);
+    setError(null);
     try {
       const next = await request<CourseBlueprint>(
-        `/courses/${courseId}/blueprint/prerequisites/${edgeId}`,
+        `/courses/${courseId}/blueprint/relationships`,
         identity,
-        { method: "DELETE" },
+        {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
       );
       setWorkingBlueprint(next);
       const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
       setCourse(nextCourse);
       await Promise.all([
         refreshBlueprint(identity, nextCourse),
+        refreshArtifacts(identity),
         refreshRevisionDiff(identity, nextCourse),
       ]);
+      return next;
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not remove that prerequisite.");
+      setError(caught instanceof Error ? caught.message : "Could not update that relationship.");
       throw caught;
     } finally {
       setSending(false);
@@ -1228,7 +1231,6 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     course={course}
                     dashboard={dashboardSummary}
                     disabled={sending}
-                    onAddPrerequisite={createPrerequisite}
                     onAddConcept={createBlueprintConcept}
                     onAddTopic={createBlueprintTopic}
                     onAskDirector={(node) => {
@@ -1239,9 +1241,11 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     onLayout={saveBlueprintPosition}
                     onPrepare={requestBlueprintImprovement}
                     onCleanup={requestBlueprintCleanup}
+                    onCreateRelationship={(relationship) => mutateBlueprintRelationship("POST", relationship)}
                     onInspectRemoval={inspectBlueprintRemoval}
+                    onReconnectRelationship={(previous, replacement) => mutateBlueprintRelationship("PATCH", { previous, replacement })}
                     onRemoveArtifact={removeBlueprintArtifact}
-                    onRemovePrerequisite={removePrerequisite}
+                    onRemoveRelationship={(relationship) => mutateBlueprintRelationship("DELETE", relationship)}
                     onResolvePrerequisite={resolvePrerequisite}
                     onResolveProposal={resolvePackProposal}
                     onSequence={updateBlueprintSequence}
@@ -1332,10 +1336,23 @@ function MessageBubble({ message, proposalStates, onResolve }: {
           const proposalId = block.proposal_id;
           const state = proposalStates[proposalId] ?? (typeof block.status === "string" ? block.status : "proposed");
           const proposed = isRecord(block.proposed_state) ? block.proposed_state : {};
+          const before = isRecord(block.before_state) ? block.before_state : null;
+          const artifactType = typeof block.artifact_type === "string" ? block.artifact_type : "course";
+          const proposalType = typeof block.proposal_type === "string" ? block.proposal_type : "change";
+          const proposalSummary = typeof proposed.summary === "string"
+            ? proposed.summary
+            : typeof proposed.instruction === "string"
+              ? proposed.instruction
+              : `${proposalType.replaceAll("_", " ")} ${artifactType.replaceAll("_", " ")}`;
           return (
             <div className={styles.proposalCard} key={`${proposalId}-${index}`}>
-              <span><FilePenLine />Proposed course directive</span>
-              <p>{typeof proposed.instruction === "string" ? proposed.instruction : "Update the course brief."}</p>
+              <span><FilePenLine />Private {proposalType.replaceAll("_", " ")} proposal</span>
+              <p><strong>{proposalSummary}</strong></p>
+              <dl className={styles.proposalChangeSummary}>
+                <div><dt>Artifact</dt><dd>{artifactType.replaceAll("_", " ")}</dd></div>
+                {before?.title ? <div><dt>Current</dt><dd>{String(before.title)}</dd></div> : null}
+                {typeof block.rationale === "string" ? <div><dt>Why</dt><dd>{block.rationale}</dd></div> : null}
+              </dl>
               {editingProposalId === proposalId ? (
                 <div className={styles.proposalEdit}>
                   <label>
@@ -1451,7 +1468,10 @@ type BlueprintGraphNodeData = {
   artifact: BlueprintNode;
   conceptCount: number | null;
   evidence: BlueprintConceptEvidence | null;
+  designMode?: boolean;
   muted: boolean;
+  onStartRelationship?: (node: BlueprintNode, side: BlueprintPortSide) => void;
+  relationshipTargetState?: "valid" | "invalid" | null;
   risk: number | null;
   selected: boolean;
 };
@@ -1474,6 +1494,30 @@ const blueprintRelationshipLabels: Record<BlueprintEdgeKind, string> = {
   cites: "Citation",
 };
 
+const blueprintRelationshipDescriptions: Record<EditableBlueprintRelationship, string> = {
+  contains: "Place a concept inside this topic.",
+  requires: "Make another concept a prerequisite.",
+  teaches: "Use a clip to teach this concept.",
+  assesses: "Use a question to check this concept.",
+  remediates_to: "Route an incorrect answer to a concept or clip.",
+  cites: "Ground this artifact in a course source.",
+};
+
+function relationshipSpec(
+  blueprint: CourseBlueprint,
+  edge: BlueprintEdge,
+): BlueprintRelationshipSpec | null {
+  if (edge.kind === "next") return null;
+  const source = blueprint.nodes.find((node) => node.id === edge.source_id);
+  const target = blueprint.nodes.find((node) => node.id === edge.target_id);
+  if (!source || !target) return null;
+  return {
+    relationship: edge.kind,
+    source_logical_id: source.logical_id,
+    target_logical_id: target.logical_id,
+  };
+}
+
 function blueprintNodeDimensions(node: BlueprintNode) {
   if (node.kind === "topic") return { width: 260, height: 108 };
   if (node.kind === "concept") return { width: 232, height: 118 };
@@ -1482,7 +1526,17 @@ function blueprintNodeDimensions(node: BlueprintNode) {
 }
 
 function BlueprintArtifactNode({ data }: NodeProps<BlueprintGraphNode>) {
-  const { artifact, conceptCount, evidence, muted, risk, selected } = data;
+  const {
+    artifact,
+    conceptCount,
+    designMode,
+    evidence,
+    muted,
+    onStartRelationship,
+    relationshipTargetState,
+    risk,
+    selected,
+  } = data;
   const metadata = artifact.kind === "concept"
     ? evidence?.attempts
       ? `${Math.round(evidence.correct_percent ?? 0)}% correct · ${evidence.confident_incorrect} misconceptions`
@@ -1496,6 +1550,7 @@ function BlueprintArtifactNode({ data }: NodeProps<BlueprintGraphNode>) {
       className={styles.blueprintTypedNode}
       data-kind={artifact.kind}
       data-muted={muted}
+      data-relationship-target={relationshipTargetState ?? undefined}
       data-risk={risk != null && risk >= 40}
       data-selected={selected}
     >
@@ -1513,6 +1568,25 @@ function BlueprintArtifactNode({ data }: NodeProps<BlueprintGraphNode>) {
         <span>{count ?? metadata}</span>
         {artifact.kind === "concept" && evidence?.attempts ? <b>{evidence.attempts} attempts</b> : null}
       </footer>
+      {designMode && availableBlueprintRelationshipKinds(artifact).length ? (
+        <div className={styles.blueprintConnectionPorts} aria-label={`Create a relationship from ${artifact.title}`}>
+          {(["top", "right", "bottom", "left"] as BlueprintPortSide[]).map((side) => (
+            <button
+              aria-label={`Create relationship from the ${side} of ${artifact.title}`}
+              data-side={side}
+              key={side}
+              onClick={(event) => {
+                event.stopPropagation();
+                onStartRelationship?.(artifact, side);
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+              type="button"
+            >
+              <Plus />
+            </button>
+          ))}
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -2012,18 +2086,19 @@ function BlueprintWorkspace({
   dashboard,
   disabled,
   onAddConcept,
-  onAddPrerequisite,
   onAddTopic,
   onAskDirector,
   onCleanup,
+  onCreateRelationship,
   onInspectRemoval,
   onLoadPack,
   onLayout,
   onOpenAssessments,
   onOpenSources,
   onPrepare,
+  onReconnectRelationship,
   onRemoveArtifact,
-  onRemovePrerequisite,
+  onRemoveRelationship,
   onResolvePrerequisite,
   onResolveProposal,
   onSequence,
@@ -2045,7 +2120,6 @@ function BlueprintWorkspace({
     topic_logical_ids: string[];
     sequence_after_id: string | null;
   }) => Promise<CourseBlueprint | null>;
-  onAddPrerequisite: (fromConceptId: string, toConceptId: string) => Promise<void>;
   onAddTopic: (draft: {
     title: string;
     summary: string;
@@ -2061,14 +2135,19 @@ function BlueprintWorkspace({
       to_concept_logical_id: string;
     } | null,
   ) => Promise<void>;
+  onCreateRelationship: (relationship: BlueprintRelationshipSpec) => Promise<CourseBlueprint | null>;
   onInspectRemoval: (node: BlueprintNode) => Promise<BlueprintMutationImpact | null>;
   onLoadPack: (taskId: string) => Promise<AgentTaskPack>;
   onLayout: (node: BlueprintNode, x: number, y: number) => Promise<void>;
   onOpenAssessments: () => void;
   onOpenSources: () => void;
   onPrepare: (node: BlueprintNode, neighbors: BlueprintNode[]) => Promise<void>;
+  onReconnectRelationship: (
+    previous: BlueprintRelationshipSpec,
+    replacement: BlueprintRelationshipSpec,
+  ) => Promise<CourseBlueprint | null>;
   onRemoveArtifact: (node: BlueprintNode) => Promise<CourseBlueprint | null>;
-  onRemovePrerequisite: (edge: BlueprintEdge) => Promise<void>;
+  onRemoveRelationship: (relationship: BlueprintRelationshipSpec) => Promise<CourseBlueprint | null>;
   onResolvePrerequisite: (edge: BlueprintEdge, decision: "accepted" | "dismissed") => Promise<void>;
   onResolveProposal: (proposal: AgentTaskProposal, decision: Decision, revision?: Record<string, unknown>) => Promise<void>;
   onSequence: (conceptIds: string[]) => Promise<void>;
@@ -2092,6 +2171,10 @@ function BlueprintWorkspace({
   );
   const [autoArrangeVersion, setAutoArrangeVersion] = useState(0);
   const [designDialog, setDesignDialog] = useState<"topic" | "concept" | "order" | null>(null);
+  const [addNodeOpen, setAddNodeOpen] = useState(false);
+  const [relationshipDraft, setRelationshipDraft] = useState<BlueprintRelationshipDraft | null>(null);
+  const [selectedRelationship, setSelectedRelationship] = useState<BlueprintEdge | null>(null);
+  const [relationshipError, setRelationshipError] = useState<string | null>(null);
   const [removal, setRemoval] = useState<{
     node: BlueprintNode;
     impact: BlueprintMutationImpact | null;
@@ -2128,6 +2211,15 @@ function BlueprintWorkspace({
     enabledRelationships,
     mode === "design" && autoArrangeVersion === 0,
     autoArrangeVersion,
+    {
+      onStartRelationship: (node, side) => {
+        setSelectedLogicalId(null);
+        setSelectedRelationship(null);
+        setRelationshipError(null);
+        setRelationshipDraft({ source: node, side, kind: null, replacing: null });
+      },
+      relationshipDraft,
+    },
   );
   const viewportFitKey = useMemo(() => {
     if (!blueprint) return "empty";
@@ -2187,17 +2279,70 @@ function BlueprintWorkspace({
     };
   }, [flow.layoutReady, flow.nodes.length, flowInstance, viewportFitKey]);
 
-  const connectConcepts = useCallback((connection: Connection) => {
-    if (!blueprint || !connection.source || !connection.target || connection.source === connection.target) return;
-    const source = blueprint.nodes.find((node) => node.id === connection.source);
-    const target = blueprint.nodes.find((node) => node.id === connection.target);
-    if (source?.kind === "concept" && target?.kind === "concept") {
-      void onAddPrerequisite(source.logical_id, target.logical_id).then(() => {
-        setCleanupAnchorLogicalId(source.logical_id);
-        setSelectedLogicalId(source.logical_id);
-      });
+  async function chooseRelationshipTarget(target: BlueprintNode) {
+    if (!relationshipDraft?.kind || !blueprint) return;
+    if (!isValidBlueprintRelationshipTarget(
+      relationshipDraft.source,
+      target,
+      relationshipDraft.kind,
+    )) {
+      setRelationshipError(
+        `${blueprintRelationshipLabels[relationshipDraft.kind]} cannot connect `
+        + `${relationshipDraft.source.kind} to ${target.kind}. Choose a highlighted artifact.`,
+      );
+      return;
     }
-  }, [blueprint, onAddPrerequisite]);
+    const replacement: BlueprintRelationshipSpec = {
+      relationship: relationshipDraft.kind,
+      source_logical_id: relationshipDraft.source.logical_id,
+      target_logical_id: target.logical_id,
+    };
+    try {
+      if (relationshipDraft.replacing) {
+        const previous = relationshipSpec(blueprint, relationshipDraft.replacing);
+        if (!previous) return;
+        await onReconnectRelationship(previous, replacement);
+      } else {
+        await onCreateRelationship(replacement);
+      }
+      setEnabledRelationships((current) => new Set([...current, relationshipDraft.kind as BlueprintEdgeKind]));
+      recordPrivateMutation(relationshipDraft.source);
+      setRelationshipDraft(null);
+      setRelationshipError(null);
+      setSelectedLogicalId(target.logical_id);
+    } catch {
+      // The parent request surfaces the server detail in the shared error banner.
+    }
+  }
+
+  async function deleteSelectedRelationship() {
+    if (!selectedRelationship || !blueprint) return;
+    const spec = relationshipSpec(blueprint, selectedRelationship);
+    if (!spec) return;
+    try {
+      const source = blueprint.nodes.find((node) => node.id === selectedRelationship.source_id) ?? null;
+      await onRemoveRelationship(spec);
+      setSelectedRelationship(null);
+      recordPrivateMutation(source);
+    } catch {
+      // The parent request surfaces the server detail in the shared error banner.
+    }
+  }
+
+  function replaceSelectedRelationship() {
+    if (!selectedRelationship || !blueprint || selectedRelationship.kind === "next") return;
+    const source = blueprint.nodes.find((node) => node.id === selectedRelationship.source_id);
+    if (!source) return;
+    setRelationshipDraft({
+      source,
+      side: "right",
+      kind: selectedRelationship.kind,
+      replacing: selectedRelationship,
+    });
+    setSelectedRelationship(null);
+    setSelectedLogicalId(null);
+    setRelationshipError(null);
+  }
 
   const showCoreRelationships = useCallback(() => {
     setEnabledRelationships(new Set(coreBlueprintEdgeKinds));
@@ -2358,10 +2503,23 @@ function BlueprintWorkspace({
         </details>
         {mode === "design" ? (
           <div className={styles.blueprintDesignActions}>
-            <button onClick={() => setDesignDialog("topic")} type="button"><Plus />Topic</button>
-            <button onClick={() => setDesignDialog("concept")} type="button"><Plus />Concept</button>
-            <button onClick={onOpenAssessments} type="button"><ClipboardList />Assessment</button>
-            <button onClick={onOpenSources} type="button"><FileText />Source</button>
+            <div className={styles.blueprintAddNode}>
+              <button
+                aria-expanded={addNodeOpen}
+                onClick={() => setAddNodeOpen((current) => !current)}
+                type="button"
+              >
+                <Plus />Add node<ChevronDown />
+              </button>
+              {addNodeOpen ? (
+                <div role="menu">
+                  <button onClick={() => { setAddNodeOpen(false); setDesignDialog("topic"); }} role="menuitem" type="button"><BookOpenCheck /><span><strong>Topic</strong><small>Organize part of the lecture</small></span></button>
+                  <button onClick={() => { setAddNodeOpen(false); setDesignDialog("concept"); }} role="menuitem" type="button"><BrainCircuit /><span><strong>Concept</strong><small>Add a learning objective</small></span></button>
+                  <button onClick={() => { setAddNodeOpen(false); onOpenAssessments(); }} role="menuitem" type="button"><ClipboardList /><span><strong>Assessment</strong><small>Add or edit a knowledge check</small></span></button>
+                  <button onClick={() => { setAddNodeOpen(false); onOpenSources(); }} role="menuitem" type="button"><FileText /><span><strong>Source</strong><small>Add supporting course context</small></span></button>
+                </div>
+              ) : null}
+            </div>
             <button onClick={() => setDesignDialog("order")} type="button"><ArrowUp />Learning order</button>
           </div>
         ) : null}
@@ -2405,9 +2563,8 @@ function BlueprintWorkspace({
             edges={flow.edges}
             nodeTypes={blueprintNodeTypes}
             nodes={flow.nodes}
-            nodesConnectable={mode === "design"}
+            nodesConnectable={false}
             nodesDraggable={mode === "design"}
-            onConnect={connectConcepts}
             onInit={setFlowInstance}
             onNodesChange={(changes) => {
               changes.forEach((change) => {
@@ -2423,16 +2580,47 @@ function BlueprintWorkspace({
             }}
             onNodeClick={(_, node) => {
               const selectedNode = blueprint.nodes.find((item) => item.id === node.id);
+              if (selectedNode && relationshipDraft?.kind) {
+                void chooseRelationshipTarget(selectedNode);
+                return;
+              }
+              setSelectedRelationship(null);
               setSelectedLogicalId(selectedNode?.logical_id ?? null);
             }}
-            onPaneClick={() => setSelectedLogicalId(null)}
+            onEdgeClick={(_, edge) => {
+              if (mode !== "design") return;
+              const relationship = blueprint.edges.find((item) => item.id === edge.id) ?? null;
+              if (relationship?.kind === "next") return;
+              setSelectedLogicalId(null);
+              setRelationshipDraft(null);
+              setSelectedRelationship(relationship);
+            }}
+            onPaneClick={() => {
+              setSelectedLogicalId(null);
+              setSelectedRelationship(null);
+              setRelationshipDraft(null);
+              setRelationshipError(null);
+            }}
             panOnScroll
             proOptions={{ hideAttribution: true }}
           >
             <Background color="#e2ded6" gap={22} size={1} />
             <Controls orientation="horizontal" position="bottom-left" showInteractive={false} />
           </ReactFlow>
-          {mode === "design" ? <p className={styles.blueprintCanvasHint}><GitFork />Move an artifact to save its position, connect concepts for prerequisites, or select a node to edit it.</p> : null}
+          {mode === "design" ? <p className={styles.blueprintCanvasHint}><GitFork />Move an artifact, hover a node edge to connect it, or select any relationship to change it.</p> : null}
+          {relationshipDraft?.kind ? (
+            <section className={styles.blueprintRelationshipGuide} aria-live="polite">
+              <div>
+                <GitFork />
+                <p>
+                  <strong>Select the {blueprintRelationshipLabels[relationshipDraft.kind].toLowerCase()} target</strong>
+                  <span>Valid artifacts are highlighted. Connecting from “{relationshipDraft.source.title}”.</span>
+                </p>
+              </div>
+              {relationshipError ? <em>{relationshipError}</em> : null}
+              <button onClick={() => { setRelationshipDraft(null); setRelationshipError(null); }} type="button">Cancel</button>
+            </section>
+          ) : null}
           {selected ? (
             <aside aria-label={`${selected.title} artifact inspector`} className={styles.blueprintInspector} role="dialog">
             <>
@@ -2451,24 +2639,21 @@ function BlueprintWorkspace({
                 />
               ) : null}
               {mode === "design" && selected.kind === "concept" ? (
-                <>
-                  <ConceptInspectorEditor
-                    disabled={disabled}
-                    node={selected}
-                    onSave={async (node, name, description) => {
-                      await onUpdateConcept(node, name, description);
-                      recordPrivateMutation(node);
-                    }}
-                  />
-                  <LayoutControls disabled={disabled} node={selected} onMove={onLayout} />
-                </>
+                <ConceptInspectorEditor
+                  disabled={disabled}
+                  node={selected}
+                  onSave={async (node, name, description) => {
+                    await onUpdateConcept(node, name, description);
+                    recordPrivateMutation(node);
+                  }}
+                />
               ) : null}
-              {mode === "design" && selected.kind === "concept" ? (
+              {mode === "design" ? (
                 <section className={styles.inspectorRelationships}>
-                  <h4>Prerequisites</h4>
+                  <h4>Relationships</h4>
                   {blueprint.edges
                     .filter((edge) => (
-                      edge.kind === "requires"
+                      edge.kind !== "next"
                       && edge.status !== "dismissed"
                       && (edge.source_id === selected.id || edge.target_id === selected.id)
                     ))
@@ -2478,28 +2663,29 @@ function BlueprintWorkspace({
                       ));
                       return (
                         <div key={edge.id}>
-                          <span>{edge.source_id === selected.id ? "Requires" : "Required by"}</span>
+                          <span>{blueprintRelationshipLabels[edge.kind]} · {edge.source_id === selected.id ? "Outgoing" : "Incoming"}</span>
                           <strong>{other?.title ?? "Unknown concept"}</strong>
                           {edge.status !== "proposed" ? (
                             <button
-                              aria-label={`Remove prerequisite with ${other?.title ?? "concept"}`}
+                              aria-label={`Inspect ${blueprintRelationshipLabels[edge.kind]} relationship with ${other?.title ?? "artifact"}`}
                               disabled={disabled}
                               onClick={() => {
-                                void onRemovePrerequisite(edge).then(() => recordPrivateMutation(selected));
+                                setSelectedLogicalId(null);
+                                setSelectedRelationship(edge);
                               }}
                               type="button"
                             >
-                              <Trash2 />
+                              <Pencil />
                             </button>
                           ) : null}
                         </div>
                       );
                     })}
                   {!blueprint.edges.some((edge) => (
-                    edge.kind === "requires"
+                    edge.kind !== "next"
                     && edge.status !== "dismissed"
                     && (edge.source_id === selected.id || edge.target_id === selected.id)
-                  )) ? <p>No prerequisites yet. Drag from one concept handle to another to add one.</p> : null}
+                  )) ? <p>No relationships yet. Hover any side of the node and choose + to connect it.</p> : null}
                 </section>
               ) : null}
               {pendingEdges.filter((edge) => edge.source_id === selected.id || edge.target_id === selected.id).map((edge) => {
@@ -2524,8 +2710,25 @@ function BlueprintWorkspace({
             </>
             </aside>
           ) : null}
+          {selectedRelationship ? (
+            <BlueprintRelationshipInspector
+              blueprint={blueprint}
+              disabled={disabled}
+              edge={selectedRelationship}
+              onChange={replaceSelectedRelationship}
+              onClose={() => setSelectedRelationship(null)}
+              onRemove={() => void deleteSelectedRelationship()}
+            />
+          ) : null}
         </div>
       </div>
+      {relationshipDraft && !relationshipDraft.kind ? (
+        <BlueprintRelationshipKindDialog
+          onChoose={(kind) => setRelationshipDraft((current) => current ? { ...current, kind } : null)}
+          onClose={() => setRelationshipDraft(null)}
+          source={relationshipDraft.source}
+        />
+      ) : null}
       {designDialog === "topic" ? (
         <BlueprintAddTopicDialog
           disabled={disabled}
@@ -2584,6 +2787,96 @@ function BlueprintWorkspace({
   );
 }
 
+function BlueprintRelationshipKindDialog({
+  onChoose,
+  onClose,
+  source,
+}: {
+  onChoose: (kind: EditableBlueprintRelationship) => void;
+  onClose: () => void;
+  source: BlueprintNode;
+}) {
+  const kinds = availableBlueprintRelationshipKinds(source);
+  return (
+    <div className={styles.blueprintDialogOverlay} onClick={onClose} role="presentation">
+      <section
+        aria-labelledby="relationship-kind-title"
+        aria-modal="true"
+        className={`${styles.blueprintActionDialog} ${styles.blueprintRelationshipDialog}`}
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <header>
+          <div>
+            <span><GitFork /></span>
+            <div>
+              <small>Connect from {source.kind}</small>
+              <h3 id="relationship-kind-title">What should this connection mean?</h3>
+              <p>Choose the learning relationship first. Manifold will then highlight valid targets.</p>
+            </div>
+          </div>
+          <button aria-label="Cancel relationship" onClick={onClose} type="button"><X /></button>
+        </header>
+        <div className={styles.blueprintRelationshipChoices}>
+          {kinds.map((kind) => (
+            <button key={kind} onClick={() => onChoose(kind)} type="button">
+              <i data-kind={kind} />
+              <span>
+                <strong>{blueprintRelationshipLabels[kind]}</strong>
+                <small>{blueprintRelationshipDescriptions[kind]}</small>
+              </span>
+              <ArrowUp />
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function BlueprintRelationshipInspector({
+  blueprint,
+  disabled,
+  edge,
+  onChange,
+  onClose,
+  onRemove,
+}: {
+  blueprint: CourseBlueprint;
+  disabled: boolean;
+  edge: BlueprintEdge;
+  onChange: () => void;
+  onClose: () => void;
+  onRemove: () => void;
+}) {
+  const source = blueprint.nodes.find((node) => node.id === edge.source_id);
+  const target = blueprint.nodes.find((node) => node.id === edge.target_id);
+  return (
+    <aside aria-label={`${blueprintRelationshipLabels[edge.kind]} relationship`} className={`${styles.blueprintInspector} ${styles.blueprintRelationshipInspector}`} role="dialog">
+      <header>
+        <span><GitFork /></span>
+        <div>
+          <small>Relationship</small>
+          <h3>{blueprintRelationshipLabels[edge.kind]}</h3>
+          <em data-status={edge.status}>{edge.status}</em>
+        </div>
+        <button aria-label="Close relationship inspector" className={styles.inspectorClose} onClick={onClose} type="button"><X /></button>
+      </header>
+      <div className={styles.blueprintRelationshipRoute}>
+        <article><small>From</small><strong>{source?.title ?? "Unknown artifact"}</strong><span>{source?.kind}</span></article>
+        <ArrowDown />
+        <article><small>To</small><strong>{target?.title ?? "Unknown artifact"}</strong><span>{target?.kind}</span></article>
+      </div>
+      <p>{edge.kind === "next" ? "This relationship controls learner order." : blueprintRelationshipDescriptions[edge.kind]}</p>
+      <div className={styles.blueprintActions}>
+        <button disabled={disabled || edge.status === "proposed"} onClick={onChange} type="button"><Pencil />Change target</button>
+        <button disabled={disabled || edge.status === "proposed"} onClick={onRemove} type="button"><Trash2 />Remove connection</button>
+      </div>
+      {edge.status === "proposed" ? <small className={styles.relationshipPendingNote}>Review this proposed connection before editing it.</small> : null}
+    </aside>
+  );
+}
+
 function useBlueprintFlow(
   blueprint: CourseBlueprint | null,
   evidence: BlueprintConceptEvidence[],
@@ -2593,6 +2886,10 @@ function useBlueprintFlow(
   enabledRelationships: ReadonlySet<BlueprintEdgeKind>,
   respectSavedLayout = true,
   layoutVersion = 0,
+  interaction?: {
+    onStartRelationship: (node: BlueprintNode, side: BlueprintPortSide) => void;
+    relationshipDraft: BlueprintRelationshipDraft | null;
+  },
 ) {
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [edgePoints, setEdgePoints] = useState<Record<string, Array<{ x: number; y: number }> | null>>({});
@@ -2755,13 +3052,24 @@ function useBlueprintFlow(
       data: {
         artifact: node,
         conceptCount: node.kind === "topic" ? topicConceptCounts.get(node.id) ?? 0 : null,
+        designMode: mode === "design",
         evidence: conceptEvidence,
         muted,
+        onStartRelationship: interaction?.onStartRelationship,
+        relationshipTargetState: interaction?.relationshipDraft?.kind
+          ? isValidBlueprintRelationshipTarget(
+            interaction.relationshipDraft.source,
+            node,
+            interaction.relationshipDraft.kind,
+          )
+            ? "valid"
+            : "invalid"
+          : null,
         risk,
         selected,
       },
       ariaLabel: `${node.kind}: ${node.title}. ${node.status}. ${node.kind === "concept" && conceptEvidence?.attempts ? `${Math.round(conceptEvidence.correct_percent ?? 0)} percent correct.` : coverageLabel(node)}`,
-      connectable: mode === "design" && node.kind === "concept",
+      connectable: false,
       style: dimensions,
     };
   });
@@ -3113,18 +3421,6 @@ function SequenceControls({ concepts, disabled, onChange, selected }: { concepts
     void onChange(next.map((concept) => concept.logical_id));
   }
   return <section className={styles.sequenceControl}><div><small>Learner sequence</small><strong>Step {index + 1} of {concepts.length}</strong></div><div><button aria-label="Move concept earlier" disabled={disabled || index <= 0} onClick={() => move(-1)} type="button"><ArrowUp /></button><button aria-label="Move concept later" disabled={disabled || index < 0 || index >= concepts.length - 1} onClick={() => move(1)} type="button"><ArrowUp /></button></div></section>;
-}
-
-function LayoutControls({ disabled, node, onMove }: {
-  disabled: boolean;
-  node: BlueprintNode;
-  onMove: (node: BlueprintNode, x: number, y: number) => Promise<void>;
-}) {
-  const saved = isRecord(node.metadata.layout) ? node.metadata.layout : null;
-  const x = typeof saved?.x === "number" ? saved.x : 0;
-  const y = typeof saved?.y === "number" ? saved.y : 0;
-  const move = (nextX: number, nextY: number) => void onMove(node, nextX, nextY);
-  return <section className={styles.layoutControl}><div><small>Canvas position</small><strong>Drag or nudge</strong></div><div><button aria-label="Move artifact left" disabled={disabled} onClick={() => move(x - 40, y)} type="button">←</button><button aria-label="Move artifact up" disabled={disabled} onClick={() => move(x, y - 40)} type="button">↑</button><button aria-label="Move artifact down" disabled={disabled} onClick={() => move(x, y + 40)} type="button">↓</button><button aria-label="Move artifact right" disabled={disabled} onClick={() => move(x + 40, y)} type="button">→</button></div></section>;
 }
 
 function LearnerJourneyPreview({

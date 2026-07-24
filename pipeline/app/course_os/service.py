@@ -1,6 +1,11 @@
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
+from app.course_os.course_director import (
+    CourseDirector,
+    CourseDirectorAction,
+    LocalCourseDirector,
+)
 from app.course_os.dashboard_assistant import DashboardAssistant, LocalDashboardAssistant
 from app.course_os.models import (
     AssessmentDraft,
@@ -37,9 +42,11 @@ class CourseOSService:
         self,
         repository: CourseOSRepository,
         dashboard_assistant: DashboardAssistant | None = None,
+        course_director: CourseDirector | None = None,
     ) -> None:
         self._repository = repository
         self._dashboard_assistant = dashboard_assistant or LocalDashboardAssistant()
+        self._course_director = course_director or LocalCourseDirector()
 
     async def dashboard(self, instructor_id: UUID) -> DashboardSnapshot:
         await self._require_instructor(instructor_id)
@@ -370,29 +377,157 @@ class CourseOSService:
                 ({"type": "evidence", **evidence},),
             )
             return response, None
-        proposal = await self._repository.create_proposal(
-            course_id,
-            revision_id,
-            instructor_message.id,
-            instruction,
-        )
+        blueprint = await self._repository.blueprint(course_id, revision_id, "working")
+        plan = await self._course_director.plan(instruction, blueprint)
+        if not plan.actions:
+            response = await self._repository.add_message(
+                course_id,
+                revision_id,
+                "manifold",
+                plan.clarification or plan.summary,
+                (
+                    {
+                        "type": "clarification",
+                        "summary": plan.summary,
+                    },
+                ),
+            )
+            return response, None
+        proposals: list[CourseProposal] = []
+        for action in plan.actions:
+            proposal = await self._create_director_proposal(
+                course_id,
+                revision_id,
+                instructor_message.id,
+                action,
+                blueprint,
+            )
+            proposals.append(proposal)
         response = await self._repository.add_message(
             course_id,
             revision_id,
             "manifold",
-            "I’ve translated that into a course directive. "
-            "Review it before I use it to change the draft.",
             (
+                f"{plan.summary} I prepared {len(proposals)} independent private "
+                f"{'change' if len(proposals) == 1 else 'changes'}. "
+                "Review, edit, or dismiss each one."
+            ),
+            tuple(
                 {
                     "type": "proposal",
                     "proposal_id": str(proposal.id),
                     "status": proposal.status,
+                    "proposal_type": proposal.proposal_type,
+                    "artifact_type": proposal.artifact_type,
+                    "logical_artifact_id": (
+                        str(proposal.logical_artifact_id) if proposal.logical_artifact_id else None
+                    ),
+                    "before_state": proposal.before_state,
                     "proposed_state": proposal.proposed_state,
                     "rationale": proposal.rationale,
-                },
+                }
+                for proposal in proposals
             ),
         )
-        return response, proposal
+        return response, proposals[0]
+
+    async def _create_director_proposal(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        message_id: UUID,
+        action: CourseDirectorAction,
+        blueprint: CourseBlueprint,
+    ) -> CourseProposal:
+        node = next(
+            (item for item in blueprint.nodes if item.logical_id == action.logical_artifact_id),
+            None,
+        )
+        before_state = (
+            {
+                "title": node.title,
+                "status": node.status,
+                **node.metadata,
+            }
+            if node
+            else None
+        )
+        artifact_type: str
+        logical_artifact_id = action.logical_artifact_id or uuid4()
+        proposed_state = dict(action.proposed_state or {})
+        if action.operation == "update_artifact":
+            if node is None:
+                raise CourseOSValidationError("Course Director targeted a missing artifact.")
+            artifact_type = node.kind
+        elif action.operation == "remove_artifact":
+            if node is None or node.kind == "source":
+                raise CourseOSValidationError("That artifact cannot be removed from Blueprint.")
+            artifact_type = f"{node.kind}_remove"
+            proposed_state = {"action": "remove", "summary": action.summary}
+        elif action.operation == "create_topic":
+            artifact_type = "topic_create"
+        elif action.operation == "create_concept":
+            artifact_type = "concept_create"
+        elif action.operation in {
+            "create_relationship",
+            "reconnect_relationship",
+            "remove_relationship",
+        }:
+            if (
+                action.relationship_type is None
+                or action.source_logical_id is None
+                or action.target_logical_id is None
+            ):
+                raise CourseOSValidationError(
+                    "Course Director returned an incomplete relationship."
+                )
+            relationship_action = action.operation.removesuffix("_relationship")
+            artifact_type = f"blueprint_relationship_{relationship_action}"
+            proposed_state = {
+                "relationship_type": action.relationship_type,
+                "source_logical_id": str(action.source_logical_id),
+                "target_logical_id": str(action.target_logical_id),
+                "summary": action.summary,
+            }
+            if action.operation == "reconnect_relationship":
+                if (
+                    action.previous_relationship_type is None
+                    or action.previous_source_logical_id is None
+                    or action.previous_target_logical_id is None
+                ):
+                    raise CourseOSValidationError(
+                        "Course Director returned an incomplete previous relationship."
+                    )
+                before_state = {
+                    "relationship_type": action.previous_relationship_type,
+                    "source_logical_id": str(action.previous_source_logical_id),
+                    "target_logical_id": str(action.previous_target_logical_id),
+                }
+                proposed_state.update(
+                    {
+                        "previous_relationship_type": action.previous_relationship_type,
+                        "previous_source_logical_id": str(
+                            action.previous_source_logical_id
+                        ),
+                        "previous_target_logical_id": str(
+                            action.previous_target_logical_id
+                        ),
+                    }
+                )
+        else:
+            raise CourseOSValidationError("Course Director returned an unsupported action.")
+        proposed_state.setdefault("summary", action.summary)
+        return await self._repository.create_typed_proposal(
+            course_id,
+            revision_id,
+            message_id,
+            proposal_type=action.operation,
+            artifact_type=artifact_type,
+            logical_artifact_id=logical_artifact_id,
+            before_state=before_state,
+            proposed_state=proposed_state,
+            rationale=action.rationale,
+        )
 
     async def resolve_proposal(
         self,
@@ -512,6 +647,101 @@ class CourseOSService:
                 revision_id,
                 instructor_id,
                 edge_id,
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        return await self._repository.blueprint(course_id, revision_id, "working")
+
+    async def create_blueprint_relationship(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        relationship: str,
+        source_logical_id: UUID,
+        target_logical_id: UUID,
+    ) -> CourseBlueprint:
+        _validate_blueprint_relationship_request(
+            relationship,
+            source_logical_id,
+            target_logical_id,
+        )
+        course = await self._require_editable_course(course_id, instructor_id)
+        revision_id = _current_revision(course)
+        try:
+            await self._repository.create_blueprint_relationship(
+                course_id,
+                revision_id,
+                instructor_id,
+                relationship,
+                source_logical_id,
+                target_logical_id,
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        return await self._repository.blueprint(course_id, revision_id, "working")
+
+    async def remove_blueprint_relationship(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        relationship: str,
+        source_logical_id: UUID,
+        target_logical_id: UUID,
+    ) -> CourseBlueprint:
+        _validate_blueprint_relationship_request(
+            relationship,
+            source_logical_id,
+            target_logical_id,
+        )
+        course = await self._require_editable_course(course_id, instructor_id)
+        revision_id = _current_revision(course)
+        try:
+            await self._repository.remove_blueprint_relationship(
+                course_id,
+                revision_id,
+                instructor_id,
+                relationship,
+                source_logical_id,
+                target_logical_id,
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        return await self._repository.blueprint(course_id, revision_id, "working")
+
+    async def reconnect_blueprint_relationship(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        previous_relationship: str,
+        previous_source_logical_id: UUID,
+        previous_target_logical_id: UUID,
+        relationship: str,
+        source_logical_id: UUID,
+        target_logical_id: UUID,
+    ) -> CourseBlueprint:
+        _validate_blueprint_relationship_request(
+            previous_relationship,
+            previous_source_logical_id,
+            previous_target_logical_id,
+        )
+        _validate_blueprint_relationship_request(
+            relationship,
+            source_logical_id,
+            target_logical_id,
+        )
+        course = await self._require_editable_course(course_id, instructor_id)
+        revision_id = _current_revision(course)
+        try:
+            await self._repository.reconnect_blueprint_relationship(
+                course_id,
+                revision_id,
+                instructor_id,
+                previous_relationship,
+                previous_source_logical_id,
+                previous_target_logical_id,
+                relationship,
+                source_logical_id,
+                target_logical_id,
             )
         except ValueError as exc:
             raise CourseOSValidationError(str(exc)) from exc
@@ -849,6 +1079,27 @@ def _validate_routing_policy(policy: RoutingPolicyDraft) -> None:
         "allow_partial_understanding",
     }:
         raise CourseOSValidationError("Advancement mode is not supported.")
+
+
+def _validate_blueprint_relationship_request(
+    relationship: str,
+    source_logical_id: UUID,
+    target_logical_id: UUID,
+) -> None:
+    if relationship not in {
+        "contains",
+        "requires",
+        "teaches",
+        "assesses",
+        "remediates_to",
+        "cites",
+    }:
+        raise CourseOSValidationError(
+            "Relationship must be Structure, Prerequisite, Teaching, Assessment, "
+            "Remediation, or Citation."
+        )
+    if source_logical_id == target_logical_id:
+        raise CourseOSValidationError("A relationship cannot connect an artifact to itself.")
 
 
 def _is_evidence_question(content: str) -> bool:

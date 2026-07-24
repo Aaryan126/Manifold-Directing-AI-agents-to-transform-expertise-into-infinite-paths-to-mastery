@@ -777,6 +777,10 @@
 .proposalCard > span { align-items: center; color: #8c541f; display: flex; font-size: 10px; font-weight: 720; gap: 6px; letter-spacing: 0.08em; text-transform: uppercase; }
 .proposalCard > span svg { height: 13px; width: 13px; }
 .proposalCard > p { color: #33333a; font-size: 13px; margin: 9px 0 13px; }
+.proposalChangeSummary { border-bottom: 1px solid #dfdcd5; border-top: 1px solid #dfdcd5; display: grid; margin: 0 0 12px; padding: 7px 0; }
+.proposalChangeSummary > div { display: grid; gap: 8px; grid-template-columns: 58px minmax(0, 1fr); padding: 4px 0; }
+.proposalChangeSummary dt { color: #7a777f; font-size: 9px; text-transform: uppercase; }
+.proposalChangeSummary dd { color: #38383e; font-size: 10px; line-height: 1.4; margin: 0; overflow-wrap: anywhere; }
 .proposalCard > div { display: flex; gap: 6px; }
 .proposalCard button { align-items: center; background: #fff; border: 1px solid #d8d6cf; border-radius: 7px; color: #4f4e55; cursor: pointer; display: flex; font: inherit; font-size: 11px; font-weight: 650; gap: 5px; min-height: 34px; padding: 0 10px; }
 .proposalCard button:first-child { background: #25262c; border-color: #25262c; color: #fff; }
@@ -1391,6 +1395,14 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintDesignActions button { align-items: center; background: #fff; border: 1px solid #d9d5cd; border-radius: 7px; color: #4e4c53; cursor: pointer; display: flex; font: inherit; font-size: 10px; font-weight: 750; gap: 5px; min-height: 32px; padding: 7px 9px; }
 .blueprintDesignActions button:hover { background: #efede8; color: #202126; }
 .blueprintDesignActions button svg { height: 13px; width: 13px; }
+.blueprintAddNode { position: relative; }
+.blueprintAddNode > button svg:last-child { margin-left: 2px; }
+.blueprintAddNode > div { background: #fff; border: 1px solid #d8d4cc; border-radius: 10px; box-shadow: 0 14px 34px rgb(28 29 33 / 16%); display: grid; gap: 2px; left: 0; min-width: 245px; padding: 6px; position: absolute; top: calc(100% + 7px); z-index: 30; }
+.blueprintAddNode > div > button { border: 0; border-radius: 7px; display: grid; gap: 10px; grid-template-columns: 28px 1fr; justify-items: start; padding: 9px; text-align: left; width: 100%; }
+.blueprintAddNode > div > button > svg { height: 18px; width: 18px; }
+.blueprintAddNode > div > button > span { display: grid; gap: 2px; }
+.blueprintAddNode > div strong { color: #24252a; font-size: 11px; }
+.blueprintAddNode > div small { color: #77747b; font-size: 9px; font-weight: 500; }
 .blueprintAutoArrange { margin-left: auto; }
 .blueprintAutoArrange:hover { background: #f0eee9; color: #202126; }
 .blueprintAutoArrange svg { height: 14px; width: 14px; }
@@ -1442,6 +1454,8 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintTypedNode[data-selected="true"] { background: #222328; border-color: #222328; box-shadow: 0 0 0 3px rgb(34 35 40 / 16%), 0 12px 30px rgb(25 26 30 / 20%); color: #fff; transform: translateY(-1px); }
 .blueprintTypedNode[data-selected="true"]::before { background: #d77a25; }
 .blueprintTypedNode[data-muted="true"] { opacity: .24; }
+.blueprintTypedNode[data-relationship-target="valid"] { box-shadow: 0 0 0 4px rgb(94 140 87 / 20%), 0 10px 28px rgb(34 35 39 / 12%); cursor: crosshair; opacity: 1; transform: translateY(-1px); }
+.blueprintTypedNode[data-relationship-target="invalid"] { opacity: .2; }
 .blueprintTypedNode > header { align-items: center; display: grid; gap: 6px; grid-template-columns: 19px auto minmax(0, 1fr); }
 .blueprintTypedNode > header > span { align-items: center; display: flex; justify-content: center; }
 .blueprintTypedNode > header svg { height: 15px; width: 15px; }
@@ -1457,6 +1471,14 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintFlowHandle,.blueprintSideHandle { background: #222328 !important; border: 2px solid #fff !important; height: 8px !important; opacity: .78; width: 8px !important; }
 .blueprintSideHandle { background: #d77a25 !important; }
 .blueprintTypedNode[data-selected="true"] .blueprintFlowHandle,.blueprintTypedNode[data-selected="true"] .blueprintSideHandle { box-shadow: 0 0 0 1px #222328; opacity: 1; }
+.blueprintConnectionPorts { inset: 0; pointer-events: none; position: absolute; z-index: 5; }
+.blueprintConnectionPorts button { align-items: center; background: #222328; border: 2px solid #fff; border-radius: 50%; color: #fff; cursor: crosshair; display: flex; height: 24px; justify-content: center; opacity: 0; padding: 0; pointer-events: auto; position: absolute; scale: .75; transition: opacity 110ms ease, scale 110ms ease; width: 24px; }
+.blueprintConnectionPorts button svg { height: 12px; width: 12px; }
+.blueprintTypedNode:hover .blueprintConnectionPorts button,.blueprintConnectionPorts button:focus-visible { opacity: 1; scale: 1; }
+.blueprintConnectionPorts button[data-side="top"] { left: 50%; top: -13px; translate: -50% 0; }
+.blueprintConnectionPorts button[data-side="right"] { right: -13px; top: 50%; translate: 0 -50%; }
+.blueprintConnectionPorts button[data-side="bottom"] { bottom: -13px; left: 50%; translate: -50% 0; }
+.blueprintConnectionPorts button[data-side="left"] { left: -13px; top: 50%; translate: 0 -50%; }
 .blueprintEdgeLabel { fill: #5f5c63; font-size: 9px; font-weight: 750; opacity: 0; paint-order: stroke; pointer-events: none; stroke: #fff; stroke-linejoin: round; stroke-width: 5px; transition: opacity 120ms ease; }
 .blueprintEdgeLabel[data-emphasized="true"] { opacity: 1; }
 .blueprintCanvas :global(.react-flow__edge:hover) .blueprintEdgeLabel,.structuredFlowCanvas :global(.react-flow__edge:hover) .blueprintEdgeLabel { opacity: 1; }
@@ -1525,12 +1547,40 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .inspectorTimeFields { display: grid !important; grid-template-columns: 1fr 1fr; }
 .inspectorRelationships { border-bottom: 1px solid #e3e0d9; padding: 15px 0; }
 .inspectorRelationships h4 { font-size: 12px; margin: 0; }
-.inspectorRelationships > div { align-items: center; background: #f5f3ef; border-radius: 7px; display: grid; gap: 4px 7px; grid-template-columns: 1fr auto; margin-top: 8px; padding: 8px 9px; }
+.inspectorRelationships > div { align-items: center; background: #f5f3ef; border-radius: 7px; display: grid; gap: 4px 7px; grid-template-columns: minmax(0, 1fr) auto; margin-top: 8px; padding: 8px 9px; }
 .inspectorRelationships > div > span { color: #77747b; font-size: 9px; grid-column: 1; text-transform: uppercase; }
-.inspectorRelationships > div > strong { font-size: 10px; grid-column: 1; line-height: 1.35; }
+.inspectorRelationships > div > strong { font-size: 10px; grid-column: 1; line-height: 1.35; min-width: 0; overflow-wrap: anywhere; }
 .inspectorRelationships > div > button,.inspectorRemoveButton { align-items: center; background: #fff; border: 1px solid #d8d4cc; border-radius: 7px; color: #59575e; display: flex; font: inherit; font-size: 10px; gap: 6px; grid-column: 2; grid-row: 1 / span 2; justify-content: center; padding: 7px 9px; }
 .inspectorRelationships > div > button svg,.inspectorRemoveButton svg { height: 13px; width: 13px; }
 .inspectorRelationships > p { color: #747179; font-size: 10px; line-height: 1.45; margin: 9px 0 0; }
+.blueprintRelationshipGuide { align-items: center; background: #fff; border: 1px solid #9eb799; border-radius: 10px; box-shadow: 0 12px 30px rgb(28 29 33 / 14%); display: flex; gap: 12px; left: 50%; max-width: calc(100% - 48px); padding: 10px 12px; position: absolute; top: 68px; transform: translateX(-50%); width: 560px; z-index: 12; }
+.blueprintRelationshipGuide > div { align-items: center; display: flex; flex: 1; gap: 10px; min-width: 0; }
+.blueprintRelationshipGuide svg { color: #52764c; height: 18px; width: 18px; }
+.blueprintRelationshipGuide p { display: grid; gap: 2px; margin: 0; min-width: 0; }
+.blueprintRelationshipGuide strong { font-size: 11px; }
+.blueprintRelationshipGuide span { color: #706e75; font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blueprintRelationshipGuide em { color: #a1453d; font-size: 9px; font-style: normal; max-width: 190px; }
+.blueprintRelationshipGuide > button { background: #222328; border: 0; border-radius: 7px; color: #fff; font: inherit; font-size: 10px; font-weight: 750; padding: 8px 11px; }
+.blueprintRelationshipDialog { width: min(620px, 100%); }
+.blueprintRelationshipChoices { display: grid; gap: 8px; padding: 6px 0; }
+.blueprintRelationshipChoices > button { align-items: center; background: #f7f5f1; border: 1px solid #dedad2; border-radius: 10px; color: #24252a; cursor: pointer; display: grid; gap: 12px; grid-template-columns: 12px 1fr 18px; padding: 12px 14px; text-align: left; }
+.blueprintRelationshipChoices > button:hover { background: #fff; border-color: #9b978f; }
+.blueprintRelationshipChoices > button > i { background: #77747c; border-radius: 999px; height: 9px; width: 9px; }
+.blueprintRelationshipChoices > button > i[data-kind="teaches"] { background: #55768f; }
+.blueprintRelationshipChoices > button > i[data-kind="assesses"] { background: #b96a26; }
+.blueprintRelationshipChoices > button > i[data-kind="remediates_to"] { background: #a45652; }
+.blueprintRelationshipChoices > button > span { display: grid; gap: 3px; }
+.blueprintRelationshipChoices strong { font-size: 12px; }
+.blueprintRelationshipChoices small { color: #747179; font-size: 10px; }
+.blueprintRelationshipChoices svg { height: 14px; rotate: 90deg; width: 14px; }
+.blueprintRelationshipRoute { display: grid; gap: 8px; grid-template-columns: 1fr; padding: 16px 0; }
+.blueprintRelationshipRoute > article { background: #f5f3ef; border-radius: 9px; display: grid; gap: 4px; padding: 11px 12px; }
+.blueprintRelationshipRoute > article small { color: #77747b; font-size: 9px; text-transform: uppercase; }
+.blueprintRelationshipRoute > article strong { font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.blueprintRelationshipRoute > article span { color: #77747b; font-size: 9px; text-transform: capitalize; }
+.blueprintRelationshipRoute > svg { color: #77747b; height: 15px; justify-self: center; width: 15px; }
+.blueprintRelationshipInspector > p { color: #66636b; font-size: 10px; line-height: 1.5; margin: 0 0 15px; }
+.relationshipPendingNote { color: #8b571e; display: block; font-size: 9px; margin-top: 10px; }
 .inspectorRemoveButton { color: #a43d34; margin-top: 12px; width: 100%; }
 .inspectorRemoveButton:hover { background: #fff0ed; border-color: #e0b5af; }
 .sequenceControl { align-items: center; border-bottom: 1px solid #e3e0d9; display: flex; justify-content: space-between; padding: 15px 0; }

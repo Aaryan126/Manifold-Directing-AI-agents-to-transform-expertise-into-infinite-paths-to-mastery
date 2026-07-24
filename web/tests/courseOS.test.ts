@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   answerOutcomeSummary,
+  availableBlueprintRelationshipKinds,
   blueprintNodeLayer,
   blueprintConceptNeighborhoodIds,
   coreBlueprintEdgeKinds,
@@ -11,6 +12,7 @@ import {
   evidenceTitle,
   findBlueprintClip,
   generationPhaseLabel,
+  isValidBlueprintRelationshipTarget,
   orderedGenerationTasks,
   performancePercent,
   reorderBlueprintConcepts,
@@ -130,6 +132,46 @@ describe("Course OS presentation", () => {
       .toEqual(["contains"]);
     expect(visibleBlueprintEdges(edges, coreBlueprintEdgeKinds, "concept").map((edge) => edge.id))
       .toEqual(["contains", "cites"]);
+  });
+
+  it("offers only meaningful Blueprint relationships and valid typed targets", () => {
+    const node = (
+      id: string,
+      kind: BlueprintNode["kind"],
+    ): BlueprintNode => ({
+      id,
+      logical_id: `logical-${id}`,
+      kind,
+      title: id,
+      status: "accepted",
+      parent_id: null,
+      metadata: {},
+    });
+    const topic = node("topic", "topic");
+    const concept = node("concept", "concept");
+    const conceptTwo = node("concept-two", "concept");
+    const clip = node("clip", "clip");
+    const question = node("question", "question");
+    const source = node("source", "source");
+
+    expect(availableBlueprintRelationshipKinds(topic)).toEqual(["contains", "cites"]);
+    expect(availableBlueprintRelationshipKinds(concept)).toEqual([
+      "requires",
+      "teaches",
+      "assesses",
+      "cites",
+    ]);
+    expect(availableBlueprintRelationshipKinds(source)).toEqual([]);
+    expect(isValidBlueprintRelationshipTarget(topic, concept, "contains")).toBe(true);
+    expect(isValidBlueprintRelationshipTarget(concept, conceptTwo, "requires")).toBe(true);
+    expect(isValidBlueprintRelationshipTarget(concept, clip, "teaches")).toBe(true);
+    expect(isValidBlueprintRelationshipTarget(concept, question, "assesses")).toBe(true);
+    expect(isValidBlueprintRelationshipTarget(question, clip, "remediates_to")).toBe(true);
+    expect(isValidBlueprintRelationshipTarget(question, concept, "remediates_to")).toBe(true);
+    expect(isValidBlueprintRelationshipTarget(concept, source, "cites")).toBe(true);
+    expect(isValidBlueprintRelationshipTarget(concept, concept, "requires")).toBe(false);
+    expect(isValidBlueprintRelationshipTarget(question, topic, "remediates_to")).toBe(false);
+    expect(isValidBlueprintRelationshipTarget(source, concept, "cites")).toBe(false);
   });
 
   it("builds topic swimlanes with shared concept aliases and artifact coverage", () => {

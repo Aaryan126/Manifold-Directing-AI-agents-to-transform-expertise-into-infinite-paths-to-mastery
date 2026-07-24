@@ -312,6 +312,88 @@ def test_blueprint_prerequisite_opens_a_reviewable_working_graph_edit() -> None:
         app.dependency_overrides.clear()
 
 
+def test_blueprint_relationship_mutations_are_forwarded_to_private_work() -> None:
+    instructor_id = uuid4()
+    course_id = uuid4()
+    revision_id = uuid4()
+    first_concept_id = uuid4()
+    second_concept_id = uuid4()
+    third_concept_id = uuid4()
+    service = AsyncMock()
+    blueprint = CourseBlueprint(
+        course_id=course_id,
+        revision_id=revision_id,
+        revision_kind="working",
+        nodes=(),
+        edges=(),
+        uncovered_concept_ids=(),
+    )
+    service.create_blueprint_relationship.return_value = blueprint
+    service.remove_blueprint_relationship.return_value = blueprint
+    service.reconnect_blueprint_relationship.return_value = blueprint
+    app.dependency_overrides[get_course_os_service] = lambda: service
+    client = TestClient(app)
+
+    previous = {
+        "relationship": "requires",
+        "source_logical_id": str(first_concept_id),
+        "target_logical_id": str(second_concept_id),
+    }
+    replacement = {
+        "relationship": "requires",
+        "source_logical_id": str(first_concept_id),
+        "target_logical_id": str(third_concept_id),
+    }
+
+    try:
+        create_response = client.post(
+            f"/courses/{course_id}/blueprint/relationships",
+            headers={"X-User-ID": str(instructor_id)},
+            json=previous,
+        )
+        reconnect_response = client.patch(
+            f"/courses/{course_id}/blueprint/relationships",
+            headers={"X-User-ID": str(instructor_id)},
+            json={"previous": previous, "replacement": replacement},
+        )
+        remove_response = client.request(
+            "DELETE",
+            f"/courses/{course_id}/blueprint/relationships",
+            headers={"X-User-ID": str(instructor_id)},
+            json=replacement,
+        )
+
+        assert create_response.status_code == 201
+        assert reconnect_response.status_code == 200
+        assert remove_response.status_code == 200
+        service.create_blueprint_relationship.assert_awaited_once_with(
+            course_id,
+            instructor_id,
+            "requires",
+            first_concept_id,
+            second_concept_id,
+        )
+        service.reconnect_blueprint_relationship.assert_awaited_once_with(
+            course_id,
+            instructor_id,
+            "requires",
+            first_concept_id,
+            second_concept_id,
+            "requires",
+            first_concept_id,
+            third_concept_id,
+        )
+        service.remove_blueprint_relationship.assert_awaited_once_with(
+            course_id,
+            instructor_id,
+            "requires",
+            first_concept_id,
+            third_concept_id,
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_blueprint_concept_edit_is_forwarded_as_private_instructor_work() -> None:
     instructor_id = uuid4()
     course_id = uuid4()

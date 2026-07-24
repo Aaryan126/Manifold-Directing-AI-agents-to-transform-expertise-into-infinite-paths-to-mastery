@@ -202,6 +202,36 @@ export const coreBlueprintEdgeKinds = new Set<BlueprintEdgeKind>([
   "assesses",
 ]);
 
+export type EditableBlueprintRelationship = Exclude<BlueprintEdgeKind, "next">;
+
+export function availableBlueprintRelationshipKinds(
+  node: BlueprintNode,
+): EditableBlueprintRelationship[] {
+  if (node.kind === "topic") return ["contains", "cites"];
+  if (node.kind === "concept") return ["requires", "teaches", "assesses", "cites"];
+  if (node.kind === "question") return ["remediates_to", "cites"];
+  if (node.kind === "clip") return ["cites"];
+  return [];
+}
+
+export function isValidBlueprintRelationshipTarget(
+  source: BlueprintNode,
+  target: BlueprintNode,
+  kind: EditableBlueprintRelationship,
+): boolean {
+  if (source.id === target.id) return false;
+  if (kind === "contains") return source.kind === "topic" && target.kind === "concept";
+  if (kind === "requires") return source.kind === "concept" && target.kind === "concept";
+  if (kind === "teaches") return source.kind === "concept" && target.kind === "clip";
+  if (kind === "assesses") {
+    return source.kind === "concept" && target.kind === "question";
+  }
+  if (kind === "remediates_to") {
+    return source.kind === "question" && ["clip", "concept"].includes(target.kind);
+  }
+  return source.kind !== "source" && target.kind === "source";
+}
+
 export function visibleBlueprintEdges(
   edges: BlueprintEdge[],
   enabledKinds: ReadonlySet<BlueprintEdgeKind>,

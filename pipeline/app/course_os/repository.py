@@ -145,6 +145,21 @@ class CourseOSRepository(ABC):
     ) -> CourseProposal: ...
 
     @abstractmethod
+    async def create_typed_proposal(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        message_id: UUID,
+        *,
+        proposal_type: str,
+        artifact_type: str,
+        logical_artifact_id: UUID,
+        before_state: dict[str, Any] | None,
+        proposed_state: dict[str, Any],
+        rationale: str,
+    ) -> CourseProposal: ...
+
+    @abstractmethod
     async def course_evidence(
         self,
         course_id: UUID,
@@ -207,6 +222,42 @@ class CourseOSRepository(ABC):
         revision_id: UUID,
         instructor_id: UUID,
         edge_id: UUID,
+    ) -> None: ...
+
+    @abstractmethod
+    async def create_blueprint_relationship(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        relationship: str,
+        source_logical_id: UUID,
+        target_logical_id: UUID,
+    ) -> None: ...
+
+    @abstractmethod
+    async def remove_blueprint_relationship(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        relationship: str,
+        source_logical_id: UUID,
+        target_logical_id: UUID,
+    ) -> None: ...
+
+    @abstractmethod
+    async def reconnect_blueprint_relationship(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        previous_relationship: str,
+        previous_source_logical_id: UUID,
+        previous_target_logical_id: UUID,
+        relationship: str,
+        source_logical_id: UUID,
+        target_logical_id: UUID,
     ) -> None: ...
 
     @abstractmethod

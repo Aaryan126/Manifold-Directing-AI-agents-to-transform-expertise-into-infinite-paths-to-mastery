@@ -5,9 +5,12 @@ from uuid import uuid4
 
 import pytest
 
+from app.course_os.course_director import CourseDirectorAction, CourseDirectorPlan
 from app.course_os.models import (
     AssessmentDraft,
     AssessmentRuleDraft,
+    BlueprintEdge,
+    BlueprintNode,
     ConversationMessage,
     CourseAssessment,
     CourseBlueprint,
@@ -44,6 +47,37 @@ def _course() -> CourseSummary:
         pending_review_count=0,
         open_signal_count=0,
         updated_at=datetime.now(UTC),
+    )
+
+
+def _empty_blueprint(course: CourseSummary) -> CourseBlueprint:
+    assert course.working_revision_id is not None
+    return CourseBlueprint(
+        course_id=course.id,
+        revision_id=course.working_revision_id,
+        revision_kind="working",
+        nodes=(),
+        edges=(),
+        uncovered_concept_ids=(),
+    )
+
+
+def _topic_plan() -> CourseDirectorPlan:
+    return CourseDirectorPlan(
+        summary="Prepare a concrete introduction topic.",
+        actions=(
+            CourseDirectorAction(
+                operation="create_topic",
+                summary="Add a concrete introduction",
+                rationale="The instructor requested a more concrete opening.",
+                proposed_state={
+                    "title": "Concrete introduction",
+                    "summary": "Begin with one worked example.",
+                    "start_seconds": 0,
+                    "end_seconds": 60,
+                },
+            ),
+        ),
     )
 
 
@@ -202,8 +236,11 @@ async def test_dashboard_change_command_creates_private_reviewable_directive() -
     repository.dashboard = AsyncMock(return_value=snapshot)
     repository.get_course = AsyncMock(return_value=course)
     repository.add_message = AsyncMock(side_effect=[instructor_message, response_message])
-    repository.create_proposal = AsyncMock(return_value=proposal)
-    service = CourseOSService(repository)
+    repository.blueprint = AsyncMock(return_value=_empty_blueprint(course))
+    repository.create_typed_proposal = AsyncMock(return_value=proposal)
+    director = AsyncMock()
+    director.plan = AsyncMock(return_value=_topic_plan())
+    service = CourseOSService(repository, course_director=director)
 
     result = await service.dashboard_command(
         course.instructor_id,
@@ -213,12 +250,7 @@ async def test_dashboard_change_command_creates_private_reviewable_directive() -
     assert result.kind == "proposal"
     assert result.course_id == course.id
     assert "Nothing learner-facing changed" in result.message
-    repository.create_proposal.assert_awaited_once_with(
-        course.id,
-        course.working_revision_id,
-        instructor_message.id,
-        instructor_message.content,
-    )
+    repository.create_typed_proposal.assert_awaited_once()
 
 
 @pytest.mark.anyio
@@ -253,8 +285,11 @@ async def test_chat_turn_creates_reviewable_directive_instead_of_mutating_course
     repository.user_role = AsyncMock(return_value="instructor")
     repository.get_course = AsyncMock(return_value=course)
     repository.add_message = AsyncMock(side_effect=[instructor_message, response_message])
-    repository.create_proposal = AsyncMock(return_value=proposal)
-    service = CourseOSService(repository)
+    repository.blueprint = AsyncMock(return_value=_empty_blueprint(course))
+    repository.create_typed_proposal = AsyncMock(return_value=proposal)
+    director = AsyncMock()
+    director.plan = AsyncMock(return_value=_topic_plan())
+    service = CourseOSService(repository, course_director=director)
 
     response, created_proposal = await service.send_message(
         course.id,
@@ -264,12 +299,120 @@ async def test_chat_turn_creates_reviewable_directive_instead_of_mutating_course
 
     assert response == response_message
     assert created_proposal == proposal
-    repository.create_proposal.assert_awaited_once_with(
+    repository.create_typed_proposal.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_course_director_reconnect_is_one_atomic_review_proposal() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    course = _course()
+    first = BlueprintNode(
+        id=uuid4(),
+        logical_id=uuid4(),
+        kind="concept",
+        title="Foundation",
+        status="accepted",
+        parent_id=None,
+        metadata={},
+    )
+    previous_target = replace(
+        first,
+        id=uuid4(),
+        logical_id=uuid4(),
+        title="Old prerequisite",
+    )
+    next_target = replace(
+        first,
+        id=uuid4(),
+        logical_id=uuid4(),
+        title="Better prerequisite",
+    )
+    assert course.working_revision_id is not None
+    blueprint = CourseBlueprint(
+        course_id=course.id,
+        revision_id=course.working_revision_id,
+        revision_kind="working",
+        nodes=(first, previous_target, next_target),
+        edges=(
+            BlueprintEdge(
+                id=f"requires:{uuid4()}",
+                source_id=first.id,
+                target_id=previous_target.id,
+                kind="requires",
+                status="accepted",
+            ),
+        ),
+        uncovered_concept_ids=(),
+    )
+    instructor_message = ConversationMessage(
+        id=uuid4(),
+        role="instructor",
+        content="Change the prerequisite target.",
+        blocks=(),
+        created_at=datetime.now(UTC),
+    )
+    proposal = CourseProposal(
+        id=uuid4(),
+        proposal_type="reconnect_relationship",
+        artifact_type="blueprint_relationship_reconnect",
+        logical_artifact_id=uuid4(),
+        before_state=None,
+        proposed_state={},
+        rationale="Use the more relevant prerequisite.",
+        status="proposed",
+        created_at=datetime.now(UTC),
+    )
+    response_message = replace(instructor_message, id=uuid4(), role="manifold")
+    repository.user_role = AsyncMock(return_value="instructor")
+    repository.get_course = AsyncMock(return_value=course)
+    repository.add_message = AsyncMock(side_effect=[instructor_message, response_message])
+    repository.blueprint = AsyncMock(return_value=blueprint)
+    repository.create_typed_proposal = AsyncMock(return_value=proposal)
+    director = AsyncMock()
+    director.plan = AsyncMock(
+        return_value=CourseDirectorPlan(
+            summary="Reconnect the prerequisite.",
+            actions=(
+                CourseDirectorAction(
+                    operation="reconnect_relationship",
+                    summary="Use Better prerequisite instead",
+                    rationale="Use the more relevant prerequisite.",
+                    relationship_type="requires",
+                    source_logical_id=first.logical_id,
+                    target_logical_id=next_target.logical_id,
+                    previous_relationship_type="requires",
+                    previous_source_logical_id=first.logical_id,
+                    previous_target_logical_id=previous_target.logical_id,
+                ),
+            ),
+        )
+    )
+    service = CourseOSService(repository, course_director=director)
+
+    response, created_proposal = await service.send_message(
         course.id,
-        course.working_revision_id,
-        instructor_message.id,
+        course.instructor_id,
         instructor_message.content,
     )
+
+    assert response == response_message
+    assert created_proposal == proposal
+    call = repository.create_typed_proposal.await_args
+    assert call.kwargs["artifact_type"] == "blueprint_relationship_reconnect"
+    assert call.kwargs["before_state"] == {
+        "relationship_type": "requires",
+        "source_logical_id": str(first.logical_id),
+        "target_logical_id": str(previous_target.logical_id),
+    }
+    assert call.kwargs["proposed_state"] == {
+        "relationship_type": "requires",
+        "source_logical_id": str(first.logical_id),
+        "target_logical_id": str(next_target.logical_id),
+        "summary": "Use Better prerequisite instead",
+        "previous_relationship_type": "requires",
+        "previous_source_logical_id": str(first.logical_id),
+        "previous_target_logical_id": str(previous_target.logical_id),
+    }
 
 
 @pytest.mark.anyio
@@ -349,8 +492,11 @@ async def test_live_course_chat_opens_private_revision_before_proposing_mutation
     repository.get_course = AsyncMock(return_value=course)
     repository.create_working_revision = AsyncMock(return_value=working)
     repository.add_message = AsyncMock(side_effect=[instructor_message, response_message])
-    repository.create_proposal = AsyncMock(return_value=proposal)
-    service = CourseOSService(repository)
+    repository.blueprint = AsyncMock(return_value=_empty_blueprint(working))
+    repository.create_typed_proposal = AsyncMock(return_value=proposal)
+    director = AsyncMock()
+    director.plan = AsyncMock(return_value=_topic_plan())
+    service = CourseOSService(repository, course_director=director)
 
     response, created_proposal = await service.send_message(
         course.id,
@@ -364,12 +510,7 @@ async def test_live_course_chat_opens_private_revision_before_proposing_mutation
         course.id,
         course.instructor_id,
     )
-    repository.create_proposal.assert_awaited_once_with(
-        course.id,
-        working.working_revision_id,
-        instructor_message.id,
-        instructor_message.content,
-    )
+    repository.create_typed_proposal.assert_awaited_once()
 
 
 @pytest.mark.anyio
