@@ -1394,7 +1394,10 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintDesignActions { align-items: center; border-left: 1px solid #dfdcd5; display: flex; flex-wrap: wrap; gap: 5px; padding-left: 12px; }
 .blueprintDesignActions button { align-items: center; background: #fff; border: 1px solid #d9d5cd; border-radius: 7px; color: #4e4c53; cursor: pointer; display: flex; font: inherit; font-size: 10px; font-weight: 750; gap: 5px; min-height: 32px; padding: 7px 9px; }
 .blueprintDesignActions button:hover { background: #efede8; color: #202126; }
+.blueprintDesignActions button:disabled { background: #f5f3ef; color: #aaa7a0; cursor: default; }
 .blueprintDesignActions button svg { height: 13px; width: 13px; }
+.blueprintAutosaveStatus { align-items: center; color: #5e7359; display: flex; font-size: 10px; font-weight: 700; gap: 5px; padding: 0 2px 0 4px; white-space: nowrap; }
+.blueprintAutosaveStatus svg { height: 13px; width: 13px; }
 .blueprintAddNode { position: relative; }
 .blueprintAddNode > button svg:last-child { margin-left: 2px; }
 .blueprintAddNode > div { background: #fff; border: 1px solid #d8d4cc; border-radius: 10px; box-shadow: 0 14px 34px rgb(28 29 33 / 16%); display: grid; gap: 2px; left: 0; min-width: 245px; padding: 6px; position: absolute; top: calc(100% + 7px); z-index: 30; }

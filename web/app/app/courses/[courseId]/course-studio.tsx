@@ -135,6 +135,11 @@ type BlueprintRelationshipDraft = {
   kind: EditableBlueprintRelationship | null;
   replacing: BlueprintEdge | null;
 };
+type BlueprintUndoEntry = {
+  id: string;
+  label: string;
+  run: () => Promise<void>;
+};
 type AssessmentDraftPayload = {
   topic_id: string;
   primary_concept_id: string;
@@ -181,6 +186,8 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   const [proposalStates, setProposalStates] = useState<Record<string, string>>({});
   const [directorOpen, setDirectorOpen] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [blueprintUndoEntries, setBlueprintUndoEntries] = useState<BlueprintUndoEntry[]>([]);
+  const [blueprintUndoing, setBlueprintUndoing] = useState(false);
 
   const isBuilding = Boolean(
     (run && ["queued", "running"].includes(run.status))
@@ -206,6 +213,35 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     if (response.status === 204) return undefined as T;
     return (await response.json()) as T;
   }, []);
+
+  const latestBlueprintUndo = blueprintUndoEntries.at(-1) ?? null;
+
+  function rememberBlueprintUndo(label: string, run: () => Promise<void>) {
+    setBlueprintUndoEntries((current) => [
+      ...current.slice(-19),
+      {
+        id: crypto.randomUUID(),
+        label,
+        run,
+      },
+    ]);
+  }
+
+  async function undoBlueprintChange() {
+    const entry = blueprintUndoEntries.at(-1);
+    if (!entry || blueprintUndoing || sending) return;
+    setBlueprintUndoEntries((current) => current.filter((item) => item.id !== entry.id));
+    setBlueprintUndoing(true);
+    setError(null);
+    try {
+      await entry.run();
+    } catch (caught) {
+      setBlueprintUndoEntries((current) => [...current, entry]);
+      setError(caught instanceof Error ? caught.message : `Could not undo ${entry.label.toLowerCase()}.`);
+    } finally {
+      setBlueprintUndoing(false);
+    }
+  }
 
   const refreshStructuredWorkspace = useCallback(async (
     user: DevelopmentIdentity,
@@ -498,6 +534,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       setCourse(nextCourse);
       setRun(null);
       setRevisionDiff(null);
+      setBlueprintUndoEntries([]);
       await refreshArtifacts(identity);
       await refreshStructuredWorkspace(identity);
       await refreshBlueprint(identity, nextCourse);
@@ -713,8 +750,12 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     }
   }
 
-  async function updateBlueprintSequence(conceptIds: string[]) {
+  async function updateBlueprintSequence(conceptIds: string[], rememberUndo = true) {
     if (!identity) return;
+    const previousConceptIds = (workingBlueprint?.nodes ?? [])
+      .filter((node) => node.kind === "concept")
+      .sort(compareBlueprintSequence)
+      .map((node) => node.logical_id);
     setSending(true);
     try {
       const next = await request<CourseBlueprint>(`/courses/${courseId}/blueprint/sequence`, identity, {
@@ -723,6 +764,15 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         body: JSON.stringify({ concept_ids: conceptIds }),
       });
       setWorkingBlueprint(next);
+      if (
+        rememberUndo
+        && previousConceptIds.length
+        && previousConceptIds.join(":") !== conceptIds.join(":")
+      ) {
+        rememberBlueprintUndo("Change learning order", async () => {
+          await updateBlueprintSequence(previousConceptIds, false);
+        });
+      }
       const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
       setCourse(nextCourse);
       await refreshRevisionDiff(identity, nextCourse);
@@ -739,6 +789,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       previous: BlueprintRelationshipSpec;
       replacement: BlueprintRelationshipSpec;
     },
+    rememberUndo = true,
   ) {
     if (!identity) return null;
     setSending(true);
@@ -754,6 +805,39 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         },
       );
       setWorkingBlueprint(next);
+      if (rememberUndo) {
+        if (method === "POST") {
+          const relationship = body as BlueprintRelationshipSpec;
+          rememberBlueprintUndo(
+            `Add ${blueprintRelationshipLabels[relationship.relationship].toLowerCase()} connection`,
+            async () => {
+              await mutateBlueprintRelationship("DELETE", relationship, false);
+            },
+          );
+        } else if (method === "DELETE") {
+          const relationship = body as BlueprintRelationshipSpec;
+          rememberBlueprintUndo(
+            `Remove ${blueprintRelationshipLabels[relationship.relationship].toLowerCase()} connection`,
+            async () => {
+              await mutateBlueprintRelationship("POST", relationship, false);
+            },
+          );
+        } else {
+          const reconnect = body as {
+            previous: BlueprintRelationshipSpec;
+            replacement: BlueprintRelationshipSpec;
+          };
+          rememberBlueprintUndo(
+            `Change ${blueprintRelationshipLabels[reconnect.replacement.relationship].toLowerCase()} connection`,
+            async () => {
+              await mutateBlueprintRelationship("PATCH", {
+                previous: reconnect.replacement,
+                replacement: reconnect.previous,
+              }, false);
+            },
+          );
+        }
+      }
       const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
       setCourse(nextCourse);
       await Promise.all([
@@ -777,6 +861,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     end_seconds: number;
   }) {
     if (!identity) return null;
+    const previousLogicalIds = new Set(workingBlueprint?.nodes.map((node) => node.logical_id) ?? []);
     setSending(true);
     try {
       const next = await request<CourseBlueprint>(`/courses/${courseId}/blueprint/topics`, identity, {
@@ -785,6 +870,12 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         body: JSON.stringify(draft),
       });
       setWorkingBlueprint(next);
+      const created = next.nodes.find((node) => node.kind === "topic" && !previousLogicalIds.has(node.logical_id));
+      if (created) {
+        rememberBlueprintUndo(`Add ${created.title}`, async () => {
+          await removeBlueprintArtifact(created, true);
+        });
+      }
       const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
       setCourse(nextCourse);
       await Promise.all([
@@ -805,7 +896,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     summary: string;
     start_seconds: number;
     end_seconds: number;
-  }) {
+  }, rememberUndo = true) {
     if (!identity) return null;
     setSending(true);
     try {
@@ -819,6 +910,17 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         },
       );
       setWorkingBlueprint(next);
+      if (rememberUndo) {
+        const previousDraft = {
+          title: node.title,
+          summary: String(node.metadata.summary ?? ""),
+          start_seconds: Number(node.metadata.start_seconds ?? 0),
+          end_seconds: Number(node.metadata.end_seconds ?? 0),
+        };
+        rememberBlueprintUndo(`Edit ${node.title}`, async () => {
+          await updateBlueprintTopic(node, previousDraft, false);
+        });
+      }
       const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
       setCourse(nextCourse);
       await Promise.all([
@@ -841,6 +943,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     sequence_after_id: string | null;
   }) {
     if (!identity) return null;
+    const previousLogicalIds = new Set(workingBlueprint?.nodes.map((node) => node.logical_id) ?? []);
     setSending(true);
     try {
       const next = await request<CourseBlueprint>(
@@ -853,6 +956,12 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         },
       );
       setWorkingBlueprint(next);
+      const created = next.nodes.find((node) => node.kind === "concept" && !previousLogicalIds.has(node.logical_id));
+      if (created) {
+        rememberBlueprintUndo(`Add ${created.title}`, async () => {
+          await removeBlueprintArtifact(created, true);
+        });
+      }
       const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
       setCourse(nextCourse);
       await Promise.all([
@@ -868,7 +977,12 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     }
   }
 
-  async function updateBlueprintConcept(node: BlueprintNode, name: string, description: string) {
+  async function updateBlueprintConcept(
+    node: BlueprintNode,
+    name: string,
+    description: string,
+    rememberUndo = true,
+  ) {
     if (!identity) return;
     setSending(true);
     try {
@@ -878,6 +992,16 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         body: JSON.stringify({ name, description }),
       });
       setWorkingBlueprint(next);
+      if (rememberUndo) {
+        rememberBlueprintUndo(`Edit ${node.title}`, async () => {
+          await updateBlueprintConcept(
+            node,
+            node.title,
+            String(node.metadata.description ?? ""),
+            false,
+          );
+        });
+      }
       const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
       setCourse(nextCourse);
       await refreshRevisionDiff(identity, nextCourse);
@@ -897,7 +1021,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     );
   }
 
-  async function removeBlueprintArtifact(node: BlueprintNode) {
+  async function removeBlueprintArtifact(node: BlueprintNode, preserveUndoHistory = false) {
     if (!identity || !["topic", "concept", "clip", "question"].includes(node.kind)) return null;
     setSending(true);
     try {
@@ -907,6 +1031,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         { method: "DELETE" },
       );
       setWorkingBlueprint(next);
+      if (!preserveUndoHistory) setBlueprintUndoEntries([]);
       const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
       setCourse(nextCourse);
       await Promise.all([
@@ -923,7 +1048,13 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     }
   }
 
-  async function saveBlueprintPosition(node: BlueprintNode, x: number, y: number) {
+  async function saveBlueprintPosition(
+    node: BlueprintNode,
+    x: number,
+    y: number,
+    previousPosition?: { x: number; y: number } | null,
+    rememberUndo = true,
+  ) {
     if (!identity) return;
     try {
       await request(`/courses/${courseId}/map/layout`, identity, {
@@ -933,6 +1064,17 @@ export function CourseStudio({ courseId }: { courseId: string }) {
           positions: [{ logical_artifact_id: node.logical_id, x, y }],
         }),
       });
+      if (rememberUndo && previousPosition) {
+        rememberBlueprintUndo(`Move ${node.title}`, async () => {
+          await saveBlueprintPosition(
+            node,
+            previousPosition.x,
+            previousPosition.y,
+            { x, y },
+            false,
+          );
+        });
+      }
       const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
       setCourse(nextCourse);
       await Promise.all([
@@ -1257,12 +1399,15 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     onResolvePrerequisite={resolvePrerequisite}
                     onResolveProposal={resolvePackProposal}
                     onSequence={updateBlueprintSequence}
+                    onUndo={undoBlueprintChange}
                     onUpdateConcept={updateBlueprintConcept}
                     onUpdateTopic={updateBlueprintTopic}
                     onOpenAssessments={() => setCanvasView("assessments")}
                     onOpenSources={() => setSourcesOpen(true)}
                     revisionDiff={revisionDiff}
                     clips={assessmentWorkspace?.clips ?? []}
+                    undoing={blueprintUndoing}
+                    undoLabel={latestBlueprintUndo?.label ?? null}
                     workingBlueprint={workingBlueprint}
                   />
                 ) : null}
@@ -2114,10 +2259,13 @@ function BlueprintWorkspace({
   onResolvePrerequisite,
   onResolveProposal,
   onSequence,
+  onUndo,
   onUpdateConcept,
   onUpdateTopic,
   revisionDiff,
   clips,
+  undoing,
+  undoLabel,
   workingBlueprint,
 }: {
   activeBlueprint: CourseBlueprint | null;
@@ -2150,7 +2298,12 @@ function BlueprintWorkspace({
   onCreateRelationship: (relationship: BlueprintRelationshipSpec) => Promise<CourseBlueprint | null>;
   onInspectRemoval: (node: BlueprintNode) => Promise<BlueprintMutationImpact | null>;
   onLoadPack: (taskId: string) => Promise<AgentTaskPack>;
-  onLayout: (node: BlueprintNode, x: number, y: number) => Promise<void>;
+  onLayout: (
+    node: BlueprintNode,
+    x: number,
+    y: number,
+    previousPosition?: { x: number; y: number } | null,
+  ) => Promise<void>;
   onOpenAssessments: () => void;
   onOpenSources: () => void;
   onPrepare: (node: BlueprintNode, neighbors: BlueprintNode[]) => Promise<void>;
@@ -2163,6 +2316,7 @@ function BlueprintWorkspace({
   onResolvePrerequisite: (edge: BlueprintEdge, decision: "accepted" | "dismissed") => Promise<void>;
   onResolveProposal: (proposal: AgentTaskProposal, decision: Decision, revision?: Record<string, unknown>) => Promise<void>;
   onSequence: (conceptIds: string[]) => Promise<void>;
+  onUndo: () => Promise<void>;
   onUpdateConcept: (node: BlueprintNode, name: string, description: string) => Promise<void>;
   onUpdateTopic: (node: BlueprintNode, draft: {
     title: string;
@@ -2172,12 +2326,16 @@ function BlueprintWorkspace({
   }) => Promise<CourseBlueprint | null>;
   revisionDiff: RevisionDiff | null;
   clips: AssessmentWorkspace["clips"];
+  undoing: boolean;
+  undoLabel: string | null;
   workingBlueprint: CourseBlueprint | null;
 }) {
   const [mode, setMode] = useState<BlueprintMode>(course?.status === "published" ? "live" : "design");
   const [selectedLogicalId, setSelectedLogicalId] = useState<string | null>(null);
   const [focusTopicLogicalId, setFocusTopicLogicalId] = useState<string | null>(null);
-  const [flowInstance, setFlowInstance] = useState<ReactFlowInstance | null>(null);
+  const [flowInstance, setFlowInstance] = useState<
+    ReactFlowInstance<BlueprintGraphNode, BlueprintGraphEdge> | null
+  >(null);
   const [enabledRelationships, setEnabledRelationships] = useState<Set<BlueprintEdgeKind>>(
     () => new Set(coreBlueprintEdgeKinds),
   );
@@ -2195,6 +2353,7 @@ function BlueprintWorkspace({
   const [cleanupAnchorLogicalId, setCleanupAnchorLogicalId] = useState<string | null>(null);
   const [cleanupRunning, setCleanupRunning] = useState(false);
   const lastFittedViewport = useRef<string | null>(null);
+  const dragStartPositions = useRef<Record<string, { x: number; y: number }>>({});
   const blueprint = mode === "live"
     ? (activeBlueprint ?? workingBlueprint)
     : (workingBlueprint ?? activeBlueprint);
@@ -2240,8 +2399,8 @@ function BlueprintWorkspace({
       .map((node) => node.logical_id)
       .sort()
       .join(":");
-    return `${mode}:${focusTopicLogicalId ?? "course"}:${autoArrangeVersion}:${logicalIds}`;
-  }, [autoArrangeVersion, blueprint, focusTopicLogicalId, mode, visibleNodeIds]);
+    return `${mode}:${focusTopicLogicalId ?? "course"}:${autoArrangeVersion}:${flow.layoutKey ?? "pending"}:${logicalIds}`;
+  }, [autoArrangeVersion, blueprint, flow.layoutKey, focusTopicLogicalId, mode, visibleNodeIds]);
   const evidence = selected?.kind === "concept"
     ? blueprintEvidence.find((item) => item.concept_id === selected.id) ?? null
     : null;
@@ -2271,6 +2430,37 @@ function BlueprintWorkspace({
       setFocusTopicLogicalId(null);
     }
   }, [blueprint, concepts, focusTopicLogicalId, selectedLogicalId, topics]);
+
+  const performUndo = useCallback(async () => {
+    setSelectedLogicalId(null);
+    setSelectedRelationship(null);
+    setRelationshipDraft(null);
+    setRelationshipError(null);
+    await onUndo();
+  }, [onUndo]);
+
+  useEffect(() => {
+    function handleUndoShortcut(event: KeyboardEvent) {
+      if (
+        mode !== "design"
+        || !undoLabel
+        || undoing
+        || disabled
+        || event.shiftKey
+        || event.key.toLowerCase() !== "z"
+        || (!event.metaKey && !event.ctrlKey)
+      ) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement
+        && (target.closest("input, textarea, select, [contenteditable='true']") || target.isContentEditable)
+      ) return;
+      event.preventDefault();
+      void performUndo();
+    }
+    window.addEventListener("keydown", handleUndoShortcut);
+    return () => window.removeEventListener("keydown", handleUndoShortcut);
+  }, [disabled, mode, performUndo, undoing, undoLabel]);
 
   useEffect(() => {
     if (!flowInstance || !flow.layoutReady || !flow.nodes.length || lastFittedViewport.current === viewportFitKey) return;
@@ -2529,6 +2719,19 @@ function BlueprintWorkspace({
               ) : null}
             </div>
             <button onClick={() => setDesignDialog("order")} type="button"><ArrowUp />Learning order</button>
+            <button
+              aria-label={undoLabel ? `Undo ${undoLabel}` : "Undo last Blueprint change"}
+              disabled={!undoLabel || undoing || disabled}
+              onClick={() => void performUndo()}
+              title={undoLabel ? `Undo ${undoLabel} (⌘Z / Ctrl+Z)` : "Nothing to undo in this session"}
+              type="button"
+            >
+              {undoing ? <LoaderCircle className={styles.spin} /> : <RotateCcw />}
+              Undo
+            </button>
+            <span className={styles.blueprintAutosaveStatus} title="Changes are saved to the private revision. Publish updates is the learner-facing gate.">
+              <Check />Saved privately
+            </span>
           </div>
         ) : null}
         <button
@@ -2576,7 +2779,10 @@ function BlueprintWorkspace({
             nodes={flow.nodes}
             nodesConnectable={false}
             nodesDraggable={mode === "design"}
-            onInit={setFlowInstance}
+            onInit={(instance) => {
+              lastFittedViewport.current = null;
+              setFlowInstance(instance);
+            }}
             onNodesChange={(changes) => {
               changes.forEach((change) => {
                 if (change.type === "position" && change.position) {
@@ -2585,9 +2791,20 @@ function BlueprintWorkspace({
               });
             }}
             onNodeDrag={(_, node) => flow.setPosition(node.id, node.position)}
+            onNodeDragStart={(_, node) => {
+              dragStartPositions.current[node.id] = { ...node.position };
+            }}
             onNodeDragStop={(_, node) => {
               const artifact = blueprint.nodes.find((item) => item.id === node.id);
-              if (artifact) void onLayout(artifact, node.position.x, node.position.y);
+              const previousPosition = dragStartPositions.current[node.id] ?? null;
+              delete dragStartPositions.current[node.id];
+              if (
+                artifact
+                && previousPosition
+                && (previousPosition.x !== node.position.x || previousPosition.y !== node.position.y)
+              ) {
+                void onLayout(artifact, node.position.x, node.position.y, previousPosition);
+              }
             }}
             onNodeClick={(_, node) => {
               const selectedNode = blueprint.nodes.find((item) => item.id === node.id);
@@ -3030,6 +3247,19 @@ function useBlueprintFlow(
           ].map((point) => ({ x: point.x, y: point.y })),
         ];
       })));
+      setCompletedLayoutKey(requestedLayoutKey);
+    }).catch(() => {
+      if (cancelled) return;
+      setPositions((current) => Object.fromEntries(visibleNodes.map((node, index) => {
+        const saved = respectSavedLayout && isRecord(node.metadata.layout)
+          ? node.metadata.layout
+          : null;
+        return [node.id, {
+          x: typeof saved?.x === "number" ? saved.x : current[node.id]?.x ?? (index % 4) * 300,
+          y: typeof saved?.y === "number" ? saved.y : current[node.id]?.y ?? Math.floor(index / 4) * 190,
+        }];
+      })));
+      setEdgePoints({});
       setCompletedLayoutKey(requestedLayoutKey);
     });
     return () => { cancelled = true; };

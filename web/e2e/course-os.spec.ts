@@ -252,12 +252,27 @@ async function mockPublishedCourseOS(page: Page) {
       return route.fulfill({ status: 204, body: "" });
     }
     if (path.endsWith("/blueprint/relationships") && route.request().method() === "POST") {
-      createdRelationships.push(JSON.parse(route.request().postData() ?? "{}") as {
+      const relationship = JSON.parse(route.request().postData() ?? "{}") as {
         relationship?: string;
         source_logical_id?: string;
         target_logical_id?: string;
-      });
+      };
+      createdRelationships.push(relationship);
       workingRevisionOpen = true;
+      return route.fulfill({ json: publishedBlueprint(editedConcept, "working") });
+    }
+    if (path.endsWith("/blueprint/relationships") && route.request().method() === "DELETE") {
+      const relationship = JSON.parse(route.request().postData() ?? "{}") as {
+        relationship?: string;
+        source_logical_id?: string;
+        target_logical_id?: string;
+      };
+      const match = createdRelationships.findIndex((item) => (
+        item.relationship === relationship.relationship
+        && item.source_logical_id === relationship.source_logical_id
+        && item.target_logical_id === relationship.target_logical_id
+      ));
+      if (match >= 0) createdRelationships.splice(match, 1);
       return route.fulfill({ json: publishedBlueprint(editedConcept, "working") });
     }
     if (path.endsWith("/blueprint/sequence") && route.request().method() === "PUT") {
@@ -546,6 +561,15 @@ async function mockPublishedCourseOS(page: Page) {
     const clipId = working ? "clip-working" : "clip-1";
     const questionId = working ? "question-working" : "question-1";
     const sourceId = working ? "source-working" : "source-1";
+    const nodeIdsByLogicalId: Record<string, string> = {
+      "topic-logical": topicId,
+      "topic-logical-2": topicTwoId,
+      "concept-logical": conceptId,
+      "concept-logical-2": conceptTwoId,
+      "clip-logical": clipId,
+      "question-logical": questionId,
+      "source-logical": sourceId,
+    };
     return {
       course_id: published.id,
       revision_id: working ? workingRevisionId : published.active_revision_id,
@@ -566,6 +590,13 @@ async function mockPublishedCourseOS(page: Page) {
         { id: "teaches-1", source_id: clipId, target_id: conceptId, kind: "teaches", status: "accepted" },
         { id: "assesses-1", source_id: questionId, target_id: conceptId, kind: "assesses", status: "accepted" },
         { id: "cites-1", source_id: sourceId, target_id: conceptId, kind: "cites", status: "accepted" },
+        ...createdRelationships.map((relationship, index) => ({
+          id: `manual-${index}-${relationship.relationship}`,
+          source_id: nodeIdsByLogicalId[relationship.source_logical_id ?? ""] ?? "",
+          target_id: nodeIdsByLogicalId[relationship.target_logical_id ?? ""] ?? "",
+          kind: relationship.relationship,
+          status: "accepted",
+        })),
       ],
       uncovered_concept_ids: [conceptTwoId],
     };
@@ -813,6 +844,31 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
     source_logical_id: "concept-logical",
     target_logical_id: "concept-logical-2",
   });
+  await expect(page.locator(".react-flow__node")).toHaveCount(7);
+  await expect(designConceptNode).toBeInViewport();
+  await page.getByRole("button", { name: "Undo Add prerequisite connection" }).click();
+  await expect.poll(() => state.createdRelationships.length).toBe(0);
+  await expect(page.locator(".react-flow__node")).toHaveCount(7);
+  await expect(designConceptNode).toBeInViewport();
+  await designConceptNode.hover();
+  await relationshipPorts.getByRole("button", {
+    name: "Create relationship from the right of Net force vectors",
+  }).click();
+  await page.getByRole("button", { name: /Prerequisite/ }).click();
+  await page.getByTestId("rf__node-concept-working-2").click();
+  await expect.poll(() => state.createdRelationships.length).toBe(1);
+  await expect(page.getByRole("button", { name: "Undo Add prerequisite connection" })).toBeEnabled();
+  await page.evaluate(() => {
+    window.dispatchEvent(new KeyboardEvent("keydown", {
+      bubbles: true,
+      key: "z",
+      metaKey: true,
+    }));
+  });
+  await expect.poll(() => state.createdRelationships.length).toBe(0);
+  await expect(page.locator(".react-flow__node")).toHaveCount(7);
+  await expect(designConceptNode).toBeInViewport();
+  await expect(page.getByText("Saved privately")).toBeVisible();
   await page.getByRole("button", { name: "Learning order" }).click();
   await expect(page.getByRole("heading", { name: "Learning order" })).toBeVisible();
   await page.getByRole("button", { name: "Move Net force vectors later" }).click();
