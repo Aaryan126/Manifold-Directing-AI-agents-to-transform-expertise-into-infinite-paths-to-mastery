@@ -369,7 +369,11 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       setCourse(nextCourse);
       setMessages(await request<CourseMessage[]>(`/courses/${courseId}/messages`, identity));
       await refreshArtifacts(identity);
-      await refreshRevisionDiff(identity, nextCourse);
+      await Promise.all([
+        refreshBlueprint(identity, nextCourse),
+        refreshRevisionDiff(identity, nextCourse),
+        refreshStructuredWorkspace(identity, nextCourse.status === "published"),
+      ]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not send the message.");
       setComposer(content);
@@ -459,7 +463,11 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       );
       setProposalStates((current) => ({ ...current, [proposalId]: payload.status }));
       if (decision !== "dismissed" && course) {
-        await refreshRevisionDiff(identity, course);
+        await Promise.all([
+          refreshBlueprint(identity, course),
+          refreshRevisionDiff(identity, course),
+          refreshStructuredWorkspace(identity, course.status === "published"),
+        ]);
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not resolve the proposal.");
@@ -1569,7 +1577,11 @@ function BlueprintArtifactNode({ data }: NodeProps<BlueprintGraphNode>) {
         {artifact.kind === "concept" && evidence?.attempts ? <b>{evidence.attempts} attempts</b> : null}
       </footer>
       {designMode && availableBlueprintRelationshipKinds(artifact).length ? (
-        <div className={styles.blueprintConnectionPorts} aria-label={`Create a relationship from ${artifact.title}`}>
+        <div
+          aria-label={`Create a relationship from ${artifact.title}`}
+          className={styles.blueprintConnectionPorts}
+          role="group"
+        >
           {(["top", "right", "bottom", "left"] as BlueprintPortSide[]).map((side) => (
             <button
               aria-label={`Create relationship from the ${side} of ${artifact.title}`}
@@ -2261,10 +2273,6 @@ function BlueprintWorkspace({
   }, [blueprint, concepts, focusTopicLogicalId, selectedLogicalId, topics]);
 
   useEffect(() => {
-    setAutoArrangeVersion(0);
-  }, [focusTopicLogicalId, mode]);
-
-  useEffect(() => {
     if (!flowInstance || !flow.layoutReady || !flow.nodes.length || lastFittedViewport.current === viewportFitKey) return;
     let secondFrame = 0;
     const firstFrame = window.requestAnimationFrame(() => {
@@ -2539,12 +2547,12 @@ function BlueprintWorkspace({
 
       <div className={styles.blueprintBody}>
         <nav className={styles.blueprintOutline} aria-label="Course Blueprint outline">
-          <button aria-pressed={!focusTopicLogicalId} onClick={() => { setFocusTopicLogicalId(null); setSelectedLogicalId(null); }} type="button"><BookOpenCheck /><span><strong>Whole course</strong><small>{topics.length} topics · {concepts.length} concepts</small></span></button>
+          <button aria-pressed={!focusTopicLogicalId} onClick={() => { setAutoArrangeVersion(0); setFocusTopicLogicalId(null); setSelectedLogicalId(null); }} type="button"><BookOpenCheck /><span><strong>Whole course</strong><small>{topics.length} topics · {concepts.length} concepts</small></span></button>
           {topics.map((topic, topicIndex) => {
             const topicConcepts = concepts.filter((concept) => blueprint.edges.some((edge) => edge.kind === "contains" && edge.source_id === topic.id && edge.target_id === concept.id));
             return (
               <div key={topic.id}>
-                <button aria-pressed={focusTopicLogicalId === topic.logical_id} onClick={() => { setFocusTopicLogicalId(topic.logical_id); setSelectedLogicalId(topic.logical_id); }} type="button"><span>{String(topicIndex + 1).padStart(2, "0")}</span><span><strong>{topic.title}</strong><small>{topicConcepts.length} concepts</small></span></button>
+                <button aria-pressed={focusTopicLogicalId === topic.logical_id} onClick={() => { setAutoArrangeVersion(0); setFocusTopicLogicalId(topic.logical_id); setSelectedLogicalId(topic.logical_id); }} type="button"><span>{String(topicIndex + 1).padStart(2, "0")}</span><span><strong>{topic.title}</strong><small>{topicConcepts.length} concepts</small></span></button>
                 {focusTopicLogicalId === topic.logical_id ? topicConcepts.map((concept) => (
                   <button aria-current={selectedLogicalId === concept.logical_id ? "true" : undefined} key={concept.id} onClick={() => setSelectedLogicalId(concept.logical_id)} type="button"><i data-state={masteryStateForConcept(concept.id, blueprintEvidence)} />{concept.title}</button>
                 )) : null}
@@ -2555,12 +2563,15 @@ function BlueprintWorkspace({
 
         <div className={styles.blueprintCanvas}>
           <nav className={styles.blueprintCanvasModes} aria-label="Blueprint mode">
-            {blueprintModes.map((item) => <button aria-pressed={mode === item.id} key={item.id} onClick={() => setMode(item.id)} type="button">{item.label}</button>)}
+            {blueprintModes.map((item) => <button aria-pressed={mode === item.id} key={item.id} onClick={() => { setAutoArrangeVersion(0); setMode(item.id); }} type="button">{item.label}</button>)}
           </nav>
           {!flow.layoutReady ? <div className={styles.blueprintLayoutLoading}><LoaderCircle className={styles.spin} /><span>Arranging the course system…</span></div> : null}
           <ReactFlow
             edgeTypes={blueprintEdgeTypes}
             edges={flow.edges}
+            fitView
+            fitViewOptions={{ maxZoom: 1, padding: 0.14 }}
+            key={`${blueprint.revision_id}:${flow.layoutKey ?? "pending"}`}
             nodeTypes={blueprintNodeTypes}
             nodes={flow.nodes}
             nodesConnectable={false}
@@ -3039,7 +3050,7 @@ function useBlueprintFlow(
       topicConceptCounts.set(edge.source_id, (topicConceptCounts.get(edge.source_id) ?? 0) + 1);
     }
   });
-  const nodes: BlueprintGraphNode[] = (layoutReady ? visibleNodes : []).map((node) => {
+  const nodes: BlueprintGraphNode[] = visibleNodes.map((node, index) => {
     const conceptEvidence = evidenceByConcept.get(node.id) ?? null;
     const risk = conceptEvidence?.correct_percent == null ? null : 100 - conceptEvidence.correct_percent;
     const selected = selectedId === node.id;
@@ -3048,7 +3059,10 @@ function useBlueprintFlow(
     return {
       id: node.id,
       type: "blueprintArtifact",
-      position: positions[node.id] ?? { x: 0, y: 0 },
+      position: positions[node.id] ?? {
+        x: (index % 4) * 300,
+        y: Math.floor(index / 4) * 190,
+      },
       data: {
         artifact: node,
         conceptCount: node.kind === "topic" ? topicConceptCounts.get(node.id) ?? 0 : null,
@@ -3089,7 +3103,7 @@ function useBlueprintFlow(
       : { sourceHandle: "flow-out", targetHandle: "flow-in" };
   };
   const visibleEdgeIds = new Set(renderedEdges.map((edge) => edge.id));
-  const edges: BlueprintGraphEdge[] = (layoutReady ? layoutEdges : []).map((edge) => {
+  const edges: BlueprintGraphEdge[] = layoutEdges.map((edge) => {
     const visible = visibleEdgeIds.has(edge.id);
     const emphasized = Boolean(selectedId && (edge.source_id === selectedId || edge.target_id === selectedId));
     const dimmed = Boolean(selectedId && !emphasized);
@@ -3127,7 +3141,13 @@ function useBlueprintFlow(
     },
     [],
   );
-  return { nodes, edges, layoutReady, setPosition };
+  return {
+    nodes,
+    edges,
+    layoutKey: completedLayoutKey,
+    layoutReady,
+    setPosition,
+  };
 }
 
 function ConceptEvidencePanel({ evidence }: { evidence: BlueprintConceptEvidence | null }) {

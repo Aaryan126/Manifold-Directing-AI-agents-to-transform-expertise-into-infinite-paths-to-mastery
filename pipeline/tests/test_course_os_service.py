@@ -416,6 +416,110 @@ async def test_course_director_reconnect_is_one_atomic_review_proposal() -> None
 
 
 @pytest.mark.anyio
+async def test_course_director_question_is_a_typed_review_proposal() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    course = _course()
+    topic = BlueprintNode(
+        id=uuid4(),
+        logical_id=uuid4(),
+        kind="topic",
+        title="Practice design",
+        status="accepted",
+        parent_id=None,
+        metadata={},
+    )
+    concept = BlueprintNode(
+        id=uuid4(),
+        logical_id=uuid4(),
+        kind="concept",
+        title="Deliberate practice",
+        status="accepted",
+        parent_id=topic.id,
+        metadata={},
+    )
+    assert course.working_revision_id is not None
+    blueprint = CourseBlueprint(
+        course_id=course.id,
+        revision_id=course.working_revision_id,
+        revision_kind="working",
+        nodes=(topic, concept),
+        edges=(
+            BlueprintEdge(
+                id=f"contains:{uuid4()}",
+                source_id=topic.id,
+                target_id=concept.id,
+                kind="contains",
+                status="accepted",
+            ),
+        ),
+        uncovered_concept_ids=(),
+    )
+    instructor_message = ConversationMessage(
+        id=uuid4(),
+        role="instructor",
+        content="Add another question for Deliberate practice",
+        blocks=(),
+        created_at=datetime.now(UTC),
+    )
+    response_message = replace(instructor_message, id=uuid4(), role="manifold")
+    proposal = CourseProposal(
+        id=uuid4(),
+        proposal_type="create_question",
+        artifact_type="question_create",
+        logical_artifact_id=uuid4(),
+        before_state=None,
+        proposed_state={},
+        rationale="Add another reviewed check.",
+        status="proposed",
+        created_at=datetime.now(UTC),
+    )
+    proposed_state = {
+        "topic_logical_id": str(topic.logical_id),
+        "primary_concept_logical_id": str(concept.logical_id),
+        "body": "What makes practice deliberate?",
+        "type": "short_answer",
+        "correct_answer": {"answer": "Focused feedback and correction."},
+        "confidence_prompt": "How confident are you?",
+    }
+    repository.user_role = AsyncMock(return_value="instructor")
+    repository.get_course = AsyncMock(return_value=course)
+    repository.add_message = AsyncMock(side_effect=[instructor_message, response_message])
+    repository.blueprint = AsyncMock(return_value=blueprint)
+    repository.create_typed_proposal = AsyncMock(return_value=proposal)
+    director = AsyncMock()
+    director.plan = AsyncMock(
+        return_value=CourseDirectorPlan(
+            summary="Prepare another assessment.",
+            actions=(
+                CourseDirectorAction(
+                    operation="create_question",
+                    artifact_kind="question",
+                    summary="Add a deliberate-practice question",
+                    rationale="Add another reviewed check.",
+                    proposed_state=proposed_state,
+                ),
+            ),
+        )
+    )
+    service = CourseOSService(repository, course_director=director)
+
+    await service.send_message(
+        course.id,
+        course.instructor_id,
+        instructor_message.content,
+    )
+
+    call = repository.create_typed_proposal.await_args
+    assert call.kwargs["proposal_type"] == "create_question"
+    assert call.kwargs["artifact_type"] == "question_create"
+    assert call.kwargs["before_state"] is None
+    assert call.kwargs["proposed_state"] == {
+        **proposed_state,
+        "summary": "Add a deliberate-practice question",
+    }
+
+
+@pytest.mark.anyio
 async def test_copilot_question_answers_from_saved_evidence_without_a_mutation_proposal() -> None:
     repository = create_autospec(CourseOSRepository, instance=True)
     course = _course()

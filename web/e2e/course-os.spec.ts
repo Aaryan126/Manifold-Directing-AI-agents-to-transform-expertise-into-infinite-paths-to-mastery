@@ -213,6 +213,11 @@ async function mockPublishedCourseOS(page: Page) {
   let editedConcept: { name?: string; description?: string } | null = null;
   let savedSequence: string[] = [];
   let savedTopicIds: string[] = [];
+  const createdRelationships: Array<{
+    relationship?: string;
+    source_logical_id?: string;
+    target_logical_id?: string;
+  }> = [];
   const cleanupRequests: Array<Record<string, unknown>> = [];
   let workingRevisionOpen = false;
   const workingRevisionId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
@@ -245,6 +250,15 @@ async function mockPublishedCourseOS(page: Page) {
       savedLayout = JSON.parse(route.request().postData() ?? "{}") as typeof savedLayout;
       workingRevisionOpen = true;
       return route.fulfill({ status: 204, body: "" });
+    }
+    if (path.endsWith("/blueprint/relationships") && route.request().method() === "POST") {
+      createdRelationships.push(JSON.parse(route.request().postData() ?? "{}") as {
+        relationship?: string;
+        source_logical_id?: string;
+        target_logical_id?: string;
+      });
+      workingRevisionOpen = true;
+      return route.fulfill({ json: publishedBlueprint(editedConcept, "working") });
     }
     if (path.endsWith("/blueprint/sequence") && route.request().method() === "PUT") {
       const body = JSON.parse(route.request().postData() ?? "{}") as { concept_ids?: string[] };
@@ -558,6 +572,7 @@ async function mockPublishedCourseOS(page: Page) {
   }
   return {
     cleanupRequests,
+    createdRelationships,
     published,
     proposalDecisions,
     savedLayout: () => savedLayout,
@@ -763,19 +778,41 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect(page.getByRole("button", { name: "Edit concept fields" })).toBeVisible();
   await expect(conceptNode).toHaveClass(/draggable/);
   await expect(sourceNode).not.toHaveClass(/connectable/);
-  await page.getByRole("button", { name: "Move artifact right" }).click();
-  await expect.poll(() => state.savedLayout()?.positions?.[0]?.logical_artifact_id).toBe("concept-logical");
   await page.getByRole("button", { name: "Edit concept fields" }).click();
   await page.getByLabel("Name").fill("Net force vectors");
   await page.getByLabel("Description").fill("Combine vectors by magnitude and direction.");
   await page.getByRole("button", { name: "Save private edit" }).click();
   await expect.poll(() => state.editedConcept()?.name).toBe("Net force vectors");
-  await page.getByRole("button", { name: "Topic", exact: true }).click();
+  const designConceptNode = page.getByTestId("rf__node-concept-working");
+  await expect(designConceptNode).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add node" })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Topic", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Concept", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Add node" }).click();
+  await page.getByRole("menuitem", { name: /Topic/ }).click();
   await expect(page.getByRole("heading", { name: "New topic" })).toBeVisible();
   await page.getByRole("button", { name: "Cancel" }).click();
-  await page.getByRole("button", { name: "Concept", exact: true }).click();
+  await page.getByRole("button", { name: "Add node" }).click();
+  await page.getByRole("menuitem", { name: /Concept/ }).click();
   await expect(page.getByRole("heading", { name: "New concept" })).toBeVisible();
   await page.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Close artifact inspector" }).click();
+  await designConceptNode.hover();
+  const relationshipPorts = designConceptNode.locator(
+    '[aria-label="Create a relationship from Net force vectors"]',
+  );
+  await expect(relationshipPorts.getByRole("button")).toHaveCount(4);
+  await relationshipPorts.getByRole("button", {
+    name: "Create relationship from the right of Net force vectors",
+  }).click();
+  await expect(page.getByRole("heading", { name: "What should this connection mean?" })).toBeVisible();
+  await page.getByRole("button", { name: /Prerequisite/ }).click();
+  await page.getByTestId("rf__node-concept-working-2").click();
+  await expect.poll(() => state.createdRelationships.at(-1)).toEqual({
+    relationship: "requires",
+    source_logical_id: "concept-logical",
+    target_logical_id: "concept-logical-2",
+  });
   await page.getByRole("button", { name: "Learning order" }).click();
   await expect(page.getByRole("heading", { name: "Learning order" })).toBeVisible();
   await page.getByRole("button", { name: "Move Net force vectors later" }).click();

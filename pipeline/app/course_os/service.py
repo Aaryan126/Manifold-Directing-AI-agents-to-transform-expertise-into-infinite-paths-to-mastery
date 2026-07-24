@@ -468,6 +468,8 @@ class CourseOSService:
             artifact_type = "topic_create"
         elif action.operation == "create_concept":
             artifact_type = "concept_create"
+        elif action.operation == "create_question":
+            artifact_type = "question_create"
         elif action.operation in {
             "create_relationship",
             "reconnect_relationship",

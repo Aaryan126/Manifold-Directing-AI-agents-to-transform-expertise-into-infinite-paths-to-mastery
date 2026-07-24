@@ -14,6 +14,7 @@ DirectorOperation = Literal[
     "remove_artifact",
     "create_topic",
     "create_concept",
+    "create_question",
     "create_relationship",
     "reconnect_relationship",
     "remove_relationship",
@@ -105,8 +106,12 @@ class OpenAICourseDirector:
                         "fields so it remains one atomic review decision. "
                         "For create_topic provide title, summary, start_seconds, end_seconds. "
                         "For create_concept provide name, description, topic_logical_ids, and "
-                        "sequence_after_id. If the request is ambiguous, unsafe, or cannot be "
-                        "expressed with these operations, return no actions and one clarification. "
+                        "sequence_after_id. For create_question provide topic_logical_id, "
+                        "primary_concept_logical_id, body, type, correct_answer, and "
+                        "confidence_prompt. Ground the question in that concept; for MCQ include "
+                        "plausible choices in correct_answer. If the request is ambiguous, unsafe, "
+                        "or cannot be expressed with these operations, return no actions and one "
+                        "clarification. "
                         "Prefer the smallest coherent plan and explain each action plainly."
                     ),
                 },
@@ -185,6 +190,55 @@ class LocalCourseDirector:
                     ),
                 ),
             )
+        if ("add" in lowered or "create" in lowered) and (
+            "question" in lowered or "assessment" in lowered
+        ) and matches and matches[0].kind == "concept":
+            concept = matches[0]
+            topic_edge = next(
+                (
+                    edge
+                    for edge in blueprint.edges
+                    if edge.kind == "contains" and edge.target_id == concept.id
+                ),
+                None,
+            )
+            topic = next(
+                (
+                    node
+                    for node in blueprint.nodes
+                    if topic_edge is not None and node.id == topic_edge.source_id
+                ),
+                None,
+            )
+            if topic is not None:
+                description = str(concept.metadata.get("description", "")).strip()
+                expected = description or concept.title
+                return CourseDirectorPlan(
+                    summary=f"Prepare another assessment for {concept.title}.",
+                    actions=(
+                        CourseDirectorAction(
+                            operation="create_question",
+                            artifact_kind="question",
+                            proposed_state={
+                                "topic_logical_id": str(topic.logical_id),
+                                "primary_concept_logical_id": str(concept.logical_id),
+                                "body": (
+                                    f"How would you explain {concept.title} in your own words?"
+                                ),
+                                "type": "short_answer",
+                                "correct_answer": {"answer": expected},
+                                "confidence_prompt": (
+                                    "How confident are you in your explanation?"
+                                ),
+                            },
+                            summary=f"Add a question for {concept.title}",
+                            rationale=(
+                                "The instructor explicitly requested another reviewed "
+                                "assessment for this concept."
+                            ),
+                        ),
+                    ),
+                )
         rename = re.search(r"rename\s+(.+?)\s+to\s+[“\"']?(.+?)[”\"']?$", normalized, re.I)
         if rename and matches:
             node = matches[0]
@@ -247,6 +301,26 @@ def _validated_plan(output: _DirectorPlanOutput, blueprint: CourseBlueprint) -> 
             continue
         if candidate.operation in {"update_artifact", "remove_artifact"}:
             if logical_id not in nodes or nodes[logical_id].kind != candidate.artifact_kind:
+                continue
+        if candidate.operation == "create_question":
+            state = candidate.proposed_state
+            try:
+                topic_id = UUID(str(state["topic_logical_id"]))
+                concept_id = UUID(str(state["primary_concept_logical_id"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+            if (
+                topic_id not in nodes
+                or nodes[topic_id].kind != "topic"
+                or concept_id not in nodes
+                or nodes[concept_id].kind != "concept"
+                or ("contains", topic_id, concept_id) not in relationships
+                or not str(state.get("body", "")).strip()
+                or state.get("type") not in {"mcq", "short_answer", "worked_problem"}
+                or not isinstance(state.get("correct_answer"), dict)
+                or not state["correct_answer"]
+                or not str(state.get("confidence_prompt", "")).strip()
+            ):
                 continue
         if candidate.operation in {
             "create_relationship",

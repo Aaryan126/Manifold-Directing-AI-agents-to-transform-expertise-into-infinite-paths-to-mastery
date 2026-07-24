@@ -1471,14 +1471,20 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintFlowHandle,.blueprintSideHandle { background: #222328 !important; border: 2px solid #fff !important; height: 8px !important; opacity: .78; width: 8px !important; }
 .blueprintSideHandle { background: #d77a25 !important; }
 .blueprintTypedNode[data-selected="true"] .blueprintFlowHandle,.blueprintTypedNode[data-selected="true"] .blueprintSideHandle { box-shadow: 0 0 0 1px #222328; opacity: 1; }
-.blueprintConnectionPorts { inset: 0; pointer-events: none; position: absolute; z-index: 5; }
-.blueprintConnectionPorts button { align-items: center; background: #222328; border: 2px solid #fff; border-radius: 50%; color: #fff; cursor: crosshair; display: flex; height: 24px; justify-content: center; opacity: 0; padding: 0; pointer-events: auto; position: absolute; scale: .75; transition: opacity 110ms ease, scale 110ms ease; width: 24px; }
-.blueprintConnectionPorts button svg { height: 12px; width: 12px; }
-.blueprintTypedNode:hover .blueprintConnectionPorts button,.blueprintConnectionPorts button:focus-visible { opacity: 1; scale: 1; }
-.blueprintConnectionPorts button[data-side="top"] { left: 50%; top: -13px; translate: -50% 0; }
-.blueprintConnectionPorts button[data-side="right"] { right: -13px; top: 50%; translate: 0 -50%; }
-.blueprintConnectionPorts button[data-side="bottom"] { bottom: -13px; left: 50%; translate: -50% 0; }
-.blueprintConnectionPorts button[data-side="left"] { left: -13px; top: 50%; translate: 0 -50%; }
+.blueprintConnectionPorts { inset: 0; pointer-events: none; position: absolute; z-index: 8; }
+.blueprintConnectionPorts button { align-items: center; background: #fff; border: 2px solid #25262b; border-radius: 11px; box-shadow: 0 5px 14px rgb(28 29 33 / 18%); color: #25262b; cursor: crosshair; display: flex; height: 36px; justify-content: center; opacity: 0; padding: 0; pointer-events: auto; position: absolute; scale: .78; transition: opacity 110ms ease, scale 110ms ease, background 110ms ease, color 110ms ease; visibility: hidden; width: 36px; }
+.blueprintConnectionPorts button::before { background: #25262b; content: ""; pointer-events: none; position: absolute; }
+.blueprintConnectionPorts button:hover,.blueprintConnectionPorts button:focus-visible { background: #25262b; color: #fff; outline: none; }
+.blueprintConnectionPorts button svg { height: 17px; stroke-width: 2.3; width: 17px; }
+.blueprintTypedNode:hover .blueprintConnectionPorts button,.blueprintTypedNode:focus-within .blueprintConnectionPorts button { opacity: 1; scale: 1; visibility: visible; }
+.blueprintConnectionPorts button[data-side="top"] { left: 50%; top: -37px; translate: -50% 0; }
+.blueprintConnectionPorts button[data-side="top"]::before { height: 8px; left: 50%; top: 100%; translate: -50% 0; width: 2px; }
+.blueprintConnectionPorts button[data-side="right"] { right: -37px; top: 50%; translate: 0 -50%; }
+.blueprintConnectionPorts button[data-side="right"]::before { height: 2px; right: 100%; top: 50%; translate: 0 -50%; width: 8px; }
+.blueprintConnectionPorts button[data-side="bottom"] { bottom: -37px; left: 50%; translate: -50% 0; }
+.blueprintConnectionPorts button[data-side="bottom"]::before { bottom: 100%; height: 8px; left: 50%; translate: -50% 0; width: 2px; }
+.blueprintConnectionPorts button[data-side="left"] { left: -37px; top: 50%; translate: 0 -50%; }
+.blueprintConnectionPorts button[data-side="left"]::before { height: 2px; left: 100%; top: 50%; translate: 0 -50%; width: 8px; }
 .blueprintEdgeLabel { fill: #5f5c63; font-size: 9px; font-weight: 750; opacity: 0; paint-order: stroke; pointer-events: none; stroke: #fff; stroke-linejoin: round; stroke-width: 5px; transition: opacity 120ms ease; }
 .blueprintEdgeLabel[data-emphasized="true"] { opacity: 1; }
 .blueprintCanvas :global(.react-flow__edge:hover) .blueprintEdgeLabel,.structuredFlowCanvas :global(.react-flow__edge:hover) .blueprintEdgeLabel { opacity: 1; }

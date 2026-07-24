@@ -5732,6 +5732,107 @@ async def _apply_typed_proposal(
                 (topic["id"], concept["id"]),
             )
         return
+    if artifact_type == "question_create":
+        try:
+            topic_logical_id = UUID(str(resolved_state["topic_logical_id"]))
+            primary_concept_logical_id = UUID(
+                str(resolved_state["primary_concept_logical_id"])
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                "A new assessment must identify its topic and primary concept."
+            ) from exc
+        body = str(resolved_state.get("body", "")).strip()
+        question_type = str(resolved_state.get("type", "")).strip()
+        correct_answer = resolved_state.get("correct_answer")
+        confidence_prompt = str(resolved_state.get("confidence_prompt", "")).strip()
+        if (
+            not body
+            or question_type not in {"mcq", "short_answer", "worked_problem"}
+            or not isinstance(correct_answer, dict)
+            or not correct_answer
+            or not confidence_prompt
+        ):
+            raise ValueError(
+                "A new assessment needs a prompt, supported type, answer, and confidence check."
+            )
+        topic = await (
+            await conn.execute(
+                """
+                select id from topics
+                where revision_id = %s and logical_id = %s
+                  and review_status <> 'dismissed'
+                """,
+                (revision_id, topic_logical_id),
+            )
+        ).fetchone()
+        concept = await (
+            await conn.execute(
+                """
+                select c.id
+                from concepts c
+                join topic_concepts tc on tc.concept_id = c.id
+                join topics t on t.id = tc.topic_id
+                where c.revision_id = %s and c.logical_id = %s
+                  and t.logical_id = %s and c.review_status <> 'dismissed'
+                  and t.review_status <> 'dismissed'
+                """,
+                (revision_id, primary_concept_logical_id, topic_logical_id),
+            )
+        ).fetchone()
+        if topic is None or concept is None:
+            raise ValueError(
+                "The assessment topic and concept must still be connected in this revision."
+            )
+        question = await (
+            await conn.execute(
+                """
+                insert into questions (
+                  logical_id, topic_id, body, type, correct_answer, confidence_prompt,
+                  instructor_revision, approved_at, review_status, revision_id
+                ) values (
+                  %s, %s, %s, %s, %s::jsonb, %s, %s::jsonb, now(), 'edited', %s
+                )
+                returning id
+                """,
+                (
+                    logical_artifact_id,
+                    topic["id"],
+                    body,
+                    question_type,
+                    Jsonb(correct_answer),
+                    confidence_prompt,
+                    Jsonb({"action": "add", "source": "course_director"}),
+                    revision_id,
+                ),
+            )
+        ).fetchone()
+        assert question is not None
+        question_id = UUID(str(question["id"]))
+        await conn.execute(
+            """
+            insert into question_concepts (
+              question_id, concept_id, revision_id, is_primary
+            ) values (%s, %s, %s, true)
+            """,
+            (question_id, concept["id"], revision_id),
+        )
+        await conn.execute(
+            """
+            insert into remediation_rules (
+              question_id, wrong_answer_pattern, target_concept_id,
+              instructor_revision, approved_at, revision_id
+            ) values (%s, %s, %s, %s::jsonb, now(), %s)
+            """,
+            (
+                question_id,
+                "Incorrect or incomplete response",
+                concept["id"],
+                Jsonb({"action": "add", "source": "course_director"}),
+                revision_id,
+            ),
+        )
+        return
     if artifact_type.endswith("_remove"):
         kind = artifact_type.removesuffix("_remove")
         table = {
