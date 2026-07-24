@@ -578,6 +578,9 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(page.getByRole("button", { name: "Open Course Director" })).toBeVisible();
   await page.getByRole("button", { name: "Open Course Director" }).click();
   await expect(page.getByText("Your complete private draft is ready for review.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close Course Director" })).toBeVisible();
+  await page.getByRole("button", { name: "Close Course Director" }).click();
+  await expect(page.getByText("Your complete private draft is ready for review.")).toHaveCount(0);
 });
 
 test("course studio exposes Blueprint, review decisions, and a mobile-safe layout", async ({ page }) => {
@@ -634,13 +637,19 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect(page.getByRole("button", { name: "Auto arrange" })).toBeVisible();
   await expect(page.getByRole("dialog", { name: /artifact inspector/ })).toHaveCount(0);
   const conceptNode = page.getByTestId("rf__node-concept-1");
+  const clipNode = page.getByTestId("rf__node-clip-1");
   const sourceNode = page.getByTestId("rf__node-source-1");
   await expect(conceptNode).toBeInViewport();
   await expect(sourceNode).toBeInViewport();
   await expect(conceptNode.locator("article[data-kind='concept']")).toBeVisible();
   await expect(sourceNode.locator("article[data-kind='source']")).toBeVisible();
   await expect(conceptNode.locator("article[data-kind='concept']")).toHaveCSS("background-color", "rgb(227, 237, 242)");
+  await expect(clipNode.locator("article[data-kind='clip']")).toHaveCSS("background-color", "rgb(226, 240, 223)");
   await expect(sourceNode.locator("article[data-kind='source']")).toHaveCSS("background-color", "rgb(238, 234, 226)");
+  await clipNode.click();
+  await expect(page.getByRole("heading", { name: "Vector direction" })).toBeVisible();
+  await expect(page.getByLabel("Force systems clip")).toBeVisible();
+  await page.getByRole("button", { name: "Close artifact inspector" }).click();
   const blueprintFlow = page.locator(".react-flow").filter({ has: conceptNode });
   await expect(blueprintFlow.getByRole("button", { name: /zoom in/i })).toBeVisible();
   await expect(blueprintFlow.getByRole("button", { name: /zoom out/i })).toBeVisible();
@@ -717,12 +726,10 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect.poll(() => state.editedConcept()?.name).toBe("Net force vectors");
   await page.getByRole("button", { name: "Move concept later" }).click();
   await expect.poll(() => state.savedSequence()).toEqual(["concept-logical-2", "concept-logical"]);
-  await page.getByRole("button", { name: "Learner path" }).click();
-  await expect(page.getByText("Learner journey", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Learner path" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Revision" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Live" }).click();
   await expect(page.getByRole("heading", { name: "Net force" })).toBeVisible();
-  await page.getByRole("button", { name: "Revision" }).click();
-  await expect(page.getByText("Private revision open", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Net force vectors" })).toBeVisible();
   await expect(page.getByText(/to review/i)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Publish updates" })).toBeEnabled();
   await page.getByRole("button", { name: /sources.*1/i }).click();

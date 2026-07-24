@@ -729,7 +729,10 @@
 }
 .workspaceStage { flex: 1; min-height: 0; position: relative; }
 .workspaceStage > .canvasPanel { height: 100%; width: 100%; }
-.directorDock { background: #fff; box-shadow: -18px 0 50px rgb(31 31 35 / 14%); inset: 0 0 0 auto; max-width: 460px; position: absolute; width: min(42vw, 460px); z-index: 15; }
+.directorDock { background: #fff; box-shadow: -18px 0 50px rgb(31 31 35 / 14%); inset: 56px 0 0 auto; max-width: 460px; position: absolute; width: min(42vw, 460px); z-index: 15; }
+.directorDockClose { align-items: center; background: #fff; border: 1px solid #dcd8d0; border-radius: 8px; color: #5e5c63; cursor: pointer; display: flex; height: 34px; justify-content: center; position: absolute; right: 16px; top: 16px; width: 34px; z-index: 18; }
+.directorDockClose:hover { background: #f1efe9; color: #202126; }
+.directorDockClose svg { height: 17px; width: 17px; }
 .dockedConversation { border-right: 0; height: 100%; width: 100%; }
 .directorLauncher { align-items: center; background: #24252a; border: 1px solid #24252a; border-radius: 999px; bottom: 24px; box-shadow: 0 12px 32px rgb(31 31 35 / 18%); color: #fff; cursor: pointer; display: flex; font: inherit; font-size: 13px; font-weight: 650; gap: 9px; min-height: 48px; padding: 0 17px; position: absolute; right: 24px; z-index: 12; }
 .directorLauncher:hover,.directorLauncher[aria-expanded="true"] { background: #393a40; }
@@ -1365,15 +1368,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintNotice { align-items: center; background: #fff7eb; border-bottom: 1px solid #e8c79f; color: #7b4618; display: flex; gap: 11px; padding: 11px 32px; }
 .blueprintNotice svg { flex: 0 0 auto; height: 18px; width: 18px; }
 .blueprintNotice p { font-size: 13px; margin: 0; }
-.blueprintMapToolbar { align-items: center; background: #fff; border-bottom: 1px solid #dedbd3; display: flex; gap: 24px; justify-content: space-between; padding: 12px 20px 12px 32px; }
-.blueprintMapToolbar > div { display: grid; gap: 2px; }
-.blueprintMapToolbar small { color: #77747b; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-.blueprintMapToolbar strong { font-size: 13px; font-weight: 650; }
-.blueprintMapToolbar nav { background: #f1efea; border: 1px solid #e7e3db; border-radius: 10px; display: flex; padding: 4px; }
-.blueprintMapToolbar nav button { background: transparent; border: 0; border-radius: 7px; color: #67656c; font: inherit; font-size: 12px; font-weight: 700; padding: 8px 13px; white-space: nowrap; }
-.blueprintMapToolbar nav button:hover { color: #202126; }
-.blueprintMapToolbar nav button[aria-pressed="true"] { background: #fff; box-shadow: 0 2px 8px rgb(20 20 20 / 9%); color: #202126; }
-.blueprintGraphControls { align-items: center; background: #fbfaf7; border-bottom: 1px solid #dedbd3; display: flex; gap: 12px; min-height: 55px; padding: 8px 20px 8px 32px; position: relative; z-index: 8; }
+.blueprintGraphControls { align-items: flex-start; background: #fbfaf7; border-bottom: 1px solid #dedbd3; display: flex; gap: 12px; min-height: 76px; padding: 10px 20px 10px 32px; position: relative; z-index: 8; }
 .blueprintRelationshipPresets { align-items: center; display: flex; gap: 5px; }
 .blueprintRelationshipPresets > span { color: #625f67; font-size: 10px; font-weight: 800; letter-spacing: .07em; margin-right: 3px; text-transform: uppercase; }
 .blueprintRelationshipPresets button,.blueprintAutoArrange,.blueprintRelationshipFilters > summary { align-items: center; background: #fff; border: 1px solid #d9d5cd; border-radius: 7px; color: #5f5d64; cursor: pointer; display: flex; font: inherit; font-size: 11px; font-weight: 700; gap: 6px; min-height: 32px; padding: 7px 10px; }
@@ -1395,15 +1390,20 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintAutoArrange { margin-left: auto; }
 .blueprintAutoArrange:hover { background: #f0eee9; color: #202126; }
 .blueprintAutoArrange svg { height: 14px; width: 14px; }
-.blueprintTypeLegend { align-items: center; border-left: 1px solid #dfdcd5; display: flex; gap: 12px; padding-left: 14px; }
+.blueprintToolbarStack { align-items: flex-end; border-left: 1px solid #dfdcd5; display: grid; gap: 7px; justify-items: end; min-width: 330px; padding-left: 14px; }
+.blueprintTypeLegend { align-items: center; display: flex; gap: 12px; }
 .blueprintTypeLegend span { align-items: center; color: #6a6870; display: flex; font-size: 10px; gap: 5px; text-transform: capitalize; }
 .blueprintTypeLegend i { align-items: center; border: 1px solid #cfcbc3; border-radius: 5px; display: flex; height: 19px; justify-content: center; width: 19px; }
 .blueprintTypeLegend i[data-kind="source"] { background: #eeeae2; border-color: #aaa39a; color: #4f4b44; }
 .blueprintTypeLegend i[data-kind="topic"] { background: #e4e1da; border-color: #8d887f; color: #25262b; }
 .blueprintTypeLegend i[data-kind="concept"] { background: #e3edf2; border-color: #8fa8b5; color: #39586c; }
-.blueprintTypeLegend i[data-kind="clip"] { background: #dff0f1; border-color: #85aeb6; color: #426879; }
+.blueprintTypeLegend i[data-kind="clip"] { background: #e2f0df; border-color: #82a77b; color: #426b3e; }
 .blueprintTypeLegend i[data-kind="question"] { background: #ffecd7; border-color: #d29860; color: #a85819; }
 .blueprintTypeLegend i svg { height: 11px; width: 11px; }
+.blueprintModeTabs { background: #efede8; border: 1px solid #e0dcd4; border-radius: 8px; display: flex; padding: 3px; }
+.blueprintModeTabs button { background: transparent; border: 0; border-radius: 6px; color: #66646b; cursor: pointer; font: inherit; font-size: 10px; font-weight: 750; min-width: 62px; padding: 6px 11px; }
+.blueprintModeTabs button:hover { color: #202126; }
+.blueprintModeTabs button[aria-pressed="true"] { background: #fff; box-shadow: 0 2px 7px rgb(28 29 33 / 9%); color: #202126; }
 .blueprintBody { display: grid; grid-template-columns: 268px minmax(0, 1fr); height: max(480px, calc(100dvh - 480px)); min-height: 0; }
 .blueprintOutline { background: #f5f3ee; border-right: 1px solid #dedbd3; overflow: auto; padding: 16px 12px; }
 .blueprintOutline button { align-items: flex-start; background: transparent; border: 0; border-radius: 9px; color: #57565d; display: flex; font: inherit; gap: 10px; padding: 10px 11px; text-align: left; width: 100%; }
@@ -1431,8 +1431,8 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintTypedNode[data-kind="topic"]::before { background: #25262b; }
 .blueprintTypedNode[data-kind="concept"] { background: #e3edf2; border-color: #8fa8b5; }
 .blueprintTypedNode[data-kind="concept"]::before { background: #55768f; }
-.blueprintTypedNode[data-kind="clip"] { background: #dff0f1; border-color: #85aeb6; }
-.blueprintTypedNode[data-kind="clip"]::before { background: #6e98a8; }
+.blueprintTypedNode[data-kind="clip"] { background: #e2f0df; border-color: #82a77b; }
+.blueprintTypedNode[data-kind="clip"]::before { background: #5e8c57; }
 .blueprintTypedNode[data-kind="question"] { background: #ffecd7; border-color: #d29860; }
 .blueprintTypedNode[data-kind="question"]::before { background: #c8752d; }
 .blueprintTypedNode[data-risk="true"] { border-color: #d67a2d; box-shadow: 0 0 0 2px rgb(214 122 45 / 12%), 0 8px 22px rgb(34 35 39 / 7%); }
@@ -1479,7 +1479,6 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .inspectorClose { align-items: center; background: transparent; border: 0; border-radius: 7px; color: #6f6d74; display: flex; flex: 0 0 auto; height: 30px; justify-content: center; margin: -4px -5px 0 0; padding: 0; width: 30px; }
 .inspectorClose:hover { background: #f0eee9; color: #202126; }
 .inspectorClose svg { height: 17px; width: 17px; }
-.blueprintWorkspace[data-mode="learner"] .blueprintInspector,.blueprintWorkspace[data-mode="revision"] .blueprintInspector { top: 76px; max-height: calc(100% - 94px); }
 @keyframes blueprintInspectorIn { from { opacity: 0; transform: translateY(-6px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .conceptEvidence,.artifactCoverage { border-bottom: 1px solid #e3e0d9; padding: 18px 0; }
 .conceptEvidence h4,.artifactCoverage h4 { font-size: 12px; margin: 0 0 12px; }
@@ -1492,6 +1491,13 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .conceptEvidence dl div,.artifactCoverage dl div { align-items: center; display: flex; font-size: 11px; justify-content: space-between; text-transform: capitalize; }
 .conceptEvidence dd,.artifactCoverage dd { font-weight: 800; margin: 0; }
 .artifactCoverage p { color: #6f6c74; font-size: 12px; line-height: 1.55; }
+.blueprintClipPlayer { display: grid; gap: 10px; margin-bottom: 18px; }
+.blueprintClipPlayer > div { align-items: center; display: flex; justify-content: space-between; }
+.blueprintClipPlayer > div span { align-items: center; color: #456f41; display: flex; font-size: 10px; font-weight: 800; gap: 6px; letter-spacing: .05em; text-transform: uppercase; }
+.blueprintClipPlayer > div span svg { height: 13px; width: 13px; }
+.blueprintClipPlayer > div strong { color: #65636a; font-size: 10px; }
+.blueprintClipPlayer > :global(.clipPreview) { border: 1px solid #d9e4d6; border-radius: 9px; max-height: 190px; overflow: hidden; }
+.blueprintClipPlayer > p { background: #f3f6f1; border-radius: 8px; margin: 0; padding: 12px; }
 .blueprintEmptyEvidence { align-items: flex-start; border-bottom: 1px solid #e3e0d9; display: flex; gap: 10px; padding: 18px 0; }
 .blueprintEmptyEvidence svg { height: 17px; margin-top: 2px; width: 17px; }
 .blueprintEmptyEvidence p { color: #747179; display: grid; font-size: 11px; gap: 3px; line-height: 1.45; margin: 0; }
@@ -1528,19 +1534,6 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .relationshipReview svg,.blueprintActions svg { height: 13px; width: 13px; }
 .blueprintActions { padding-top: 16px; }
 .blueprintActions button { flex: 1; }
-.learnerBlueprintStrip { align-items: center; background: rgb(255 255 255 / 94%); border-bottom: 1px solid #ddd9d1; display: flex; gap: 7px; left: 0; overflow-x: auto; padding: 10px 12px; position: absolute; right: 0; top: 0; z-index: 5; }
-.learnerBlueprintStrip > span { color: #77747c; flex: 0 0 auto; font-size: 10px; font-weight: 800; text-transform: uppercase; }
-.learnerBlueprintStrip button { align-items: center; background: transparent; border: 0; border-radius: 7px; display: flex; flex: 0 0 auto; font: inherit; gap: 6px; max-width: 180px; padding: 6px; text-align: left; }
-.learnerBlueprintStrip button[aria-current="step"] { background: #efede7; }
-.learnerBlueprintStrip button i { align-items: center; background: #d4d1ca; border-radius: 50%; display: flex; flex: 0 0 auto; font-size: 9px; font-style: normal; height: 22px; justify-content: center; width: 22px; }
-.learnerBlueprintStrip button i[data-state="mastered"] { background: #dcebd8; color: #386331; }
-.learnerBlueprintStrip button i[data-state="struggling"] { background: #ffead7; color: #9f4f12; }
-.learnerBlueprintStrip button strong { font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.revisionBlueprintSummary { align-items: center; background: #fff8ed; border-bottom: 1px solid #e6c8a5; display: grid; gap: 11px; grid-template-columns: auto minmax(0, 1fr) auto; left: 0; padding: 10px 14px; position: absolute; right: 0; top: 0; z-index: 5; }
-.revisionBlueprintSummary svg { height: 17px; width: 17px; }
-.revisionBlueprintSummary p { display: grid; font-size: 10px; gap: 2px; margin: 0; }
-.revisionBlueprintSummary p strong { font-size: 12px; }
-.revisionBlueprintSummary span { color: #66636b; font-size: 10px; }
 .proposalPackStatus { align-items: flex-start; background: #f5f3ef; border-radius: 9px; display: flex; gap: 9px; margin-top: 14px; padding: 11px; }
 .proposalPackStatus svg { height: 16px; width: 16px; }
 .proposalPackStatus p { color: #747179; display: grid; font-size: 10px; gap: 2px; line-height: 1.4; margin: 0; }
@@ -1586,7 +1579,6 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .structuredBlueprintOutline strong { font-size: 12px; line-height: 1.35; }
 .structuredBlueprintOutline small { color: #69666e; font-size: 10px; }
 .structuredBlueprintCanvas { background: #fff; min-height: 0; overflow: auto; position: relative; }
-.structuredBlueprintCanvas > .learnerBlueprintStrip,.structuredBlueprintCanvas > .revisionBlueprintSummary { position: sticky; top: 0; }
 .topicLaneBoard { margin: 0 auto; max-width: 1320px; padding: 18px 22px 50px; }
 .blueprintLegend { align-items: center; border-bottom: 1px solid #e4e1da; color: #6d6a72; display: flex; flex-wrap: wrap; font-size: 10px; gap: 17px; margin-bottom: 3px; padding: 0 4px 13px; }
 .blueprintLegend span { align-items: center; display: flex; gap: 6px; }
@@ -1680,9 +1672,9 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 
 @media (max-width: 900px) {
   .blueprintBody { display: grid; grid-template-columns: 190px minmax(500px, 1fr); overflow-x: auto; }
-  .blueprintMapToolbar { align-items: flex-start; flex-direction: column; gap: 10px; }
-  .blueprintMapToolbar nav { max-width: 100%; overflow-x: auto; }
   .blueprintGraphControls { flex-wrap: wrap; padding-left: 20px; }
+  .blueprintToolbarStack { border-left: 0; justify-items: start; min-width: 0; padding-left: 0; width: 100%; }
+  .blueprintTypeLegend { max-width: 100%; overflow-x: auto; }
   .blueprintAutoArrange { margin-left: 0; }
   .blueprintInspector { right: 12px; top: 12px; width: min(350px, calc(100% - 24px)); }
   .blueprintBrief { grid-template-columns: 1fr; }

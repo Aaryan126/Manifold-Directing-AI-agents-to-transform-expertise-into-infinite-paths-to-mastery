@@ -116,7 +116,7 @@ import { readDevelopmentSession } from "../../../developmentSession";
 
 const pipelineBase = process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localhost:8000";
 type CanvasView = "blueprint" | "review" | "assessments" | "preview" | "settings";
-type BlueprintMode = "live" | "design" | "learner" | "revision";
+type BlueprintMode = "live" | "design";
 type Decision = "accepted" | "edited" | "dismissed";
 type AssessmentDraftPayload = {
   topic_id: string;
@@ -890,9 +890,6 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       {!focusedCreation ? (
         <div className={styles.panelHeader}>
           <div className={styles.directorIdentity}><MessageSquareText /><span><strong id="conversation-title">Course Director</strong><small>Manifold</small></span></div>
-          <div className={styles.panelHeaderActions}>
-            <button aria-label="Close Course Director" onClick={() => setDirectorOpen(false)} type="button"><X /></button>
-          </div>
         </div>
       ) : null}
       {composerCentered ? (
@@ -1036,6 +1033,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     onSequence={updateBlueprintSequence}
                     onUpdateConcept={updateBlueprintConcept}
                     revisionDiff={revisionDiff}
+                    clips={assessmentWorkspace?.clips ?? []}
                     workingBlueprint={workingBlueprint}
                   />
                 ) : null}
@@ -1049,7 +1047,19 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                 <MessageCircleMore />
                 <span>Course Director</span>
               </button>
-              {directorOpen ? <aside className={styles.directorDock}>{courseDirector}</aside> : null}
+              {directorOpen ? (
+                <aside className={styles.directorDock}>
+                  <button
+                    aria-label="Close Course Director"
+                    className={styles.directorDockClose}
+                    onClick={() => setDirectorOpen(false)}
+                    type="button"
+                  >
+                    <X />
+                  </button>
+                  {courseDirector}
+                </aside>
+              ) : null}
               {sourcesOpen ? (
                 <SourcesDrawer
                   disabled={sending}
@@ -1218,16 +1228,7 @@ function CanvasTab({ active, badge, icon, label, onClick }: { active: boolean; b
 const blueprintModes: Array<{ id: BlueprintMode; label: string }> = [
   { id: "live", label: "Live" },
   { id: "design", label: "Design" },
-  { id: "learner", label: "Learner path" },
-  { id: "revision", label: "Revision" },
 ];
-
-function blueprintModeDescription(mode: BlueprintMode) {
-  if (mode === "design") return "Edit structure and learner order";
-  if (mode === "learner") return "Trace the adaptive learner journey";
-  if (mode === "revision") return "Inspect private changes against live";
-  return "Monitor the live course and its evidence";
-}
 
 type BlueprintGraphNodeData = {
   artifact: BlueprintNode;
@@ -1656,7 +1657,7 @@ export function DeprecatedStructuredBlueprintWorkspace({
           {selected ? (
             <aside aria-label={`${selected.title} artifact inspector`} className={`${styles.blueprintInspector} ${styles.structuredBlueprintInspector}`} onClick={(event) => event.stopPropagation()} role="dialog">
               <header><span data-kind={selected.kind}>{blueprintKindIcon(selected.kind)}</span><div><small>{selected.kind}</small><h3>{selected.title}</h3><em data-status={selected.status}>{selected.status}</em></div><button aria-label="Close artifact inspector" className={styles.inspectorClose} onClick={() => setSelectedLogicalId(null)} type="button"><X /></button></header>
-              {selected.kind === "concept" ? <ConceptEvidencePanel evidence={selectedEvidence} /> : <ArtifactCoveragePanel node={selected} neighbors={neighbors} />}
+              {selected.kind === "concept" ? <ConceptEvidencePanel evidence={selectedEvidence} /> : <ArtifactCoveragePanel clip={null} node={selected} neighbors={neighbors} />}
               {designMode && selected.kind === "concept" ? <><ConceptInspectorEditor disabled={disabled} node={selected} onSave={onUpdateConcept} /><SequenceControls concepts={concepts} disabled={disabled} onChange={onSequence} selected={selected} /></> : null}
               {selected.kind === "concept" ? <button className={styles.inspectorFocusButton} onClick={() => setLens("focus")} type="button"><Search />Focus this concept and its connections</button> : null}
               {pendingEdges.filter((edge) => edge.source_id === selected.id || edge.target_id === selected.id).map((edge) => {
@@ -1740,7 +1741,7 @@ function StructuredBlueprintFlow({
   const flow = useBlueprintFlow(
     blueprint,
     evidence,
-    "learner",
+    "live",
     visibleNodeIds,
     selectedId,
     coreBlueprintEdgeKinds,
@@ -1803,6 +1804,7 @@ function BlueprintWorkspace({
   onSequence,
   onUpdateConcept,
   revisionDiff,
+  clips,
   workingBlueprint,
 }: {
   activeBlueprint: CourseBlueprint | null;
@@ -1821,6 +1823,7 @@ function BlueprintWorkspace({
   onSequence: (conceptIds: string[]) => Promise<void>;
   onUpdateConcept: (node: BlueprintNode, name: string, description: string) => Promise<void>;
   revisionDiff: RevisionDiff | null;
+  clips: AssessmentWorkspace["clips"];
   workingBlueprint: CourseBlueprint | null;
 }) {
   const [mode, setMode] = useState<BlueprintMode>(course?.status === "published" ? "live" : "design");
@@ -1832,10 +1835,19 @@ function BlueprintWorkspace({
   );
   const [autoArrangeVersion, setAutoArrangeVersion] = useState(0);
   const lastFittedViewport = useRef<string | null>(null);
-  const blueprint = mode === "live" || mode === "learner"
+  const blueprint = mode === "live"
     ? (activeBlueprint ?? workingBlueprint)
     : (workingBlueprint ?? activeBlueprint);
   const selected = blueprint?.nodes.find((node) => node.logical_id === selectedLogicalId) ?? null;
+  const selectedClip = selected?.kind === "clip"
+    ? clips.find((clip) => clip.id === selected.id)
+      ?? clips.find((clip) => clip.topic_id === selected.parent_id && (
+        clip.label === selected.title
+        || clip.topic_title === selected.title
+        || clip.type.replaceAll("_", " ").toLowerCase() === selected.title.toLowerCase()
+      ))
+      ?? null
+    : null;
   const topics = useMemo(
     () => blueprint?.nodes.filter((node) => node.kind === "topic") ?? [],
     [blueprint],
@@ -1961,13 +1973,6 @@ function BlueprintWorkspace({
         </div>
       ) : null}
 
-      <section className={styles.blueprintMapToolbar}>
-        <div><small>Blueprint view</small><strong>{blueprintModeDescription(mode)}</strong></div>
-        <nav aria-label="Blueprint mode">
-          {blueprintModes.map((item) => <button aria-pressed={mode === item.id} key={item.id} onClick={() => setMode(item.id)} type="button">{item.label}</button>)}
-        </nav>
-      </section>
-
       <section className={styles.blueprintGraphControls} aria-label="Blueprint graph controls">
         <div className={styles.blueprintRelationshipPresets}>
           <span>Relationships</span>
@@ -2010,10 +2015,15 @@ function BlueprintWorkspace({
         >
           <Network />Auto arrange
         </button>
-        <div className={styles.blueprintTypeLegend} aria-label="Artifact types">
-          {(["source", "topic", "concept", "clip", "question"] as BlueprintNode["kind"][]).map((kind) => (
-            <span key={kind}><i data-kind={kind}>{blueprintKindIcon(kind)}</i>{kind}</span>
-          ))}
+        <div className={styles.blueprintToolbarStack}>
+          <div className={styles.blueprintTypeLegend} aria-label="Artifact types">
+            {(["source", "topic", "concept", "clip", "question"] as BlueprintNode["kind"][]).map((kind) => (
+              <span key={kind}><i data-kind={kind}>{blueprintKindIcon(kind)}</i>{kind}</span>
+            ))}
+          </div>
+          <nav className={styles.blueprintModeTabs} aria-label="Blueprint mode">
+            {blueprintModes.map((item) => <button aria-pressed={mode === item.id} key={item.id} onClick={() => setMode(item.id)} type="button">{item.label}</button>)}
+          </nav>
         </div>
       </section>
 
@@ -2034,8 +2044,6 @@ function BlueprintWorkspace({
         </nav>
 
         <div className={styles.blueprintCanvas}>
-          {mode === "learner" ? <LearnerBlueprintStrip concepts={concepts} evidence={blueprintEvidence} onSelect={setSelectedLogicalId} selectedLogicalId={selectedLogicalId} /> : null}
-          {mode === "revision" ? <RevisionBlueprintSummary diff={revisionDiff} active={activeBlueprint} working={workingBlueprint} /> : null}
           {!flow.layoutReady ? <div className={styles.blueprintLayoutLoading}><LoaderCircle className={styles.spin} /><span>Arranging the course system…</span></div> : null}
           <ReactFlow
             edgeTypes={blueprintEdgeTypes}
@@ -2074,7 +2082,9 @@ function BlueprintWorkspace({
             <aside aria-label={`${selected.title} artifact inspector`} className={styles.blueprintInspector} role="dialog">
             <>
               <header><span data-kind={selected.kind}>{blueprintKindIcon(selected.kind)}</span><div><small>{selected.kind}</small><h3>{selected.title}</h3><em data-status={selected.status}>{selected.status}</em></div><button aria-label="Close artifact inspector" className={styles.inspectorClose} onClick={() => setSelectedLogicalId(null)} type="button"><X /></button></header>
-              {selected.kind === "concept" ? <ConceptEvidencePanel evidence={evidence} /> : <ArtifactCoveragePanel node={selected} neighbors={neighbors} />}
+              {selected.kind === "concept"
+                ? <ConceptEvidencePanel evidence={evidence} />
+                : <ArtifactCoveragePanel clip={selectedClip} node={selected} neighbors={neighbors} />}
               {mode === "design" && selected.kind === "concept" ? (
                 <>
                   <ConceptInspectorEditor disabled={disabled} node={selected} onSave={onUpdateConcept} />
@@ -2354,9 +2364,32 @@ function ConceptInspectorEditor({ disabled, node, onSave }: { disabled: boolean;
   return <form className={styles.inspectorEditor} onSubmit={(event) => { event.preventDefault(); setSaving(true); void onSave(node, name, description).then(() => setEditing(false)).finally(() => setSaving(false)); }}><label>Name<input disabled={saving} onChange={(event) => setName(event.target.value)} required value={name} /></label><label>Description<textarea disabled={saving} onChange={(event) => setDescription(event.target.value)} rows={4} value={description} /></label><div><button disabled={saving} onClick={() => setEditing(false)} type="button">Cancel</button><button disabled={saving || !name.trim()} type="submit">{saving ? <LoaderCircle className={styles.spin} /> : <Check />}Save private edit</button></div></form>;
 }
 
-function ArtifactCoveragePanel({ node, neighbors }: { node: BlueprintNode; neighbors: BlueprintNode[] }) {
+function ArtifactCoveragePanel({
+  clip,
+  node,
+  neighbors,
+}: {
+  clip: AssessmentWorkspace["clips"][number] | null;
+  node: BlueprintNode;
+  neighbors: BlueprintNode[];
+}) {
   const grouped = neighbors.reduce<Record<string, number>>((result, item) => ({ ...result, [item.kind]: (result[item.kind] ?? 0) + 1 }), {});
-  return <section className={styles.artifactCoverage}><h4>Connected system</h4><p>{String(node.metadata.description ?? node.metadata.summary ?? "This artifact participates in the adaptive learning path.")}</p><dl>{Object.entries(grouped).map(([kind, count]) => <div key={kind}><dt>{kind}</dt><dd>{count}</dd></div>)}</dl></section>;
+  return (
+    <section className={styles.artifactCoverage}>
+      {node.kind === "clip" ? (
+        <div className={styles.blueprintClipPlayer}>
+          <div>
+            <span><Play />Teaching moment</span>
+            <strong>{clip ? clipTimeRange(clip) : "Preview unavailable"}</strong>
+          </div>
+          {clip ? <ClipPlayer clip={clip} /> : <p>This clip is not available in the currently loaded revision.</p>}
+        </div>
+      ) : null}
+      <h4>Connected system</h4>
+      <p>{String(node.metadata.description ?? node.metadata.summary ?? "This artifact participates in the adaptive learning path.")}</p>
+      <dl>{Object.entries(grouped).map(([kind, count]) => <div key={kind}><dt>{kind}</dt><dd>{count}</dd></div>)}</dl>
+    </section>
+  );
 }
 
 function SequenceControls({ concepts, disabled, onChange, selected }: { concepts: BlueprintNode[]; disabled: boolean; onChange: (ids: string[]) => Promise<void>; selected: BlueprintNode }) {
@@ -2380,14 +2413,6 @@ function LayoutControls({ disabled, node, onMove }: {
   const y = typeof saved?.y === "number" ? saved.y : 0;
   const move = (nextX: number, nextY: number) => void onMove(node, nextX, nextY);
   return <section className={styles.layoutControl}><div><small>Canvas position</small><strong>Drag or nudge</strong></div><div><button aria-label="Move artifact left" disabled={disabled} onClick={() => move(x - 40, y)} type="button">←</button><button aria-label="Move artifact up" disabled={disabled} onClick={() => move(x, y - 40)} type="button">↑</button><button aria-label="Move artifact down" disabled={disabled} onClick={() => move(x, y + 40)} type="button">↓</button><button aria-label="Move artifact right" disabled={disabled} onClick={() => move(x + 40, y)} type="button">→</button></div></section>;
-}
-
-function LearnerBlueprintStrip({ concepts, evidence, onSelect, selectedLogicalId }: { concepts: BlueprintNode[]; evidence: BlueprintConceptEvidence[]; onSelect: (logicalId: string) => void; selectedLogicalId: string | null }) {
-  return <div className={styles.learnerBlueprintStrip}><span>Learner journey</span>{concepts.map((concept, index) => <button aria-current={selectedLogicalId === concept.logical_id ? "step" : undefined} key={concept.id} onClick={() => onSelect(concept.logical_id)} type="button"><i data-state={masteryStateForConcept(concept.id, evidence)}>{index + 1}</i><strong>{concept.title}</strong></button>)}</div>;
-}
-
-function RevisionBlueprintSummary({ active, diff, working }: { active: CourseBlueprint | null; diff: RevisionDiff | null; working: CourseBlueprint | null }) {
-  return <div className={styles.revisionBlueprintSummary}><FilePenLine /><p><strong>{working ? "Private revision open" : "Live revision"}</strong>{diff?.changes.length ? `${diff.changes.length} artifact changes are staged. Select an artifact to inspect it; publish only after reviewing each generated proposal.` : "There are no unpublished changes."}</p><span>{active?.nodes.length ?? 0} live → {working?.nodes.length ?? active?.nodes.length ?? 0} working artifacts</span></div>;
 }
 
 function LearnerJourneyPreview({
