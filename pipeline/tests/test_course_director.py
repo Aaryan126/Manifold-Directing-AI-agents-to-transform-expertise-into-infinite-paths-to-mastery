@@ -2,7 +2,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.course_os.course_director import LocalCourseDirector
+from app.course_os.course_director import LocalCourseDirector, _DirectorPlanOutput
 from app.course_os.models import BlueprintEdge, BlueprintNode, CourseBlueprint
 
 
@@ -24,6 +24,15 @@ def _blueprint() -> CourseBlueprint:
         edges=(),
         uncovered_concept_ids=(),
     )
+
+
+def test_openai_director_plan_uses_closed_nested_structured_output_models() -> None:
+    schema = _DirectorPlanOutput.model_json_schema()
+
+    assert schema["additionalProperties"] is False
+    assert schema["$defs"]["_DirectorActionOutput"]["additionalProperties"] is False
+    assert schema["$defs"]["_DirectorProposedStateOutput"]["additionalProperties"] is False
+    assert schema["$defs"]["_DirectorCorrectAnswerOutput"]["additionalProperties"] is False
 
 
 @pytest.mark.anyio

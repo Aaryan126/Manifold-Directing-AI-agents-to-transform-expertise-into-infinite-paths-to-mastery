@@ -787,6 +787,7 @@
 .proposalCard button svg { height: 11px; width: 11px; }
 .proposalCard > strong { align-items: center; color: #397248; display: flex; font-size: 11px; gap: 5px; text-transform: capitalize; }
 .proposalCard > strong svg { height: 12px; width: 12px; }
+.proposalCard[data-resolved] { background: transparent; border-style: dashed; margin-top: 8px; padding: 9px 11px; }
 .proposalCard .proposalEdit { display: grid; gap: 8px; }
 .proposalEdit label { color: #66656c; display: grid; font-size: 11px; font-weight: 650; gap: 6px; }
 .proposalEdit textarea { background: #fff; border: 1px solid #d5d3cc; border-radius: 6px; color: #37363d; font-family: ui-monospace, monospace; font-size: 11px; padding: 9px; resize: vertical; width: 100%; }

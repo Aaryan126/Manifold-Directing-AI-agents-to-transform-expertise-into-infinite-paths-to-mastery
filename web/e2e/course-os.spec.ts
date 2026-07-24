@@ -721,6 +721,7 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect(page.getByRole("button", { name: "Blueprint", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Old Blueprint" })).toHaveCount(0);
   await expect(page.getByText("Structure, teaching, assessment, evidence, and routing in one inspectable model.")).toBeVisible();
+  await expect(page.getByText(/concepts are missing a reviewed assessment or teaching artifact/i)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
   const blueprintMode = page.getByRole("navigation", { name: "Blueprint mode" });
   expect(await blueprintMode.evaluate((element) => element.parentElement?.className.includes("blueprintCanvas")))
@@ -924,4 +925,30 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect(page.getByRole("heading", { name: "Edit course default" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Preview routing behavior" })).toBeVisible();
   await expect(page.getByText("Predicted route")).toBeVisible();
+});
+
+test("saving a dragged Blueprint node keeps the graph mounted", async ({ page }) => {
+  const state = await mockPublishedCourseOS(page);
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto(`/app/courses/${state.published.id}`);
+  await page.getByRole("button", { name: "Design" }).click();
+  await page.getByRole("button", { name: "Auto arrange" }).click();
+
+  const conceptNode = page.getByTestId("rf__node-concept-1");
+  await expect(conceptNode).toBeVisible();
+  const bounds = await conceptNode.boundingBox();
+  expect(bounds).not.toBeNull();
+  await page.mouse.move(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    bounds!.x + bounds!.width / 2 + 80,
+    bounds!.y + bounds!.height / 2 + 48,
+    { steps: 10 },
+  );
+  await page.mouse.up();
+
+  await expect.poll(() => state.savedLayout()?.positions?.[0]?.logical_artifact_id)
+    .toBe("concept-logical");
+  await expect(page.locator(".react-flow__node")).toHaveCount(7);
+  await expect(page.getByTestId("rf__node-concept-working")).toBeVisible();
 });

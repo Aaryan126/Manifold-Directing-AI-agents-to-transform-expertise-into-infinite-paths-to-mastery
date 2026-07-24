@@ -5,7 +5,7 @@ from typing import Any, Literal, Protocol
 from uuid import UUID
 
 from openai import AsyncOpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.course_os.models import CourseBlueprint
 
@@ -56,7 +56,43 @@ class CourseDirector(Protocol):
     async def plan(self, instruction: str, blueprint: CourseBlueprint) -> CourseDirectorPlan: ...
 
 
+class _DirectorCorrectAnswerOutput(BaseModel):
+    """Closed model-facing answer shape required by OpenAI strict structured output."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    answer: str | None = None
+    choices: list[str] | None = None
+
+
+class _DirectorProposedStateOutput(BaseModel):
+    """Every state field Course Director may place in a reviewed typed proposal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = None
+    summary: str | None = None
+    name: str | None = None
+    description: str | None = None
+    type: str | None = None
+    difficulty: str | None = None
+    body: str | None = None
+    correct_answer: _DirectorCorrectAnswerOutput | None = None
+    confidence_prompt: str | None = None
+    start_seconds: float | None = None
+    end_seconds: float | None = None
+    topic_logical_ids: list[str] | None = None
+    sequence_after_id: str | None = None
+    topic_logical_id: str | None = None
+    primary_concept_logical_id: str | None = None
+
+    def as_proposal_state(self) -> dict[str, Any]:
+        return self.model_dump(exclude_none=True)
+
+
 class _DirectorActionOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     operation: DirectorOperation
     summary: str = Field(min_length=1, max_length=120)
     rationale: str = Field(min_length=1, max_length=240)
@@ -68,10 +104,14 @@ class _DirectorActionOutput(BaseModel):
     previous_relationship_type: DirectorRelationship | None = None
     previous_source_logical_id: str | None = None
     previous_target_logical_id: str | None = None
-    proposed_state: dict[str, Any] = Field(default_factory=dict)
+    proposed_state: _DirectorProposedStateOutput = Field(
+        default_factory=_DirectorProposedStateOutput
+    )
 
 
 class _DirectorPlanOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     summary: str = Field(min_length=1, max_length=300)
     clarification: str | None = Field(default=None, max_length=240)
     actions: list[_DirectorActionOutput] = Field(default_factory=list, max_length=8)
@@ -281,6 +321,7 @@ def _validated_plan(output: _DirectorPlanOutput, blueprint: CourseBlueprint) -> 
     }
     actions: list[CourseDirectorAction] = []
     for candidate in output.actions:
+        proposed_state = candidate.proposed_state.as_proposal_state()
         try:
             logical_id = (
                 UUID(candidate.logical_artifact_id) if candidate.logical_artifact_id else None
@@ -303,7 +344,7 @@ def _validated_plan(output: _DirectorPlanOutput, blueprint: CourseBlueprint) -> 
             if logical_id not in nodes or nodes[logical_id].kind != candidate.artifact_kind:
                 continue
         if candidate.operation == "create_question":
-            state = candidate.proposed_state
+            state = proposed_state
             try:
                 topic_id = UUID(str(state["topic_logical_id"]))
                 concept_id = UUID(str(state["primary_concept_logical_id"]))
@@ -374,7 +415,7 @@ def _validated_plan(output: _DirectorPlanOutput, blueprint: CourseBlueprint) -> 
                 previous_relationship_type=candidate.previous_relationship_type,
                 previous_source_logical_id=previous_source_id,
                 previous_target_logical_id=previous_target_id,
-                proposed_state=candidate.proposed_state,
+                proposed_state=proposed_state,
                 summary=candidate.summary,
                 rationale=candidate.rationale,
             )

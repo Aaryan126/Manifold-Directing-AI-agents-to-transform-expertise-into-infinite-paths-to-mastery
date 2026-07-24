@@ -498,6 +498,14 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         },
       );
       setProposalStates((current) => ({ ...current, [proposalId]: payload.status }));
+      setMessages((current) => current.map((message) => ({
+        ...message,
+        blocks: message.blocks.map((block) => (
+          block.type === "proposal" && block.proposal_id === proposalId
+            ? { ...block, status: payload.status }
+            : block
+        )),
+      })));
       if (decision !== "dismissed" && course) {
         await Promise.all([
           refreshBlueprint(identity, course),
@@ -1056,6 +1064,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     rememberUndo = true,
   ) {
     if (!identity) return;
+    const hadWorkingBlueprint = Boolean(workingBlueprint);
     try {
       await request(`/courses/${courseId}/map/layout`, identity, {
         method: "PUT",
@@ -1075,12 +1084,26 @@ export function CourseStudio({ courseId }: { courseId: string }) {
           );
         });
       }
-      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
-      setCourse(nextCourse);
-      await Promise.all([
-        refreshBlueprint(identity, nextCourse),
-        refreshRevisionDiff(identity, nextCourse),
-      ]);
+      setWorkingBlueprint((current) => current ? {
+        ...current,
+        nodes: current.nodes.map((item) => item.logical_id === node.logical_id
+          ? {
+            ...item,
+            metadata: {
+              ...item.metadata,
+              layout: { x, y },
+            },
+          }
+          : item),
+      } : current);
+      if (!hadWorkingBlueprint) {
+        const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+        setCourse(nextCourse);
+        await Promise.all([
+          refreshBlueprint(identity, nextCourse),
+          refreshRevisionDiff(identity, nextCourse),
+        ]);
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not save the Blueprint position.");
       throw caught;
@@ -1497,6 +1520,13 @@ function MessageBubble({ message, proposalStates, onResolve }: {
             : typeof proposed.instruction === "string"
               ? proposed.instruction
               : `${proposalType.replaceAll("_", " ")} ${artifactType.replaceAll("_", " ")}`;
+          if (state !== "proposed" && state !== "saving") {
+            return (
+              <div className={styles.proposalCard} data-resolved key={`${proposalId}-${index}`}>
+                <strong><Check />Proposal {state}</strong>
+              </div>
+            );
+          }
           return (
             <div className={styles.proposalCard} key={`${proposalId}-${index}`}>
               <span><FilePenLine />Private {proposalType.replaceAll("_", " ")} proposal</span>
@@ -2392,15 +2422,16 @@ function BlueprintWorkspace({
       relationshipDraft,
     },
   );
-  const viewportFitKey = useMemo(() => {
+  const reactFlowMountKey = useMemo(() => {
     if (!blueprint) return "empty";
     const logicalIds = blueprint.nodes
       .filter((node) => !visibleNodeIds || visibleNodeIds.has(node.id))
       .map((node) => node.logical_id)
       .sort()
       .join(":");
-    return `${mode}:${focusTopicLogicalId ?? "course"}:${autoArrangeVersion}:${flow.layoutKey ?? "pending"}:${logicalIds}`;
-  }, [autoArrangeVersion, blueprint, flow.layoutKey, focusTopicLogicalId, mode, visibleNodeIds]);
+    return `${mode}:${focusTopicLogicalId ?? "course"}:${autoArrangeVersion}:${logicalIds}`;
+  }, [autoArrangeVersion, blueprint, focusTopicLogicalId, mode, visibleNodeIds]);
+  const viewportFitKey = `${reactFlowMountKey}:${flow.layoutKey ?? "pending"}`;
   const evidence = selected?.kind === "concept"
     ? blueprintEvidence.find((item) => item.concept_id === selected.id) ?? null
     : null;
@@ -2641,10 +2672,10 @@ function BlueprintWorkspace({
         <article><small>Private work</small><strong>{agentTasks.filter((task) => ["queued", "running", "waiting_review"].includes(task.status)).length} active</strong><span>{revisionDiff?.changes.length ?? 0} unpublished artifact changes</span></article>
       </section>
 
-      {coverageGaps || pendingEdges.length ? (
+      {pendingEdges.length ? (
         <div className={styles.blueprintNotice}>
           <CircleAlert />
-          <p><strong>{coverageGaps ? `${coverageGaps} concepts are missing a reviewed assessment or teaching artifact.` : `${pendingEdges.length} prerequisite relationships need review.`}</strong> {coverageGaps ? "Open a concept to inspect its coverage." : "They remain private until you confirm them."}</p>
+          <p><strong>{pendingEdges.length} prerequisite relationships need review.</strong> They remain private until you confirm them.</p>
         </div>
       ) : null}
 
@@ -2774,7 +2805,7 @@ function BlueprintWorkspace({
             edges={flow.edges}
             fitView
             fitViewOptions={{ maxZoom: 1, padding: 0.14 }}
-            key={`${blueprint.revision_id}:${flow.layoutKey ?? "pending"}`}
+            key={`${blueprint.course_id}:${reactFlowMountKey}`}
             nodeTypes={blueprintNodeTypes}
             nodes={flow.nodes}
             nodesConnectable={false}

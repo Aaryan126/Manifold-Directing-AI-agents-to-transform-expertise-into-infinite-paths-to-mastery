@@ -1375,7 +1375,26 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     (course_id, revision_id),
                 )
             ).fetchall()
-        return tuple(_message(row) for row in rows)
+            proposal_rows = await (
+                await conn.execute(
+                    """
+                    select id, status, instructor_revision
+                    from course_proposals
+                    where course_id = %s and revision_id = %s
+                    """,
+                    (course_id, revision_id),
+                )
+            ).fetchall()
+        proposal_states = {
+            str(row["id"]): (
+                str(row["status"]),
+                _json_dict(row["instructor_revision"])
+                if row["instructor_revision"] is not None
+                else None,
+            )
+            for row in proposal_rows
+        }
+        return tuple(_message(row, proposal_states) for row in rows)
 
     async def add_message(
         self,
@@ -5478,13 +5497,29 @@ def _generation_run(row: dict[str, Any], tasks: tuple[GenerationTask, ...]) -> G
     )
 
 
-def _message(row: dict[str, Any]) -> ConversationMessage:
+def _message(
+    row: dict[str, Any],
+    proposal_states: dict[str, tuple[str, dict[str, Any] | None]] | None = None,
+) -> ConversationMessage:
     blocks = row["blocks"] if isinstance(row["blocks"], list) else []
+    resolved_blocks: list[dict[str, Any]] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        resolved = dict(block)
+        proposal_id = str(resolved.get("proposal_id", ""))
+        current = (proposal_states or {}).get(proposal_id)
+        if current is not None:
+            status, instructor_revision = current
+            resolved["status"] = status
+            if status == "edited" and instructor_revision:
+                resolved["proposed_state"] = instructor_revision
+        resolved_blocks.append(resolved)
     return ConversationMessage(
         id=UUID(str(row["id"])),
         role=str(row["role"]),
         content=str(row["content"]),
-        blocks=tuple(block for block in blocks if isinstance(block, dict)),
+        blocks=tuple(resolved_blocks),
         created_at=_datetime(row["created_at"]),
     )
 

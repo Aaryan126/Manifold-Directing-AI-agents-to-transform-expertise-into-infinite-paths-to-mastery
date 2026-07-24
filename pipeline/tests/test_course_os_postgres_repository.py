@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any
 from uuid import UUID, uuid4
@@ -7,7 +8,11 @@ from uuid import UUID, uuid4
 import pytest
 
 import app.course_os.postgres_repository as repository_module
-from app.course_os.postgres_repository import PostgresCourseOSRepository, _publication_blockers
+from app.course_os.postgres_repository import (
+    PostgresCourseOSRepository,
+    _message,
+    _publication_blockers,
+)
 
 
 class _Cursor:
@@ -93,6 +98,32 @@ class _ConceptTopicConnection:
         if normalized.startswith("select t.id, t.logical_id from topic_concepts"):
             return _RowsCursor([self.previous_topic])
         return _Cursor()
+
+
+def test_message_reconciles_proposal_blocks_with_the_current_proposal_ledger() -> None:
+    proposal_id = uuid4()
+    instructor_revision = {"summary": "The instructor-edited version"}
+
+    message = _message(
+        {
+            "id": uuid4(),
+            "role": "manifold",
+            "content": "Review this private proposal.",
+            "blocks": [
+                {
+                    "type": "proposal",
+                    "proposal_id": str(proposal_id),
+                    "status": "proposed",
+                    "proposed_state": {"summary": "The original version"},
+                }
+            ],
+            "created_at": datetime.now(UTC),
+        },
+        {str(proposal_id): ("edited", instructor_revision)},
+    )
+
+    assert message.blocks[0]["status"] == "edited"
+    assert message.blocks[0]["proposed_state"] == instructor_revision
 
 
 @pytest.mark.anyio
