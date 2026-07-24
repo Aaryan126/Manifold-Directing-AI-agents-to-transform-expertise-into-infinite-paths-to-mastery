@@ -1503,6 +1503,12 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .structuredBlueprintToolbar nav button:hover,.structuredBlueprintToolbar nav button[aria-pressed="true"] { background: #efede8; color: #202126; }
 .blueprintDesignToggle { border-color: #d8d4cb; color: #24252a; }
 .blueprintDesignToggle[aria-pressed="true"] { background: #24252a; border-color: #24252a; color: #fff; }
+.structuredBlueprintToolbar .blueprintActionNav { align-items: center; gap: 6px; }
+.structuredBlueprintToolbar .blueprintActionNav > button { border-color: #d8d4cb; color: #292a2f; white-space: nowrap; }
+.structuredBlueprintToolbar .blueprintActionNav > button:hover { background: #f4f2ed; border-color: #bdb9b0; }
+.structuredBlueprintToolbar .blueprintActionNav .blueprintDesignToggle[aria-pressed="true"] { background: #24252a; border-color: #24252a; color: #fff; }
+.structuredBlueprintToolbar .reviewChangesAction { background: #fff8ed; border-color: #e5c39d; color: #8f4d19; }
+.reviewChangesAction span { align-items: center; background: #d97728; border-radius: 999px; color: #fff; display: flex; font-size: 9px; height: 18px; justify-content: center; min-width: 18px; padding-inline: 5px; }
 .structuredBlueprintToolbar .structuredModeNav { background: #f1efea; border: 1px solid #e5e1d9; border-radius: 9px; padding: 3px; }
 .structuredBlueprintToolbar .structuredModeNav button { border: 0; padding: 7px 10px; }
 .structuredBlueprintToolbar .structuredModeNav button[aria-pressed="true"] { background: #fff; box-shadow: 0 2px 8px rgb(20 20 20 / 9%); }
@@ -1566,10 +1572,64 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintPlacementDialog > div { display: flex; gap: 8px; justify-content: flex-end; margin-top: 24px; }
 .blueprintPlacementDialog button { background: #fff; border: 1px solid #d8d4cb; border-radius: 8px; color: #26272c; font: inherit; font-size: 11px; font-weight: 700; padding: 10px 13px; }
 .blueprintPlacementDialog button:last-child { background: #24252a; border-color: #24252a; color: #fff; }
+.blueprintActionDialog { background: #fff; border: 1px solid #d8d4cb; border-radius: 18px; box-shadow: 0 28px 80px rgb(28 29 33 / 28%); display: flex; flex-direction: column; max-height: min(860px, 88dvh); max-width: 940px; overflow: hidden; width: 100%; }
+.blueprintActionDialog > header { align-items: flex-start; border-bottom: 1px solid #e0ddd6; display: flex; justify-content: space-between; padding: 24px 26px 20px; }
+.blueprintActionDialog > header > div { align-items: flex-start; display: flex; gap: 14px; }
+.blueprintActionDialog > header > div > span { align-items: center; background: #f1efea; border-radius: 10px; color: #34353a; display: flex; flex: 0 0 auto; height: 42px; justify-content: center; width: 42px; }
+.blueprintActionDialog > header svg { height: 19px; width: 19px; }
+.blueprintActionDialog > header small { color: #98531d; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.blueprintActionDialog > header h3 { font-family: var(--font-display), Georgia, serif; font-size: 31px; font-weight: 500; line-height: 1.1; margin: 4px 0 5px; }
+.blueprintActionDialog > header p { color: #6f6c74; font-size: 12px; line-height: 1.45; margin: 0; max-width: 620px; }
+.blueprintActionDialog > header > button { align-items: center; background: transparent; border: 0; border-radius: 8px; color: #68666d; display: flex; height: 34px; justify-content: center; padding: 0; width: 34px; }
+.blueprintActionDialog > header > button:hover { background: #efede8; color: #202126; }
+.blueprintActionDialog > footer { align-items: center; background: #f8f6f2; border-top: 1px solid #e0ddd6; display: flex; gap: 20px; justify-content: space-between; padding: 15px 26px; }
+.blueprintActionDialog > footer p { color: #6f6c74; font-size: 10px; line-height: 1.45; margin: 0; }
+.blueprintActionDialog > footer button { background: #24252a; border: 1px solid #24252a; border-radius: 8px; color: #fff; font: inherit; font-size: 11px; font-weight: 700; padding: 9px 13px; white-space: nowrap; }
+.journeySummary,.revisionReviewSummary { border-bottom: 1px solid #e1ded7; display: grid; grid-template-columns: repeat(3, 1fr); }
+.journeySummary article,.revisionReviewSummary article { display: grid; gap: 3px; padding: 15px 22px; }
+.journeySummary article + article,.revisionReviewSummary article + article { border-left: 1px solid #e1ded7; }
+.journeySummary strong,.revisionReviewSummary strong { font-family: var(--font-display), Georgia, serif; font-size: 25px; font-weight: 500; }
+.journeySummary span,.revisionReviewSummary span { color: #6e6b73; font-size: 10px; }
+.journeySummary article[data-tone="attention"] { background: #fff8ed; color: #9a531b; }
+.currentJourneyStep { background: #f7f5f0; border: 1px solid #dedad2; border-radius: 11px; display: grid; gap: 4px; margin: 18px 26px 8px; padding: 14px 16px; }
+.currentJourneyStep small { color: #98531d; font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.currentJourneyStep strong { font-size: 14px; }
+.currentJourneyStep p { color: #6e6b73; font-size: 11px; line-height: 1.45; margin: 0; }
+.journeySteps { display: grid; gap: 0; list-style: none; margin: 0; overflow: auto; padding: 8px 26px 20px; }
+.journeySteps li { align-items: center; border-bottom: 1px solid #e4e1da; display: grid; gap: 13px; grid-template-columns: 34px minmax(0, 1fr) auto; padding: 13px 6px; position: relative; }
+.journeySteps li[data-current="true"] { background: #fcfaf5; border-radius: 10px; padding-inline: 12px; }
+.journeySteps li > i { align-items: center; background: #efede8; border-radius: 50%; color: #66636a; display: flex; font-size: 10px; font-style: normal; height: 30px; justify-content: center; width: 30px; }
+.journeySteps li > i svg { height: 14px; width: 14px; }
+.journeySteps li[data-state="mastered"] > i { background: #dfebdc; color: #47713f; }
+.journeySteps li[data-state="struggling"] > i { background: #ffead7; color: #a55318; }
+.journeySteps li > div { display: grid; gap: 3px; min-width: 0; }
+.journeySteps li > div span { color: #66636a; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.journeySteps li > div strong { font-size: 12px; }
+.journeySteps li > div p { color: #747179; font-size: 10px; margin: 0; }
+.journeySteps li > button { background: #fff; border: 1px solid #d8d4cb; border-radius: 7px; color: #313238; font: inherit; font-size: 10px; font-weight: 700; padding: 7px 9px; }
+.revisionReviewSummary { grid-template-columns: repeat(4, 1fr); }
+.revisionComparisonHeader { align-items: center; background: #f7f5f0; border-bottom: 1px solid #e0ddd6; color: #5f5c64; display: flex; font-size: 10px; font-weight: 700; gap: 10px; justify-content: center; padding: 11px; }
+.revisionComparisonHeader i { color: #9a561d; font-style: normal; }
+.revisionChangeList { display: grid; gap: 10px; overflow: auto; padding: 18px 26px 24px; }
+.revisionChangeList > article { border: 1px solid #dedad2; border-left: 4px solid #76737a; border-radius: 10px; overflow: hidden; }
+.revisionChangeList > article[data-change="added"] { border-left-color: #5f8d54; }
+.revisionChangeList > article[data-change="changed"] { border-left-color: #d27729; }
+.revisionChangeList > article[data-change="removed"] { border-left-color: #ae4338; }
+.revisionChangeList > article > header { align-items: center; background: #f9f8f5; border-bottom: 1px solid #e3e0d9; display: flex; justify-content: space-between; padding: 11px 13px; }
+.revisionChangeList > article > header div { display: grid; gap: 2px; }
+.revisionChangeList > article > header small { color: #66636a; font-size: 8px; font-weight: 800; text-transform: uppercase; }
+.revisionChangeList > article > header strong { font-size: 11px; }
+.revisionChangeList > article > header span { background: #efede8; border-radius: 999px; color: #5f5c64; font-size: 8px; font-weight: 800; padding: 4px 7px; text-transform: uppercase; }
+.revisionChangeList > article > div { align-items: stretch; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+.revisionChangeList > article > div > section { display: grid; gap: 6px; padding: 12px 14px; }
+.revisionChangeList > article > div > i { align-items: center; color: #9a561d; display: flex; font-style: normal; padding: 8px; }
+.revisionChangeList section small { color: #77747b; font-size: 8px; font-weight: 800; text-transform: uppercase; }
+.revisionChangeList section p { color: #44444a; font-size: 10px; line-height: 1.5; margin: 0; }
 
 @media (max-width: 1250px) {
   .topicLaneConcepts { grid-template-columns: repeat(2, minmax(170px, 1fr)); }
   .blueprintHealthSummary span { min-width: 70px; }
+  .structuredBlueprintToolbar .blueprintActionNav { flex: 1 0 100%; justify-content: flex-end; }
 }
 
 @media (max-width: 900px) {
@@ -1586,10 +1646,20 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 @media (max-width: 620px) {
   .structuredBlueprintToolbar { align-items: stretch; flex-direction: column; gap: 8px; }
   .structuredBlueprintToolbar nav { overflow-x: auto; }
+  .structuredBlueprintToolbar .blueprintActionNav { justify-content: flex-start; }
   .blueprintDesignToggle { justify-content: center; }
   .topicLaneConcepts { grid-template-columns: 1fr; }
   .structuredBlueprintInspector { inset: auto 12px 12px; max-height: 74dvh; width: auto; }
   .blueprintPlacementDialog > div { align-items: stretch; flex-direction: column; }
+  .blueprintActionDialog { max-height: 92dvh; }
+  .blueprintActionDialog > header,.blueprintActionDialog > footer { padding-inline: 18px; }
+  .journeySummary,.revisionReviewSummary { grid-template-columns: repeat(2, 1fr); }
+  .journeySummary article:nth-child(3),.revisionReviewSummary article:nth-child(3) { border-left: 0; border-top: 1px solid #e1ded7; }
+  .revisionReviewSummary article:nth-child(4) { border-top: 1px solid #e1ded7; }
+  .currentJourneyStep { margin-inline: 18px; }
+  .journeySteps,.revisionChangeList { padding-inline: 18px; }
+  .revisionChangeList > article > div { grid-template-columns: 1fr; }
+  .revisionChangeList > article > div > i { justify-content: center; padding: 0; transform: rotate(90deg); }
 }
 .proposalPack > article strong { font-size: 11px; line-height: 1.4; }
 .proposalPack > article span { align-items: center; color: #6e6b73; display: flex; font-size: 9px; gap: 4px; }

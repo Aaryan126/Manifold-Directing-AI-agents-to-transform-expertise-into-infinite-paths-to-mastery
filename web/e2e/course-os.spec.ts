@@ -631,14 +631,29 @@ test("published course opens with a readable structured Blueprint", async ({ pag
   await expect(page.getByRole("button", { name: /Net force.*50% correct/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Balanced forces.*Awaiting learner evidence/i })).toBeVisible();
   await expect(page.getByTestId("rf__node-source-1")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Live", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Design", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Learner path", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Revision", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Review changes/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Preview learner journey" }).click();
+  await expect(page.getByRole("dialog", { name: "Learner journey" })).toBeVisible();
+  await expect(page.getByText("Current learning decision")).toBeVisible();
+  await expect(page.getByText("1 clip · 1 check · 50% correct")).toBeVisible();
+  const journeyAccessibility = await new AxeBuilder({ page })
+    .include('[role="dialog"]')
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(journeyAccessibility.violations).toEqual([]);
+  await page.getByRole("button", { name: "Close learner journey preview" }).click();
   await page.getByRole("button", { name: /Net force.*50% correct/i }).click();
   await expect(page.getByRole("dialog", { name: /Net force artifact inspector/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Focus this concept and its connections" })).toBeVisible();
   await page.getByRole("button", { name: "Close artifact inspector" }).click();
   await page.getByRole("button", { name: "Dependencies" }).click();
   await expect(page.getByTestId("rf__node-concept-1")).toBeInViewport();
-  await page.getByRole("button", { name: "Design", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Design", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Edit Blueprint" }).click();
+  await expect(page.getByRole("button", { name: "Done editing" })).toHaveAttribute("aria-pressed", "true");
   const conceptOccurrence = page.getByTestId("concept-occurrence-topic-logical-concept-logical");
   const destinationLane = page.getByTestId("topic-lane-topic-logical-2");
   await conceptOccurrence.dragTo(destinationLane);
@@ -648,6 +663,21 @@ test("published course opens with a readable structured Blueprint", async ({ pag
   await conceptOccurrence.dragTo(destinationLane);
   await page.getByRole("button", { name: "Move here" }).click();
   await expect.poll(() => state.savedTopicIds()).toEqual(["topic-logical-2"]);
+  await expect(page.getByRole("button", { name: /Review changes.*1/ })).toBeVisible();
+  await page.getByRole("button", { name: /Review changes.*1/ }).click();
+  await expect(page.getByRole("dialog", { name: "Review changes" })).toBeVisible();
+  await expect(page.getByText("Compare the live course with the private workspace before publishing any update.")).toBeVisible();
+  await expect(page.getByText("Total changes")).toBeVisible();
+  await expect(page.getByText("Live", { exact: true })).toBeVisible();
+  await expect(page.getByText("Private revision", { exact: true })).toBeVisible();
+  const revisionAccessibility = await new AxeBuilder({ page })
+    .include('[role="dialog"]')
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(revisionAccessibility.violations).toEqual([]);
+  await page.getByRole("button", { name: "Done reviewing" }).click();
+  await page.getByRole("button", { name: "Done editing" }).click();
+  await expect(page.getByRole("button", { name: "Edit Blueprint" })).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByRole("button", { name: "Old Blueprint" })).toBeVisible();
 
   const accessibility = await new AxeBuilder({ page })

@@ -1318,16 +1318,19 @@ function BlueprintWorkspace({
   revisionDiff: RevisionDiff | null;
   workingBlueprint: CourseBlueprint | null;
 }) {
-  const [mode, setMode] = useState<BlueprintMode>(course?.status === "published" ? "live" : "design");
+  const [editing, setEditing] = useState(course?.status !== "published");
+  const [journeyOpen, setJourneyOpen] = useState(false);
+  const [revisionOpen, setRevisionOpen] = useState(false);
   const [lens, setLens] = useState<StructuredBlueprintLens>("course");
   const [selectedLogicalId, setSelectedLogicalId] = useState<string | null>(null);
   const [focusTopicLogicalId, setFocusTopicLogicalId] = useState<string | null>(null);
   const [draggedOccurrenceId, setDraggedOccurrenceId] = useState<string | null>(null);
   const [pendingPlacement, setPendingPlacement] = useState<PendingConceptPlacement | null>(null);
-  const designMode = mode === "design";
-  const blueprint = mode === "live" || mode === "learner"
-    ? (activeBlueprint ?? workingBlueprint)
-    : (workingBlueprint ?? activeBlueprint);
+  const designMode = editing;
+  const mode: BlueprintMode = editing ? "design" : "live";
+  const blueprint = editing
+    ? (workingBlueprint ?? activeBlueprint)
+    : (activeBlueprint ?? workingBlueprint);
   const topics = useMemo(
     () => blueprint?.nodes.filter((node) => node.kind === "topic").sort(compareBlueprintSequence) ?? [],
     [blueprint],
@@ -1356,6 +1359,7 @@ function BlueprintWorkspace({
     : [];
   const pendingEdges = blueprint?.edges.filter((edge) => edge.kind === "requires" && edge.status === "proposed") ?? [];
   const coverageGaps = blueprint?.uncovered_concept_ids.length ?? 0;
+  const privateChangeCount = revisionDiff?.changes.length ?? 0;
   const selectedTask = selected
     ? agentTasks.find((task) => task.target_logical_artifact_id === selected.logical_id && task.task_type === "prepare_improvement")
     : null;
@@ -1366,6 +1370,21 @@ function BlueprintWorkspace({
       setSelectedLogicalId(null);
     }
   }, [blueprint, selectedLogicalId]);
+
+  useEffect(() => {
+    if (!journeyOpen && !revisionOpen) return;
+    function closeDialog(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setJourneyOpen(false);
+      setRevisionOpen(false);
+    }
+    document.addEventListener("keydown", closeDialog);
+    return () => document.removeEventListener("keydown", closeDialog);
+  }, [journeyOpen, revisionOpen]);
+
+  useEffect(() => {
+    if (!privateChangeCount) setRevisionOpen(false);
+  }, [privateChangeCount]);
 
   if (!blueprint) {
     return <div className={styles.canvasEmpty}><LoaderCircle className={styles.spin} /><h2>Loading the course Blueprint</h2><p>The structure, learning evidence, and adaptive routes are being assembled.</p></div>;
@@ -1459,31 +1478,32 @@ function BlueprintWorkspace({
 
       <section className={styles.structuredBlueprintToolbar}>
         <div>
-          <small>Blueprint mode</small>
-          <strong>{blueprintModeDescription(mode)}</strong>
+          <small>{editing ? "Private workspace" : "Current course"}</small>
+          <strong>{editing ? "Editing a private revision" : "Published structure and learner evidence"}</strong>
         </div>
         <nav aria-label="Blueprint lens">
           <button aria-pressed={lens === "course"} onClick={() => { setLens("course"); setFocusTopicLogicalId(null); }} type="button"><BookOpenCheck />Course</button>
           <button aria-pressed={lens === "dependencies"} onClick={() => setLens("dependencies")} type="button"><GitFork />Dependencies</button>
           {lens === "focus" ? <button aria-pressed="true" type="button"><Search />Focused</button> : null}
         </nav>
-        <nav aria-label="Blueprint mode" className={styles.structuredModeNav}>
-          {blueprintModes.map((item) => (
-            <button
-              aria-pressed={mode === item.id}
-              key={item.id}
-              onClick={() => {
-                setMode(item.id);
-                if (item.id === "design") {
-                  setLens("course");
-                  setFocusTopicLogicalId(null);
-                }
-              }}
-              type="button"
-            >
-              {item.label}
-            </button>
-          ))}
+        <nav aria-label="Blueprint actions" className={styles.blueprintActionNav}>
+          <button onClick={() => setJourneyOpen(true)} type="button"><Eye />Preview learner journey</button>
+          {privateChangeCount ? <button className={styles.reviewChangesAction} onClick={() => setRevisionOpen(true)} type="button"><FilePenLine />Review changes <span>{privateChangeCount}</span></button> : null}
+          <button
+            aria-pressed={editing}
+            className={styles.blueprintDesignToggle}
+            onClick={() => {
+              setEditing((current) => !current);
+              if (!editing) {
+                setLens("course");
+                setFocusTopicLogicalId(null);
+              }
+            }}
+            type="button"
+          >
+            {editing ? <Check /> : <Pencil />}
+            {editing ? "Done editing" : "Edit Blueprint"}
+          </button>
         </nav>
       </section>
 
@@ -1496,8 +1516,6 @@ function BlueprintWorkspace({
         </nav>
 
         <section className={styles.structuredBlueprintCanvas} onClick={() => setSelectedLogicalId(null)}>
-          {mode === "learner" ? <LearnerBlueprintStrip concepts={concepts} evidence={blueprintEvidence} onSelect={(logicalId) => { setSelectedLogicalId(logicalId); setLens("focus"); }} selectedLogicalId={selectedLogicalId} /> : null}
-          {mode === "revision" ? <RevisionBlueprintSummary active={activeBlueprint} diff={revisionDiff} working={workingBlueprint} /> : null}
           {lens === "course" ? (
             <div className={styles.topicLaneBoard}>
               <div className={styles.blueprintLegend} aria-label="Blueprint status legend">
@@ -1596,6 +1614,26 @@ function BlueprintWorkspace({
             <div><button onClick={() => setPendingPlacement(null)} type="button">Cancel</button><button disabled={disabled} onClick={() => void confirmPlacement("link")} type="button">Also link here</button><button disabled={disabled} onClick={() => void confirmPlacement("move")} type="button">Move here</button></div>
           </section>
         </div>
+      ) : null}
+      {journeyOpen ? (
+        <LearnerJourneyPreview
+          blueprint={activeBlueprint ?? blueprint}
+          evidence={blueprintEvidence}
+          onClose={() => setJourneyOpen(false)}
+          onInspect={(logicalId) => {
+            setSelectedLogicalId(logicalId);
+            setLens("focus");
+            setJourneyOpen(false);
+          }}
+        />
+      ) : null}
+      {revisionOpen && revisionDiff?.changes.length ? (
+        <RevisionReviewDialog
+          active={activeBlueprint}
+          diff={revisionDiff}
+          onClose={() => setRevisionOpen(false)}
+          working={workingBlueprint}
+        />
       ) : null}
     </div>
   );
@@ -2039,6 +2077,171 @@ function LearnerBlueprintStrip({ concepts, evidence, onSelect, selectedLogicalId
 
 function RevisionBlueprintSummary({ active, diff, working }: { active: CourseBlueprint | null; diff: RevisionDiff | null; working: CourseBlueprint | null }) {
   return <div className={styles.revisionBlueprintSummary}><FilePenLine /><p><strong>{working ? "Private revision open" : "Live revision"}</strong>{diff?.changes.length ? `${diff.changes.length} artifact changes are staged. Select an artifact to inspect it; publish only after reviewing each generated proposal.` : "There are no unpublished changes."}</p><span>{active?.nodes.length ?? 0} live → {working?.nodes.length ?? active?.nodes.length ?? 0} working artifacts</span></div>;
+}
+
+function LearnerJourneyPreview({
+  blueprint,
+  evidence,
+  onClose,
+  onInspect,
+}: {
+  blueprint: CourseBlueprint | null;
+  evidence: BlueprintConceptEvidence[];
+  onClose: () => void;
+  onInspect: (logicalId: string) => void;
+}) {
+  const concepts = blueprint?.nodes
+    .filter((node) => node.kind === "concept")
+    .sort(compareBlueprintSequence) ?? [];
+  const states = concepts.map((concept) => ({
+    concept,
+    state: masteryStateForConcept(concept.id, evidence),
+  }));
+  const unresolvedIndex = states.findIndex((item) => item.state !== "mastered");
+  const currentIndex = unresolvedIndex >= 0
+    ? unresolvedIndex
+    : states.length > 0
+      ? states.length - 1
+      : -1;
+  const masteredCount = states.filter((item) => item.state === "mastered").length;
+  const strugglingCount = states.filter((item) => item.state === "struggling").length;
+  const current = states[currentIndex] ?? null;
+
+  function artifactCount(concept: BlueprintNode, kind: "clip" | "question") {
+    if (!blueprint) return 0;
+    const nodeKinds = new Map(blueprint.nodes.map((node) => [node.id, node.kind]));
+    return blueprint.edges.filter((edge) => {
+      if (edge.source_id === concept.id) return nodeKinds.get(edge.target_id) === kind;
+      if (edge.target_id === concept.id) return nodeKinds.get(edge.source_id) === kind;
+      return false;
+    }).length;
+  }
+
+  return (
+    <div className={styles.blueprintPlacementOverlay} onClick={onClose} role="presentation">
+      <section aria-labelledby="learner-journey-title" aria-modal="true" className={`${styles.blueprintActionDialog} ${styles.learnerJourneyDialog}`} onClick={(event) => event.stopPropagation()} role="dialog">
+        <header>
+          <div><span><Eye /></span><div><small>Cohort evidence preview</small><h3 id="learner-journey-title">Learner journey</h3><p>See the reviewed sequence as learners experience it, with current mastery and routing evidence overlaid.</p></div></div>
+          <button aria-label="Close learner journey preview" onClick={onClose} type="button"><X /></button>
+        </header>
+        <div className={styles.journeySummary}>
+          <article><strong>{masteredCount}/{states.length}</strong><span>Concepts mastered</span></article>
+          <article data-tone={strugglingCount ? "attention" : undefined}><strong>{strugglingCount}</strong><span>Need remediation</span></article>
+          <article><strong>{current ? currentIndex + 1 : "—"}</strong><span>Suggested current step</span></article>
+        </div>
+        {current ? (
+          <div className={styles.currentJourneyStep}>
+            <small>Current learning decision</small>
+            <strong>{current.concept.title}</strong>
+            <p>{journeyDecisionExplanation(current.state)}</p>
+          </div>
+        ) : null}
+        <ol className={styles.journeySteps}>
+          {states.map(({ concept, state }, index) => {
+            const record = evidence.find((item) => item.concept_id === concept.id);
+            const clipCount = artifactCount(concept, "clip");
+            const questionCount = artifactCount(concept, "question");
+            return (
+              <li data-current={index === currentIndex || undefined} data-state={state} key={concept.id}>
+                <i>{state === "mastered" ? <Check /> : index + 1}</i>
+                <div>
+                  <span>{journeyStateLabel(state)}{index === currentIndex ? " · Current" : ""}</span>
+                  <strong>{concept.title}</strong>
+                  <p>{clipCount} {clipCount === 1 ? "clip" : "clips"} · {questionCount} {questionCount === 1 ? "check" : "checks"}{record?.attempts ? ` · ${Math.round(record.correct_percent ?? 0)}% correct` : " · Awaiting evidence"}</p>
+                </div>
+                <button onClick={() => onInspect(concept.logical_id)} type="button">Inspect</button>
+              </li>
+            );
+          })}
+        </ol>
+        <footer><p>This preview uses current cohort evidence. The published learner course remains unchanged.</p><button onClick={onClose} type="button">Close preview</button></footer>
+      </section>
+    </div>
+  );
+}
+
+function journeyStateLabel(state: ReturnType<typeof masteryStateForConcept>) {
+  if (state === "not_started") return "Not started";
+  if (state === "mastered") return "Mastered";
+  if (state === "struggling") return "Needs support";
+  return "Practiced";
+}
+
+function journeyDecisionExplanation(state: ReturnType<typeof masteryStateForConcept>) {
+  if (state === "struggling") return "Route through the reviewed remediation activity before the next checkpoint.";
+  if (state === "practiced") return "Reinforce this concept, then use the next reviewed checkpoint to confirm mastery.";
+  if (state === "mastered") return "This concept is mastered; continue to the next prerequisite-eligible step.";
+  return "Begin with the reviewed teaching artifact, then collect confidence and correctness evidence.";
+}
+
+function RevisionReviewDialog({
+  active,
+  diff,
+  onClose,
+  working,
+}: {
+  active: CourseBlueprint | null;
+  diff: RevisionDiff;
+  onClose: () => void;
+  working: CourseBlueprint | null;
+}) {
+  const counts = diff.changes.reduce(
+    (result, change) => ({ ...result, [change.change_type]: result[change.change_type] + 1 }),
+    { added: 0, changed: 0, removed: 0 },
+  );
+  return (
+    <div className={styles.blueprintPlacementOverlay} onClick={onClose} role="presentation">
+      <section aria-labelledby="revision-review-title" aria-modal="true" className={`${styles.blueprintActionDialog} ${styles.revisionReviewDialog}`} onClick={(event) => event.stopPropagation()} role="dialog">
+        <header>
+          <div><span><FilePenLine /></span><div><small>Private working revision</small><h3 id="revision-review-title">Review changes</h3><p>Compare the live course with the private workspace before publishing any update.</p></div></div>
+          <button aria-label="Close revision review" onClick={onClose} type="button"><X /></button>
+        </header>
+        <div className={styles.revisionReviewSummary}>
+          <article><strong>{diff.changes.length}</strong><span>Total changes</span></article>
+          <article><strong>{counts.added}</strong><span>Added</span></article>
+          <article><strong>{counts.changed}</strong><span>Changed</span></article>
+          <article><strong>{counts.removed}</strong><span>Removed</span></article>
+        </div>
+        <div className={styles.revisionComparisonHeader}>
+          <span>{active?.nodes.length ?? 0} live artifacts</span>
+          <i>→</i>
+          <span>{working?.nodes.length ?? active?.nodes.length ?? 0} private artifacts</span>
+        </div>
+        <div className={styles.revisionChangeList}>
+          {diff.changes.map((change) => (
+            <article data-change={change.change_type} key={`${change.artifact_type}:${change.logical_artifact_id}`}>
+              <header><div><small>{change.artifact_type.replaceAll("_", " ")}</small><strong>{revisionArtifactTitle(change.after_state ?? change.before_state)}</strong></div><span>{change.change_type}</span></header>
+              <div>
+                <section><small>Live</small><p>{revisionStateSummary(change.before_state)}</p></section>
+                <i>→</i>
+                <section><small>Private revision</small><p>{revisionStateSummary(change.after_state)}</p></section>
+              </div>
+            </article>
+          ))}
+        </div>
+        <footer><p>AI-authored artifacts still require their individual Accept / Edit / Dismiss decisions. Publishing remains a separate action.</p><button onClick={onClose} type="button">Done reviewing</button></footer>
+      </section>
+    </div>
+  );
+}
+
+function revisionArtifactTitle(state: Record<string, unknown> | null) {
+  if (!state) return "Removed artifact";
+  const candidate = state.title ?? state.name ?? state.body ?? state.label;
+  return typeof candidate === "string" && candidate.trim() ? candidate : "Course artifact";
+}
+
+function revisionStateSummary(state: Record<string, unknown> | null) {
+  if (!state) return "Not present";
+  const candidate = state.description
+    ?? state.summary
+    ?? state.body
+    ?? state.title
+    ?? state.name
+    ?? state.status;
+  if (typeof candidate === "string" && candidate.trim()) return candidate;
+  const changedFields = Object.keys(state).filter((key) => !["id", "logical_id", "revision_id"].includes(key));
+  return changedFields.length ? `${changedFields.slice(0, 3).join(", ")} updated` : "Metadata updated";
 }
 
 function ProposalPack({ load, onResolve, task }: { load: (taskId: string) => Promise<AgentTaskPack>; onResolve: (proposal: AgentTaskProposal, decision: Decision, revision?: Record<string, unknown>) => Promise<void>; task: CourseAgentTask }) {
