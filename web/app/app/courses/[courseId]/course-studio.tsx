@@ -1256,6 +1256,13 @@ const blueprintRelationshipLabels: Record<BlueprintEdgeKind, string> = {
   cites: "Citation",
 };
 
+function blueprintNodeDimensions(node: BlueprintNode) {
+  if (node.kind === "topic") return { width: 260, height: 108 };
+  if (node.kind === "concept") return { width: 232, height: 118 };
+  if (node.kind === "source") return { width: 210, height: 88 };
+  return { width: 210, height: 98 };
+}
+
 function BlueprintArtifactNode({ data }: NodeProps<BlueprintGraphNode>) {
   const { artifact, conceptCount, evidence, muted, risk, selected } = data;
   const metadata = artifact.kind === "concept"
@@ -1773,7 +1780,7 @@ function StructuredBlueprintFlow({
         proOptions={{ hideAttribution: true }}
       >
         <Background color="#e2ded6" gap={22} size={1} />
-        <Controls showInteractive={false} />
+        <Controls orientation="horizontal" position="bottom-left" showInteractive={false} />
       </ReactFlow>
     </div>
   );
@@ -2060,7 +2067,7 @@ function BlueprintWorkspace({
             proOptions={{ hideAttribution: true }}
           >
             <Background color="#e2ded6" gap={22} size={1} />
-            <Controls showInteractive={false} />
+            <Controls orientation="horizontal" position="bottom-left" showInteractive={false} />
           </ReactFlow>
           {mode === "design" ? <p className={styles.blueprintCanvasHint}><GitFork />Move an artifact to save its position, connect concepts for prerequisites, or select a node to edit it.</p> : null}
           {selected ? (
@@ -2138,12 +2145,6 @@ function useBlueprintFlow(
     const elk = new ELK();
     const nodeById = new Map(visibleNodes.map((node) => [node.id, node]));
     const portId = (nodeId: string, handle: "flow-in" | "flow-out" | "relation-in" | "relation-out") => `${nodeId}:${handle}`;
-    const dimensions = (node: BlueprintNode) => {
-      if (node.kind === "topic") return { width: 286, height: 112 };
-      if (node.kind === "concept") return { width: 250, height: 124 };
-      if (node.kind === "source") return { width: 224, height: 92 };
-      return { width: 224, height: 104 };
-    };
     const normalizedEdges = layoutEdges.map((edge) => {
       const source = nodeById.get(edge.source_id);
       const target = nodeById.get(edge.target_id);
@@ -2170,10 +2171,10 @@ function useBlueprintFlow(
         "elk.algorithm": "layered",
         "elk.direction": "DOWN",
         "elk.edgeRouting": "ORTHOGONAL",
-        "elk.spacing.nodeNode": "68",
-        "elk.spacing.edgeEdge": "18",
-        "elk.spacing.edgeNode": "26",
-        "elk.layered.spacing.nodeNodeBetweenLayers": "98",
+        "elk.spacing.nodeNode": "42",
+        "elk.spacing.edgeEdge": "12",
+        "elk.spacing.edgeNode": "18",
+        "elk.layered.spacing.nodeNodeBetweenLayers": "70",
         "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
         "elk.layered.crossingMinimization.greedySwitch.type": "TWO_SIDED",
         "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
@@ -2183,7 +2184,7 @@ function useBlueprintFlow(
       },
       children: visibleNodes.map((node) => ({
         id: node.id,
-        ...dimensions(node),
+        ...blueprintNodeDimensions(node),
         layoutOptions: {
           "org.eclipse.elk.portConstraints": "FIXED_ORDER",
         },
@@ -2262,13 +2263,7 @@ function useBlueprintFlow(
     const risk = conceptEvidence?.correct_percent == null ? null : 100 - conceptEvidence.correct_percent;
     const selected = selectedId === node.id;
     const muted = Boolean(selectedId && !selected && !selectedNeighbors.has(node.id));
-    const dimensions = node.kind === "topic"
-      ? { width: 286, height: 112 }
-      : node.kind === "concept"
-        ? { width: 250, height: 124 }
-        : node.kind === "source"
-          ? { width: 224, height: 92 }
-          : { width: 224, height: 104 };
+    const dimensions = blueprintNodeDimensions(node);
     return {
       id: node.id,
       type: "blueprintArtifact",

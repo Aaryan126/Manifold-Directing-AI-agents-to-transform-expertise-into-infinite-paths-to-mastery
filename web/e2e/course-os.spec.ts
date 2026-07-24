@@ -639,6 +639,18 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect(sourceNode).toBeInViewport();
   await expect(conceptNode.locator("article[data-kind='concept']")).toBeVisible();
   await expect(sourceNode.locator("article[data-kind='source']")).toBeVisible();
+  await expect(conceptNode.locator("article[data-kind='concept']")).toHaveCSS("background-color", "rgb(227, 237, 242)");
+  await expect(sourceNode.locator("article[data-kind='source']")).toHaveCSS("background-color", "rgb(238, 234, 226)");
+  const blueprintFlow = page.locator(".react-flow").filter({ has: conceptNode });
+  await expect(blueprintFlow.getByRole("button", { name: /zoom in/i })).toBeVisible();
+  await expect(blueprintFlow.getByRole("button", { name: /zoom out/i })).toBeVisible();
+  await expect(blueprintFlow.getByRole("button", { name: /fit view/i })).toBeVisible();
+  const blueprintBounds = await blueprintFlow.boundingBox();
+  const controlBounds = await blueprintFlow.locator(".react-flow__controls").boundingBox();
+  expect(blueprintBounds).not.toBeNull();
+  expect(controlBounds).not.toBeNull();
+  expect(controlBounds!.x - blueprintBounds!.x).toBeLessThan(32);
+  expect((blueprintBounds!.y + blueprintBounds!.height) - (controlBounds!.y + controlBounds!.height)).toBeLessThan(40);
   const citationEdge = page.getByTestId("rf__edge-cites-1").locator(".react-flow__edge-path");
   await expect(citationEdge).toHaveCSS("opacity", "0");
   await page.getByRole("button", { name: "All" }).click();
