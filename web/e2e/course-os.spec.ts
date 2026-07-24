@@ -500,7 +500,7 @@ async function mockPublishedCourseOS(page: Page) {
         { id: conceptId, logical_id: "concept-logical", kind: "concept", title: conceptEdit?.name ?? "Net force", status: "accepted", parent_id: topicId, metadata: { sequence_rank: 1, description: conceptEdit?.description ?? "Combine force vectors." } },
         { id: conceptTwoId, logical_id: "concept-logical-2", kind: "concept", title: "Balanced forces", status: "accepted", parent_id: topicId, metadata: { sequence_rank: 2, description: "Recognize equilibrium." } },
         { id: clipId, logical_id: "clip-logical", kind: "clip", title: "Vector direction", status: "accepted", parent_id: topicId, metadata: { duration_seconds: 60 } },
-        { id: questionId, logical_id: "question-logical", kind: "question", title: "What determines the direction of net force?", status: "accepted", parent_id: topicId, metadata: { type: "short_answer" } },
+        { id: questionId, logical_id: "question-logical", kind: "question", title: "In the ukulele example, why did the speaker focus on learning only a small set of chords before performing?", status: "accepted", parent_id: topicId, metadata: { type: "short_answer" } },
         { id: sourceId, logical_id: "source-logical", kind: "source", title: "Force diagrams.pdf", status: "accepted", parent_id: null, metadata: { source_type: "pdf" } },
       ],
       edges: [
@@ -651,6 +651,16 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   expect(controlBounds).not.toBeNull();
   expect(controlBounds!.x - blueprintBounds!.x).toBeLessThan(32);
   expect((blueprintBounds!.y + blueprintBounds!.height) - (controlBounds!.y + controlBounds!.height)).toBeLessThan(40);
+  expect(await blueprintFlow.locator("article[class*='blueprintTypedNode']").evaluateAll((nodes) => nodes.every((node) => {
+    const title = node.querySelector("strong");
+    const footer = node.querySelector("footer");
+    if (!title || !footer) return false;
+    const nodeBounds = node.getBoundingClientRect();
+    const titleBounds = title.getBoundingClientRect();
+    const footerBounds = footer.getBoundingClientRect();
+    return titleBounds.bottom <= footerBounds.top + 1
+      && footerBounds.bottom <= nodeBounds.bottom + 1;
+  }))).toBe(true);
   const citationEdge = page.getByTestId("rf__edge-cites-1").locator(".react-flow__edge-path");
   await expect(citationEdge).toHaveCSS("opacity", "0");
   await page.getByRole("button", { name: "All" }).click();

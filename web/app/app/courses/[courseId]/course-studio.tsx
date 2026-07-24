@@ -1290,7 +1290,7 @@ function BlueprintArtifactNode({ data }: NodeProps<BlueprintGraphNode>) {
         <small>{artifact.kind}</small>
         <em data-status={artifact.status}>{artifact.status}</em>
       </header>
-      <strong>{artifact.title}</strong>
+      <strong title={artifact.title}>{artifact.title}</strong>
       <footer>
         <span>{count ?? metadata}</span>
         {artifact.kind === "concept" && evidence?.attempts ? <b>{evidence.attempts} attempts</b> : null}
