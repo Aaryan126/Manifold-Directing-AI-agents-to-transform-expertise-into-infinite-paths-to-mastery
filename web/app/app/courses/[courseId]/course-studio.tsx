@@ -105,7 +105,7 @@ import { ProviderVideo, type PlaybackInfo } from "../../../ProviderVideo";
 import { readDevelopmentSession } from "../../../developmentSession";
 
 const pipelineBase = process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localhost:8000";
-type CanvasView = "blueprint" | "old-blueprint" | "review" | "assessments" | "preview" | "settings";
+type CanvasView = "blueprint" | "review" | "assessments" | "preview" | "settings";
 type BlueprintMode = "live" | "design" | "learner" | "revision";
 type Decision = "accepted" | "edited" | "dismissed";
 type AssessmentDraftPayload = {
@@ -274,7 +274,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       }
       if (courseResult.status === "published") {
         setCanvasView(
-          requestedCanvasView && ["blueprint", "old-blueprint", "assessments", "preview", "settings"].includes(requestedCanvasView)
+          requestedCanvasView && ["blueprint", "assessments", "preview", "settings"].includes(requestedCanvasView)
             ? requestedCanvasView as CanvasView
             : "blueprint",
         );
@@ -742,35 +742,6 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     }
   }
 
-  async function updateBlueprintConceptTopics(node: BlueprintNode, topicLogicalIds: string[]) {
-    if (!identity) return;
-    setSending(true);
-    try {
-      const next = await request<CourseBlueprint>(
-        `/courses/${courseId}/blueprint/concepts/${node.logical_id}/topics`,
-        identity,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ topic_logical_ids: topicLogicalIds }),
-        },
-      );
-      setWorkingBlueprint(next);
-      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
-      setCourse(nextCourse);
-      await Promise.all([
-        refreshBlueprint(identity, nextCourse),
-        refreshArtifacts(identity),
-        refreshRevisionDiff(identity, nextCourse),
-      ]);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not update the concept placement.");
-      throw caught;
-    } finally {
-      setSending(false);
-    }
-  }
-
   async function saveBlueprintPosition(node: BlueprintNode, x: number, y: number) {
     if (!identity) return;
     try {
@@ -1023,7 +994,6 @@ export function CourseStudio({ courseId }: { courseId: string }) {
               <section className={styles.canvasPanel} aria-label="Course workspace canvas">
               <nav className={styles.canvasTabs} aria-label="Course views">
                 <CanvasTab active={canvasView === "blueprint"} icon={<Network />} label="Blueprint" onClick={() => setCanvasView("blueprint")} />
-                <CanvasTab active={canvasView === "old-blueprint"} icon={<GitFork />} label="Old Blueprint" onClick={() => setCanvasView("old-blueprint")} />
                 {course?.status !== "published" ? <CanvasTab active={canvasView === "review"} badge={course?.pending_review_count || undefined} icon={<ClipboardCheck />} label="Review" onClick={() => setCanvasView("review")} /> : null}
                 {course?.status === "published" ? <CanvasTab active={canvasView === "assessments"} icon={<Check />} label="Assessments" onClick={() => setCanvasView("assessments")} /> : null}
                 <CanvasTab active={canvasView === "preview"} icon={<Eye />} label="Preview" onClick={() => setCanvasView("preview")} />
@@ -1037,30 +1007,6 @@ export function CourseStudio({ courseId }: { courseId: string }) {
               <div className={styles.canvasBody}>
                 {canvasView === "blueprint" ? (
                   <BlueprintWorkspace
-                    activeBlueprint={activeBlueprint}
-                    agentTasks={agentTasks}
-                    blueprintEvidence={blueprintEvidence}
-                    course={course}
-                    dashboard={dashboardSummary}
-                    disabled={sending}
-                    onAddPrerequisite={createPrerequisite}
-                    onAskDirector={(node) => {
-                      setComposer(`Help me improve “${node.title}”. Trace the learner evidence and propose the smallest effective private change.`);
-                      setDirectorOpen(true);
-                    }}
-                    onLoadPack={loadAgentTaskPack}
-                    onPrepare={requestBlueprintImprovement}
-                    onResolvePrerequisite={resolvePrerequisite}
-                    onResolveProposal={resolvePackProposal}
-                    onSequence={updateBlueprintSequence}
-                    onUpdateConceptTopics={updateBlueprintConceptTopics}
-                    onUpdateConcept={updateBlueprintConcept}
-                    revisionDiff={revisionDiff}
-                    workingBlueprint={workingBlueprint}
-                  />
-                ) : null}
-                {canvasView === "old-blueprint" ? (
-                  <LegacyBlueprintWorkspace
                     activeBlueprint={activeBlueprint}
                     agentTasks={agentTasks}
                     blueprintEvidence={blueprintEvidence}
@@ -1281,7 +1227,7 @@ type PendingConceptPlacement = {
   targetLogicalId: string | null;
 };
 
-function BlueprintWorkspace({
+export function DeprecatedStructuredBlueprintWorkspace({
   activeBlueprint,
   agentTasks,
   blueprintEvidence,
@@ -1708,7 +1654,7 @@ function StructuredBlueprintFlow({
   );
 }
 
-function LegacyBlueprintWorkspace({
+function BlueprintWorkspace({
   activeBlueprint,
   agentTasks,
   blueprintEvidence,
