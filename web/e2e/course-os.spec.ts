@@ -213,6 +213,7 @@ async function mockPublishedCourseOS(page: Page) {
   let editedConcept: { name?: string; description?: string } | null = null;
   let savedSequence: string[] = [];
   let savedTopicIds: string[] = [];
+  const cleanupRequests: Array<Record<string, unknown>> = [];
   let workingRevisionOpen = false;
   const workingRevisionId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
   const published = {
@@ -261,6 +262,25 @@ async function mockPublishedCourseOS(page: Page) {
       savedTopicIds = body.topic_logical_ids ?? [];
       workingRevisionOpen = true;
       return route.fulfill({ json: publishedBlueprint(editedConcept, "working") });
+    }
+    if (
+      path.endsWith("/blueprint/artifacts/concept/concept-logical/impact")
+      && route.request().method() === "GET"
+    ) {
+      return route.fulfill({
+        json: {
+          artifact_kind: "concept",
+          logical_artifact_id: "concept-logical",
+          title: editedConcept?.name ?? "Net force",
+          affected_topics: ["Force systems"],
+          affected_concepts: ["Net force"],
+          affected_clips: ["Vector direction"],
+          affected_questions: ["What determines the direction of net force?"],
+          affected_relationships: 1,
+          learner_records_preserved: true,
+          warnings: ["Questions and clips shared with other concepts will be preserved."],
+        },
+      });
     }
     if (path.includes("/proposals/") && path.endsWith("/resolve")) {
       const body = JSON.parse(route.request().postData() ?? "{}") as { decision?: string };
@@ -312,6 +332,28 @@ async function mockPublishedCourseOS(page: Page) {
         ],
       },
     });
+    if (path.endsWith("/agent-tasks") && route.request().method() === "POST") {
+      const body = JSON.parse(route.request().postData() ?? "{}") as Record<string, unknown>;
+      cleanupRequests.push(body);
+      return route.fulfill({
+        status: 201,
+        json: {
+          id: "cleanup-task",
+          specialist_role: body.specialist_role,
+          task_type: body.task_type,
+          target_artifact_type: body.target_artifact_type,
+          target_logical_artifact_id: body.target_logical_artifact_id,
+          request_context: { instruction: body.instruction },
+          evidence_snapshot: body.evidence,
+          status: "queued",
+          result: null,
+          proposal_ids: [],
+          error_message: null,
+          created_at: "2026-07-21T00:00:00Z",
+          updated_at: "2026-07-21T00:00:00Z",
+        },
+      });
+    }
     if (path.endsWith("/agent-tasks")) return route.fulfill({
       json: [{
         id: "task-1",
@@ -515,6 +557,7 @@ async function mockPublishedCourseOS(page: Page) {
     };
   }
   return {
+    cleanupRequests,
     published,
     proposalDecisions,
     savedLayout: () => savedLayout,
@@ -727,8 +770,26 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await page.getByLabel("Description").fill("Combine vectors by magnitude and direction.");
   await page.getByRole("button", { name: "Save private edit" }).click();
   await expect.poll(() => state.editedConcept()?.name).toBe("Net force vectors");
-  await page.getByRole("button", { name: "Move concept later" }).click();
+  await page.getByRole("button", { name: "Topic", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "New topic" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Concept", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "New concept" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Learning order" }).click();
+  await expect(page.getByRole("heading", { name: "Learning order" })).toBeVisible();
+  await page.getByRole("button", { name: "Move Net force vectors later" }).click();
+  await page.getByRole("button", { name: "Save learning order" }).click();
   await expect.poll(() => state.savedSequence()).toEqual(["concept-logical-2", "concept-logical"]);
+  await expect(page.getByText("Private edit saved")).toBeVisible();
+  await page.getByRole("button", { name: "Prepare AI cleanup" }).click();
+  await expect.poll(() => state.cleanupRequests.at(-1)?.task_type).toBe("cleanup_blueprint");
+  await expect.poll(() => state.cleanupRequests.at(-1)?.target_logical_artifact_id)
+    .toBe("concept-logical");
+  await page.getByRole("button", { name: "Remove concept" }).click();
+  await expect(page.getByRole("heading", { name: /Remove “Net force vectors”/ })).toBeVisible();
+  await expect(page.getByText("Learner history and evidence records are preserved.")).toBeVisible();
+  await page.getByRole("button", { name: "Keep artifact" }).click();
   await expect(page.getByRole("button", { name: "Learner path" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Revision" })).toHaveCount(0);
   await page.getByRole("button", { name: "Live" }).click();

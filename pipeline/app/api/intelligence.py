@@ -59,7 +59,7 @@ class AgentTaskRequest(BaseModel):
         "clip_editor",
         "assessment_designer",
     ]
-    task_type: Literal["investigate", "prepare_improvement"]
+    task_type: Literal["investigate", "prepare_improvement", "cleanup_blueprint"]
     target_artifact_type: str | None = None
     target_logical_artifact_id: UUID | None = None
     instruction: str = Field(default="", max_length=8000)

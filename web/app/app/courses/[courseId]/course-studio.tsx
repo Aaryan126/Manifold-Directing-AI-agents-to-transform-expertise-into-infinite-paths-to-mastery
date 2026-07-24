@@ -30,6 +30,7 @@ import {
 import {
   Activity,
   ArrowLeft,
+  ArrowDown,
   ArrowUp,
   Check,
   ChevronDown,
@@ -94,6 +95,7 @@ import {
   type BlueprintConceptEvidence,
   type BlueprintEdge,
   type BlueprintEdgeKind,
+  type BlueprintMutationImpact,
   type BlueprintNode,
   type CourseBlueprint,
   type CoursePriority,
@@ -732,6 +734,129 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     }
   }
 
+  async function removePrerequisite(edge: BlueprintEdge) {
+    if (!identity || !edge.id.startsWith("requires:")) return;
+    const edgeId = edge.id.slice("requires:".length);
+    setSending(true);
+    try {
+      const next = await request<CourseBlueprint>(
+        `/courses/${courseId}/blueprint/prerequisites/${edgeId}`,
+        identity,
+        { method: "DELETE" },
+      );
+      setWorkingBlueprint(next);
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
+      await Promise.all([
+        refreshBlueprint(identity, nextCourse),
+        refreshRevisionDiff(identity, nextCourse),
+      ]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not remove that prerequisite.");
+      throw caught;
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function createBlueprintTopic(draft: {
+    title: string;
+    summary: string;
+    start_seconds: number;
+    end_seconds: number;
+  }) {
+    if (!identity) return null;
+    setSending(true);
+    try {
+      const next = await request<CourseBlueprint>(`/courses/${courseId}/blueprint/topics`, identity, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draft),
+      });
+      setWorkingBlueprint(next);
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
+      await Promise.all([
+        refreshBlueprint(identity, nextCourse),
+        refreshRevisionDiff(identity, nextCourse),
+      ]);
+      return next;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not add that topic.");
+      throw caught;
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function updateBlueprintTopic(node: BlueprintNode, draft: {
+    title: string;
+    summary: string;
+    start_seconds: number;
+    end_seconds: number;
+  }) {
+    if (!identity) return null;
+    setSending(true);
+    try {
+      const next = await request<CourseBlueprint>(
+        `/courses/${courseId}/blueprint/topics/${node.logical_id}`,
+        identity,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(draft),
+        },
+      );
+      setWorkingBlueprint(next);
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
+      await Promise.all([
+        refreshBlueprint(identity, nextCourse),
+        refreshRevisionDiff(identity, nextCourse),
+      ]);
+      return next;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not update that topic.");
+      throw caught;
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function createBlueprintConcept(draft: {
+    name: string;
+    description: string;
+    topic_logical_ids: string[];
+    sequence_after_id: string | null;
+  }) {
+    if (!identity) return null;
+    setSending(true);
+    try {
+      const next = await request<CourseBlueprint>(
+        `/courses/${courseId}/blueprint/concepts`,
+        identity,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(draft),
+        },
+      );
+      setWorkingBlueprint(next);
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
+      await Promise.all([
+        refreshBlueprint(identity, nextCourse),
+        refreshRevisionDiff(identity, nextCourse),
+      ]);
+      return next;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not add that concept.");
+      throw caught;
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function updateBlueprintConcept(node: BlueprintNode, name: string, description: string) {
     if (!identity) return;
     setSending(true);
@@ -747,6 +872,40 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       await refreshRevisionDiff(identity, nextCourse);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not update that concept.");
+      throw caught;
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function inspectBlueprintRemoval(node: BlueprintNode) {
+    if (!identity || !["topic", "concept", "clip", "question"].includes(node.kind)) return null;
+    return request<BlueprintMutationImpact>(
+      `/courses/${courseId}/blueprint/artifacts/${node.kind}/${node.logical_id}/impact`,
+      identity,
+    );
+  }
+
+  async function removeBlueprintArtifact(node: BlueprintNode) {
+    if (!identity || !["topic", "concept", "clip", "question"].includes(node.kind)) return null;
+    setSending(true);
+    try {
+      const next = await request<CourseBlueprint>(
+        `/courses/${courseId}/blueprint/artifacts/${node.kind}/${node.logical_id}`,
+        identity,
+        { method: "DELETE" },
+      );
+      setWorkingBlueprint(next);
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
+      await Promise.all([
+        refreshBlueprint(identity, nextCourse),
+        refreshStructuredWorkspace(identity),
+        refreshRevisionDiff(identity, nextCourse),
+      ]);
+      return next;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not remove that artifact.");
       throw caught;
     } finally {
       setSending(false);
@@ -819,6 +978,54 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       await refreshIntelligence(identity);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not brief the course team.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function requestBlueprintCleanup(
+    node: BlueprintNode,
+    neighboringNodes: BlueprintNode[],
+    suggestedPrerequisite: {
+      from_concept_logical_id: string;
+      to_concept_logical_id: string;
+    } | null,
+  ) {
+    if (!identity) return;
+    setSending(true);
+    setError(null);
+    try {
+      await request(`/courses/${courseId}/agent-tasks`, identity, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          specialist_role: "curriculum_architect",
+          task_type: "cleanup_blueprint",
+          target_artifact_type: node.kind,
+          target_logical_artifact_id: node.logical_id,
+          instruction: (
+            `Review the recent instructor edit around “${node.title}”. `
+            + "Only propose adjacent cleanup that improves coherence, coverage, prerequisites, or remediation."
+          ),
+          evidence: {
+            mutation_anchor: {
+              artifact_type: node.kind,
+              logical_artifact_id: node.logical_id,
+              title: node.title,
+            },
+            pack_targets: neighboringNodes.slice(0, 4).map((item) => ({
+              artifact_type: item.kind,
+              logical_artifact_id: item.logical_id,
+              title: item.title,
+            })),
+            suggested_prerequisite: suggestedPrerequisite,
+          },
+        }),
+      });
+      await refreshIntelligence(identity);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not run Blueprint cleanup.");
+      throw caught;
     } finally {
       setSending(false);
     }
@@ -1022,6 +1229,8 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     dashboard={dashboardSummary}
                     disabled={sending}
                     onAddPrerequisite={createPrerequisite}
+                    onAddConcept={createBlueprintConcept}
+                    onAddTopic={createBlueprintTopic}
                     onAskDirector={(node) => {
                       setComposer(`Help me improve “${node.title}”. Trace the learner evidence and propose the smallest effective private change.`);
                       setDirectorOpen(true);
@@ -1029,10 +1238,17 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     onLoadPack={loadAgentTaskPack}
                     onLayout={saveBlueprintPosition}
                     onPrepare={requestBlueprintImprovement}
+                    onCleanup={requestBlueprintCleanup}
+                    onInspectRemoval={inspectBlueprintRemoval}
+                    onRemoveArtifact={removeBlueprintArtifact}
+                    onRemovePrerequisite={removePrerequisite}
                     onResolvePrerequisite={resolvePrerequisite}
                     onResolveProposal={resolvePackProposal}
                     onSequence={updateBlueprintSequence}
                     onUpdateConcept={updateBlueprintConcept}
+                    onUpdateTopic={updateBlueprintTopic}
+                    onOpenAssessments={() => setCanvasView("assessments")}
+                    onOpenSources={() => setSourcesOpen(true)}
                     revisionDiff={revisionDiff}
                     clips={assessmentWorkspace?.clips ?? []}
                     workingBlueprint={workingBlueprint}
@@ -1795,15 +2011,24 @@ function BlueprintWorkspace({
   course,
   dashboard,
   disabled,
+  onAddConcept,
   onAddPrerequisite,
+  onAddTopic,
   onAskDirector,
+  onCleanup,
+  onInspectRemoval,
   onLoadPack,
   onLayout,
+  onOpenAssessments,
+  onOpenSources,
   onPrepare,
+  onRemoveArtifact,
+  onRemovePrerequisite,
   onResolvePrerequisite,
   onResolveProposal,
   onSequence,
   onUpdateConcept,
+  onUpdateTopic,
   revisionDiff,
   clips,
   workingBlueprint,
@@ -1814,15 +2039,46 @@ function BlueprintWorkspace({
   course: CourseSummary | null;
   dashboard: DashboardSummary | null;
   disabled: boolean;
+  onAddConcept: (draft: {
+    name: string;
+    description: string;
+    topic_logical_ids: string[];
+    sequence_after_id: string | null;
+  }) => Promise<CourseBlueprint | null>;
   onAddPrerequisite: (fromConceptId: string, toConceptId: string) => Promise<void>;
+  onAddTopic: (draft: {
+    title: string;
+    summary: string;
+    start_seconds: number;
+    end_seconds: number;
+  }) => Promise<CourseBlueprint | null>;
   onAskDirector: (node: BlueprintNode) => void;
+  onCleanup: (
+    node: BlueprintNode,
+    neighbors: BlueprintNode[],
+    suggestedPrerequisite: {
+      from_concept_logical_id: string;
+      to_concept_logical_id: string;
+    } | null,
+  ) => Promise<void>;
+  onInspectRemoval: (node: BlueprintNode) => Promise<BlueprintMutationImpact | null>;
   onLoadPack: (taskId: string) => Promise<AgentTaskPack>;
   onLayout: (node: BlueprintNode, x: number, y: number) => Promise<void>;
+  onOpenAssessments: () => void;
+  onOpenSources: () => void;
   onPrepare: (node: BlueprintNode, neighbors: BlueprintNode[]) => Promise<void>;
+  onRemoveArtifact: (node: BlueprintNode) => Promise<CourseBlueprint | null>;
+  onRemovePrerequisite: (edge: BlueprintEdge) => Promise<void>;
   onResolvePrerequisite: (edge: BlueprintEdge, decision: "accepted" | "dismissed") => Promise<void>;
   onResolveProposal: (proposal: AgentTaskProposal, decision: Decision, revision?: Record<string, unknown>) => Promise<void>;
   onSequence: (conceptIds: string[]) => Promise<void>;
   onUpdateConcept: (node: BlueprintNode, name: string, description: string) => Promise<void>;
+  onUpdateTopic: (node: BlueprintNode, draft: {
+    title: string;
+    summary: string;
+    start_seconds: number;
+    end_seconds: number;
+  }) => Promise<CourseBlueprint | null>;
   revisionDiff: RevisionDiff | null;
   clips: AssessmentWorkspace["clips"];
   workingBlueprint: CourseBlueprint | null;
@@ -1835,6 +2091,14 @@ function BlueprintWorkspace({
     () => new Set(coreBlueprintEdgeKinds),
   );
   const [autoArrangeVersion, setAutoArrangeVersion] = useState(0);
+  const [designDialog, setDesignDialog] = useState<"topic" | "concept" | "order" | null>(null);
+  const [removal, setRemoval] = useState<{
+    node: BlueprintNode;
+    impact: BlueprintMutationImpact | null;
+    loading: boolean;
+  } | null>(null);
+  const [cleanupAnchorLogicalId, setCleanupAnchorLogicalId] = useState<string | null>(null);
+  const [cleanupRunning, setCleanupRunning] = useState(false);
   const lastFittedViewport = useRef<string | null>(null);
   const blueprint = mode === "live"
     ? (activeBlueprint ?? workingBlueprint)
@@ -1886,7 +2150,13 @@ function BlueprintWorkspace({
   const pendingEdges = blueprint?.edges.filter((edge) => edge.kind === "requires" && edge.status === "proposed") ?? [];
   const coverageGaps = blueprint?.uncovered_concept_ids.length ?? 0;
   const selectedTask = selected
-    ? agentTasks.find((task) => task.target_logical_artifact_id === selected.logical_id && task.task_type === "prepare_improvement")
+    ? agentTasks.find((task) => (
+      task.target_logical_artifact_id === selected.logical_id
+      && ["prepare_improvement", "cleanup_blueprint"].includes(task.task_type)
+    ))
+    : null;
+  const cleanupAnchor = cleanupAnchorLogicalId
+    ? blueprint?.nodes.find((node) => node.logical_id === cleanupAnchorLogicalId) ?? null
     : null;
 
   useEffect(() => {
@@ -1922,7 +2192,10 @@ function BlueprintWorkspace({
     const source = blueprint.nodes.find((node) => node.id === connection.source);
     const target = blueprint.nodes.find((node) => node.id === connection.target);
     if (source?.kind === "concept" && target?.kind === "concept") {
-      void onAddPrerequisite(source.logical_id, target.logical_id);
+      void onAddPrerequisite(source.logical_id, target.logical_id).then(() => {
+        setCleanupAnchorLogicalId(source.logical_id);
+        setSelectedLogicalId(source.logical_id);
+      });
     }
   }, [blueprint, onAddPrerequisite]);
 
@@ -1940,6 +2213,70 @@ function BlueprintWorkspace({
       return next;
     });
   }, []);
+
+  function recordPrivateMutation(anchor: BlueprintNode | null) {
+    setCleanupAnchorLogicalId(anchor?.logical_id ?? null);
+    if (anchor) setSelectedLogicalId(anchor.logical_id);
+  }
+
+  async function openRemoval(node: BlueprintNode) {
+    setRemoval({ node, impact: null, loading: true });
+    try {
+      const impact = await onInspectRemoval(node);
+      setRemoval({ node, impact, loading: false });
+    } catch {
+      setRemoval(null);
+    }
+  }
+
+  async function confirmRemoval() {
+    if (!removal) return;
+    const deleted = removal.node;
+    const survivingAnchor = concepts.find((concept) => concept.id !== deleted.id) ?? topics.find(
+      (topic) => topic.id !== deleted.id,
+    ) ?? null;
+    await onRemoveArtifact(deleted);
+    setRemoval(null);
+    setSelectedLogicalId(null);
+    recordPrivateMutation(survivingAnchor);
+  }
+
+  async function runCleanup() {
+    if (!cleanupAnchor || !blueprint) return;
+    const adjacent = blueprint.edges
+      .filter((edge) => edge.source_id === cleanupAnchor.id || edge.target_id === cleanupAnchor.id)
+      .map((edge) => blueprint.nodes.find((node) => (
+        node.id === (edge.source_id === cleanupAnchor.id ? edge.target_id : edge.source_id)
+      )))
+      .filter((node): node is BlueprintNode => Boolean(node));
+    let suggestedPrerequisite: {
+      from_concept_logical_id: string;
+      to_concept_logical_id: string;
+    } | null = null;
+    if (cleanupAnchor.kind === "concept") {
+      const index = concepts.findIndex((concept) => concept.id === cleanupAnchor.id);
+      const previous = index > 0 ? concepts[index - 1] : null;
+      const hasPrerequisite = blueprint.edges.some((edge) => (
+        edge.kind === "requires"
+        && (edge.source_id === cleanupAnchor.id || edge.target_id === cleanupAnchor.id)
+        && edge.status !== "dismissed"
+      ));
+      if (previous && !hasPrerequisite) {
+        suggestedPrerequisite = {
+          from_concept_logical_id: cleanupAnchor.logical_id,
+          to_concept_logical_id: previous.logical_id,
+        };
+      }
+    }
+    setCleanupRunning(true);
+    try {
+      await onCleanup(cleanupAnchor, adjacent, suggestedPrerequisite);
+      setSelectedLogicalId(cleanupAnchor.logical_id);
+      setCleanupAnchorLogicalId(null);
+    } finally {
+      setCleanupRunning(false);
+    }
+  }
 
   if (!blueprint) {
     return <div className={styles.canvasEmpty}><LoaderCircle className={styles.spin} /><h2>Loading the course Blueprint</h2><p>The structure, learning evidence, and adaptive routes are being assembled.</p></div>;
@@ -1966,6 +2303,22 @@ function BlueprintWorkspace({
           <CircleAlert />
           <p><strong>{coverageGaps ? `${coverageGaps} concepts are missing a reviewed assessment or teaching artifact.` : `${pendingEdges.length} prerequisite relationships need review.`}</strong> {coverageGaps ? "Open a concept to inspect its coverage." : "They remain private until you confirm them."}</p>
         </div>
+      ) : null}
+
+      {cleanupAnchor ? (
+        <section className={styles.blueprintCleanupPrompt} aria-live="polite">
+          <div>
+            <Check />
+            <p><strong>Private edit saved</strong><span>Manifold can inspect the surrounding course and prepare optional cleanup.</span></p>
+          </div>
+          <div>
+            <button onClick={() => setCleanupAnchorLogicalId(null)} type="button">Not now</button>
+            <button disabled={cleanupRunning || disabled} onClick={() => void runCleanup()} type="button">
+              {cleanupRunning ? <LoaderCircle className={styles.spin} /> : <Wand2 />}
+              Prepare AI cleanup
+            </button>
+          </div>
+        </section>
       ) : null}
 
       <section className={styles.blueprintGraphControls} aria-label="Blueprint graph controls">
@@ -2003,6 +2356,15 @@ function BlueprintWorkspace({
             ))}
           </div>
         </details>
+        {mode === "design" ? (
+          <div className={styles.blueprintDesignActions}>
+            <button onClick={() => setDesignDialog("topic")} type="button"><Plus />Topic</button>
+            <button onClick={() => setDesignDialog("concept")} type="button"><Plus />Concept</button>
+            <button onClick={onOpenAssessments} type="button"><ClipboardList />Assessment</button>
+            <button onClick={onOpenSources} type="button"><FileText />Source</button>
+            <button onClick={() => setDesignDialog("order")} type="button"><ArrowUp />Learning order</button>
+          </div>
+        ) : null}
         <button
           className={styles.blueprintAutoArrange}
           onClick={() => setAutoArrangeVersion((current) => current + 1)}
@@ -2078,12 +2440,67 @@ function BlueprintWorkspace({
               {selected.kind === "concept"
                 ? <ConceptEvidencePanel evidence={evidence} />
                 : <ArtifactCoveragePanel clip={selectedClip} node={selected} neighbors={neighbors} />}
+              {mode === "design" && selected.kind === "topic" ? (
+                <TopicInspectorEditor
+                  disabled={disabled}
+                  node={selected}
+                  onSave={async (node, draft) => {
+                    await onUpdateTopic(node, draft);
+                    recordPrivateMutation(node);
+                  }}
+                />
+              ) : null}
               {mode === "design" && selected.kind === "concept" ? (
                 <>
-                  <ConceptInspectorEditor disabled={disabled} node={selected} onSave={onUpdateConcept} />
-                  <SequenceControls concepts={concepts} disabled={disabled} onChange={onSequence} selected={selected} />
+                  <ConceptInspectorEditor
+                    disabled={disabled}
+                    node={selected}
+                    onSave={async (node, name, description) => {
+                      await onUpdateConcept(node, name, description);
+                      recordPrivateMutation(node);
+                    }}
+                  />
                   <LayoutControls disabled={disabled} node={selected} onMove={onLayout} />
                 </>
+              ) : null}
+              {mode === "design" && selected.kind === "concept" ? (
+                <section className={styles.inspectorRelationships}>
+                  <h4>Prerequisites</h4>
+                  {blueprint.edges
+                    .filter((edge) => (
+                      edge.kind === "requires"
+                      && edge.status !== "dismissed"
+                      && (edge.source_id === selected.id || edge.target_id === selected.id)
+                    ))
+                    .map((edge) => {
+                      const other = blueprint.nodes.find((node) => (
+                        node.id === (edge.source_id === selected.id ? edge.target_id : edge.source_id)
+                      ));
+                      return (
+                        <div key={edge.id}>
+                          <span>{edge.source_id === selected.id ? "Requires" : "Required by"}</span>
+                          <strong>{other?.title ?? "Unknown concept"}</strong>
+                          {edge.status !== "proposed" ? (
+                            <button
+                              aria-label={`Remove prerequisite with ${other?.title ?? "concept"}`}
+                              disabled={disabled}
+                              onClick={() => {
+                                void onRemovePrerequisite(edge).then(() => recordPrivateMutation(selected));
+                              }}
+                              type="button"
+                            >
+                              <Trash2 />
+                            </button>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  {!blueprint.edges.some((edge) => (
+                    edge.kind === "requires"
+                    && edge.status !== "dismissed"
+                    && (edge.source_id === selected.id || edge.target_id === selected.id)
+                  )) ? <p>No prerequisites yet. Drag from one concept handle to another to add one.</p> : null}
+                </section>
               ) : null}
               {pendingEdges.filter((edge) => edge.source_id === selected.id || edge.target_id === selected.id).map((edge) => {
                 const other = blueprint.nodes.find((node) => node.id === (edge.source_id === selected.id ? edge.target_id : edge.source_id));
@@ -2093,12 +2510,76 @@ function BlueprintWorkspace({
                 <button onClick={() => onAskDirector(selected)} type="button"><MessageCircleMore />Ask Director</button>
                 <button disabled={disabled || Boolean(selectedTask && ["queued", "running"].includes(selectedTask.status))} onClick={() => void onPrepare(selected, neighbors)} type="button"><Wand2 />{selectedTask?.status === "waiting_review" ? "Refresh proposal pack" : "Prepare improvement"}</button>
               </div>
+              {mode === "design" && ["topic", "concept", "clip", "question"].includes(selected.kind) ? (
+                <button
+                  className={styles.inspectorRemoveButton}
+                  disabled={disabled}
+                  onClick={() => void openRemoval(selected)}
+                  type="button"
+                >
+                  <Trash2 />Remove {selected.kind}
+                </button>
+              ) : null}
               {selectedTask ? <ProposalPack task={selectedTask} load={onLoadPack} onResolve={onResolveProposal} /> : null}
             </>
             </aside>
           ) : null}
         </div>
       </div>
+      {designDialog === "topic" ? (
+        <BlueprintAddTopicDialog
+          disabled={disabled}
+          onClose={() => setDesignDialog(null)}
+          onSave={async (draft) => {
+            const next = await onAddTopic(draft);
+            const created = next?.nodes.find((node) => (
+              node.kind === "topic" && node.title.trim().toLowerCase() === draft.title.trim().toLowerCase()
+            )) ?? null;
+            setDesignDialog(null);
+            recordPrivateMutation(created);
+          }}
+          topics={topics}
+        />
+      ) : null}
+      {designDialog === "concept" ? (
+        <BlueprintAddConceptDialog
+          concepts={concepts}
+          disabled={disabled}
+          initialTopicLogicalId={focusTopicLogicalId}
+          onClose={() => setDesignDialog(null)}
+          onSave={async (draft) => {
+            const next = await onAddConcept(draft);
+            const created = next?.nodes.find((node) => (
+              node.kind === "concept" && node.title.trim().toLowerCase() === draft.name.trim().toLowerCase()
+            )) ?? null;
+            setDesignDialog(null);
+            recordPrivateMutation(created);
+          }}
+          topics={topics}
+        />
+      ) : null}
+      {designDialog === "order" ? (
+        <LearningOrderDialog
+          concepts={concepts}
+          disabled={disabled}
+          onClose={() => setDesignDialog(null)}
+          onSave={async (ids) => {
+            await onSequence(ids);
+            setDesignDialog(null);
+            recordPrivateMutation(concepts[0] ?? null);
+          }}
+        />
+      ) : null}
+      {removal ? (
+        <BlueprintRemovalDialog
+          disabled={disabled}
+          impact={removal.impact}
+          loading={removal.loading}
+          node={removal.node}
+          onClose={() => setRemoval(null)}
+          onConfirm={() => void confirmRemoval()}
+        />
+      ) : null}
     </div>
   );
 }
@@ -2355,6 +2836,244 @@ function ConceptInspectorEditor({ disabled, node, onSave }: { disabled: boolean;
   useEffect(() => { setName(node.title); setDescription(String(node.metadata.description ?? "")); setEditing(false); }, [node]);
   if (!editing) return <button className={styles.inspectorEditButton} disabled={disabled} onClick={() => setEditing(true)} type="button"><Pencil />Edit concept fields</button>;
   return <form className={styles.inspectorEditor} onSubmit={(event) => { event.preventDefault(); setSaving(true); void onSave(node, name, description).then(() => setEditing(false)).finally(() => setSaving(false)); }}><label>Name<input disabled={saving} onChange={(event) => setName(event.target.value)} required value={name} /></label><label>Description<textarea disabled={saving} onChange={(event) => setDescription(event.target.value)} rows={4} value={description} /></label><div><button disabled={saving} onClick={() => setEditing(false)} type="button">Cancel</button><button disabled={saving || !name.trim()} type="submit">{saving ? <LoaderCircle className={styles.spin} /> : <Check />}Save private edit</button></div></form>;
+}
+
+type BlueprintTopicDraft = {
+  title: string;
+  summary: string;
+  start_seconds: number;
+  end_seconds: number;
+};
+
+function TopicInspectorEditor({
+  disabled,
+  node,
+  onSave,
+}: {
+  disabled: boolean;
+  node: BlueprintNode;
+  onSave: (node: BlueprintNode, draft: BlueprintTopicDraft) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(node.title);
+  const [summary, setSummary] = useState(String(node.metadata.summary ?? ""));
+  const [start, setStart] = useState(Number(node.metadata.start_seconds ?? 0));
+  const [end, setEnd] = useState(Number(node.metadata.end_seconds ?? 1));
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    setTitle(node.title);
+    setSummary(String(node.metadata.summary ?? ""));
+    setStart(Number(node.metadata.start_seconds ?? 0));
+    setEnd(Number(node.metadata.end_seconds ?? 1));
+    setEditing(false);
+  }, [node]);
+  if (!editing) {
+    return (
+      <button
+        className={styles.inspectorEditButton}
+        disabled={disabled}
+        onClick={() => setEditing(true)}
+        type="button"
+      >
+        <Pencil />Edit topic and lecture range
+      </button>
+    );
+  }
+  return (
+    <form
+      className={styles.inspectorEditor}
+      onSubmit={(event) => {
+        event.preventDefault();
+        setSaving(true);
+        void onSave(node, {
+          title,
+          summary,
+          start_seconds: start,
+          end_seconds: end,
+        }).then(() => setEditing(false)).finally(() => setSaving(false));
+      }}
+    >
+      <label>Title<input disabled={saving} onChange={(event) => setTitle(event.target.value)} required value={title} /></label>
+      <label>Summary<textarea disabled={saving} onChange={(event) => setSummary(event.target.value)} rows={4} value={summary} /></label>
+      <div className={styles.inspectorTimeFields}>
+        <label>Starts at<input disabled={saving} min={0} onChange={(event) => setStart(Number(event.target.value))} step="0.1" type="number" value={start} /></label>
+        <label>Ends at<input disabled={saving} min={0.1} onChange={(event) => setEnd(Number(event.target.value))} step="0.1" type="number" value={end} /></label>
+      </div>
+      <div><button disabled={saving} onClick={() => setEditing(false)} type="button">Cancel</button><button disabled={saving || !title.trim() || end <= start} type="submit">{saving ? <LoaderCircle className={styles.spin} /> : <Check />}Save private edit</button></div>
+    </form>
+  );
+}
+
+function BlueprintAddTopicDialog({
+  disabled,
+  onClose,
+  onSave,
+  topics,
+}: {
+  disabled: boolean;
+  onClose: () => void;
+  onSave: (draft: BlueprintTopicDraft) => Promise<void>;
+  topics: BlueprintNode[];
+}) {
+  const latestEnd = Math.max(0, ...topics.map((topic) => Number(topic.metadata.end_seconds ?? 0)));
+  const [title, setTitle] = useState("");
+  const [summary, setSummary] = useState("");
+  const [start, setStart] = useState(latestEnd);
+  const [end, setEnd] = useState(latestEnd + 60);
+  const [saving, setSaving] = useState(false);
+  return (
+    <div className={styles.blueprintDialogOverlay} onClick={onClose} role="presentation">
+      <form
+        aria-labelledby="add-topic-title"
+        aria-modal="true"
+        className={styles.blueprintDialog}
+        onClick={(event) => event.stopPropagation()}
+        onSubmit={(event) => {
+          event.preventDefault();
+          setSaving(true);
+          void onSave({
+            title,
+            summary,
+            start_seconds: start,
+            end_seconds: end,
+          }).finally(() => setSaving(false));
+        }}
+        role="dialog"
+      >
+        <header><div><small>Add artifact</small><h3 id="add-topic-title">New topic</h3><p>Define a meaningful section of the lecture. This stays in the private revision.</p></div><button aria-label="Close" onClick={onClose} type="button"><X /></button></header>
+        <label>Topic title<input autoFocus disabled={saving} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Why deliberate practice works" required value={title} /></label>
+        <label>Teaching summary<textarea disabled={saving} onChange={(event) => setSummary(event.target.value)} placeholder="What should learners understand from this section?" rows={4} value={summary} /></label>
+        <div className={styles.blueprintDialogFields}><label>Starts at (seconds)<input disabled={saving} min={0} onChange={(event) => setStart(Number(event.target.value))} step="0.1" type="number" value={start} /></label><label>Ends at (seconds)<input disabled={saving} min={0.1} onChange={(event) => setEnd(Number(event.target.value))} step="0.1" type="number" value={end} /></label></div>
+        <footer><button disabled={saving} onClick={onClose} type="button">Cancel</button><button disabled={disabled || saving || !title.trim() || end <= start} type="submit">{saving ? <LoaderCircle className={styles.spin} /> : <Plus />}Add topic</button></footer>
+      </form>
+    </div>
+  );
+}
+
+function BlueprintAddConceptDialog({
+  concepts,
+  disabled,
+  initialTopicLogicalId,
+  onClose,
+  onSave,
+  topics,
+}: {
+  concepts: BlueprintNode[];
+  disabled: boolean;
+  initialTopicLogicalId: string | null;
+  onClose: () => void;
+  onSave: (draft: {
+    name: string;
+    description: string;
+    topic_logical_ids: string[];
+    sequence_after_id: string | null;
+  }) => Promise<void>;
+  topics: BlueprintNode[];
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [topicIds, setTopicIds] = useState<string[]>(
+    initialTopicLogicalId ? [initialTopicLogicalId] : topics[0] ? [topics[0].logical_id] : [],
+  );
+  const [afterId, setAfterId] = useState<string>(concepts.at(-1)?.logical_id ?? "");
+  const [saving, setSaving] = useState(false);
+  return (
+    <div className={styles.blueprintDialogOverlay} onClick={onClose} role="presentation">
+      <form
+        aria-labelledby="add-concept-title"
+        aria-modal="true"
+        className={styles.blueprintDialog}
+        onClick={(event) => event.stopPropagation()}
+        onSubmit={(event) => {
+          event.preventDefault();
+          setSaving(true);
+          void onSave({
+            name,
+            description,
+            topic_logical_ids: topicIds,
+            sequence_after_id: afterId || null,
+          }).finally(() => setSaving(false));
+        }}
+        role="dialog"
+      >
+        <header><div><small>Add artifact</small><h3 id="add-concept-title">New concept</h3><p>Place the idea in its teaching context and learner sequence.</p></div><button aria-label="Close" onClick={onClose} type="button"><X /></button></header>
+        <label>Concept name<input autoFocus disabled={saving} onChange={(event) => setName(event.target.value)} placeholder="A capability learners should gain" required value={name} /></label>
+        <label>Description<textarea disabled={saving} onChange={(event) => setDescription(event.target.value)} placeholder="Define what mastery of this concept means." rows={4} value={description} /></label>
+        <fieldset><legend>Appears in topic</legend>{topics.map((topic) => <label key={topic.id}><input checked={topicIds.includes(topic.logical_id)} disabled={saving} onChange={(event) => setTopicIds((current) => event.target.checked ? [...current, topic.logical_id] : current.filter((id) => id !== topic.logical_id))} type="checkbox" />{topic.title}</label>)}</fieldset>
+        <label>Place after<select disabled={saving} onChange={(event) => setAfterId(event.target.value)} value={afterId}><option value="">At the beginning</option>{concepts.map((concept) => <option key={concept.id} value={concept.logical_id}>{concept.title}</option>)}</select></label>
+        <footer><button disabled={saving} onClick={onClose} type="button">Cancel</button><button disabled={disabled || saving || !name.trim() || !topicIds.length} type="submit">{saving ? <LoaderCircle className={styles.spin} /> : <Plus />}Add concept</button></footer>
+      </form>
+    </div>
+  );
+}
+
+function LearningOrderDialog({
+  concepts,
+  disabled,
+  onClose,
+  onSave,
+}: {
+  concepts: BlueprintNode[];
+  disabled: boolean;
+  onClose: () => void;
+  onSave: (ids: string[]) => Promise<void>;
+}) {
+  const [ordered, setOrdered] = useState(concepts);
+  const [saving, setSaving] = useState(false);
+  function move(index: number, offset: number) {
+    const next = [...ordered];
+    const [item] = next.splice(index, 1);
+    next.splice(index + offset, 0, item);
+    setOrdered(next);
+  }
+  return (
+    <div className={styles.blueprintDialogOverlay} onClick={onClose} role="presentation">
+      <section aria-labelledby="learning-order-title" aria-modal="true" className={`${styles.blueprintDialog} ${styles.learningOrderDialog}`} onClick={(event) => event.stopPropagation()} role="dialog">
+        <header><div><small>Learner path</small><h3 id="learning-order-title">Learning order</h3><p>Reorder concepts independently from their visual canvas positions.</p></div><button aria-label="Close" onClick={onClose} type="button"><X /></button></header>
+        <ol>{ordered.map((concept, index) => <li key={concept.id}><span>{String(index + 1).padStart(2, "0")}</span><strong>{concept.title}</strong><div><button aria-label={`Move ${concept.title} earlier`} disabled={index === 0 || saving} onClick={() => move(index, -1)} type="button"><ArrowUp /></button><button aria-label={`Move ${concept.title} later`} disabled={index === ordered.length - 1 || saving} onClick={() => move(index, 1)} type="button"><ArrowDown /></button></div></li>)}</ol>
+        <footer><button disabled={saving} onClick={onClose} type="button">Cancel</button><button disabled={disabled || saving} onClick={() => { setSaving(true); void onSave(ordered.map((concept) => concept.logical_id)).finally(() => setSaving(false)); }} type="button">{saving ? <LoaderCircle className={styles.spin} /> : <Check />}Save learning order</button></footer>
+      </section>
+    </div>
+  );
+}
+
+function BlueprintRemovalDialog({
+  disabled,
+  impact,
+  loading,
+  node,
+  onClose,
+  onConfirm,
+}: {
+  disabled: boolean;
+  impact: BlueprintMutationImpact | null;
+  loading: boolean;
+  node: BlueprintNode;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const affected = impact ? [
+    ["Topics", impact.affected_topics.length],
+    ["Concepts", impact.affected_concepts.length],
+    ["Clips", impact.affected_clips.length],
+    ["Questions", impact.affected_questions.length],
+    ["Relationships", impact.affected_relationships],
+  ].filter(([, count]) => Number(count) > 0) : [];
+  return (
+    <div className={styles.blueprintDialogOverlay} onClick={onClose} role="presentation">
+      <section aria-labelledby="remove-artifact-title" aria-modal="true" className={`${styles.blueprintDialog} ${styles.blueprintRemovalDialog}`} onClick={(event) => event.stopPropagation()} role="dialog">
+        <header><div><small>Impact check</small><h3 id="remove-artifact-title">Remove “{node.title}”?</h3><p>This changes only the private revision. Published learners keep their current course until you publish.</p></div><button aria-label="Close" onClick={onClose} type="button"><X /></button></header>
+        {loading ? <div className={styles.blueprintImpactLoading}><LoaderCircle className={styles.spin} />Tracing connected artifacts…</div> : (
+          <>
+            <div className={styles.blueprintImpactGrid}>{affected.length ? affected.map(([label, count]) => <article key={String(label)}><strong>{count}</strong><span>{label}</span></article>) : <p>No dependent course artifacts will be removed.</p>}</div>
+            {impact?.warnings.map((warning) => <p className={styles.blueprintImpactWarning} key={warning}><CircleAlert />{warning}</p>)}
+            <p className={styles.blueprintLearnerSafety}><Check />Learner history and evidence records are preserved.</p>
+          </>
+        )}
+        <footer><button onClick={onClose} type="button">Keep artifact</button><button className={styles.destructiveButton} disabled={disabled || loading || !impact} onClick={onConfirm} type="button"><Trash2 />Remove from private revision</button></footer>
+      </section>
+    </div>
+  );
 }
 
 function ArtifactCoveragePanel({

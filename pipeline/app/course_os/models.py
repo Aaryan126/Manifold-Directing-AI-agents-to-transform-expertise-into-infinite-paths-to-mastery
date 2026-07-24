@@ -263,6 +263,20 @@ class CourseBlueprint:
 
 
 @dataclass(frozen=True)
+class BlueprintMutationImpact:
+    artifact_kind: str
+    logical_artifact_id: UUID
+    title: str
+    affected_topics: tuple[str, ...] = ()
+    affected_concepts: tuple[str, ...] = ()
+    affected_clips: tuple[str, ...] = ()
+    affected_questions: tuple[str, ...] = ()
+    affected_relationships: int = 0
+    learner_records_preserved: bool = True
+    warnings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class BlueprintConceptEvidence:
     concept_id: UUID
     attempts: int

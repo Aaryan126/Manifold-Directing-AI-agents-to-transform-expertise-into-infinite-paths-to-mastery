@@ -5,6 +5,7 @@ from uuid import uuid4
 import pytest
 
 from app.course_os.models import BlueprintNode, CourseBlueprint, CourseSummary
+from app.intelligence.models import SpecialistRole
 from app.intelligence.service import CourseIntelligenceService, IntelligenceValidationError
 
 
@@ -99,3 +100,48 @@ async def test_blueprint_layout_rejects_artifacts_outside_the_revision() -> None
         )
 
     repository.save_map_layout.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_cleanup_blueprint_requires_target_and_creates_reviewable_task() -> None:
+    course = _working_course()
+    target_id = uuid4()
+    course_os = AsyncMock()
+    course_os.course.return_value = course
+    repository = AsyncMock()
+    repository.create_agent_task.return_value = object()
+    service = CourseIntelligenceService(repository, course_os, AsyncMock())
+
+    with pytest.raises(IntelligenceValidationError, match="require an artifact target"):
+        await service.request_task(
+            course.id,
+            course.instructor_id,
+            specialist_role=SpecialistRole.CURRICULUM_ARCHITECT,
+            task_type="cleanup_blueprint",
+            target_artifact_type=None,
+            target_logical_artifact_id=None,
+            instruction="Inspect my edit.",
+            evidence={},
+        )
+
+    await service.request_task(
+        course.id,
+        course.instructor_id,
+        specialist_role=SpecialistRole.CURRICULUM_ARCHITECT,
+        task_type="cleanup_blueprint",
+        target_artifact_type="concept",
+        target_logical_artifact_id=target_id,
+        instruction="  Inspect adjacent coverage.  ",
+        evidence={"adjacent_artifacts": []},
+    )
+
+    repository.create_agent_task.assert_awaited_once_with(
+        course_id=course.id,
+        revision_id=course.working_revision_id,
+        specialist_role=SpecialistRole.CURRICULUM_ARCHITECT,
+        task_type="cleanup_blueprint",
+        target_artifact_type="concept",
+        target_logical_artifact_id=target_id,
+        request_context={"instruction": "Inspect adjacent coverage."},
+        evidence_snapshot={"adjacent_artifacts": []},
+    )

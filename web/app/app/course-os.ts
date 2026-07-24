@@ -243,6 +243,19 @@ export type BlueprintConceptEvidence = {
   route_actions: Record<string, number>;
 };
 
+export type BlueprintMutationImpact = {
+  artifact_kind: "topic" | "concept" | "clip" | "question";
+  logical_artifact_id: string;
+  title: string;
+  affected_topics: string[];
+  affected_concepts: string[];
+  affected_clips: string[];
+  affected_questions: string[];
+  affected_relationships: number;
+  learner_records_preserved: boolean;
+  warnings: string[];
+};
+
 export type RevisionDiff = {
   active_revision_id: string | null;
   working_revision_id: string;

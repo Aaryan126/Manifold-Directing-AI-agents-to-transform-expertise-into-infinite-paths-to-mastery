@@ -591,3 +591,79 @@ async def test_concept_topic_move_requires_at_least_one_unique_topic() -> None:
             uuid4(),
             (duplicate, duplicate),
         )
+
+
+@pytest.mark.anyio
+async def test_create_blueprint_topic_opens_private_revision_and_normalizes_copy() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    course = replace(
+        _course(),
+        status="published",
+        active_revision_id=uuid4(),
+        working_revision_id=None,
+        revision_status="published",
+    )
+    working = replace(course, working_revision_id=uuid4(), revision_status="building")
+    blueprint = CourseBlueprint(
+        course_id=course.id,
+        revision_id=working.working_revision_id,
+        revision_kind="working",
+        nodes=(),
+        edges=(),
+        uncovered_concept_ids=(),
+    )
+    repository.user_role = AsyncMock(return_value="instructor")
+    repository.get_course = AsyncMock(return_value=course)
+    repository.create_working_revision = AsyncMock(return_value=working)
+    repository.create_blueprint_topic = AsyncMock(return_value=None)
+    repository.blueprint = AsyncMock(return_value=blueprint)
+    service = CourseOSService(repository)
+
+    result = await service.create_blueprint_topic(
+        course.id,
+        course.instructor_id,
+        "  Why practice works  ",
+        "  A focused explanation.  ",
+        12.5,
+        74.0,
+    )
+
+    assert result == blueprint
+    repository.create_working_revision.assert_awaited_once()
+    repository.create_blueprint_topic.assert_awaited_once_with(
+        course.id,
+        working.working_revision_id,
+        course.instructor_id,
+        "Why practice works",
+        "A focused explanation.",
+        12.5,
+        74.0,
+    )
+
+
+@pytest.mark.anyio
+async def test_blueprint_creation_validates_semantic_requirements_before_writing() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    service = CourseOSService(repository)
+
+    with pytest.raises(CourseOSValidationError, match="later than"):
+        await service.create_blueprint_topic(
+            uuid4(),
+            uuid4(),
+            "Invalid range",
+            "",
+            20,
+            10,
+        )
+    with pytest.raises(CourseOSValidationError, match="at least one topic"):
+        await service.create_blueprint_concept(
+            uuid4(),
+            uuid4(),
+            "Unplaced concept",
+            "",
+            (),
+            None,
+        )
+
+    repository.create_blueprint_topic.assert_not_awaited()
+    repository.create_blueprint_concept.assert_not_awaited()

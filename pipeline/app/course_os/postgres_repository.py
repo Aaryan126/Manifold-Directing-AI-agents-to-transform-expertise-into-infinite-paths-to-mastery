@@ -17,6 +17,7 @@ from app.course_os.models import (
     AttentionItem,
     BlueprintConceptEvidence,
     BlueprintEdge,
+    BlueprintMutationImpact,
     BlueprintNode,
     ConversationMessage,
     CourseAssessment,
@@ -2537,6 +2538,692 @@ class PostgresCourseOSRepository(CourseOSRepository):
                 ),
             )
 
+    async def remove_blueprint_prerequisite(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        edge_id: UUID,
+    ) -> None:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            edge = await (
+                await conn.execute(
+                    """
+                    select e.id, e.logical_id, source.logical_id as source_logical_id,
+                           target.logical_id as target_logical_id
+                    from concept_edges e
+                    join concepts source on source.id = e.from_concept_id
+                    join concepts target on target.id = e.to_concept_id
+                    where e.revision_id = %s and e.relationship = 'requires'
+                      and e.review_status <> 'dismissed'
+                      and (e.id = %s or e.logical_id = %s)
+                    limit 1
+                    """,
+                    (revision_id, edge_id, edge_id),
+                )
+            ).fetchone()
+            if edge is None:
+                raise ValueError("Prerequisite relationship not found in the editable revision.")
+            await conn.execute(
+                """
+                update concept_edges
+                set review_status = 'dismissed', dismissed_at = now(), updated_at = now(),
+                    instructor_revision = coalesce(instructor_revision, '{}'::jsonb)
+                      || %s::jsonb
+                where id = %s
+                """,
+                (
+                    Jsonb(
+                        {
+                            "action": "remove",
+                            "rationale": "Instructor removed in Blueprint Design mode.",
+                        }
+                    ),
+                    edge["id"],
+                ),
+            )
+            await _record_workspace_audit(
+                conn,
+                course_id=course_id,
+                revision_id=revision_id,
+                instructor_id=instructor_id,
+                artifact_type="concept_edge",
+                artifact_id=UUID(str(edge["logical_id"])),
+                action="remove",
+                previous_state={
+                    "from_concept_logical_id": str(edge["source_logical_id"]),
+                    "to_concept_logical_id": str(edge["target_logical_id"]),
+                    "relationship": "requires",
+                },
+                new_state={"review_status": "dismissed"},
+                note="Removed a prerequisite in Blueprint Design mode.",
+            )
+
+    async def create_blueprint_topic(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        title: str,
+        summary: str,
+        start_seconds: float,
+        end_seconds: float,
+    ) -> UUID:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            video = await (
+                await conn.execute(
+                    """
+                    select v.id, v.duration_seconds
+                    from videos v
+                    where v.course_id = %s
+                    order by (
+                      select count(*) from topics t
+                      where t.video_id = v.id and t.revision_id = %s
+                    ) desc, v.created_at
+                    limit 1
+                    """,
+                    (course_id, revision_id),
+                )
+            ).fetchone()
+            if video is None:
+                raise ValueError("Add a lecture source before adding a topic.")
+            if video["duration_seconds"] is not None and end_seconds > float(
+                video["duration_seconds"]
+            ):
+                raise ValueError("Topic end time cannot exceed the lecture duration.")
+            duplicate = await (
+                await conn.execute(
+                    """
+                    select 1 from topics
+                    where course_id = %s and revision_id = %s
+                      and review_status <> 'dismissed' and lower(title) = lower(%s)
+                    """,
+                    (course_id, revision_id, title),
+                )
+            ).fetchone()
+            if duplicate:
+                raise ValueError("Another active topic already uses that title.")
+            topic = await (
+                await conn.execute(
+                    """
+                    insert into topics (
+                      course_id, video_id, title, summary, start_seconds, end_seconds,
+                      instructor_revision, review_status, approved_at, revision_id
+                    ) values (
+                      %s, %s, %s, %s, %s, %s, %s::jsonb, 'edited', now(), %s
+                    )
+                    returning id, logical_id
+                    """,
+                    (
+                        course_id,
+                        video["id"],
+                        title,
+                        summary,
+                        start_seconds,
+                        end_seconds,
+                        Jsonb({"action": "add", "source": "blueprint_design"}),
+                        revision_id,
+                    ),
+                )
+            ).fetchone()
+            assert topic is not None
+            await _record_workspace_audit(
+                conn,
+                course_id=course_id,
+                revision_id=revision_id,
+                instructor_id=instructor_id,
+                artifact_type="topic",
+                artifact_id=UUID(str(topic["logical_id"])),
+                action="add",
+                previous_state=None,
+                new_state={
+                    "title": title,
+                    "summary": summary,
+                    "start_seconds": start_seconds,
+                    "end_seconds": end_seconds,
+                },
+                note="Added a topic in Blueprint Design mode.",
+            )
+            return UUID(str(topic["logical_id"]))
+
+    async def update_blueprint_topic(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        topic_id: UUID,
+        title: str,
+        summary: str,
+        start_seconds: float,
+        end_seconds: float,
+    ) -> None:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            topic = await (
+                await conn.execute(
+                    """
+                    select t.id, t.logical_id, t.title, t.summary, t.start_seconds,
+                           t.end_seconds, v.duration_seconds
+                    from topics t join videos v on v.id = t.video_id
+                    where t.course_id = %s and t.revision_id = %s
+                      and t.review_status <> 'dismissed'
+                      and (t.id = %s or t.logical_id = %s)
+                    limit 1
+                    """,
+                    (course_id, revision_id, topic_id, topic_id),
+                )
+            ).fetchone()
+            if topic is None:
+                raise ValueError("Topic not found in the editable revision.")
+            if topic["duration_seconds"] is not None and end_seconds > float(
+                topic["duration_seconds"]
+            ):
+                raise ValueError("Topic end time cannot exceed the lecture duration.")
+            duplicate = await (
+                await conn.execute(
+                    """
+                    select 1 from topics
+                    where course_id = %s and revision_id = %s and id <> %s
+                      and review_status <> 'dismissed' and lower(title) = lower(%s)
+                    """,
+                    (course_id, revision_id, topic["id"], title),
+                )
+            ).fetchone()
+            if duplicate:
+                raise ValueError("Another active topic already uses that title.")
+            before = {
+                "title": topic["title"],
+                "summary": topic["summary"] or "",
+                "start_seconds": float(topic["start_seconds"]),
+                "end_seconds": float(topic["end_seconds"]),
+            }
+            after = {
+                "title": title,
+                "summary": summary,
+                "start_seconds": start_seconds,
+                "end_seconds": end_seconds,
+            }
+            await conn.execute(
+                """
+                update topics
+                set title = %s, summary = %s, start_seconds = %s, end_seconds = %s,
+                    review_status = 'edited', approved_at = now(), updated_at = now(),
+                    instructor_revision = coalesce(instructor_revision, '{}'::jsonb)
+                      || %s::jsonb
+                where id = %s
+                """,
+                (
+                    title,
+                    summary,
+                    start_seconds,
+                    end_seconds,
+                    Jsonb({"action": "edit", **after}),
+                    topic["id"],
+                ),
+            )
+            await _record_workspace_audit(
+                conn,
+                course_id=course_id,
+                revision_id=revision_id,
+                instructor_id=instructor_id,
+                artifact_type="topic",
+                artifact_id=UUID(str(topic["logical_id"])),
+                action="edit",
+                previous_state=before,
+                new_state=after,
+                note="Edited a topic in Blueprint Design mode.",
+            )
+
+    async def create_blueprint_concept(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        name: str,
+        description: str,
+        topic_ids: tuple[UUID, ...],
+        sequence_after_id: UUID | None,
+    ) -> UUID:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            duplicate = await (
+                await conn.execute(
+                    """
+                    select 1 from concepts
+                    where course_id = %s and revision_id = %s
+                      and review_status <> 'dismissed' and lower(name) = lower(%s)
+                    """,
+                    (course_id, revision_id, name),
+                )
+            ).fetchone()
+            if duplicate:
+                raise ValueError("Another active concept already uses that name.")
+            topic_rows = await (
+                await conn.execute(
+                    """
+                    select id, logical_id from topics
+                    where course_id = %s and revision_id = %s
+                      and review_status <> 'dismissed'
+                      and (id = any(%s::uuid[]) or logical_id = any(%s::uuid[]))
+                    """,
+                    (course_id, revision_id, list(topic_ids), list(topic_ids)),
+                )
+            ).fetchall()
+            by_identifier: dict[UUID, Any] = {}
+            for topic in topic_rows:
+                by_identifier[UUID(str(topic["id"]))] = topic
+                by_identifier[UUID(str(topic["logical_id"]))] = topic
+            resolved_topics = [by_identifier.get(value) for value in topic_ids]
+            if any(topic is None for topic in resolved_topics):
+                raise ValueError("Every topic assignment must belong to this revision.")
+            max_rank = await (
+                await conn.execute(
+                    """
+                    select coalesce(max(sequence_rank), -1) as rank
+                    from concepts
+                    where revision_id = %s and review_status <> 'dismissed'
+                    """,
+                    (revision_id,),
+                )
+            ).fetchone()
+            insert_rank = int(max_rank["rank"]) + 1 if max_rank else 0
+            if sequence_after_id is not None:
+                anchor = await (
+                    await conn.execute(
+                        """
+                        select sequence_rank from concepts
+                        where revision_id = %s and review_status <> 'dismissed'
+                          and (id = %s or logical_id = %s)
+                        """,
+                        (revision_id, sequence_after_id, sequence_after_id),
+                    )
+                ).fetchone()
+                if anchor is None:
+                    raise ValueError("The selected sequence anchor is not in this revision.")
+                insert_rank = int(anchor["sequence_rank"]) + 1
+                await conn.execute(
+                    """
+                    update concepts set sequence_rank = sequence_rank + 1, updated_at = now()
+                    where revision_id = %s and review_status <> 'dismissed'
+                      and sequence_rank >= %s
+                    """,
+                    (revision_id, insert_rank),
+                )
+            concept = await (
+                await conn.execute(
+                    """
+                    insert into concepts (
+                      course_id, name, description, instructor_revision, review_status,
+                      approved_at, revision_id, sequence_rank
+                    ) values (%s, %s, %s, %s::jsonb, 'edited', now(), %s, %s)
+                    returning id, logical_id
+                    """,
+                    (
+                        course_id,
+                        name,
+                        description,
+                        Jsonb({"action": "add", "source": "blueprint_design"}),
+                        revision_id,
+                        insert_rank,
+                    ),
+                )
+            ).fetchone()
+            assert concept is not None
+            for topic in resolved_topics:
+                assert topic is not None
+                await conn.execute(
+                    """
+                    insert into topic_concepts (topic_id, concept_id, revision_id)
+                    values (%s, %s, %s)
+                    """,
+                    (topic["id"], concept["id"], revision_id),
+                )
+            await _record_workspace_audit(
+                conn,
+                course_id=course_id,
+                revision_id=revision_id,
+                instructor_id=instructor_id,
+                artifact_type="concept",
+                artifact_id=UUID(str(concept["logical_id"])),
+                action="add",
+                previous_state=None,
+                new_state={
+                    "name": name,
+                    "description": description,
+                    "topic_logical_ids": [
+                        str(topic["logical_id"]) for topic in resolved_topics if topic is not None
+                    ],
+                    "sequence_rank": insert_rank,
+                },
+                note="Added a concept in Blueprint Design mode.",
+            )
+            return UUID(str(concept["logical_id"]))
+
+    async def blueprint_mutation_impact(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        artifact_kind: str,
+        artifact_id: UUID,
+    ) -> BlueprintMutationImpact:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            table = {
+                "topic": "topics",
+                "concept": "concepts",
+                "clip": "clips",
+                "question": "questions",
+            }[artifact_kind]
+            title_column = {
+                "topic": "title",
+                "concept": "name",
+                "clip": "type::text",
+                "question": "body",
+            }[artifact_kind]
+            artifact = await (
+                await conn.execute(
+                    f"""
+                    select id, logical_id, {title_column} as title
+                    from {table}
+                    where revision_id = %s and (id = %s or logical_id = %s)
+                    limit 1
+                    """,
+                    (revision_id, artifact_id, artifact_id),
+                )
+            ).fetchone()
+            if artifact is None:
+                raise ValueError("Artifact not found in this revision.")
+            row_id = artifact["id"]
+            topics: list[str] = []
+            concepts: list[str] = []
+            clips: list[str] = []
+            questions: list[str] = []
+            relationship_count = 0
+            warnings: list[str] = []
+            if artifact_kind == "topic":
+                concepts = [
+                    str(row["name"])
+                    for row in await (
+                        await conn.execute(
+                            """
+                            select c.name
+                            from topic_concepts tc
+                            join concepts c on c.id = tc.concept_id
+                            where tc.topic_id = %s and c.review_status <> 'dismissed'
+                            order by c.sequence_rank
+                            """,
+                            (row_id,),
+                        )
+                    ).fetchall()
+                ]
+                clips = [
+                    str(row["type"]).replace("_", " ").title()
+                    for row in await (
+                        await conn.execute(
+                            "select type from clips where topic_id = %s and status <> 'superseded'",
+                            (row_id,),
+                        )
+                    ).fetchall()
+                ]
+                questions = [
+                    str(row["body"])
+                    for row in await (
+                        await conn.execute(
+                            """
+                            select body from questions
+                            where topic_id = %s and review_status <> 'dismissed'
+                            """,
+                            (row_id,),
+                        )
+                    ).fetchall()
+                ]
+                warnings.append(
+                    "Artifacts used only by this topic will be removed from the private revision."
+                )
+            elif artifact_kind == "concept":
+                topics = [
+                    str(row["title"])
+                    for row in await (
+                        await conn.execute(
+                            """
+                            select t.title
+                            from topic_concepts tc
+                            join topics t on t.id = tc.topic_id
+                            where tc.concept_id = %s and t.review_status <> 'dismissed'
+                            """,
+                            (row_id,),
+                        )
+                    ).fetchall()
+                ]
+                clips = [
+                    str(row["type"]).replace("_", " ").title()
+                    for row in await (
+                        await conn.execute(
+                            """
+                            select cl.type
+                            from clip_concepts cc
+                            join clips cl on cl.id = cc.clip_id
+                            where cc.concept_id = %s and cl.status <> 'superseded'
+                            """,
+                            (row_id,),
+                        )
+                    ).fetchall()
+                ]
+                questions = [
+                    str(row["body"])
+                    for row in await (
+                        await conn.execute(
+                            """
+                            select q.body
+                            from question_concepts qc
+                            join questions q on q.id = qc.question_id
+                            where qc.concept_id = %s and q.review_status <> 'dismissed'
+                            """,
+                            (row_id,),
+                        )
+                    ).fetchall()
+                ]
+                edge_count = await (
+                    await conn.execute(
+                        """
+                        select count(*) as count
+                        from concept_edges
+                        where revision_id = %s and review_status <> 'dismissed'
+                          and (from_concept_id = %s or to_concept_id = %s)
+                        """,
+                        (revision_id, row_id, row_id),
+                    )
+                ).fetchone()
+                relationship_count = int(edge_count["count"]) if edge_count else 0
+                warnings.append("Questions and clips shared with other concepts will be preserved.")
+            elif artifact_kind == "clip":
+                concepts = [
+                    str(row["name"])
+                    for row in await (
+                        await conn.execute(
+                            """
+                            select c.name
+                            from clip_concepts cc
+                            join concepts c on c.id = cc.concept_id
+                            where cc.clip_id = %s
+                            """,
+                            (row_id,),
+                        )
+                    ).fetchall()
+                ]
+            else:
+                concepts = [
+                    str(row["name"])
+                    for row in await (
+                        await conn.execute(
+                            """
+                            select c.name
+                            from question_concepts qc
+                            join concepts c on c.id = qc.concept_id
+                            where qc.question_id = %s
+                            """,
+                            (row_id,),
+                        )
+                    ).fetchall()
+                ]
+            return BlueprintMutationImpact(
+                artifact_kind=artifact_kind,
+                logical_artifact_id=UUID(str(artifact["logical_id"])),
+                title=str(artifact["title"]),
+                affected_topics=tuple(topics),
+                affected_concepts=tuple(concepts),
+                affected_clips=tuple(clips),
+                affected_questions=tuple(questions),
+                affected_relationships=relationship_count,
+                warnings=tuple(warnings),
+            )
+
+    async def remove_blueprint_artifact(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        artifact_kind: str,
+        artifact_id: UUID,
+    ) -> None:
+        impact = await self.blueprint_mutation_impact(
+            course_id,
+            revision_id,
+            artifact_kind,
+            artifact_id,
+        )
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            table = {
+                "topic": "topics",
+                "concept": "concepts",
+                "clip": "clips",
+                "question": "questions",
+            }[artifact_kind]
+            artifact = await (
+                await conn.execute(
+                    f"""
+                    select id, logical_id from {table}
+                    where revision_id = %s and (id = %s or logical_id = %s)
+                    limit 1
+                    """,
+                    (revision_id, artifact_id, artifact_id),
+                )
+            ).fetchone()
+            if artifact is None:
+                raise ValueError("Artifact not found in the editable revision.")
+            row_id = artifact["id"]
+            if artifact_kind == "topic":
+                exclusive = await (
+                    await conn.execute(
+                        """
+                        select tc.concept_id
+                        from topic_concepts tc
+                        where tc.topic_id = %s
+                          and not exists (
+                            select 1 from topic_concepts other
+                            join topics ot on ot.id = other.topic_id
+                            where other.concept_id = tc.concept_id
+                              and other.topic_id <> %s
+                              and ot.review_status <> 'dismissed'
+                          )
+                        """,
+                        (row_id, row_id),
+                    )
+                ).fetchall()
+                exclusive_ids = [row["concept_id"] for row in exclusive]
+                if exclusive_ids:
+                    await conn.execute(
+                        """
+                        update concept_edges
+                        set review_status = 'dismissed', dismissed_at = now(),
+                            updated_at = now()
+                        where revision_id = %s
+                          and (
+                            from_concept_id = any(%s::uuid[])
+                            or to_concept_id = any(%s::uuid[])
+                          )
+                        """,
+                        (revision_id, exclusive_ids, exclusive_ids),
+                    )
+                    await conn.execute(
+                        """
+                        update concepts
+                        set review_status = 'dismissed', dismissed_at = now(),
+                            updated_at = now()
+                        where id = any(%s::uuid[])
+                        """,
+                        (exclusive_ids,),
+                    )
+                await conn.execute(
+                    """
+                    update clips set status = 'superseded', updated_at = now()
+                    where topic_id = %s
+                    """,
+                    (row_id,),
+                )
+                await conn.execute(
+                    """
+                    update questions
+                    set review_status = 'dismissed', dismissed_at = now(), updated_at = now()
+                    where topic_id = %s
+                    """,
+                    (row_id,),
+                )
+                await conn.execute(
+                    """
+                    update topics
+                    set review_status = 'dismissed', dismissed_at = now(), updated_at = now()
+                    where id = %s
+                    """,
+                    (row_id,),
+                )
+            elif artifact_kind == "concept":
+                await conn.execute(
+                    """
+                    update concept_edges
+                    set review_status = 'dismissed', dismissed_at = now(), updated_at = now()
+                    where revision_id = %s
+                      and (from_concept_id = %s or to_concept_id = %s)
+                    """,
+                    (revision_id, row_id, row_id),
+                )
+                await conn.execute(
+                    """
+                    update concepts
+                    set review_status = 'dismissed', dismissed_at = now(), updated_at = now()
+                    where id = %s
+                    """,
+                    (row_id,),
+                )
+            elif artifact_kind == "clip":
+                await conn.execute(
+                    "update clips set status = 'superseded', updated_at = now() where id = %s",
+                    (row_id,),
+                )
+            else:
+                await conn.execute(
+                    """
+                    update questions
+                    set review_status = 'dismissed', dismissed_at = now(), updated_at = now()
+                    where id = %s
+                    """,
+                    (row_id,),
+                )
+            await _record_workspace_audit(
+                conn,
+                course_id=course_id,
+                revision_id=revision_id,
+                instructor_id=instructor_id,
+                artifact_type=artifact_kind,
+                artifact_id=impact.logical_artifact_id,
+                action="remove",
+                previous_state={
+                    "title": impact.title,
+                    "affected_relationships": impact.affected_relationships,
+                },
+                new_state={"status": "dismissed" if artifact_kind != "clip" else "superseded"},
+                note=(
+                    f"Removed a {artifact_kind} in Blueprint Design mode after impact confirmation."
+                ),
+            )
+
     async def revision_diff(
         self,
         active_revision_id: UUID | None,
@@ -3564,6 +4251,7 @@ async def _record_workspace_audit(
     action: str,
     previous_state: dict[str, Any] | None,
     new_state: dict[str, Any] | None,
+    note: str = "Changed in the structured course workspace.",
 ) -> None:
     await conn.execute(
         """
@@ -3581,7 +4269,7 @@ async def _record_workspace_audit(
             action,
             Jsonb(previous_state) if previous_state is not None else None,
             Jsonb(new_state) if new_state is not None else None,
-            "Changed in the structured course workspace.",
+            note,
             revision_id,
         ),
     )
@@ -4323,6 +5011,80 @@ async def _apply_typed_proposal(
     revision_id: UUID,
     resolved_state: dict[str, Any],
 ) -> None:
+    if artifact_type == "concept_edge_create":
+        try:
+            from_logical_id = UUID(str(resolved_state["from_concept_logical_id"]))
+            to_logical_id = UUID(str(resolved_state["to_concept_logical_id"]))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                "A prerequisite proposal must identify both concepts."
+            ) from exc
+        if from_logical_id == to_logical_id:
+            raise ValueError("A concept cannot require itself.")
+        concepts = await (
+            await conn.execute(
+                """
+                select id, logical_id
+                from concepts
+                where revision_id = %s and review_status <> 'dismissed'
+                  and logical_id = any(%s::uuid[])
+                """,
+                (revision_id, [from_logical_id, to_logical_id]),
+            )
+        ).fetchall()
+        by_logical = {UUID(str(row["logical_id"])): row["id"] for row in concepts}
+        from_id = by_logical.get(from_logical_id)
+        to_id = by_logical.get(to_logical_id)
+        if from_id is None or to_id is None:
+            raise ValueError("The proposed prerequisite references a removed concept.")
+        duplicate = await (
+            await conn.execute(
+                """
+                select 1 from concept_edges
+                where revision_id = %s and from_concept_id = %s and to_concept_id = %s
+                  and review_status <> 'dismissed'
+                """,
+                (revision_id, from_id, to_id),
+            )
+        ).fetchone()
+        if duplicate:
+            raise ValueError("That prerequisite relationship already exists.")
+        cycle = await (
+            await conn.execute(
+                """
+                with recursive reachable(id) as (
+                  select to_concept_id from concept_edges
+                  where revision_id = %s and from_concept_id = %s
+                    and review_status <> 'dismissed'
+                  union
+                  select edge.to_concept_id
+                  from concept_edges edge
+                  join reachable path on path.id = edge.from_concept_id
+                  where edge.revision_id = %s and edge.review_status <> 'dismissed'
+                )
+                select 1 from reachable where id = %s limit 1
+                """,
+                (revision_id, to_id, revision_id, from_id),
+            )
+        ).fetchone()
+        if cycle:
+            raise ValueError("That prerequisite would create a cycle.")
+        await conn.execute(
+            """
+            insert into concept_edges (
+              logical_id, from_concept_id, to_concept_id, relationship,
+              instructor_revision, review_status, approved_at, revision_id
+            ) values (%s, %s, %s, 'requires', %s::jsonb, 'edited', now(), %s)
+            """,
+            (
+                logical_artifact_id,
+                from_id,
+                to_id,
+                Jsonb(resolved_state),
+                revision_id,
+            ),
+        )
+        return
     specification = _TYPED_PROPOSAL_FIELDS.get(artifact_type)
     if specification is None:
         raise ValueError(f"Unsupported course proposal target: {artifact_type}.")

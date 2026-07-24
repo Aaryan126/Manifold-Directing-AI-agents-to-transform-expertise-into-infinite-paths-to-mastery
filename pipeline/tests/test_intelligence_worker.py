@@ -13,18 +13,31 @@ from app.intelligence.models import (
 from app.intelligence.worker import CourseIntelligenceWorker
 
 
-def _task(pack_targets: list[dict[str, str]]) -> AgentTask:
+def _task(
+    pack_targets: list[dict[str, str]],
+    *,
+    task_type: str = "prepare_improvement",
+    suggested_prerequisite: dict[str, str] | None = None,
+) -> AgentTask:
     now = datetime.now(UTC)
     return AgentTask(
         id=uuid4(),
         course_id=uuid4(),
         revision_id=uuid4(),
         specialist_role=SpecialistRole.CURRICULUM_ARCHITECT,
-        task_type="prepare_improvement",
+        task_type=task_type,
         target_artifact_type="concept",
         target_logical_artifact_id=uuid4(),
         request_context={"instruction": "Prepare a coordinated recovery path."},
-        evidence_snapshot={"confident_incorrect": 3, "pack_targets": pack_targets},
+        evidence_snapshot={
+            "confident_incorrect": 3,
+            "pack_targets": pack_targets,
+            **(
+                {"suggested_prerequisite": suggested_prerequisite}
+                if suggested_prerequisite
+                else {}
+            ),
+        },
         status=AgentTaskStatus.RUNNING,
         result=None,
         proposal_ids=(),
@@ -110,3 +123,37 @@ async def test_specialist_worker_exposes_pack_failure_without_saving_partial_wor
         task,
         "Question proposal could not be prepared.",
     )
+
+
+@pytest.mark.anyio
+async def test_blueprint_cleanup_is_bounded_and_returns_reviewable_adjacent_proposals() -> None:
+    prerequisite = {
+        "from_concept_logical_id": str(uuid4()),
+        "to_concept_logical_id": str(uuid4()),
+    }
+    task = _task([], task_type="cleanup_blueprint", suggested_prerequisite=prerequisite)
+    repository = AsyncMock()
+    repository.claim_agent_task.return_value = task
+    repository.target_state.return_value = {"name": "New concept"}
+    repository.search_sources.return_value = ()
+    agent = AsyncMock()
+    assert task.target_logical_artifact_id is not None
+    agent.prepare.return_value = _draft("concept", task.target_logical_artifact_id)
+    worker = CourseIntelligenceWorker(
+        repository,
+        AsyncMock(),
+        agent,
+        worker_id="test-worker",
+    )
+
+    assert await worker.run_once() is True
+
+    _, drafts, _ = repository.save_improvement_pack.await_args.args
+    assert len(drafts) == 2
+    assert drafts[0].artifact_type == "concept"
+    assert drafts[1].artifact_type == "concept_edge_create"
+    assert drafts[1].proposed_state == {
+        **prerequisite,
+        "relationship": "requires",
+    }
+    assert "smallest adjacent cleanup" in agent.prepare.await_args.kwargs["instruction"]

@@ -6,6 +6,7 @@ from app.course_os.models import (
     AssessmentDraft,
     AssessmentWorkspace,
     BlueprintConceptEvidence,
+    BlueprintMutationImpact,
     ConversationMessage,
     CourseAssessment,
     CourseBlueprint,
@@ -200,6 +201,52 @@ class CourseOSRepository(ABC):
     ) -> None: ...
 
     @abstractmethod
+    async def remove_blueprint_prerequisite(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        edge_id: UUID,
+    ) -> None: ...
+
+    @abstractmethod
+    async def create_blueprint_topic(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        title: str,
+        summary: str,
+        start_seconds: float,
+        end_seconds: float,
+    ) -> UUID: ...
+
+    @abstractmethod
+    async def update_blueprint_topic(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        topic_id: UUID,
+        title: str,
+        summary: str,
+        start_seconds: float,
+        end_seconds: float,
+    ) -> None: ...
+
+    @abstractmethod
+    async def create_blueprint_concept(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        name: str,
+        description: str,
+        topic_ids: tuple[UUID, ...],
+        sequence_after_id: UUID | None,
+    ) -> UUID: ...
+
+    @abstractmethod
     async def update_blueprint_concept(
         self,
         course_id: UUID,
@@ -218,6 +265,25 @@ class CourseOSRepository(ABC):
         instructor_id: UUID,
         concept_id: UUID,
         topic_ids: tuple[UUID, ...],
+    ) -> None: ...
+
+    @abstractmethod
+    async def blueprint_mutation_impact(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        artifact_kind: str,
+        artifact_id: UUID,
+    ) -> BlueprintMutationImpact: ...
+
+    @abstractmethod
+    async def remove_blueprint_artifact(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        artifact_kind: str,
+        artifact_id: UUID,
     ) -> None: ...
 
     @abstractmethod

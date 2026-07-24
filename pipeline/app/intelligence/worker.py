@@ -1,9 +1,10 @@
 import asyncio
 from contextlib import suppress
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.intelligence.agent import CourseImprovementAgent
 from app.intelligence.extractor import DocumentExtractor
+from app.intelligence.models import ImprovementDraft
 from app.intelligence.postgres_repository import PostgresIntelligenceRepository
 
 
@@ -52,11 +53,18 @@ class CourseIntelligenceWorker:
                     task.id,
                     {"source_id": str(source_id), "section_count": len(sections)},
                 )
-            elif task.task_type == "prepare_improvement":
+            elif task.task_type in {"prepare_improvement", "cleanup_blueprint"}:
                 current = await self._repository.target_state(task)
                 if task.target_artifact_type is None or task.target_logical_artifact_id is None:
                     raise ValueError("Prepared improvement has no artifact target.")
                 instruction = str(task.request_context.get("instruction", ""))
+                if task.task_type == "cleanup_blueprint":
+                    instruction = (
+                        "Inspect this instructor-authored Blueprint change in the context of the "
+                        "surrounding course. Suggest only the smallest adjacent cleanup needed for "
+                        "coherence, coverage, or adaptive routing. "
+                        f"{instruction}"
+                    ).strip()
                 citations = (
                     await self._repository.search_sources(
                         task.course_id,
@@ -115,6 +123,34 @@ class CourseIntelligenceWorker:
                                 instruction=instruction,
                             )
                         )
+                suggested_prerequisite = task.evidence_snapshot.get(
+                    "suggested_prerequisite"
+                )
+                if task.task_type == "cleanup_blueprint" and isinstance(
+                    suggested_prerequisite, dict
+                ):
+                    raw_from = suggested_prerequisite.get("from_concept_logical_id")
+                    raw_to = suggested_prerequisite.get("to_concept_logical_id")
+                    if raw_from and raw_to and str(raw_from) != str(raw_to):
+                        drafts.append(
+                            ImprovementDraft(
+                                proposal_type="blueprint_prerequisite_create",
+                                artifact_type="concept_edge_create",
+                                logical_artifact_id=uuid4(),
+                                before_state={},
+                                proposed_state={
+                                    "from_concept_logical_id": str(raw_from),
+                                    "to_concept_logical_id": str(raw_to),
+                                    "relationship": "requires",
+                                },
+                                rationale=(
+                                    "The cleanup specialist found a missing prerequisite between "
+                                    "adjacent concepts after the instructor's structural edit. "
+                                    "This remains private until accepted."
+                                ),
+                            )
+                        )
+                drafts = drafts[:6]
                 await self._repository.save_improvement_pack(task, tuple(drafts), citations)
             elif task.task_type == "investigate":
                 await self._repository.complete_task(

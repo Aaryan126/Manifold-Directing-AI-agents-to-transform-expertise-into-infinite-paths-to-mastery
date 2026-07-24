@@ -300,6 +300,20 @@ class BlueprintPrerequisiteRequest(BaseModel):
     to_concept_id: UUID
 
 
+class BlueprintTopicDraftRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=240)
+    summary: str = Field(default="", max_length=4000)
+    start_seconds: float = Field(ge=0)
+    end_seconds: float = Field(gt=0)
+
+
+class BlueprintConceptDraftRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=240)
+    description: str = Field(default="", max_length=4000)
+    topic_logical_ids: list[UUID] = Field(min_length=1)
+    sequence_after_id: UUID | None = None
+
+
 class BlueprintConceptUpdateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=240)
     description: str = Field(default="", max_length=4000)
@@ -307,6 +321,19 @@ class BlueprintConceptUpdateRequest(BaseModel):
 
 class BlueprintConceptTopicsRequest(BaseModel):
     topic_logical_ids: list[UUID] = Field(min_length=1)
+
+
+class BlueprintMutationImpactResponse(BaseModel):
+    artifact_kind: str
+    logical_artifact_id: UUID
+    title: str
+    affected_topics: list[str]
+    affected_concepts: list[str]
+    affected_clips: list[str]
+    affected_questions: list[str]
+    affected_relationships: int
+    learner_records_preserved: bool
+    warnings: list[str]
 
 
 class AssessmentRuleRequest(BaseModel):
@@ -691,6 +718,97 @@ async def add_blueprint_prerequisite(
     )
 
 
+@router.delete(
+    "/courses/{course_id}/blueprint/prerequisites/{edge_id}",
+    response_model=CourseBlueprintResponse,
+)
+async def remove_blueprint_prerequisite(
+    course_id: UUID,
+    edge_id: UUID,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseBlueprintResponse:
+    return _blueprint_response(
+        await _call(service.remove_blueprint_prerequisite(course_id, user_id, edge_id))
+    )
+
+
+@router.post(
+    "/courses/{course_id}/blueprint/topics",
+    response_model=CourseBlueprintResponse,
+    status_code=201,
+)
+async def create_blueprint_topic(
+    course_id: UUID,
+    request: BlueprintTopicDraftRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseBlueprintResponse:
+    return _blueprint_response(
+        await _call(
+            service.create_blueprint_topic(
+                course_id,
+                user_id,
+                request.title,
+                request.summary,
+                request.start_seconds,
+                request.end_seconds,
+            )
+        )
+    )
+
+
+@router.patch(
+    "/courses/{course_id}/blueprint/topics/{topic_id}",
+    response_model=CourseBlueprintResponse,
+)
+async def update_blueprint_topic(
+    course_id: UUID,
+    topic_id: UUID,
+    request: BlueprintTopicDraftRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseBlueprintResponse:
+    return _blueprint_response(
+        await _call(
+            service.update_blueprint_topic(
+                course_id,
+                user_id,
+                topic_id,
+                request.title,
+                request.summary,
+                request.start_seconds,
+                request.end_seconds,
+            )
+        )
+    )
+
+
+@router.post(
+    "/courses/{course_id}/blueprint/concepts",
+    response_model=CourseBlueprintResponse,
+    status_code=201,
+)
+async def create_blueprint_concept(
+    course_id: UUID,
+    request: BlueprintConceptDraftRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseBlueprintResponse:
+    return _blueprint_response(
+        await _call(
+            service.create_blueprint_concept(
+                course_id,
+                user_id,
+                request.name,
+                request.description,
+                tuple(request.topic_logical_ids),
+                request.sequence_after_id,
+            )
+        )
+    )
+
+
 @router.patch(
     "/courses/{course_id}/blueprint/concepts/{concept_id}",
     response_model=CourseBlueprintResponse,
@@ -733,6 +851,62 @@ async def update_blueprint_concept_topics(
                 user_id,
                 concept_id,
                 tuple(request.topic_logical_ids),
+            )
+        )
+    )
+
+
+@router.get(
+    "/courses/{course_id}/blueprint/artifacts/{artifact_kind}/{artifact_id}/impact",
+    response_model=BlueprintMutationImpactResponse,
+)
+async def blueprint_mutation_impact(
+    course_id: UUID,
+    artifact_kind: str,
+    artifact_id: UUID,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> BlueprintMutationImpactResponse:
+    impact = await _call(
+        service.blueprint_mutation_impact(
+            course_id,
+            user_id,
+            artifact_kind,
+            artifact_id,
+        )
+    )
+    return BlueprintMutationImpactResponse(
+        artifact_kind=impact.artifact_kind,
+        logical_artifact_id=impact.logical_artifact_id,
+        title=impact.title,
+        affected_topics=list(impact.affected_topics),
+        affected_concepts=list(impact.affected_concepts),
+        affected_clips=list(impact.affected_clips),
+        affected_questions=list(impact.affected_questions),
+        affected_relationships=impact.affected_relationships,
+        learner_records_preserved=impact.learner_records_preserved,
+        warnings=list(impact.warnings),
+    )
+
+
+@router.delete(
+    "/courses/{course_id}/blueprint/artifacts/{artifact_kind}/{artifact_id}",
+    response_model=CourseBlueprintResponse,
+)
+async def remove_blueprint_artifact(
+    course_id: UUID,
+    artifact_kind: str,
+    artifact_id: UUID,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseBlueprintResponse:
+    return _blueprint_response(
+        await _call(
+            service.remove_blueprint_artifact(
+                course_id,
+                user_id,
+                artifact_kind,
+                artifact_id,
             )
         )
     )

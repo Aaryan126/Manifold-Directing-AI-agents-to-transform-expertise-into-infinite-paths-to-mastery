@@ -11,6 +11,7 @@ from app.course_os.models import (
     AssessmentWorkspace,
     BlueprintConceptEvidence,
     BlueprintEdge,
+    BlueprintMutationImpact,
     BlueprintNode,
     CourseAssessment,
     CourseBlueprint,
@@ -379,6 +380,113 @@ def test_blueprint_concept_topic_assignment_is_forwarded_as_private_work() -> No
             instructor_id,
             concept_id,
             topic_ids,
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_blueprint_design_mutations_and_impact_are_forwarded_as_private_work() -> None:
+    instructor_id = uuid4()
+    course_id = uuid4()
+    revision_id = uuid4()
+    topic_id = uuid4()
+    concept_id = uuid4()
+    prerequisite_id = uuid4()
+    service = AsyncMock()
+    blueprint = CourseBlueprint(
+        course_id=course_id,
+        revision_id=revision_id,
+        revision_kind="working",
+        nodes=(),
+        edges=(),
+        uncovered_concept_ids=(),
+    )
+    service.create_blueprint_topic.return_value = blueprint
+    service.create_blueprint_concept.return_value = blueprint
+    service.remove_blueprint_prerequisite.return_value = blueprint
+    service.remove_blueprint_artifact.return_value = blueprint
+    service.blueprint_mutation_impact.return_value = BlueprintMutationImpact(
+        artifact_kind="concept",
+        logical_artifact_id=concept_id,
+        title="Deliberate practice",
+        affected_topics=("Practice foundations",),
+        affected_concepts=("Deliberate practice",),
+        affected_clips=("Focused explanation",),
+        affected_questions=("What makes practice deliberate?",),
+        affected_relationships=3,
+        learner_records_preserved=True,
+        warnings=("One teaching clip will be removed from this revision.",),
+    )
+    app.dependency_overrides[get_course_os_service] = lambda: service
+    client = TestClient(app)
+
+    try:
+        topic_response = client.post(
+            f"/courses/{course_id}/blueprint/topics",
+            headers={"X-User-ID": str(instructor_id)},
+            json={
+                "title": "Practice foundations",
+                "summary": "Establish the core idea.",
+                "start_seconds": 10,
+                "end_seconds": 70,
+            },
+        )
+        concept_response = client.post(
+            f"/courses/{course_id}/blueprint/concepts",
+            headers={"X-User-ID": str(instructor_id)},
+            json={
+                "name": "Deliberate practice",
+                "description": "Purposeful practice with feedback.",
+                "topic_logical_ids": [str(topic_id)],
+                "sequence_after_id": None,
+            },
+        )
+        prerequisite_response = client.delete(
+            f"/courses/{course_id}/blueprint/prerequisites/{prerequisite_id}",
+            headers={"X-User-ID": str(instructor_id)},
+        )
+        impact_response = client.get(
+            f"/courses/{course_id}/blueprint/artifacts/concept/{concept_id}/impact",
+            headers={"X-User-ID": str(instructor_id)},
+        )
+        removal_response = client.delete(
+            f"/courses/{course_id}/blueprint/artifacts/concept/{concept_id}",
+            headers={"X-User-ID": str(instructor_id)},
+        )
+
+        assert topic_response.status_code == 201
+        assert concept_response.status_code == 201
+        assert prerequisite_response.status_code == 200
+        assert impact_response.status_code == 200
+        assert impact_response.json()["learner_records_preserved"] is True
+        assert impact_response.json()["affected_relationships"] == 3
+        assert removal_response.status_code == 200
+        service.create_blueprint_topic.assert_awaited_once_with(
+            course_id,
+            instructor_id,
+            "Practice foundations",
+            "Establish the core idea.",
+            10.0,
+            70.0,
+        )
+        service.create_blueprint_concept.assert_awaited_once_with(
+            course_id,
+            instructor_id,
+            "Deliberate practice",
+            "Purposeful practice with feedback.",
+            (topic_id,),
+            None,
+        )
+        service.remove_blueprint_prerequisite.assert_awaited_once_with(
+            course_id,
+            instructor_id,
+            prerequisite_id,
+        )
+        service.remove_blueprint_artifact.assert_awaited_once_with(
+            course_id,
+            instructor_id,
+            "concept",
+            concept_id,
         )
     finally:
         app.dependency_overrides.clear()

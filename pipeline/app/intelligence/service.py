@@ -134,12 +134,14 @@ class CourseIntelligenceService:
         instruction: str,
         evidence: dict[str, Any],
     ) -> AgentTask:
-        if task_type not in {"investigate", "prepare_improvement"}:
+        if task_type not in {"investigate", "prepare_improvement", "cleanup_blueprint"}:
             raise IntelligenceValidationError("Unsupported specialist task type.")
-        if task_type == "prepare_improvement" and (
+        if task_type in {"prepare_improvement", "cleanup_blueprint"} and (
             target_artifact_type is None or target_logical_artifact_id is None
         ):
-            raise IntelligenceValidationError("Prepared improvements require an artifact target.")
+            raise IntelligenceValidationError(
+                "Prepared improvements and Blueprint cleanup require an artifact target."
+            )
         course = await self._editable_course(course_id, instructor_id)
         return await self._repository.create_agent_task(
             course_id=course_id,

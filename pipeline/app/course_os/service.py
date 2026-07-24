@@ -6,6 +6,7 @@ from app.course_os.models import (
     AssessmentDraft,
     AssessmentWorkspace,
     BlueprintConceptEvidence,
+    BlueprintMutationImpact,
     ConversationMessage,
     CourseAssessment,
     CourseBlueprint,
@@ -497,6 +498,119 @@ class CourseOSService:
             raise CourseOSValidationError(str(exc)) from exc
         return await self._repository.blueprint(course_id, revision_id, "working")
 
+    async def remove_blueprint_prerequisite(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        edge_id: UUID,
+    ) -> CourseBlueprint:
+        course = await self._require_editable_course(course_id, instructor_id)
+        revision_id = _current_revision(course)
+        try:
+            await self._repository.remove_blueprint_prerequisite(
+                course_id,
+                revision_id,
+                instructor_id,
+                edge_id,
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        return await self._repository.blueprint(course_id, revision_id, "working")
+
+    async def create_blueprint_topic(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        title: str,
+        summary: str,
+        start_seconds: float,
+        end_seconds: float,
+    ) -> CourseBlueprint:
+        cleaned_title = title.strip()
+        if not cleaned_title:
+            raise CourseOSValidationError("Topic title is required.")
+        if start_seconds < 0 or end_seconds <= start_seconds:
+            raise CourseOSValidationError("Topic end time must be later than its start time.")
+        course = await self._require_editable_course(course_id, instructor_id)
+        revision_id = _current_revision(course)
+        try:
+            await self._repository.create_blueprint_topic(
+                course_id,
+                revision_id,
+                instructor_id,
+                cleaned_title[:240],
+                summary.strip()[:4000],
+                start_seconds,
+                end_seconds,
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        return await self._repository.blueprint(course_id, revision_id, "working")
+
+    async def update_blueprint_topic(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        topic_id: UUID,
+        title: str,
+        summary: str,
+        start_seconds: float,
+        end_seconds: float,
+    ) -> CourseBlueprint:
+        cleaned_title = title.strip()
+        if not cleaned_title:
+            raise CourseOSValidationError("Topic title is required.")
+        if start_seconds < 0 or end_seconds <= start_seconds:
+            raise CourseOSValidationError("Topic end time must be later than its start time.")
+        course = await self._require_editable_course(course_id, instructor_id)
+        revision_id = _current_revision(course)
+        try:
+            await self._repository.update_blueprint_topic(
+                course_id,
+                revision_id,
+                instructor_id,
+                topic_id,
+                cleaned_title[:240],
+                summary.strip()[:4000],
+                start_seconds,
+                end_seconds,
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        return await self._repository.blueprint(course_id, revision_id, "working")
+
+    async def create_blueprint_concept(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        name: str,
+        description: str,
+        topic_ids: tuple[UUID, ...],
+        sequence_after_id: UUID | None,
+    ) -> CourseBlueprint:
+        cleaned_name = name.strip()
+        if not cleaned_name:
+            raise CourseOSValidationError("Concept name is required.")
+        if not topic_ids:
+            raise CourseOSValidationError("A concept must belong to at least one topic.")
+        if len(topic_ids) != len(set(topic_ids)):
+            raise CourseOSValidationError("Concept topic assignments cannot contain duplicates.")
+        course = await self._require_editable_course(course_id, instructor_id)
+        revision_id = _current_revision(course)
+        try:
+            await self._repository.create_blueprint_concept(
+                course_id,
+                revision_id,
+                instructor_id,
+                cleaned_name[:240],
+                description.strip()[:4000],
+                topic_ids,
+                sequence_after_id,
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        return await self._repository.blueprint(course_id, revision_id, "working")
+
     async def update_blueprint_concept(
         self,
         course_id: UUID,
@@ -543,6 +657,50 @@ class CourseOSService:
                 instructor_id,
                 concept_id,
                 topic_ids,
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        return await self._repository.blueprint(course_id, revision_id, "working")
+
+    async def blueprint_mutation_impact(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        artifact_kind: str,
+        artifact_id: UUID,
+    ) -> BlueprintMutationImpact:
+        if artifact_kind not in {"topic", "concept", "clip", "question"}:
+            raise CourseOSValidationError(
+                "Only topic, concept, clip, or question artifacts can be removed."
+            )
+        course = await self._require_owned_course(course_id, instructor_id)
+        return await self._repository.blueprint_mutation_impact(
+            course_id,
+            _current_revision(course),
+            artifact_kind,
+            artifact_id,
+        )
+
+    async def remove_blueprint_artifact(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        artifact_kind: str,
+        artifact_id: UUID,
+    ) -> CourseBlueprint:
+        if artifact_kind not in {"topic", "concept", "clip", "question"}:
+            raise CourseOSValidationError(
+                "Only topic, concept, clip, or question artifacts can be removed."
+            )
+        course = await self._require_editable_course(course_id, instructor_id)
+        revision_id = _current_revision(course)
+        try:
+            await self._repository.remove_blueprint_artifact(
+                course_id,
+                revision_id,
+                instructor_id,
+                artifact_kind,
+                artifact_id,
             )
         except ValueError as exc:
             raise CourseOSValidationError(str(exc)) from exc
