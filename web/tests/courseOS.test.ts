@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   answerOutcomeSummary,
+  blueprintNodeLayer,
   blueprintConceptNeighborhoodIds,
+  coreBlueprintEdgeKinds,
   buildBlueprintTopicLanes,
   canPrepareImprovement,
   compareBlueprintSequence,
@@ -17,6 +19,7 @@ import {
   studioPresentationMode,
   topicLogicalIdsForConcept,
   visibleBlueprintNodeIds,
+  visibleBlueprintEdges,
   type BlueprintConceptEvidence,
   type BlueprintNode,
   type CourseBlueprint,
@@ -78,6 +81,22 @@ describe("Course OS presentation", () => {
       .map((item) => item.id)).toEqual(["concept-1", "concept-2"]);
     expect(masteryStateForConcept("concept-1", evidence)).toBe("not_started");
     expect(masteryStateForConcept("concept-2", evidence)).toBe("struggling");
+  });
+
+  it("keeps the whole-course Blueprint on semantic layers with contextual detail", () => {
+    expect((["source", "topic", "concept", "clip", "question"] satisfies CourseBlueprint["nodes"][number]["kind"][])
+      .map(blueprintNodeLayer))
+      .toEqual([0, 1, 2, 3, 3]);
+    const edges = [
+      { id: "contains", source_id: "topic", target_id: "concept", kind: "contains", status: "accepted" },
+      { id: "cites", source_id: "concept", target_id: "source", kind: "cites", status: "accepted" },
+      { id: "remediation", source_id: "question", target_id: "clip", kind: "remediates_to", status: "accepted" },
+    ] satisfies CourseBlueprint["edges"];
+
+    expect(visibleBlueprintEdges(edges, coreBlueprintEdgeKinds, null).map((edge) => edge.id))
+      .toEqual(["contains"]);
+    expect(visibleBlueprintEdges(edges, coreBlueprintEdgeKinds, "concept").map((edge) => edge.id))
+      .toEqual(["contains", "cites"]);
   });
 
   it("builds topic swimlanes with shared concept aliases and artifact coverage", () => {

@@ -184,6 +184,45 @@ export type BlueprintEdge = {
   status: string;
 };
 
+export const blueprintEdgeKinds: BlueprintEdgeKind[] = [
+  "contains",
+  "next",
+  "requires",
+  "teaches",
+  "assesses",
+  "remediates_to",
+  "cites",
+];
+
+export const coreBlueprintEdgeKinds = new Set<BlueprintEdgeKind>([
+  "contains",
+  "next",
+  "requires",
+  "teaches",
+  "assesses",
+]);
+
+export function visibleBlueprintEdges(
+  edges: BlueprintEdge[],
+  enabledKinds: ReadonlySet<BlueprintEdgeKind>,
+  selectedNodeId: string | null,
+): BlueprintEdge[] {
+  return edges.filter(
+    (edge) => enabledKinds.has(edge.kind)
+      || Boolean(
+        selectedNodeId
+        && (edge.source_id === selectedNodeId || edge.target_id === selectedNodeId),
+      ),
+  );
+}
+
+export function blueprintNodeLayer(kind: BlueprintNodeKind): number {
+  if (kind === "source") return 0;
+  if (kind === "topic") return 1;
+  if (kind === "concept") return 2;
+  return 3;
+}
+
 export type CourseBlueprint = {
   course_id: string;
   revision_id: string;

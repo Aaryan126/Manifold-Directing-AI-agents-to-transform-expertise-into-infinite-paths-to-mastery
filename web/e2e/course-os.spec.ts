@@ -630,11 +630,20 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect(page.getByRole("button", { name: "Old Blueprint" })).toHaveCount(0);
   await expect(page.getByText("Structure, teaching, assessment, evidence, and routing in one inspectable model.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Core" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Auto arrange" })).toBeVisible();
   await expect(page.getByRole("dialog", { name: /artifact inspector/ })).toHaveCount(0);
   const conceptNode = page.getByTestId("rf__node-concept-1");
   const sourceNode = page.getByTestId("rf__node-source-1");
   await expect(conceptNode).toBeInViewport();
   await expect(sourceNode).toBeInViewport();
+  await expect(conceptNode.locator("article[data-kind='concept']")).toBeVisible();
+  await expect(sourceNode.locator("article[data-kind='source']")).toBeVisible();
+  const citationEdge = page.getByTestId("rf__edge-cites-1").locator(".react-flow__edge-path");
+  await expect(citationEdge).toHaveCSS("opacity", "0");
+  await page.getByRole("button", { name: "All" }).click();
+  await expect(citationEdge).toHaveCSS("opacity", "0.62");
+  await page.getByRole("button", { name: "Core" }).click();
   await expect.poll(() => page.locator(".react-flow__node").evaluateAll((nodes) => {
     const canvas = document.querySelector(".react-flow")?.getBoundingClientRect();
     if (!canvas || !nodes.length) return false;
@@ -647,6 +656,7 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
     });
   })).toBe(true);
   await conceptNode.click();
+  await expect(citationEdge).toHaveCSS("opacity", "1");
   await expect(page.getByRole("heading", { name: "Net force" })).toBeVisible();
   await expect(page.getByText("50%", { exact: true })).toBeVisible();
   await expect(page.getByText("Private proposal pack")).toBeVisible();
@@ -670,6 +680,7 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect(page.getByRole("dialog", { name: /artifact inspector/ })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Design" }).click();
+  await page.getByRole("button", { name: "Auto arrange" }).click();
   await conceptNode.click();
   await expect(page.getByRole("heading", { name: "Net force" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit concept fields" })).toBeVisible();

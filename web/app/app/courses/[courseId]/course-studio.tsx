@@ -1,13 +1,18 @@
 "use client";
 
 import {
+  BaseEdge,
   Background,
   Controls,
+  Handle,
   MarkerType,
+  Position,
   ReactFlow,
+  type EdgeProps,
   type Edge,
   type Connection,
   type Node,
+  type NodeProps,
   type ReactFlowInstance,
 } from "@xyflow/react";
 import ELK from "elkjs/lib/elk.bundled.js";
@@ -60,10 +65,13 @@ import {
 
 import {
   answerOutcomeSummary,
+  blueprintEdgeKinds,
+  blueprintNodeLayer,
   blueprintConceptNeighborhoodIds,
   buildBlueprintTopicLanes,
   canPrepareImprovement,
   compareBlueprintSequence,
+  coreBlueprintEdgeKinds,
   evidenceTitle,
   generationPhaseLabel,
   orderedGenerationTasks,
@@ -75,6 +83,7 @@ import {
   topicLogicalIdsForConcept,
   reorderBlueprintConcepts,
   visibleBlueprintNodeIds,
+  visibleBlueprintEdges,
   type CourseMap,
   type CourseAssessment,
   type CourseMessage,
@@ -83,6 +92,7 @@ import {
   type AgentTaskProposal,
   type BlueprintConceptEvidence,
   type BlueprintEdge,
+  type BlueprintEdgeKind,
   type BlueprintNode,
   type CourseBlueprint,
   type CoursePriority,
@@ -1219,6 +1229,111 @@ function blueprintModeDescription(mode: BlueprintMode) {
   return "Monitor the live course and its evidence";
 }
 
+type BlueprintGraphNodeData = {
+  artifact: BlueprintNode;
+  conceptCount: number | null;
+  evidence: BlueprintConceptEvidence | null;
+  muted: boolean;
+  risk: number | null;
+  selected: boolean;
+};
+type BlueprintGraphNode = Node<BlueprintGraphNodeData, "blueprintArtifact">;
+type BlueprintGraphEdgeData = {
+  emphasized: boolean;
+  kind: BlueprintEdgeKind;
+  points: Array<{ x: number; y: number }> | null;
+  visible: boolean;
+};
+type BlueprintGraphEdge = Edge<BlueprintGraphEdgeData, "blueprintRelation">;
+
+const blueprintRelationshipLabels: Record<BlueprintEdgeKind, string> = {
+  contains: "Structure",
+  next: "Sequence",
+  requires: "Prerequisite",
+  teaches: "Teaching",
+  assesses: "Assessment",
+  remediates_to: "Remediation",
+  cites: "Citation",
+};
+
+function BlueprintArtifactNode({ data }: NodeProps<BlueprintGraphNode>) {
+  const { artifact, conceptCount, evidence, muted, risk, selected } = data;
+  const metadata = artifact.kind === "concept"
+    ? evidence?.attempts
+      ? `${Math.round(evidence.correct_percent ?? 0)}% correct · ${evidence.confident_incorrect} misconceptions`
+      : "Awaiting learner evidence"
+    : coverageLabel(artifact);
+  const count = artifact.kind === "topic" && conceptCount != null
+    ? `${conceptCount} ${conceptCount === 1 ? "concept" : "concepts"}`
+    : null;
+  return (
+    <article
+      className={styles.blueprintTypedNode}
+      data-kind={artifact.kind}
+      data-muted={muted}
+      data-risk={risk != null && risk >= 40}
+      data-selected={selected}
+    >
+      <Handle className={styles.blueprintFlowHandle} id="flow-in" position={Position.Top} type="target" />
+      <Handle className={styles.blueprintFlowHandle} id="flow-out" position={Position.Bottom} type="source" />
+      <Handle className={styles.blueprintSideHandle} id="relation-in" position={Position.Left} type="target" />
+      <Handle className={styles.blueprintSideHandle} id="relation-out" position={Position.Right} type="source" />
+      <header>
+        <span>{blueprintKindIcon(artifact.kind)}</span>
+        <small>{artifact.kind}</small>
+        <em data-status={artifact.status}>{artifact.status}</em>
+      </header>
+      <strong>{artifact.title}</strong>
+      <footer>
+        <span>{count ?? metadata}</span>
+        {artifact.kind === "concept" && evidence?.attempts ? <b>{evidence.attempts} attempts</b> : null}
+      </footer>
+    </article>
+  );
+}
+
+function BlueprintRelationEdge({
+  data,
+  id,
+  markerEnd,
+  sourceX,
+  sourceY,
+  style,
+  targetX,
+  targetY,
+}: EdgeProps<BlueprintGraphEdge>) {
+  const points = data?.points?.length
+    ? data.points
+    : [
+      { x: sourceX, y: sourceY },
+      { x: sourceX, y: sourceY + (targetY - sourceY) / 2 },
+      { x: targetX, y: sourceY + (targetY - sourceY) / 2 },
+      { x: targetX, y: targetY },
+    ];
+  const path = points.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
+  const labelPoint = points[Math.floor(points.length / 2)] ?? { x: sourceX, y: sourceY };
+  const kind = data?.kind ?? "contains";
+  return (
+    <>
+      <BaseEdge id={id} interactionWidth={18} markerEnd={markerEnd} path={path} style={style} />
+      {data?.visible ? (
+        <text
+          className={styles.blueprintEdgeLabel}
+          data-emphasized={data.emphasized}
+          textAnchor="middle"
+          x={labelPoint.x}
+          y={labelPoint.y - 7}
+        >
+          {blueprintRelationshipLabels[kind]}
+        </text>
+      ) : null}
+    </>
+  );
+}
+
+const blueprintNodeTypes = { blueprintArtifact: BlueprintArtifactNode };
+const blueprintEdgeTypes = { blueprintRelation: BlueprintRelationEdge };
+
 type StructuredBlueprintLens = "course" | "focus" | "dependencies";
 type PendingConceptPlacement = {
   concept: BlueprintNode;
@@ -1615,7 +1730,15 @@ function StructuredBlueprintFlow({
   visibleNodeIds: Set<string> | null;
 }) {
   const [instance, setInstance] = useState<ReactFlowInstance | null>(null);
-  const flow = useBlueprintFlow(blueprint, evidence, "learner", visibleNodeIds, selectedId, false);
+  const flow = useBlueprintFlow(
+    blueprint,
+    evidence,
+    "learner",
+    visibleNodeIds,
+    selectedId,
+    coreBlueprintEdgeKinds,
+    false,
+  );
   const fitKey = `${blueprint.revision_id}:${Array.from(visibleNodeIds ?? []).sort().join(":")}`;
   useEffect(() => {
     if (!instance || !flow.layoutReady || !flow.nodes.length) return;
@@ -1628,8 +1751,10 @@ function StructuredBlueprintFlow({
     <div className={styles.structuredFlowCanvas}>
       {!flow.layoutReady ? <div className={styles.blueprintLayoutLoading}><LoaderCircle className={styles.spin} />Arranging the learning system…</div> : null}
       <ReactFlow
-        edges={flow.edges.map((edge) => ({ ...edge, type: "smoothstep" }))}
+        edgeTypes={blueprintEdgeTypes}
+        edges={flow.edges}
         fitView
+        nodeTypes={blueprintNodeTypes}
         nodes={flow.nodes}
         nodesConnectable={connectable}
         nodesDraggable={false}
@@ -1695,6 +1820,10 @@ function BlueprintWorkspace({
   const [selectedLogicalId, setSelectedLogicalId] = useState<string | null>(null);
   const [focusTopicLogicalId, setFocusTopicLogicalId] = useState<string | null>(null);
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance | null>(null);
+  const [enabledRelationships, setEnabledRelationships] = useState<Set<BlueprintEdgeKind>>(
+    () => new Set(coreBlueprintEdgeKinds),
+  );
+  const [autoArrangeVersion, setAutoArrangeVersion] = useState(0);
   const lastFittedViewport = useRef<string | null>(null);
   const blueprint = mode === "live" || mode === "learner"
     ? (activeBlueprint ?? workingBlueprint)
@@ -1712,7 +1841,16 @@ function BlueprintWorkspace({
     () => blueprint ? visibleBlueprintNodeIds(blueprint, focusTopicLogicalId) : null,
     [blueprint, focusTopicLogicalId],
   );
-  const flow = useBlueprintFlow(blueprint, blueprintEvidence, mode, visibleNodeIds, selected?.id ?? null);
+  const flow = useBlueprintFlow(
+    blueprint,
+    blueprintEvidence,
+    mode,
+    visibleNodeIds,
+    selected?.id ?? null,
+    enabledRelationships,
+    mode === "design" && autoArrangeVersion === 0,
+    autoArrangeVersion,
+  );
   const viewportFitKey = useMemo(() => {
     if (!blueprint) return "empty";
     const logicalIds = blueprint.nodes
@@ -1720,8 +1858,8 @@ function BlueprintWorkspace({
       .map((node) => node.logical_id)
       .sort()
       .join(":");
-    return `${mode}:${focusTopicLogicalId ?? "course"}:${logicalIds}`;
-  }, [blueprint, focusTopicLogicalId, mode, visibleNodeIds]);
+    return `${mode}:${focusTopicLogicalId ?? "course"}:${autoArrangeVersion}:${logicalIds}`;
+  }, [autoArrangeVersion, blueprint, focusTopicLogicalId, mode, visibleNodeIds]);
   const evidence = selected?.kind === "concept"
     ? blueprintEvidence.find((item) => item.concept_id === selected.id) ?? null
     : null;
@@ -1747,6 +1885,10 @@ function BlueprintWorkspace({
   }, [blueprint, concepts, focusTopicLogicalId, selectedLogicalId, topics]);
 
   useEffect(() => {
+    setAutoArrangeVersion(0);
+  }, [focusTopicLogicalId, mode]);
+
+  useEffect(() => {
     if (!flowInstance || !flow.layoutReady || !flow.nodes.length || lastFittedViewport.current === viewportFitKey) return;
     let secondFrame = 0;
     const firstFrame = window.requestAnimationFrame(() => {
@@ -1769,6 +1911,21 @@ function BlueprintWorkspace({
       void onAddPrerequisite(source.logical_id, target.logical_id);
     }
   }, [blueprint, onAddPrerequisite]);
+
+  const showCoreRelationships = useCallback(() => {
+    setEnabledRelationships(new Set(coreBlueprintEdgeKinds));
+  }, []);
+  const showAllRelationships = useCallback(() => {
+    setEnabledRelationships(new Set(blueprintEdgeKinds));
+  }, []);
+  const toggleRelationship = useCallback((kind: BlueprintEdgeKind) => {
+    setEnabledRelationships((current) => {
+      const next = new Set(current);
+      if (next.has(kind)) next.delete(kind);
+      else next.add(kind);
+      return next;
+    });
+  }, []);
 
   if (!blueprint) {
     return <div className={styles.canvasEmpty}><LoaderCircle className={styles.spin} /><h2>Loading the course Blueprint</h2><p>The structure, learning evidence, and adaptive routes are being assembled.</p></div>;
@@ -1804,6 +1961,55 @@ function BlueprintWorkspace({
         </nav>
       </section>
 
+      <section className={styles.blueprintGraphControls} aria-label="Blueprint graph controls">
+        <div className={styles.blueprintRelationshipPresets}>
+          <span>Relationships</span>
+          <button
+            aria-pressed={enabledRelationships.size === coreBlueprintEdgeKinds.size
+              && [...coreBlueprintEdgeKinds].every((kind) => enabledRelationships.has(kind))}
+            onClick={showCoreRelationships}
+            type="button"
+          >
+            Core
+          </button>
+          <button
+            aria-pressed={enabledRelationships.size === blueprintEdgeKinds.length}
+            onClick={showAllRelationships}
+            type="button"
+          >
+            All
+          </button>
+        </div>
+        <details className={styles.blueprintRelationshipFilters}>
+          <summary>Choose relationships</summary>
+          <div>
+            {blueprintEdgeKinds.map((kind) => (
+              <label key={kind}>
+                <input
+                  checked={enabledRelationships.has(kind)}
+                  onChange={() => toggleRelationship(kind)}
+                  type="checkbox"
+                />
+                <i data-kind={kind} />
+                {blueprintRelationshipLabels[kind]}
+              </label>
+            ))}
+          </div>
+        </details>
+        <button
+          className={styles.blueprintAutoArrange}
+          onClick={() => setAutoArrangeVersion((current) => current + 1)}
+          type="button"
+        >
+          <Network />Auto arrange
+        </button>
+        <div className={styles.blueprintTypeLegend} aria-label="Artifact types">
+          {(["source", "topic", "concept", "clip", "question"] as BlueprintNode["kind"][]).map((kind) => (
+            <span key={kind}><i data-kind={kind}>{blueprintKindIcon(kind)}</i>{kind}</span>
+          ))}
+        </div>
+      </section>
+
       <div className={styles.blueprintBody}>
         <nav className={styles.blueprintOutline} aria-label="Course Blueprint outline">
           <button aria-pressed={!focusTopicLogicalId} onClick={() => { setFocusTopicLogicalId(null); setSelectedLogicalId(null); }} type="button"><BookOpenCheck /><span><strong>Whole course</strong><small>{topics.length} topics · {concepts.length} concepts</small></span></button>
@@ -1825,7 +2031,9 @@ function BlueprintWorkspace({
           {mode === "revision" ? <RevisionBlueprintSummary diff={revisionDiff} active={activeBlueprint} working={workingBlueprint} /> : null}
           {!flow.layoutReady ? <div className={styles.blueprintLayoutLoading}><LoaderCircle className={styles.spin} /><span>Arranging the course system…</span></div> : null}
           <ReactFlow
+            edgeTypes={blueprintEdgeTypes}
             edges={flow.edges}
+            nodeTypes={blueprintNodeTypes}
             nodes={flow.nodes}
             nodesConnectable={mode === "design"}
             nodesDraggable={mode === "design"}
@@ -1891,37 +2099,112 @@ function useBlueprintFlow(
   mode: BlueprintMode,
   visibleNodeIds: Set<string> | null,
   selectedId: string | null,
+  enabledRelationships: ReadonlySet<BlueprintEdgeKind>,
   respectSavedLayout = true,
+  layoutVersion = 0,
 ) {
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
+  const [edgePoints, setEdgePoints] = useState<Record<string, Array<{ x: number; y: number }> | null>>({});
   const [completedLayoutKey, setCompletedLayoutKey] = useState<string | null>(null);
-  const visibleNodes = useMemo(() => blueprint?.nodes.filter((node) => !visibleNodeIds || visibleNodeIds.has(node.id)) ?? [], [blueprint, visibleNodeIds]);
-  const visibleEdges = useMemo(() => blueprint?.edges.filter((edge) => visibleNodes.some((node) => node.id === edge.source_id) && visibleNodes.some((node) => node.id === edge.target_id)) ?? [], [blueprint, visibleNodes]);
+  const visibleNodes = useMemo(
+    () => blueprint?.nodes
+      .filter((node) => !visibleNodeIds || visibleNodeIds.has(node.id))
+      .sort((left, right) => blueprintNodeLayer(left.kind) - blueprintNodeLayer(right.kind)
+        || compareBlueprintSequence(left, right)
+        || left.title.localeCompare(right.title)) ?? [],
+    [blueprint, visibleNodeIds],
+  );
+  const layoutEdges = useMemo(() => {
+    const visibleIds = new Set(visibleNodes.map((node) => node.id));
+    return blueprint?.edges.filter((edge) => visibleIds.has(edge.source_id) && visibleIds.has(edge.target_id)) ?? [];
+  }, [blueprint, visibleNodes]);
+  const renderedEdges = useMemo(
+    () => visibleBlueprintEdges(layoutEdges, enabledRelationships, selectedId),
+    [enabledRelationships, layoutEdges, selectedId],
+  );
   const requestedLayoutKey = useMemo(
-    () => `${mode}:${visibleNodes.map((node) => node.id).sort().join(":")}:${visibleEdges.map((edge) => edge.id).sort().join(":")}`,
-    [mode, visibleEdges, visibleNodes],
+    () => `${mode}:${layoutVersion}:${respectSavedLayout ? "saved" : "arranged"}:${visibleNodes.map((node) => node.id).sort().join(":")}:${layoutEdges.map((edge) => edge.id).sort().join(":")}`,
+    [layoutEdges, layoutVersion, mode, respectSavedLayout, visibleNodes],
   );
 
   useEffect(() => {
     if (!visibleNodes.length) {
       setPositions({});
+      setEdgePoints({});
       setCompletedLayoutKey(requestedLayoutKey);
       return;
     }
     let cancelled = false;
     const elk = new ELK();
+    const nodeById = new Map(visibleNodes.map((node) => [node.id, node]));
+    const portId = (nodeId: string, handle: "flow-in" | "flow-out" | "relation-in" | "relation-out") => `${nodeId}:${handle}`;
+    const dimensions = (node: BlueprintNode) => {
+      if (node.kind === "topic") return { width: 286, height: 112 };
+      if (node.kind === "concept") return { width: 250, height: 124 };
+      if (node.kind === "source") return { width: 224, height: 92 };
+      return { width: 224, height: 104 };
+    };
+    const normalizedEdges = layoutEdges.map((edge) => {
+      const source = nodeById.get(edge.source_id);
+      const target = nodeById.get(edge.target_id);
+      const reversed = Boolean(
+        source
+        && target
+        && blueprintNodeLayer(source.kind) > blueprintNodeLayer(target.kind),
+      );
+      const sourceId = reversed ? edge.target_id : edge.source_id;
+      const targetId = reversed ? edge.source_id : edge.target_id;
+      const relational = edge.kind === "requires" || edge.kind === "remediates_to" || edge.kind === "cites";
+      return {
+        edge,
+        reversed,
+        sourceId,
+        sourcePort: portId(sourceId, relational ? "relation-out" : "flow-out"),
+        targetId,
+        targetPort: portId(targetId, relational ? "relation-in" : "flow-in"),
+      };
+    });
     void elk.layout({
       id: "blueprint",
       layoutOptions: {
         "elk.algorithm": "layered",
-        "elk.direction": mode === "learner" ? "RIGHT" : "DOWN",
-        "elk.spacing.nodeNode": "54",
-        "elk.layered.spacing.nodeNodeBetweenLayers": "72",
+        "elk.direction": "DOWN",
+        "elk.edgeRouting": "ORTHOGONAL",
+        "elk.spacing.nodeNode": "68",
+        "elk.spacing.edgeEdge": "18",
+        "elk.spacing.edgeNode": "26",
+        "elk.layered.spacing.nodeNodeBetweenLayers": "98",
+        "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
+        "elk.layered.crossingMinimization.greedySwitch.type": "TWO_SIDED",
+        "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
+        "elk.layered.nodePlacement.favorStraightEdges": "true",
+        "elk.layered.considerModelOrder.strategy": "PREFER_NODES",
+        "elk.layered.thoroughness": "30",
       },
-      children: visibleNodes.map((node) => ({ id: node.id, width: node.kind === "topic" ? 250 : 220, height: node.kind === "concept" ? 104 : 86 })),
-      edges: visibleEdges.map((edge) => ({ id: edge.id, sources: [edge.source_id], targets: [edge.target_id] })),
+      children: visibleNodes.map((node) => ({
+        id: node.id,
+        ...dimensions(node),
+        layoutOptions: {
+          "org.eclipse.elk.portConstraints": "FIXED_ORDER",
+        },
+        ports: [
+          { id: portId(node.id, "flow-in"), layoutOptions: { "org.eclipse.elk.port.side": "NORTH" }, width: 7, height: 7 },
+          { id: portId(node.id, "flow-out"), layoutOptions: { "org.eclipse.elk.port.side": "SOUTH" }, width: 7, height: 7 },
+          { id: portId(node.id, "relation-in"), layoutOptions: { "org.eclipse.elk.port.side": "WEST" }, width: 7, height: 7 },
+          { id: portId(node.id, "relation-out"), layoutOptions: { "org.eclipse.elk.port.side": "EAST" }, width: 7, height: 7 },
+        ],
+      })),
+      edges: normalizedEdges.map(({ edge, sourcePort, targetPort }) => ({
+        id: edge.id,
+        sources: [sourcePort],
+        targets: [targetPort],
+      })),
     }).then((layout) => {
       if (cancelled) return;
+      const hasSavedPositions = respectSavedLayout && visibleNodes.some((artifact) => {
+        const saved = isRecord(artifact.metadata.layout) ? artifact.metadata.layout : null;
+        return typeof saved?.x === "number" && typeof saved?.y === "number";
+      });
       setPositions(Object.fromEntries((layout.children ?? []).map((node) => {
         const artifact = visibleNodes.find((item) => item.id === node.id);
         const saved = respectSavedLayout && artifact && isRecord(artifact.metadata.layout)
@@ -1932,38 +2215,125 @@ function useBlueprintFlow(
           y: typeof saved?.y === "number" ? saved.y : node.y ?? 0,
         }];
       })));
+      setEdgePoints(Object.fromEntries((layout.edges ?? []).map((edge) => {
+        const laidOutEdge = edge as typeof edge & {
+          sections?: Array<{
+            bendPoints?: Array<{ x: number; y: number }>;
+            endPoint?: { x: number; y: number };
+            startPoint?: { x: number; y: number };
+          }>;
+        };
+        const normalized = normalizedEdges.find((item) => item.edge.id === laidOutEdge.id);
+        const section = laidOutEdge.sections?.[0];
+        if (hasSavedPositions || normalized?.reversed || !section?.startPoint || !section.endPoint) {
+          return [laidOutEdge.id, null];
+        }
+        return [
+          laidOutEdge.id,
+          [
+            section.startPoint,
+            ...(section.bendPoints ?? []),
+            section.endPoint,
+          ].map((point) => ({ x: point.x, y: point.y })),
+        ];
+      })));
       setCompletedLayoutKey(requestedLayoutKey);
     });
     return () => { cancelled = true; };
-  }, [mode, requestedLayoutKey, respectSavedLayout, visibleEdges, visibleNodes]);
+  }, [layoutEdges, requestedLayoutKey, respectSavedLayout, visibleNodes]);
 
   const layoutReady = completedLayoutKey === requestedLayoutKey;
-  const nodes: Node[] = (layoutReady ? visibleNodes : []).map((node) => {
-    const conceptEvidence = evidence.find((item) => item.concept_id === node.id);
+  const evidenceByConcept = new Map(evidence.map((item) => [item.concept_id, item]));
+  const selectedNeighbors = selectedId
+    ? new Set(layoutEdges.flatMap((edge) => {
+      if (edge.source_id === selectedId) return [edge.target_id];
+      if (edge.target_id === selectedId) return [edge.source_id];
+      return [];
+    }))
+    : new Set<string>();
+  const topicConceptCounts = new Map<string, number>();
+  layoutEdges.forEach((edge) => {
+    if (edge.kind === "contains") {
+      topicConceptCounts.set(edge.source_id, (topicConceptCounts.get(edge.source_id) ?? 0) + 1);
+    }
+  });
+  const nodes: BlueprintGraphNode[] = (layoutReady ? visibleNodes : []).map((node) => {
+    const conceptEvidence = evidenceByConcept.get(node.id) ?? null;
     const risk = conceptEvidence?.correct_percent == null ? null : 100 - conceptEvidence.correct_percent;
+    const selected = selectedId === node.id;
+    const muted = Boolean(selectedId && !selected && !selectedNeighbors.has(node.id));
+    const dimensions = node.kind === "topic"
+      ? { width: 286, height: 112 }
+      : node.kind === "concept"
+        ? { width: 250, height: 124 }
+        : node.kind === "source"
+          ? { width: 224, height: 92 }
+          : { width: 224, height: 104 };
     return {
       id: node.id,
+      type: "blueprintArtifact",
       position: positions[node.id] ?? { x: 0, y: 0 },
-      data: { label: <div className={styles.blueprintNodeLabel}><small>{node.kind}{conceptEvidence?.attempts ? ` · ${conceptEvidence.attempts} attempts` : ""}</small><strong>{node.title}</strong>{node.kind === "concept" ? <span>{conceptEvidence?.correct_percent == null ? "Awaiting evidence" : `${Math.round(conceptEvidence.correct_percent)}% correct · ${conceptEvidence.confident_incorrect} misconceptions`}</span> : <span>{coverageLabel(node)}</span>}</div> },
-      className: styles.blueprintFlowNode,
+      data: {
+        artifact: node,
+        conceptCount: node.kind === "topic" ? topicConceptCounts.get(node.id) ?? 0 : null,
+        evidence: conceptEvidence,
+        muted,
+        risk,
+        selected,
+      },
+      ariaLabel: `${node.kind}: ${node.title}. ${node.status}. ${node.kind === "concept" && conceptEvidence?.attempts ? `${Math.round(conceptEvidence.correct_percent ?? 0)} percent correct.` : coverageLabel(node)}`,
       connectable: mode === "design" && node.kind === "concept",
+      style: dimensions,
+    };
+  });
+  const relationColor: Record<BlueprintEdgeKind, string> = {
+    contains: "#aaa69d",
+    next: "#292a2f",
+    requires: "#68656d",
+    teaches: "#55768f",
+    assesses: "#b96a26",
+    remediates_to: "#a45652",
+    cites: "#858179",
+  };
+  const relationHandles = (kind: BlueprintEdgeKind) => {
+    const relational = kind === "requires" || kind === "remediates_to" || kind === "cites";
+    return relational
+      ? { sourceHandle: "relation-out", targetHandle: "relation-in" }
+      : { sourceHandle: "flow-out", targetHandle: "flow-in" };
+  };
+  const visibleEdgeIds = new Set(renderedEdges.map((edge) => edge.id));
+  const edges: BlueprintGraphEdge[] = (layoutReady ? layoutEdges : []).map((edge) => {
+    const visible = visibleEdgeIds.has(edge.id);
+    const emphasized = Boolean(selectedId && (edge.source_id === selectedId || edge.target_id === selectedId));
+    const dimmed = Boolean(selectedId && !emphasized);
+    const color = edge.status === "proposed" ? "#d77a25" : relationColor[edge.kind];
+    return {
+      id: edge.id,
+      source: edge.source_id,
+      target: edge.target_id,
+      type: "blueprintRelation",
+      ...relationHandles(edge.kind),
+      ariaLabel: `${blueprintRelationshipLabels[edge.kind]} relationship`,
+      data: {
+        emphasized,
+        kind: edge.kind,
+        points: edgePoints[edge.id] ?? null,
+        visible,
+      },
+      focusable: visible,
+      markerEnd: !visible || edge.kind === "contains" || edge.kind === "cites"
+        ? undefined
+        : { type: MarkerType.ArrowClosed, color },
+      animated: edge.kind === "remediates_to",
       style: {
-        background: selectedId === node.id ? "#222328" : risk != null && risk >= 40 ? "#fff5e9" : "#fff",
-        borderColor: selectedId === node.id ? "#222328" : risk != null && risk >= 40 ? "#d88432" : "#d9d5cc",
-        color: selectedId === node.id ? "#fff" : "#202126",
-        width: node.kind === "topic" ? 250 : 220,
+        opacity: !visible ? 0 : dimmed ? 0.16 : emphasized ? 1 : 0.62,
+        pointerEvents: visible ? "auto" : "none",
+        stroke: color,
+        strokeDasharray: edge.status === "proposed" || edge.kind === "cites" ? "6 5" : undefined,
+        strokeWidth: emphasized ? 2.2 : edge.kind === "next" ? 1.8 : 1.35,
       },
     };
   });
-  const edges: Edge[] = (layoutReady ? visibleEdges : []).map((edge) => ({
-    id: edge.id,
-    source: edge.source_id,
-    target: edge.target_id,
-    label: edge.kind === "contains" || edge.kind === "next" ? undefined : edge.kind.replaceAll("_", " "),
-    markerEnd: edge.kind === "contains" ? undefined : { type: MarkerType.ArrowClosed, color: edge.status === "proposed" ? "#d77a25" : "#77736b" },
-    animated: edge.kind === "remediates_to",
-    style: { stroke: edge.status === "proposed" ? "#d77a25" : edge.kind === "next" ? "#25262b" : "#aaa69d", strokeDasharray: edge.status === "proposed" ? "6 5" : undefined },
-  }));
   const setPosition = useCallback(
     (id: string, position: { x: number; y: number }) => {
       setPositions((current) => ({ ...current, [id]: position }));
