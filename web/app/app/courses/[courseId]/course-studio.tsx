@@ -73,6 +73,7 @@ import {
   compareBlueprintSequence,
   coreBlueprintEdgeKinds,
   evidenceTitle,
+  findBlueprintClip,
   generationPhaseLabel,
   orderedGenerationTasks,
   performancePercent,
@@ -1840,13 +1841,7 @@ function BlueprintWorkspace({
     : (workingBlueprint ?? activeBlueprint);
   const selected = blueprint?.nodes.find((node) => node.logical_id === selectedLogicalId) ?? null;
   const selectedClip = selected?.kind === "clip"
-    ? clips.find((clip) => clip.id === selected.id)
-      ?? clips.find((clip) => clip.topic_id === selected.parent_id && (
-        clip.label === selected.title
-        || clip.topic_title === selected.title
-        || clip.type.replaceAll("_", " ").toLowerCase() === selected.title.toLowerCase()
-      ))
-      ?? null
+    ? findBlueprintClip(selected, clips)
     : null;
   const topics = useMemo(
     () => blueprint?.nodes.filter((node) => node.kind === "topic") ?? [],
@@ -2015,15 +2010,10 @@ function BlueprintWorkspace({
         >
           <Network />Auto arrange
         </button>
-        <div className={styles.blueprintToolbarStack}>
-          <div className={styles.blueprintTypeLegend} aria-label="Artifact types">
-            {(["source", "topic", "concept", "clip", "question"] as BlueprintNode["kind"][]).map((kind) => (
-              <span key={kind}><i data-kind={kind}>{blueprintKindIcon(kind)}</i>{kind}</span>
-            ))}
-          </div>
-          <nav className={styles.blueprintModeTabs} aria-label="Blueprint mode">
-            {blueprintModes.map((item) => <button aria-pressed={mode === item.id} key={item.id} onClick={() => setMode(item.id)} type="button">{item.label}</button>)}
-          </nav>
+        <div className={styles.blueprintTypeLegend} aria-label="Artifact types">
+          {(["source", "topic", "concept", "clip", "question"] as BlueprintNode["kind"][]).map((kind) => (
+            <span key={kind}><i data-kind={kind}>{blueprintKindIcon(kind)}</i>{kind}</span>
+          ))}
         </div>
       </section>
 
@@ -2044,6 +2034,9 @@ function BlueprintWorkspace({
         </nav>
 
         <div className={styles.blueprintCanvas}>
+          <nav className={styles.blueprintCanvasModes} aria-label="Blueprint mode">
+            {blueprintModes.map((item) => <button aria-pressed={mode === item.id} key={item.id} onClick={() => setMode(item.id)} type="button">{item.label}</button>)}
+          </nav>
           {!flow.layoutReady ? <div className={styles.blueprintLayoutLoading}><LoaderCircle className={styles.spin} /><span>Arranging the course system…</span></div> : null}
           <ReactFlow
             edgeTypes={blueprintEdgeTypes}

@@ -9,6 +9,7 @@ import {
   compareBlueprintSequence,
   courseState,
   evidenceTitle,
+  findBlueprintClip,
   generationPhaseLabel,
   orderedGenerationTasks,
   performancePercent,
@@ -27,6 +28,7 @@ import {
   type CourseAgentTask,
   type CoursePriority,
   type GenerationTask,
+  type AssessmentWorkspace,
 } from "../app/app/course-os";
 
 const course: CourseSummary = {
@@ -51,6 +53,37 @@ const course: CourseSummary = {
 };
 
 describe("Course OS presentation", () => {
+  it("resolves a live Blueprint clip to its cloned working-revision preview", () => {
+    const node: BlueprintNode = {
+      id: "clip-active",
+      logical_id: "clip-logical",
+      kind: "clip",
+      title: "Explanation",
+      status: "accepted",
+      parent_id: "topic-active",
+      metadata: { start_seconds: 8.66, end_seconds: 187.9 },
+    };
+    const clips: AssessmentWorkspace["clips"] = [{
+      id: "clip-working",
+      topic_id: "topic-working",
+      topic_title: "Rapid learning",
+      video_id: "video-1",
+      label: "Rapid learning · explanation",
+      start_seconds: 8.66,
+      end_seconds: 187.9,
+      type: "explanation",
+      difficulty: "introductory",
+      status: "active",
+      playback_provider: "local",
+      playback_id: null,
+      playback_url: "/videos/video-1/media",
+      delivery_asset_id: null,
+      materialization_status: "source_reference",
+    }];
+
+    expect(findBlueprintClip(node, clips)?.id).toBe("clip-working");
+  });
+
   it("prioritizes failed and review states over a generic draft label", () => {
     expect(courseState({ ...course, generation_status: "failed" }).label).toBe("Needs help");
     expect(courseState({ ...course, pending_review_count: 12 }).label).toBe("Ready to review");

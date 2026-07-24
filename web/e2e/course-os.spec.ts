@@ -382,7 +382,7 @@ async function mockPublishedCourseOS(page: Page) {
         topics: [{ id: "topic-1", title: "Force systems" }],
         concepts: [{ id: "concept-1", name: "Net force", topic_ids: ["topic-1"] }],
         clips: [{
-          id: "clip-1",
+          id: "clip-working",
           topic_id: "topic-1",
           topic_title: "Force systems",
           video_id: "video-1",
@@ -410,7 +410,7 @@ async function mockPublishedCourseOS(page: Page) {
           correct_answer: { answer: "vector sum" },
           confidence_prompt: "How confident are you?",
           review_status: "accepted",
-          remediation_rules: [{ id: "rule-1", wrong_answer_pattern: "Adds magnitudes only", target_clip_id: "clip-1", target_concept_id: "concept-1" }],
+          remediation_rules: [{ id: "rule-1", wrong_answer_pattern: "Adds magnitudes only", target_clip_id: "clip-working", target_concept_id: "concept-1" }],
         }],
       },
     });
@@ -499,7 +499,7 @@ async function mockPublishedCourseOS(page: Page) {
         { id: topicTwoId, logical_id: "topic-logical-2", kind: "topic", title: "Balanced systems", status: "accepted", parent_id: null, metadata: { sequence_rank: 2 } },
         { id: conceptId, logical_id: "concept-logical", kind: "concept", title: conceptEdit?.name ?? "Net force", status: "accepted", parent_id: topicId, metadata: { sequence_rank: 1, description: conceptEdit?.description ?? "Combine force vectors." } },
         { id: conceptTwoId, logical_id: "concept-logical-2", kind: "concept", title: "Balanced forces", status: "accepted", parent_id: topicId, metadata: { sequence_rank: 2, description: "Recognize equilibrium." } },
-        { id: clipId, logical_id: "clip-logical", kind: "clip", title: "Vector direction", status: "accepted", parent_id: topicId, metadata: { duration_seconds: 60 } },
+        { id: clipId, logical_id: "clip-logical", kind: "clip", title: "Vector direction", status: "accepted", parent_id: topicId, metadata: { duration_seconds: 60, start_seconds: 0, end_seconds: 60 } },
         { id: questionId, logical_id: "question-logical", kind: "question", title: "In the ukulele example, why did the speaker focus on learning only a small set of chords before performing?", status: "accepted", parent_id: topicId, metadata: { type: "short_answer" } },
         { id: sourceId, logical_id: "source-logical", kind: "source", title: "Force diagrams.pdf", status: "accepted", parent_id: null, metadata: { source_type: "pdf" } },
       ],
@@ -633,6 +633,9 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect(page.getByRole("button", { name: "Old Blueprint" })).toHaveCount(0);
   await expect(page.getByText("Structure, teaching, assessment, evidence, and routing in one inspectable model.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
+  const blueprintMode = page.getByRole("navigation", { name: "Blueprint mode" });
+  expect(await blueprintMode.evaluate((element) => element.parentElement?.className.includes("blueprintCanvas")))
+    .toBe(true);
   await expect(page.getByRole("button", { name: "Core" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "Auto arrange" })).toBeVisible();
   await expect(page.getByRole("dialog", { name: /artifact inspector/ })).toHaveCount(0);

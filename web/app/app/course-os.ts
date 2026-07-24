@@ -470,6 +470,30 @@ export type AssessmentWorkspace = {
   questions: CourseAssessment[];
 };
 
+export function findBlueprintClip(
+  node: BlueprintNode,
+  clips: AssessmentWorkspace["clips"],
+): AssessmentWorkspace["clips"][number] | null {
+  const exact = clips.find((clip) => clip.id === node.id);
+  if (exact) return exact;
+
+  const startSeconds = Number(node.metadata.start_seconds);
+  const endSeconds = Number(node.metadata.end_seconds);
+  if (Number.isFinite(startSeconds) && Number.isFinite(endSeconds)) {
+    const boundedMatch = clips.find(
+      (clip) => Math.abs(clip.start_seconds - startSeconds) < 0.1
+        && Math.abs(clip.end_seconds - endSeconds) < 0.1,
+    );
+    if (boundedMatch) return boundedMatch;
+  }
+
+  const normalizedTitle = node.title.replaceAll("_", " ").trim().toLowerCase();
+  const sameType = clips.filter(
+    (clip) => clip.type.replaceAll("_", " ").trim().toLowerCase() === normalizedTitle,
+  );
+  return sameType.length === 1 ? sameType[0] : null;
+}
+
 export type RoutingPolicy = {
   confidence_threshold: number;
   correct_attempts_for_mastery: number;
