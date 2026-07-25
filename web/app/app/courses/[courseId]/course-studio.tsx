@@ -1362,21 +1362,34 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         <header className={styles.studioHeader}>
           <div className={styles.studioTitle}>
             <button aria-label="Back to courses" disabled={sending} onClick={() => void leaveStudio()} type="button"><ArrowLeft /></button>
-            <div>
-              <span>{course?.status === "published" ? "Published course" : "Private course draft"}</span>
-              <h1>{course?.title ?? "Course studio"}</h1>
-            </div>
+            <h1>{course?.title ?? "Course studio"}</h1>
           </div>
-          <div className={styles.studioStatus}>
-            {isBuilding ? <span data-tone="building"><LoaderCircle className={styles.spin} />{Math.round(run?.progress ?? course?.generation_progress ?? 0)}% building</span>
-              : course?.status !== "published" && course?.pending_review_count ? <span data-tone="review"><ClipboardCheck />{course.pending_review_count} to review</span>
-                : course?.status !== "published" ? <span><Activity />Private</span>
-                  : null}
-            {!editingLocked && (course?.status !== "published" || hasUnpublishedChanges) ? (
-              <button disabled={!canPublish || sending} onClick={() => void publishRevision()} type="button">
-                {course?.status === "published" ? "Publish updates" : "Publish course"}
+          {!focusedCreation ? (
+            <nav className={styles.studioViewTabs} aria-label="Course views">
+              <CanvasTab active={canvasView === "blueprint"} icon={<Network />} label="Blueprint" onClick={() => setCanvasView("blueprint")} />
+              {course?.status !== "published" ? <CanvasTab active={canvasView === "review"} badge={course?.pending_review_count || undefined} icon={<ClipboardCheck />} label="Review" onClick={() => setCanvasView("review")} /> : null}
+              {course?.status === "published" ? <CanvasTab active={canvasView === "assessments"} icon={<Check />} label="Assessments" onClick={() => setCanvasView("assessments")} /> : null}
+              <CanvasTab active={canvasView === "preview"} icon={<Eye />} label="Preview" onClick={() => setCanvasView("preview")} />
+              {course?.status === "published" ? <CanvasTab active={canvasView === "settings"} icon={<Settings2 />} label="Settings" onClick={() => setCanvasView("settings")} /> : null}
+            </nav>
+          ) : <span className={styles.studioHeaderSpacer} />}
+          <div className={styles.studioHeaderActions}>
+            {course?.status === "published" && !focusedCreation ? (
+              <button className={styles.studioSourceButton} onClick={() => setSourcesOpen(true)} type="button">
+                <FileText /><span>Sources</span><i>{sources.length}</i>
               </button>
             ) : null}
+            <div className={styles.studioStatus}>
+              {isBuilding ? <span data-tone="building"><LoaderCircle className={styles.spin} />{Math.round(run?.progress ?? course?.generation_progress ?? 0)}% building</span>
+                : course?.status !== "published" && course?.pending_review_count ? <span data-tone="review"><ClipboardCheck />{course.pending_review_count} to review</span>
+                  : course?.status !== "published" ? <span><Activity />Private</span>
+                    : null}
+              {!editingLocked && (course?.status !== "published" || hasUnpublishedChanges) ? (
+                <button disabled={!canPublish || sending} onClick={() => void publishRevision()} type="button">
+                  {course?.status === "published" ? "Publish updates" : "Publish course"}
+                </button>
+              ) : null}
+            </div>
           </div>
         </header>
 
@@ -1388,18 +1401,6 @@ export function CourseStudio({ courseId }: { courseId: string }) {
           ) : (
             <div className={styles.workspaceStage}>
               <section className={styles.canvasPanel} aria-label="Course workspace canvas">
-              <nav className={styles.canvasTabs} aria-label="Course views">
-                <CanvasTab active={canvasView === "blueprint"} icon={<Network />} label="Blueprint" onClick={() => setCanvasView("blueprint")} />
-                {course?.status !== "published" ? <CanvasTab active={canvasView === "review"} badge={course?.pending_review_count || undefined} icon={<ClipboardCheck />} label="Review" onClick={() => setCanvasView("review")} /> : null}
-                {course?.status === "published" ? <CanvasTab active={canvasView === "assessments"} icon={<Check />} label="Assessments" onClick={() => setCanvasView("assessments")} /> : null}
-                <CanvasTab active={canvasView === "preview"} icon={<Eye />} label="Preview" onClick={() => setCanvasView("preview")} />
-                {course?.status === "published" ? <CanvasTab active={canvasView === "settings"} icon={<Settings2 />} label="Settings" onClick={() => setCanvasView("settings")} /> : null}
-                {course?.status === "published" ? (
-                  <button className={styles.sourceLibraryButton} onClick={() => setSourcesOpen(true)} type="button">
-                    <FileText />Sources<span>{sources.length}</span>
-                  </button>
-                ) : null}
-              </nav>
               <div className={styles.canvasBody}>
                 {canvasView === "blueprint" ? (
                   <BlueprintWorkspace
@@ -1433,7 +1434,6 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     onOpenAssessments={() => setCanvasView("assessments")}
                     onOpenSources={() => setSourcesOpen(true)}
                     onModeChange={setBlueprintMode}
-                    revisionDiff={revisionDiff}
                     clips={assessmentWorkspace?.clips ?? []}
                     undoing={blueprintUndoing}
                     undoLabel={latestBlueprintUndo?.label ?? null}
@@ -1645,7 +1645,7 @@ function teacherFirstName(name: string | undefined) {
 }
 
 function CanvasTab({ active, badge, icon, label, onClick }: { active: boolean; badge?: number; icon: ReactNode; label: string; onClick: () => void }) {
-  return <button aria-pressed={active} onClick={onClick} type="button">{icon}<span>{label}</span>{badge ? <i>{badge}</i> : null}</button>;
+  return <button aria-label={label} aria-pressed={active} onClick={onClick} type="button">{icon}<span>{label}</span>{badge ? <i>{badge}</i> : null}</button>;
 }
 
 const blueprintModes: Array<{ id: BlueprintMode; label: string }> = [
@@ -2299,7 +2299,6 @@ function BlueprintWorkspace({
   onUndo,
   onUpdateConcept,
   onUpdateTopic,
-  revisionDiff,
   clips,
   undoing,
   undoLabel,
@@ -2362,7 +2361,6 @@ function BlueprintWorkspace({
     start_seconds: number;
     end_seconds: number;
   }) => Promise<CourseBlueprint | null>;
-  revisionDiff: RevisionDiff | null;
   clips: AssessmentWorkspace["clips"];
   undoing: boolean;
   undoLabel: string | null;
@@ -2671,15 +2669,9 @@ function BlueprintWorkspace({
     <div className={styles.blueprintWorkspace} data-mode={mode}>
       <header className={styles.blueprintCommandBar}>
         <div className={styles.blueprintStatusSummary}>
-          <small>Blueprint status</small>
           <p>
             <i data-mode={mode} />
             <strong>{mode === "design" ? "Private design" : "Published live"}</strong>
-            <span>
-              {mode === "design"
-                ? `${revisionDiff?.changes.length ?? 0} unpublished changes`
-                : "Learner-facing course"}
-            </span>
           </p>
         </div>
         <div className={styles.blueprintCompactMetrics}>

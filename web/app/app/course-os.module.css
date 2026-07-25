@@ -690,15 +690,26 @@
 /* Course Studio */
 .studioApp { height: 100dvh; overflow: hidden; }
 .studioMain { background: #fff; display: flex; flex-direction: column; height: 100dvh; min-width: 0; }
-.studioHeader { align-items: center; background: rgb(251 250 247 / 96%); border-bottom: 1px solid var(--os-line); display: flex; flex: none; height: 68px; justify-content: space-between; padding: 0 22px; }
+.studioHeader { align-items: center; background: rgb(251 250 247 / 96%); border-bottom: 1px solid var(--os-line); display: flex; flex: none; height: 68px; padding: 0 22px; }
 .studioTitle { align-items: center; display: flex; gap: 13px; min-width: 0; }
 .studioTitle > button { align-items: center; background: transparent; border: 1px solid #e1dfd8; border-radius: 8px; color: #6f6e75; cursor: pointer; display: flex; height: 34px; justify-content: center; padding: 0; width: 34px; }
 .studioTitle > button:hover { background: #eeece7; color: #222228; }
 .studioTitle > button:disabled { cursor: wait; opacity: 0.5; }
 .studioTitle svg { height: 15px; width: 15px; }
-.studioTitle div { display: grid; min-width: 0; }
-.studioTitle span { color: #66646b; font-size: 11px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; }
-.studioTitle h1 { font-size: 17px; font-weight: 650; letter-spacing: -0.02em; margin: 1px 0 0; max-width: 560px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.studioTitle h1 { font-size: 17px; font-weight: 650; letter-spacing: -0.02em; margin: 0; max-width: min(31vw, 440px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.studioViewTabs { align-self: stretch; display: flex; margin-left: clamp(18px, 3vw, 48px); min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.studioViewTabs::-webkit-scrollbar { display: none; }
+.studioViewTabs button { align-items: center; background: transparent; border: 0; border-bottom: 3px solid transparent; color: #66646b; cursor: pointer; display: flex; flex: none; font: inherit; font-size: 12px; font-weight: 650; gap: 7px; padding: 0 15px; position: relative; }
+.studioViewTabs button:hover { color: #313138; }
+.studioViewTabs button[aria-pressed="true"] { border-bottom-color: #d47b2b; color: #222329; }
+.studioViewTabs svg { height: 15px; width: 15px; }
+.studioViewTabs i { align-items: center; background: #fff0e1; border-radius: 999px; color: #8f531d; display: flex; font-size: 9px; font-style: normal; height: 18px; justify-content: center; min-width: 18px; padding: 0 5px; }
+.studioHeaderSpacer { flex: 1; }
+.studioHeaderActions { align-items: stretch; align-self: stretch; display: flex; margin-left: auto; }
+.studioSourceButton { align-items: center; background: transparent; border: 0; border-left: 1px solid #dedbd4; color: #57565d; cursor: pointer; display: flex; font: inherit; font-size: 12px; font-weight: 650; gap: 7px; padding: 0 18px; }
+.studioSourceButton:hover { background: #f4f2ed; color: #202126; }
+.studioSourceButton svg { height: 14px; width: 14px; }
+.studioSourceButton i { align-items: center; background: #efede8; border-radius: 999px; display: flex; font-size: 9px; font-style: normal; height: 19px; justify-content: center; min-width: 19px; padding: 0 5px; }
 .studioStatus { align-items: center; display: flex; gap: 10px; }
 .studioStatus > span { align-items: center; background: #eeede9; border-radius: 999px; color: #67666d; display: flex; font-size: 11px; font-weight: 680; gap: 6px; min-height: 32px; padding: 0 12px; text-transform: uppercase; }
 .studioStatus > span[data-tone="building"] { background: #eeeae4; color: #55524d; }
@@ -861,13 +872,6 @@
 .composer .sendButton:disabled { cursor: default; opacity: 0.35; }
 .hiddenInput { display: none; }
 
-.canvasTabs { align-items: stretch; background: #fff; border-bottom: 1px solid #e9e7e1; display: flex; flex: none; height: 68px; overflow-x: auto; padding: 0 22px; position: relative; scrollbar-width: thin; z-index: 60; }
-.canvasTabs button { flex: none; }
-.canvasTabs button { align-items: center; background: transparent; border: 0; border-bottom: 3px solid transparent; color: #66646b; cursor: pointer; display: flex; font: inherit; font-size: 13px; font-weight: 620; gap: 8px; padding: 0 16px; position: relative; }
-.canvasTabs button:hover { color: #313138; }
-.canvasTabs button[aria-pressed="true"] { border-bottom-color: #d47b2b; color: #222329; }
-.canvasTabs svg { height: 16px; width: 16px; }
-.canvasTabs i { align-items: center; background: #fff0e1; border-radius: 999px; color: #8f531d; display: flex; font-size: 10px; font-style: normal; height: 20px; justify-content: center; min-width: 20px; padding: 0 6px; }
 .canvasBody { flex: 1; min-height: 0; overflow: hidden; position: relative; }
 .canvasEmpty { align-items: center; display: flex; flex-direction: column; height: 100%; justify-content: center; padding: 40px; text-align: center; }
 .canvasEmpty > svg { color: #4d4e53; height: 34px; margin-bottom: 17px; width: 34px; }
@@ -979,10 +983,6 @@
 .signalEdit button { align-items: center; background: #fff; border: 1px solid #d7d4cd; border-radius: 7px; display: flex; font: inherit; font-size: 11px; gap: 5px; min-height: 34px; padding: 0 10px; }
 .signalEdit button:last-child { background: #26272c; border-color: #26272c; color: #fff; }
 
-.canvasTabs .sourceLibraryButton { align-items: center; background: transparent; border: 0; border-left: 1px solid #dedbd4; color: #57565d; cursor: pointer; display: flex; font: inherit; font-size: 12px; font-weight: 650; gap: 7px; margin-left: auto; min-height: 32px; padding: 0 16px; }
-.sourceLibraryButton:hover { color: #202126; }
-.sourceLibraryButton svg { height: 14px; width: 14px; }
-.sourceLibraryButton span { align-items: center; background: #efede8; border-radius: 999px; display: flex; font-size: 10px; height: 20px; justify-content: center; min-width: 20px; padding: 0 6px; }
 .overviewHeader > button { align-items: center; background: #fff; border: 1px solid #d8d5ce; border-radius: 9px; color: #45454b; cursor: pointer; display: flex; flex: none; font: inherit; font-size: 12px; font-weight: 680; gap: 8px; min-height: 42px; padding: 0 12px; }
 .overviewHeader > button:hover { background: #f8f7f4; border-color: #aaa79f; }
 .overviewHeader > button svg { height: 15px; width: 15px; }
@@ -1278,7 +1278,10 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 @media (max-width: 1050px) {
   .semanticMapBody { grid-template-columns: 230px minmax(0, 1fr); }
   .reviewCanvas { grid-template-columns: 210px minmax(0, 1fr); }
-  .canvasTabs button { padding-inline: 9px; }
+  .studioTitle h1 { max-width: 240px; }
+  .studioViewTabs { margin-left: 12px; }
+  .studioViewTabs button { padding-inline: 9px; }
+  .studioSourceButton { padding-inline: 12px; }
   .overviewMetrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .intelligenceGrid { grid-template-columns: 1fr; }
   .courseTeam > div { max-height: none; }
@@ -1290,6 +1293,12 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
   .studioSidebar { display: none; }
   .studioMain { height: auto; min-height: 100dvh; overflow: visible; }
   .studioHeader { position: sticky; top: 0; z-index: 20; }
+  .studioTitle h1 { max-width: 150px; }
+  .studioViewTabs { margin-left: 8px; }
+  .studioViewTabs button { padding-inline: 10px; }
+  .studioViewTabs button > span { display: none; }
+  .studioSourceButton { padding-inline: 10px; }
+  .studioSourceButton > span { display: none; }
   .studioStatus > button { display: none; }
   .creationStage { padding: 0; }
   .conversationPanel { border-bottom: 1px solid var(--os-line); border-right: 0; height: calc(100dvh - 68px); }
@@ -1313,7 +1322,11 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 
 @media (max-width: 520px) {
   .studioHeader { padding: 0 12px; }
-  .studioTitle h1 { max-width: 190px; }
+  .studioTitle { gap: 8px; }
+  .studioTitle h1 { max-width: 112px; }
+  .studioViewTabs { margin-left: 4px; }
+  .studioViewTabs button { padding-inline: 8px; }
+  .studioSourceButton { border-left: 0; padding-inline: 7px; }
   .studioStatus > span { font-size: 0; padding: 0; width: 28px; justify-content: center; }
   .messageList { padding-inline: 13px; }
   .composer { margin-inline: 11px; }
@@ -1329,8 +1342,6 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
     width: calc(100% - 22px);
   }
   .creationGreeting { display: none; }
-  .canvasTabs { overflow-x: auto; padding-inline: 5px; }
-  .canvasTabs button { flex: 0 0 auto; }
   .reviewWorkspace { padding: 18px 13px; }
   .reviewWorkspace > header { flex-direction: column; }
   .reviewItems dl,.assessmentBody dl { grid-template-columns: 1fr; }
@@ -1360,14 +1371,13 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 
 /* Unified adaptive Blueprint */
 .blueprintWorkspace { background: #fbfaf7; color: #202126; height: 100%; overflow: auto; }
-.blueprintCommandBar { align-items: stretch; background: #fff; border-bottom: 1px solid #dedbd3; display: grid; grid-template-columns: minmax(220px, 1.15fr) minmax(360px, 1.5fr) auto; min-height: 74px; padding: 0 22px 0 30px; }
-.blueprintStatusSummary { align-content: center; border-right: 1px solid #e4e1da; display: grid; gap: 7px; padding-right: 22px; }
-.blueprintStatusSummary > small,.blueprintCompactMetrics small { color: #77747b; font-size: 10px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.blueprintCommandBar { align-items: stretch; background: #fff; border-bottom: 1px solid #dedbd3; display: grid; grid-template-columns: minmax(160px, .7fr) minmax(360px, 1.5fr) auto; min-height: 68px; padding: 0 22px 0 30px; }
+.blueprintStatusSummary { align-content: center; border-right: 1px solid #e4e1da; display: grid; padding-right: 22px; }
+.blueprintCompactMetrics small { color: #77747b; font-size: 10px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
 .blueprintStatusSummary p { align-items: center; display: flex; font-size: 11px; gap: 8px; margin: 0; min-width: 0; }
 .blueprintStatusSummary p i { background: #5d8a55; border-radius: 50%; flex: 0 0 auto; height: 7px; width: 7px; }
 .blueprintStatusSummary p i[data-mode="design"] { background: #bd681f; }
-.blueprintStatusSummary p strong { font-size: 12px; white-space: nowrap; }
-.blueprintStatusSummary p span { border-left: 1px solid #d9d5cd; color: #77747b; overflow: hidden; padding-left: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.blueprintStatusSummary p strong { font-size: 13px; white-space: nowrap; }
 .blueprintCompactMetrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .blueprintCompactMetrics article { align-content: center; display: grid; gap: 6px; padding: 0 20px; }
 .blueprintCompactMetrics article + article { border-left: 1px solid #e4e1da; }
@@ -1793,7 +1803,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .proposalPack footer svg { height: 11px; width: 11px; }
 
 @media (max-width: 1180px) {
-  .blueprintCommandBar { grid-template-columns: minmax(220px, 1fr) auto; }
+  .blueprintCommandBar { grid-template-columns: minmax(170px, 1fr) auto; }
   .blueprintCompactMetrics { display: none; }
   .blueprintBody { grid-template-columns: 220px minmax(0, 1fr); }
   .blueprintTypeLegend { display: none; }
@@ -1801,7 +1811,6 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 
 @media (max-width: 900px) {
   .blueprintCommandBar { padding-left: 20px; }
-  .blueprintStatusSummary p span { display: none; }
   .blueprintCommandActions { padding-left: 12px; }
   .blueprintBody { display: grid; grid-template-columns: 190px minmax(500px, 1fr); overflow-x: auto; }
   .blueprintGraphControls { flex-wrap: wrap; padding-left: 20px; }

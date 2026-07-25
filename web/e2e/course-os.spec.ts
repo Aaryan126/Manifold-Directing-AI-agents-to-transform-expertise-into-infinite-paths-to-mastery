@@ -692,7 +692,6 @@ test("course studio exposes Blueprint, review decisions, and a mobile-safe layou
 
   await expect(page.getByRole("button", { name: "Blueprint", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Blueprint", exact: true }).click();
-  await expect(page.getByText("Blueprint status")).toBeVisible();
   await expect(page.getByText("Private design")).toBeVisible();
   await page.getByRole("button", { name: "Net force 1 concepts" }).click();
   await expect(page.getByRole("button", { name: "Vector addition", exact: true })).toBeVisible();
@@ -734,10 +733,17 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
 
   await expect(page.getByRole("button", { name: "Blueprint", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Old Blueprint" })).toHaveCount(0);
-  await expect(page.getByText("Blueprint status")).toBeVisible();
   await expect(page.getByText("Published live")).toBeVisible();
-  await expect(page.getByText("Learner-facing course")).toBeVisible();
+  await expect(page.getByText("Blueprint status")).toHaveCount(0);
+  await expect(page.getByText("Learner-facing course")).toHaveCount(0);
   await expect(page.getByText("Adaptive course system")).toHaveCount(0);
+  await expect(page.getByText("Published course", { exact: true })).toHaveCount(0);
+  const courseViews = page.getByRole("navigation", { name: "Course views" });
+  expect(await courseViews.evaluate((element) => element.parentElement?.className.includes("studioHeader")))
+    .toBe(true);
+  expect(await page.getByRole("button", { name: "Sources" }).evaluate(
+    (element) => element.closest("header")?.className.includes("studioHeader"),
+  )).toBe(true);
   await expect(page.getByText(/concepts are missing a reviewed assessment or teaching artifact/i)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
   const blueprintMode = page.getByRole("navigation", { name: "Blueprint mode" });
