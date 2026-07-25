@@ -1,8 +1,12 @@
+import asyncio
+import json
+from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.course_os.models import (
@@ -36,6 +40,13 @@ from app.dependencies import get_course_os_service
 router = APIRouter(tags=["course-os"])
 CourseOSDependency = Annotated[CourseOSService, Depends(get_course_os_service)]
 UserContext = Annotated[UUID, Header(alias="X-User-ID")]
+
+
+def _sse_event(event: str, payload: dict[str, Any]) -> str:
+    return (
+        f"event: {event}\n"
+        f"data: {json.dumps(payload, separators=(',', ':'))}\n\n"
+    )
 
 
 class CourseCreateRequest(BaseModel):
@@ -706,6 +717,64 @@ async def send_message(
     return MessageCreatedResponse(
         message=_message_response(message),
         proposal=_proposal_response(proposal) if proposal else None,
+    )
+
+
+@router.post("/courses/{course_id}/messages/stream")
+async def stream_message(
+    course_id: UUID,
+    request: MessageRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> StreamingResponse:
+    async def events() -> AsyncIterator[str]:
+        task = asyncio.create_task(
+            _call(service.send_message(course_id, user_id, request.content))
+        )
+        statuses = (
+            "Reading the course structure…",
+            "Tracing the relevant evidence…",
+            "Preparing a private response…",
+        )
+        status_index = 0
+        yield _sse_event("status", {"message": statuses[status_index]})
+        while not task.done():
+            done, _ = await asyncio.wait({task}, timeout=0.8)
+            if done:
+                break
+            status_index = min(status_index + 1, len(statuses) - 1)
+            yield _sse_event("status", {"message": statuses[status_index]})
+        try:
+            message, proposal = await task
+        except HTTPException as exc:
+            yield _sse_event("error", {"message": str(exc.detail)})
+            return
+        except Exception:
+            yield _sse_event(
+                "error",
+                {"message": "Course Director could not complete that request."},
+            )
+            return
+        response = MessageCreatedResponse(
+            message=_message_response(message),
+            proposal=_proposal_response(proposal) if proposal else None,
+        )
+        words = response.message.content.split(" ")
+        for index, word in enumerate(words):
+            yield _sse_event(
+                "delta",
+                {"content": f"{'' if index == 0 else ' '}{word}"},
+            )
+            await asyncio.sleep(0.012)
+        yield _sse_event("done", response.model_dump(mode="json"))
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

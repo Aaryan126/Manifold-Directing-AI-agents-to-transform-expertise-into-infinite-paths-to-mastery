@@ -17,6 +17,7 @@ import {
 import ELK from "elkjs/lib/elk.bundled.js";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
+import ReactMarkdown from "react-markdown";
 import {
   useCallback,
   useEffect,
@@ -57,7 +58,7 @@ import {
   RotateCcw,
   Scissors,
   Search,
-  Settings2,
+  Settings,
   SunMedium,
   Trash2,
   Upload,
@@ -173,6 +174,10 @@ type CourseFlowEdgeDraft = {
   source_unit_logical_id: string;
   target_unit_logical_id: string;
 };
+type DirectorStream = {
+  content: string;
+  status: string;
+};
 
 const InsightsCharts = dynamic(
   () => import("@/components/insights-charts").then((module) => module.InsightsCharts),
@@ -186,6 +191,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   const { sidebarCollapsed, toggleSidebar } = useTeacherSidebar();
   const fileInput = useRef<HTMLInputElement>(null);
   const sourceInput = useRef<HTMLInputElement>(null);
+  const messageListRef = useRef<HTMLDivElement>(null);
   const [identity, setIdentity] = useState<DevelopmentIdentity | null>(null);
   const [course, setCourse] = useState<CourseSummary | null>(null);
   const [messages, setMessages] = useState<CourseMessage[]>([]);
@@ -207,6 +213,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   const [blueprintMode, setBlueprintMode] = useState<BlueprintMode>("live");
   const [composer, setComposer] = useState("");
   const [sending, setSending] = useState(false);
+  const [directorStream, setDirectorStream] = useState<DirectorStream | null>(null);
   const [loading, setLoading] = useState(true);
   const [sourceLabel, setSourceLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -458,15 +465,56 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     }
     setSending(true);
     setError(null);
+    const optimisticMessage: CourseMessage = {
+      id: `optimistic-${Date.now()}`,
+      role: "instructor",
+      content,
+      blocks: [],
+      created_at: new Date().toISOString(),
+    };
+    setMessages((current) => [...current, optimisticMessage]);
+    setDirectorStream({ content: "", status: "Reading the course structure…" });
     try {
-      await request(`/courses/${courseId}/messages`, identity, {
+      const response = await fetch(`${pipelineBase}/courses/${courseId}/messages/stream`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-ID": identity.id,
+        },
         body: JSON.stringify({ content }),
+      });
+      if (!response.ok) {
+        throw new Error(await responseDetail(response, "Could not send the message."));
+      }
+      await readDirectorStream(response, (streamEvent) => {
+        if (streamEvent.event === "status") {
+          setDirectorStream((current) => ({
+            content: current?.content ?? "",
+            status: typeof streamEvent.data.message === "string"
+              ? streamEvent.data.message
+              : "Course Director is working…",
+          }));
+          return;
+        }
+        if (streamEvent.event === "delta" && typeof streamEvent.data.content === "string") {
+          setDirectorStream((current) => ({
+            content: `${current?.content ?? ""}${streamEvent.data.content}`,
+            status: current?.status ?? "Writing the response…",
+          }));
+          return;
+        }
+        if (streamEvent.event === "error") {
+          throw new Error(
+            typeof streamEvent.data.message === "string"
+              ? streamEvent.data.message
+              : "Course Director could not complete that request.",
+          );
+        }
       });
       const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
       setCourse(nextCourse);
       setMessages(await request<CourseMessage[]>(`/courses/${courseId}/messages`, identity));
+      setDirectorStream(null);
       await refreshArtifacts(identity);
       await Promise.all([
         refreshBlueprint(identity, nextCourse),
@@ -476,11 +524,23 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       ]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not send the message.");
+      setDirectorStream(null);
+      setMessages((current) => current.filter((message) => message.id !== optimisticMessage.id));
+      void request<CourseMessage[]>(`/courses/${courseId}/messages`, identity)
+        .then(setMessages)
+        .catch(() => undefined);
       setComposer(content);
     } finally {
       setSending(false);
     }
   }
+
+  useEffect(() => {
+    if (!directorOpen && !focusedCreation) return;
+    const list = messageListRef.current;
+    if (!list) return;
+    list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
+  }, [directorOpen, directorStream, focusedCreation, messages]);
 
   async function ingestUrl(url: string) {
     if (!identity) return;
@@ -1589,7 +1649,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
           <h2>Good {greetingTime()}, {teacherFirstName(identity?.display_name)}.</h2>
         </div>
       ) : null}
-      <div className={styles.messageList}>
+      <div className={styles.messageList} ref={messageListRef}>
         {!focusedCreation ? messages.filter((message) => message.role !== "system").map((message) => (
           <MessageBubble
             key={message.id}
@@ -1598,6 +1658,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
             onResolve={resolveProposal}
           />
         )) : null}
+        {!focusedCreation && directorStream ? <StreamingMessageBubble stream={directorStream} /> : null}
 
         {!focusedCreation && (course?.source_count ?? 0) === 0 ? (
           <SourceRequest onChoose={() => fileInput.current?.click()} />
@@ -1665,19 +1726,26 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         />
         <header className={styles.studioHeader}>
           <div className={styles.studioTitle}>
-            <button aria-label="Back to courses" disabled={sending} onClick={() => void leaveStudio()} type="button"><ArrowLeft /></button>
-            <h1>{course?.title ?? "Course studio"}</h1>
+            <button
+              aria-label={lectureFocusVideoId ? "Back to Course Flow" : "Back to courses"}
+              disabled={sending}
+              onClick={() => {
+                if (lectureFocusVideoId) {
+                  setLectureFocusVideoId(null);
+                  setCanvasView("flow");
+                  return;
+                }
+                void leaveStudio();
+              }}
+              type="button"
+            ><ArrowLeft /></button>
+            <h1>{focusedLectureUnit?.title ?? course?.title ?? "Course studio"}</h1>
           </div>
-          {!focusedCreation ? (
+          {!focusedCreation && lectureFocusVideoId ? (
             <nav className={styles.studioViewTabs} aria-label="Course views">
-              <CanvasTab active={canvasView === "flow"} icon={<GraduationCap />} label="Course Flow" onClick={() => {
-                setLectureFocusVideoId(null);
-                setCanvasView("flow");
-              }} />
-              {lectureFocusVideoId ? <CanvasTab active={canvasView === "blueprint"} icon={<GitFork />} label="Blueprint" onClick={() => setCanvasView("blueprint")} /> : null}
-              {lectureFocusVideoId && course?.status !== "published" ? <CanvasTab active={canvasView === "review"} badge={course?.pending_review_count || undefined} icon={<ClipboardCheck />} label="Review" onClick={() => setCanvasView("review")} /> : null}
-              {lectureFocusVideoId ? <CanvasTab active={canvasView === "assessments"} icon={<Check />} label="Assessments" onClick={() => setCanvasView("assessments")} /> : null}
-              {lectureFocusVideoId ? <CanvasTab active={canvasView === "preview"} icon={<Eye />} label="Preview" onClick={() => setCanvasView("preview")} /> : null}
+              <CanvasTab active={canvasView === "blueprint"} icon={<GitFork />} label="Blueprint" onClick={() => setCanvasView("blueprint")} />
+              <CanvasTab active={canvasView === "assessments"} icon={<Check />} label="Assessments" onClick={() => setCanvasView("assessments")} />
+              <CanvasTab active={canvasView === "preview"} icon={<Eye />} label="Preview" onClick={() => setCanvasView("preview")} />
             </nav>
           ) : <span className={styles.studioHeaderSpacer} />}
           <div className={styles.studioHeaderActions}>
@@ -1692,7 +1760,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
             {!focusedCreation ? (
               <>
                 <div className={styles.studioSettingsMenu}>
-                  <button aria-expanded={settingsOpen} aria-label="Course settings" className={styles.studioSettingsButton} onClick={() => setSettingsOpen((current) => !current)} type="button"><Settings2 /></button>
+                  <button aria-expanded={settingsOpen} aria-label="Course settings" className={styles.studioSettingsButton} onClick={() => setSettingsOpen((current) => !current)} type="button"><Settings /></button>
                   {settingsOpen ? <CourseSettingsPopover disabled={sending} onClose={() => setSettingsOpen(false)} onRemove={removeRoutingPolicy} onSave={saveRoutingPolicy} workspace={routingWorkspace} /> : null}
                 </div>
                 <button className={styles.studioSourceButton} onClick={() => setSourcesOpen(true)} type="button">
@@ -1840,6 +1908,25 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   );
 }
 
+function StreamingMessageBubble({ stream }: { stream: DirectorStream }) {
+  return (
+    <article className={`${styles.messageBubble} ${styles.streamingMessage}`} data-role="manifold" aria-live="polite">
+      <span className={styles.agentAvatar}><MessageSquareText /></span>
+      <div>
+        <small>Course Director</small>
+        {stream.content ? (
+          <div className={styles.directorMarkdown}><ReactMarkdown>{stream.content}</ReactMarkdown></div>
+        ) : (
+          <div className={styles.directorThinking}>
+            <span>{stream.status}</span>
+            <i /><i /><i />
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
 function MessageBubble({ message, proposalStates, onResolve }: {
   message: CourseMessage;
   proposalStates: Record<string, string>;
@@ -1856,7 +1943,9 @@ function MessageBubble({ message, proposalStates, onResolve }: {
       {message.role === "manifold" ? <span className={styles.agentAvatar}><MessageSquareText /></span> : null}
       <div>
         <small>{message.role === "manifold" ? "Course Director" : "You"}</small>
-        <p>{message.content}</p>
+        {message.role === "manifold"
+          ? <div className={styles.directorMarkdown}><ReactMarkdown>{message.content}</ReactMarkdown></div>
+          : <p>{message.content}</p>}
         {message.blocks.map((block, index) => {
           if (block.type === "evidence") {
             const evidence = Object.entries(block)
@@ -2920,6 +3009,18 @@ function CourseFlowWorkspace({
             {mode === "design" ? (
               <>
                 <div className={styles.courseFlowGraphUnitActions}>
+                  {unit.kind === "lecture" ? (
+                    <button
+                      aria-label={`Open Blueprint for ${unit.title}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onOpenLecture(unit);
+                      }}
+                      type="button"
+                    >
+                      <ArrowRight />Open
+                    </button>
+                  ) : null}
                   <button
                     onClick={(event) => {
                       event.stopPropagation();
@@ -2957,7 +3058,19 @@ function CourseFlowWorkspace({
                   </button>
                 ))}
               </>
-            ) : unit.kind === "lecture" ? <span className={styles.courseFlowGraphOpen}>Open Blueprint <ArrowRight /></span> : null}
+            ) : unit.kind === "lecture" ? (
+              <button
+                aria-label={`Open Blueprint for ${unit.title}`}
+                className={styles.courseFlowGraphOpen}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onOpenLecture(unit);
+                }}
+                type="button"
+              >
+                Open Blueprint <ArrowRight />
+              </button>
+            ) : null}
           </div>
         ),
       },
@@ -2970,7 +3083,7 @@ function CourseFlowWorkspace({
     };
     });
     return [...laneNodes, ...unitNodes];
-  }, [arrangedPositions, compactSequence, disabled, graphPositions, groups, mode, onRemove, relationshipDraft, units]);
+  }, [arrangedPositions, compactSequence, disabled, graphPositions, groups, mode, onOpenLecture, onRemove, relationshipDraft, units]);
 
   const graphEdges = useMemo<Edge[]>(() => (flow?.edges ?? []).map((edge) => ({
     id: edge.logical_id,
@@ -3813,14 +3926,16 @@ function BlueprintWorkspace({
 
   return (
     <div className={styles.blueprintWorkspace} data-mode={mode}>
-      <div className={styles.blueprintContextBar}>
-        <button onClick={onBackToCourseFlow} type="button"><ArrowLeft />Course Flow</button>
-        <span aria-hidden="true">/</span>
-        <div>
-          <strong>{contextTitle}</strong>
-          <small>{contextTitle === "Cross-lecture concept map" ? "Whole-course structure" : "Lecture Blueprint"}</small>
+      {contextTitle === "Cross-lecture concept map" ? (
+        <div className={styles.blueprintContextBar}>
+          <button onClick={onBackToCourseFlow} type="button"><ArrowLeft />Course Flow</button>
+          <span aria-hidden="true">/</span>
+          <div>
+            <strong>{contextTitle}</strong>
+            <small>Whole-course structure</small>
+          </div>
         </div>
-      </div>
+      ) : null}
       <header className={styles.blueprintCommandBar}>
         <div className={styles.blueprintSummaryGroup} role="group" aria-label="Blueprint status and metrics">
           <div className={styles.blueprintStatusSummary}>
@@ -6089,3 +6204,32 @@ function looksLikeUrl(value: string) { try { const url = new URL(value); return 
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function safeJson(value: string): Record<string, unknown> | null { try { const parsed: unknown = JSON.parse(value); return isRecord(parsed) ? parsed : null; } catch { return null; } }
 async function responseDetail(response: Response, fallback: string) { const payload = (await response.json().catch(() => null)) as { detail?: string } | null; return payload?.detail ?? fallback; }
+
+async function readDirectorStream(
+  response: Response,
+  onEvent: (streamEvent: { event: string; data: Record<string, unknown> }) => void,
+) {
+  if (!response.body) throw new Error("Course Director did not return a response stream.");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done }).replaceAll("\r", "");
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      const lines = frame.split("\n");
+      const event = lines.find((line) => line.startsWith("event:"))?.slice(6).trim() ?? "message";
+      const dataText = lines
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trim())
+        .join("\n");
+      if (!dataText) continue;
+      const data = JSON.parse(dataText) as Record<string, unknown>;
+      onEvent({ event, data });
+    }
+    if (done) break;
+  }
+}

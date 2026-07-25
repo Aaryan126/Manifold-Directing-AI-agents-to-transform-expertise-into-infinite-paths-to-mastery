@@ -61,6 +61,13 @@ function oneLectureCourseFlow(courseId: string, revisionId: string, revisionKind
 async function mockCourseOS(page: Page) {
   await setInstructorSession(page);
   let deleted = false;
+  const courseMessages = [{
+    id: "55555555-5555-4555-8555-555555555555",
+    role: "manifold",
+    content: "Your complete private draft is ready for review.",
+    blocks: [],
+    created_at: "2026-07-21T00:00:00Z",
+  }];
   await page.route("http://localhost:8000/**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
@@ -143,16 +150,38 @@ async function mockCourseOS(page: Page) {
       await route.fulfill({ json: course });
       return;
     }
-    if (path.endsWith("/messages")) {
-      await route.fulfill({
-        json: [{
-          id: "55555555-5555-4555-8555-555555555555",
-          role: "manifold",
-          content: "Your complete private draft is ready for review.",
+    if (path.endsWith("/messages/stream") && route.request().method() === "POST") {
+      const body = route.request().postDataJSON() as { content: string };
+      courseMessages.push(
+        {
+          id: "streamed-instructor-message",
+          role: "instructor",
+          content: body.content,
           blocks: [],
-          created_at: "2026-07-21T00:00:00Z",
-        }],
+          created_at: "2026-07-21T00:01:00Z",
+        },
+        {
+          id: "streamed-director-message",
+          role: "manifold",
+          content: "### Course update\n\n- **Vector addition** is covered.\n- One review decision remains.",
+          blocks: [],
+          created_at: "2026-07-21T00:01:01Z",
+        },
+      );
+      await route.fulfill({
+        body: [
+          'event: status\ndata: {"message":"Inspecting the Blueprint…"}',
+          'event: delta\ndata: {"content":"### Course update\\n\\n"}',
+          'event: delta\ndata: {"content":"- **Vector addition** is covered.\\n- One review decision remains."}',
+          'event: done\ndata: {"message_id":"streamed-director-message"}',
+          "",
+        ].join("\n\n"),
+        contentType: "text/event-stream",
       });
+      return;
+    }
+    if (path.endsWith("/messages")) {
+      await route.fulfill({ json: courseMessages });
       return;
     }
     if (path.endsWith("/blueprint/evidence")) {
@@ -720,7 +749,7 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await page.getByRole("heading", { name: "Forces and motion", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/app/courses/${course.id}$`));
   await expect(page.getByRole("heading", { name: "Forces and motion", level: 1 })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Course Flow" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Course views" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Assessments" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Preview", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Open Course Director" })).toBeVisible();
@@ -739,6 +768,11 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
     - directorIdentityBounds!.height;
   expect(Math.abs(directorHeaderTopGap - directorHeaderBottomGap)).toBeLessThanOrEqual(1);
   expect(directorHeaderTopGap).toBeGreaterThanOrEqual(16);
+  await page.getByLabel("Message Course Director").fill("Summarize this Blueprint");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.getByRole("heading", { name: "Course update", level: 3 })).toBeVisible();
+  expect(await page.getByText("Vector addition", { exact: true }).evaluate((element) => element.tagName)).toBe("STRONG");
+  await expect(page.getByRole("listitem").filter({ hasText: "One review decision remains." })).toBeVisible();
   await page.getByRole("button", { name: "Close Course Director" }).click();
   await expect(page.getByText("Your complete private draft is ready for review.")).toHaveCount(0);
 });
@@ -748,15 +782,19 @@ test("course studio exposes Blueprint, review decisions, and a mobile-safe layou
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/app/courses/${course.id}`);
 
-  await page.getByText("Forces lecture", { exact: true }).click();
+  const openLecture = page.getByRole("button", { name: "Open Blueprint for Forces lecture" });
+  await openLecture.focus();
+  await openLecture.press("Enter");
+  await expect(page.getByRole("heading", { name: "Forces lecture", level: 1 })).toBeVisible();
   await expect(page.getByRole("button", { name: "Blueprint", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Assessments", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Preview", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Review/ })).toHaveCount(0);
+  await expect(page.getByText("Lecture Blueprint", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Blueprint", exact: true }).click();
   await expect(page.getByText("Private design")).toBeVisible();
   await page.getByRole("button", { name: "Net force 1 concepts" }).click();
   await expect(page.getByRole("button", { name: "Vector addition", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: /^Review/ }).click();
-  await expect(page.getByRole("heading", { name: "Course structure" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Accept" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
   const results = await new AxeBuilder({ page })
@@ -817,6 +855,10 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   const courseViews = page.getByRole("navigation", { name: "Course views" });
   expect(await courseViews.evaluate((element) => element.parentElement?.className.includes("studioHeader")))
     .toBe(true);
+  await expect(courseViews.getByRole("button")).toHaveCount(3);
+  await expect(courseViews.getByRole("button", { name: "Course Flow" })).toHaveCount(0);
+  await expect(page.getByText("Lecture Blueprint", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Forces lecture", level: 1 })).toBeVisible();
   expect(await page.getByRole("button", { name: "Sources" }).evaluate(
     (element) => element.closest("header")?.className.includes("studioHeader"),
   )).toBe(true);

@@ -13,6 +13,7 @@ from app.course_os.models import (
     BlueprintEdge,
     BlueprintMutationImpact,
     BlueprintNode,
+    ConversationMessage,
     CourseAssessment,
     CourseBlueprint,
     CourseRoutingPolicy,
@@ -23,6 +24,49 @@ from app.course_os.models import (
 )
 from app.dependencies import get_course_os_service
 from app.main import app
+
+
+def test_course_director_streams_status_markdown_and_completion() -> None:
+    instructor_id = uuid4()
+    course_id = uuid4()
+    message_id = uuid4()
+    service = AsyncMock()
+    service.send_message.return_value = (
+        ConversationMessage(
+            id=message_id,
+            role="manifold",
+            content="### Course update\n\n- Evidence checked\n- Change remains private",
+            blocks=(),
+            created_at=datetime.now(UTC),
+        ),
+        None,
+    )
+    app.dependency_overrides[get_course_os_service] = lambda: service
+    client = TestClient(app)
+
+    try:
+        with client.stream(
+            "POST",
+            f"/courses/{course_id}/messages/stream",
+            headers={"X-User-ID": str(instructor_id)},
+            json={"content": "Review the weakest topic"},
+        ) as response:
+            body = "".join(response.iter_text())
+
+        assert response.status_code == 200
+        assert "text/event-stream" in response.headers["content-type"]
+        assert "event: status" in body
+        assert "event: delta" in body
+        assert "event: done" in body
+        assert "Course" in body
+        assert "Evidence" in body
+        service.send_message.assert_awaited_once_with(
+            course_id,
+            instructor_id,
+            "Review the weakest topic",
+        )
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_teacher_dashboard_returns_empty_state_metrics() -> None:
