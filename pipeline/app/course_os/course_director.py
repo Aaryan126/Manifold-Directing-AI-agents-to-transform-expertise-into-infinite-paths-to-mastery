@@ -53,7 +53,12 @@ class CourseDirectorPlan:
 
 
 class CourseDirector(Protocol):
-    async def plan(self, instruction: str, blueprint: CourseBlueprint) -> CourseDirectorPlan: ...
+    async def plan(
+        self,
+        instruction: str,
+        blueprint: CourseBlueprint,
+        active_blueprint: CourseBlueprint | None = None,
+    ) -> CourseDirectorPlan: ...
 
 
 class _DirectorCorrectAnswerOutput(BaseModel):
@@ -122,7 +127,12 @@ class OpenAICourseDirector:
         self._client = AsyncOpenAI(api_key=api_key)
         self._model = model
 
-    async def plan(self, instruction: str, blueprint: CourseBlueprint) -> CourseDirectorPlan:
+    async def plan(
+        self,
+        instruction: str,
+        blueprint: CourseBlueprint,
+        active_blueprint: CourseBlueprint | None = None,
+    ) -> CourseDirectorPlan:
         response = await self._client.responses.parse(
             model=self._model,
             input=[
@@ -157,12 +167,19 @@ class OpenAICourseDirector:
                         "plausible choices in correct_answer. If the request is ambiguous, unsafe, "
                         "or cannot be expressed with these operations, return no actions and one "
                         "clarification. "
+                        "The context may list published artifacts that are absent from the private "
+                        "working revision. If an instructor asks to remove one, do not target a "
+                        "different artifact and do not create another action. Explain that it is "
+                        "already removed privately, remains visible in Live until Publish updates, "
+                        "and can be inspected in Design. "
                         "Prefer the smallest coherent plan and explain each action plainly."
                     ),
                 },
                 {
                     "role": "user",
-                    "content": json.dumps(_blueprint_context(instruction, blueprint)),
+                    "content": json.dumps(
+                        _blueprint_context(instruction, blueprint, active_blueprint)
+                    ),
                 },
             ],
             text_format=_DirectorPlanOutput,
@@ -173,7 +190,11 @@ class OpenAICourseDirector:
         return _validated_plan(parsed, blueprint)
 
 
-def _blueprint_context(instruction: str, blueprint: CourseBlueprint) -> dict[str, Any]:
+def _blueprint_context(
+    instruction: str,
+    blueprint: CourseBlueprint,
+    active_blueprint: CourseBlueprint | None = None,
+) -> dict[str, Any]:
     """Build model context without allowing legacy orphaned edges to crash a request."""
 
     logical_ids_by_node_id = {node.id: node.logical_id for node in blueprint.nodes}
@@ -195,9 +216,21 @@ def _blueprint_context(instruction: str, blueprint: CourseBlueprint) -> dict[str
                 "status": edge.status,
             }
         )
+    working_logical_ids = {node.logical_id for node in blueprint.nodes}
+    published_only_nodes = [
+        {
+            "logical_id": str(node.logical_id),
+            "kind": node.kind,
+            "title": node.title,
+            "status": node.status,
+        }
+        for node in (active_blueprint.nodes if active_blueprint else ())
+        if node.logical_id not in working_logical_ids
+    ]
     return {
         "instruction": instruction,
         "revision_id": str(blueprint.revision_id),
+        "revision_kind": blueprint.revision_kind,
         "nodes": [
             {
                 "logical_id": str(node.logical_id),
@@ -209,13 +242,19 @@ def _blueprint_context(instruction: str, blueprint: CourseBlueprint) -> dict[str
             for node in blueprint.nodes
         ],
         "relationships": relationships,
+        "published_artifacts_absent_from_private_revision": published_only_nodes,
     }
 
 
 class LocalCourseDirector:
     """Deterministic development fallback with a small, explicit command grammar."""
 
-    async def plan(self, instruction: str, blueprint: CourseBlueprint) -> CourseDirectorPlan:
+    async def plan(
+        self,
+        instruction: str,
+        blueprint: CourseBlueprint,
+        active_blueprint: CourseBlueprint | None = None,
+    ) -> CourseDirectorPlan:
         normalized = instruction.strip()
         lowered = normalized.lower()
         matches = sorted(
@@ -237,6 +276,28 @@ class LocalCourseDirector:
                     ),
                 ),
             )
+        if ("remove" in lowered or "delete" in lowered) and active_blueprint is not None:
+            working_logical_ids = {node.logical_id for node in blueprint.nodes}
+            published_only_matches = sorted(
+                (
+                    node
+                    for node in active_blueprint.nodes
+                    if node.logical_id not in working_logical_ids
+                    and node.title.lower() in lowered
+                ),
+                key=lambda node: len(node.title),
+                reverse=True,
+            )
+            if published_only_matches:
+                node = published_only_matches[0]
+                return CourseDirectorPlan(
+                    summary=f"{node.title} is already removed from the private revision.",
+                    actions=(),
+                    clarification=(
+                        f"“{node.title}” is already removed in Design. Live still shows the "
+                        "published course until you choose Publish updates."
+                    ),
+                )
         if ("add" in lowered or "create" in lowered) and (
             "question" in lowered or "assessment" in lowered
         ) and matches and matches[0].kind == "concept":

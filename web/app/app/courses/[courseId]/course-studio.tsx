@@ -178,6 +178,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   const [sources, setSources] = useState<CourseSource[]>([]);
   const [agentTasks, setAgentTasks] = useState<CourseAgentTask[]>([]);
   const [canvasView, setCanvasView] = useState<CanvasView>("blueprint");
+  const [blueprintMode, setBlueprintMode] = useState<BlueprintMode>("live");
   const [composer, setComposer] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -316,6 +317,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         request<CourseMessage[]>(`/courses/${courseId}/messages`, user),
       ]);
       setCourse(courseResult);
+      setBlueprintMode(courseResult.status === "published" ? "live" : "design");
       setMessages(messageResult);
       if (shouldHydrateGenerationRun(courseResult) && courseResult.generation_run_id) {
         const runResult = await request<GenerationRun>(
@@ -507,10 +509,13 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         )),
       })));
       if (decision !== "dismissed" && course) {
+        const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+        setCourse(nextCourse);
+        setBlueprintMode("design");
         await Promise.all([
-          refreshBlueprint(identity, course),
-          refreshRevisionDiff(identity, course),
-          refreshStructuredWorkspace(identity, course.status === "published"),
+          refreshBlueprint(identity, nextCourse),
+          refreshRevisionDiff(identity, nextCourse),
+          refreshStructuredWorkspace(identity, nextCourse.status === "published"),
         ]);
       }
     } catch (caught) {
@@ -1401,9 +1406,9 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     activeBlueprint={activeBlueprint}
                     agentTasks={agentTasks}
                     blueprintEvidence={blueprintEvidence}
-                    course={course}
                     dashboard={dashboardSummary}
                     disabled={sending}
+                    mode={blueprintMode}
                     onAddConcept={createBlueprintConcept}
                     onAddTopic={createBlueprintTopic}
                     onAskDirector={(node) => {
@@ -1427,6 +1432,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     onUpdateTopic={updateBlueprintTopic}
                     onOpenAssessments={() => setCanvasView("assessments")}
                     onOpenSources={() => setSourcesOpen(true)}
+                    onModeChange={setBlueprintMode}
                     revisionDiff={revisionDiff}
                     clips={assessmentWorkspace?.clips ?? []}
                     undoing={blueprintUndoing}
@@ -2269,9 +2275,9 @@ function BlueprintWorkspace({
   activeBlueprint,
   agentTasks,
   blueprintEvidence,
-  course,
   dashboard,
   disabled,
+  mode,
   onAddConcept,
   onAddTopic,
   onAskDirector,
@@ -2282,6 +2288,7 @@ function BlueprintWorkspace({
   onLayout,
   onOpenAssessments,
   onOpenSources,
+  onModeChange,
   onPrepare,
   onReconnectRelationship,
   onRemoveArtifact,
@@ -2301,9 +2308,9 @@ function BlueprintWorkspace({
   activeBlueprint: CourseBlueprint | null;
   agentTasks: CourseAgentTask[];
   blueprintEvidence: BlueprintConceptEvidence[];
-  course: CourseSummary | null;
   dashboard: DashboardSummary | null;
   disabled: boolean;
+  mode: BlueprintMode;
   onAddConcept: (draft: {
     name: string;
     description: string;
@@ -2336,6 +2343,7 @@ function BlueprintWorkspace({
   ) => Promise<void>;
   onOpenAssessments: () => void;
   onOpenSources: () => void;
+  onModeChange: (mode: BlueprintMode) => void;
   onPrepare: (node: BlueprintNode, neighbors: BlueprintNode[]) => Promise<void>;
   onReconnectRelationship: (
     previous: BlueprintRelationshipSpec,
@@ -2360,7 +2368,6 @@ function BlueprintWorkspace({
   undoLabel: string | null;
   workingBlueprint: CourseBlueprint | null;
 }) {
-  const [mode, setMode] = useState<BlueprintMode>(course?.status === "published" ? "live" : "design");
   const [selectedLogicalId, setSelectedLogicalId] = useState<string | null>(null);
   const [focusTopicLogicalId, setFocusTopicLogicalId] = useState<string | null>(null);
   const [flowInstance, setFlowInstance] = useState<
@@ -2424,13 +2431,17 @@ function BlueprintWorkspace({
   );
   const reactFlowMountKey = useMemo(() => {
     if (!blueprint) return "empty";
-    const logicalIds = blueprint.nodes
-      .filter((node) => !visibleNodeIds || visibleNodeIds.has(node.id))
-      .map((node) => node.logical_id)
+    return `${mode}:${focusTopicLogicalId ?? "course"}:${autoArrangeVersion}`;
+  }, [autoArrangeVersion, blueprint, focusTopicLogicalId, mode]);
+  const graphTopologyKey = useMemo(() => {
+    if (!blueprint) return "empty";
+    const nodeIds = blueprint.nodes.map((node) => node.id).sort().join(",");
+    const edgeIds = blueprint.edges
+      .map((edge) => `${edge.id}:${edge.source_id}:${edge.target_id}:${edge.kind}`)
       .sort()
-      .join(":");
-    return `${mode}:${focusTopicLogicalId ?? "course"}:${autoArrangeVersion}:${logicalIds}`;
-  }, [autoArrangeVersion, blueprint, focusTopicLogicalId, mode, visibleNodeIds]);
+      .join(",");
+    return `${blueprint.revision_id}:${nodeIds}:${edgeIds}`;
+  }, [blueprint]);
   const viewportFitKey = `${reactFlowMountKey}:${flow.layoutKey ?? "pending"}`;
   const evidence = selected?.kind === "concept"
     ? blueprintEvidence.find((item) => item.concept_id === selected.id) ?? null
@@ -2658,19 +2669,49 @@ function BlueprintWorkspace({
 
   return (
     <div className={styles.blueprintWorkspace} data-mode={mode}>
-      <header className={styles.blueprintHeader}>
-        <div>
-          <span>Adaptive course system</span>
-          <h2>{course?.title}</h2>
-          <p>Structure, teaching, assessment, evidence, and routing in one inspectable model.</p>
+      <header className={styles.blueprintCommandBar}>
+        <div className={styles.blueprintStatusSummary}>
+          <small>Blueprint status</small>
+          <p>
+            <i data-mode={mode} />
+            <strong>{mode === "design" ? "Private design" : "Published live"}</strong>
+            <span>
+              {mode === "design"
+                ? `${revisionDiff?.changes.length ?? 0} unpublished changes`
+                : "Learner-facing course"}
+            </span>
+          </p>
+        </div>
+        <div className={styles.blueprintCompactMetrics}>
+          <article><small>Coverage</small><strong>{coverageGaps ? `${coverageGaps} gaps` : "Complete"}</strong></article>
+          <article><small>Evidence</small><strong>{dashboard?.attempt_count ?? 0} attempts</strong></article>
+          <article><small>Private</small><strong>{agentTasks.filter((task) => ["queued", "running", "waiting_review"].includes(task.status)).length} active</strong></article>
+        </div>
+        <div className={styles.blueprintCommandActions}>
+          <nav className={styles.blueprintModeToggle} aria-label="Blueprint mode">
+            {blueprintModes.map((item) => (
+              <button
+                aria-pressed={mode === item.id}
+                key={item.id}
+                onClick={() => {
+                  setAutoArrangeVersion(0);
+                  onModeChange(item.id);
+                }}
+                type="button"
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
+          <button
+            className={styles.blueprintAutoArrange}
+            onClick={() => setAutoArrangeVersion((current) => current + 1)}
+            type="button"
+          >
+            <Network />Auto arrange
+          </button>
         </div>
       </header>
-
-      <section className={styles.blueprintBrief}>
-        <article><small>Coverage</small><strong>{coverageGaps ? `${coverageGaps} gaps` : "Complete"}</strong><span>{concepts.length} concepts linked to teaching and checks</span></article>
-        <article><small>Learner evidence</small><strong>{dashboard?.attempt_count ?? 0} attempts</strong><span>{blueprintEvidence.filter((item) => item.confident_incorrect > 0).length} confident misconceptions</span></article>
-        <article><small>Private work</small><strong>{agentTasks.filter((task) => ["queued", "running", "waiting_review"].includes(task.status)).length} active</strong><span>{revisionDiff?.changes.length ?? 0} unpublished artifact changes</span></article>
-      </section>
 
       {pendingEdges.length ? (
         <div className={styles.blueprintNotice}>
@@ -2765,13 +2806,6 @@ function BlueprintWorkspace({
             </span>
           </div>
         ) : null}
-        <button
-          className={styles.blueprintAutoArrange}
-          onClick={() => setAutoArrangeVersion((current) => current + 1)}
-          type="button"
-        >
-          <Network />Auto arrange
-        </button>
         <div className={styles.blueprintTypeLegend} aria-label="Artifact types">
           {(["source", "topic", "concept", "clip", "question"] as BlueprintNode["kind"][]).map((kind) => (
             <span key={kind}><i data-kind={kind}>{blueprintKindIcon(kind)}</i>{kind}</span>
@@ -2796,16 +2830,18 @@ function BlueprintWorkspace({
         </nav>
 
         <div className={styles.blueprintCanvas}>
-          <nav className={styles.blueprintCanvasModes} aria-label="Blueprint mode">
-            {blueprintModes.map((item) => <button aria-pressed={mode === item.id} key={item.id} onClick={() => { setAutoArrangeVersion(0); setMode(item.id); }} type="button">{item.label}</button>)}
-          </nav>
-          {!flow.layoutReady ? <div className={styles.blueprintLayoutLoading}><LoaderCircle className={styles.spin} /><span>Arranging the course system…</span></div> : null}
-          <ReactFlow
+          {!flow.layoutReady ? (
+            <div className={styles.blueprintLayoutLoading}>
+              <LoaderCircle className={styles.spin} />
+              <span>Arranging the course system…</span>
+            </div>
+          ) : (
+            <ReactFlow
             edgeTypes={blueprintEdgeTypes}
             edges={flow.edges}
             fitView
             fitViewOptions={{ maxZoom: 1, padding: 0.14 }}
-            key={`${blueprint.course_id}:${reactFlowMountKey}`}
+            key={graphTopologyKey}
             nodeTypes={blueprintNodeTypes}
             nodes={flow.nodes}
             nodesConnectable={false}
@@ -2865,7 +2901,8 @@ function BlueprintWorkspace({
           >
             <Background color="#e2ded6" gap={22} size={1} />
             <Controls orientation="horizontal" position="bottom-left" showInteractive={false} />
-          </ReactFlow>
+            </ReactFlow>
+          )}
           {mode === "design" ? <p className={styles.blueprintCanvasHint}><GitFork />Move an artifact, hover a node edge to connect it, or select any relationship to change it.</p> : null}
           {relationshipDraft?.kind ? (
             <section className={styles.blueprintRelationshipGuide} aria-live="polite">

@@ -378,7 +378,21 @@ class CourseOSService:
             )
             return response, None
         blueprint = await self._repository.blueprint(course_id, revision_id, "working")
-        plan = await self._course_director.plan(instruction, blueprint)
+        active_blueprint = (
+            await self._repository.blueprint(
+                course_id,
+                course.active_revision_id,
+                "active",
+            )
+            if course.active_revision_id is not None
+            and course.active_revision_id != revision_id
+            else None
+        )
+        plan = await self._course_director.plan(
+            instruction,
+            blueprint,
+            active_blueprint,
+        )
         if not plan.actions:
             response = await self._repository.add_message(
                 course_id,

@@ -66,6 +66,38 @@ def test_director_context_omits_relationships_with_a_missing_endpoint() -> None:
     assert context["nodes"][0]["logical_id"] == str(blueprint.nodes[0].logical_id)
 
 
+def test_director_context_identifies_artifacts_already_removed_privately() -> None:
+    working = _blueprint()
+    removed_topic = BlueprintNode(
+        id=uuid4(),
+        logical_id=uuid4(),
+        kind="topic",
+        title="Debunking the popular 10,000-hour rule",
+        status="accepted",
+        parent_id=None,
+        metadata={},
+    )
+    active = CourseBlueprint(
+        course_id=working.course_id,
+        revision_id=uuid4(),
+        revision_kind="active",
+        nodes=(*working.nodes, removed_topic),
+        edges=(),
+        uncovered_concept_ids=(),
+    )
+
+    context = _blueprint_context("Remove the 10,000-hour topic", working, active)
+
+    assert context["published_artifacts_absent_from_private_revision"] == [
+        {
+            "logical_id": str(removed_topic.logical_id),
+            "kind": "topic",
+            "title": removed_topic.title,
+            "status": "accepted",
+        }
+    ]
+
+
 def test_director_accepts_a_reviewed_topic_removal_plan() -> None:
     topic = BlueprintNode(
         id=uuid4(),
@@ -129,6 +161,39 @@ async def test_local_director_requests_clarification_instead_of_guessing() -> No
     assert plan.actions == ()
     assert plan.clarification is not None
     assert "exact topic, concept, clip, question, or connection" in plan.clarification
+
+
+@pytest.mark.anyio
+async def test_local_director_explains_artifact_already_removed_from_private_revision() -> None:
+    working = _blueprint()
+    removed_topic = BlueprintNode(
+        id=uuid4(),
+        logical_id=uuid4(),
+        kind="topic",
+        title="Debunking the popular 10,000-hour rule",
+        status="accepted",
+        parent_id=None,
+        metadata={},
+    )
+    active = CourseBlueprint(
+        course_id=working.course_id,
+        revision_id=uuid4(),
+        revision_kind="active",
+        nodes=(*working.nodes, removed_topic),
+        edges=(),
+        uncovered_concept_ids=(),
+    )
+
+    plan = await LocalCourseDirector().plan(
+        "Remove the Debunking the popular 10,000-hour rule topic",
+        working,
+        active,
+    )
+
+    assert plan.actions == ()
+    assert plan.clarification is not None
+    assert "already removed in Design" in plan.clarification
+    assert "Publish updates" in plan.clarification
 
 
 @pytest.mark.anyio

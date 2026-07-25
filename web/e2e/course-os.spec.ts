@@ -317,6 +317,7 @@ async function mockPublishedCourseOS(page: Page) {
         proposal_id: path.split("/").at(-2) ?? "",
         decision: body.decision ?? "",
       });
+      if (body.decision !== "dismissed") workingRevisionOpen = true;
       return route.fulfill({ json: { status: body.decision } });
     }
     if (path.endsWith("/sources")) return route.fulfill({
@@ -691,7 +692,8 @@ test("course studio exposes Blueprint, review decisions, and a mobile-safe layou
 
   await expect(page.getByRole("button", { name: "Blueprint", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Blueprint", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Forces and motion", level: 2 })).toBeVisible();
+  await expect(page.getByText("Blueprint status")).toBeVisible();
+  await expect(page.getByText("Private design")).toBeVisible();
   await page.getByRole("button", { name: "Net force 1 concepts" }).click();
   await expect(page.getByRole("button", { name: "Vector addition", exact: true })).toBeVisible();
   await page.getByRole("button", { name: /^Review/ }).click();
@@ -732,11 +734,14 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
 
   await expect(page.getByRole("button", { name: "Blueprint", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Old Blueprint" })).toHaveCount(0);
-  await expect(page.getByText("Structure, teaching, assessment, evidence, and routing in one inspectable model.")).toBeVisible();
+  await expect(page.getByText("Blueprint status")).toBeVisible();
+  await expect(page.getByText("Published live")).toBeVisible();
+  await expect(page.getByText("Learner-facing course")).toBeVisible();
+  await expect(page.getByText("Adaptive course system")).toHaveCount(0);
   await expect(page.getByText(/concepts are missing a reviewed assessment or teaching artifact/i)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
   const blueprintMode = page.getByRole("navigation", { name: "Blueprint mode" });
-  expect(await blueprintMode.evaluate((element) => element.parentElement?.className.includes("blueprintCanvas")))
+  expect(await blueprintMode.evaluate((element) => element.parentElement?.className.includes("blueprintCommandActions")))
     .toBe(true);
   await expect(page.getByRole("button", { name: "Core" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "Auto arrange" })).toBeVisible();
@@ -811,23 +816,25 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect.poll(() => state.proposalDecisions.map((item) => item.decision).sort())
     .toEqual(["accepted", "dismissed", "edited"]);
   await expect(pack.getByText("0 decisions")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Design" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "Close artifact inspector" })).toBeVisible();
   await page.locator(".react-flow__pane").click({ position: { x: 8, y: 8 } });
   await expect(page.getByRole("dialog", { name: /artifact inspector/ })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Design" }).click();
   await page.getByRole("button", { name: "Auto arrange" }).click();
-  await conceptNode.click();
+  const designConceptNode = page.getByTestId("rf__node-concept-working");
+  await expect(designConceptNode).toBeVisible();
+  await designConceptNode.click();
   await expect(page.getByRole("heading", { name: "Net force" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit concept fields" })).toBeVisible();
-  await expect(conceptNode).toHaveClass(/draggable/);
-  await expect(sourceNode).not.toHaveClass(/connectable/);
+  await expect(designConceptNode).toHaveClass(/draggable/);
+  await expect(page.getByTestId("rf__node-source-working")).not.toHaveClass(/connectable/);
   await page.getByRole("button", { name: "Edit concept fields" }).click();
   await page.getByLabel("Name").fill("Net force vectors");
   await page.getByLabel("Description").fill("Combine vectors by magnitude and direction.");
   await page.getByRole("button", { name: "Save private edit" }).click();
   await expect.poll(() => state.editedConcept()?.name).toBe("Net force vectors");
-  const designConceptNode = page.getByTestId("rf__node-concept-working");
   await expect(designConceptNode).toBeVisible();
   await expect(page.getByRole("button", { name: "Add node" })).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Topic", exact: true })).toHaveCount(0);
