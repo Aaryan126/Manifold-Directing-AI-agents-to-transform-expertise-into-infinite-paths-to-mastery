@@ -330,8 +330,8 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 
 - Revisioned optional modules plus lecture, standalone quiz, and assignment units with `next`, `requires`, and `assesses` relationships, stable logical identities, saved layouts, audit history, and atomic publication.
 - Existing videos backfilled as lecture units. New lecture generation is video-scoped, does not rename an established course, and refreshes the cross-course concept graph without duplicating other lectures' clips or questions.
-- Course Flow React Flow workspace with Live/Design, module swimlanes, typed nodes/relationships, add/edit/remove, impact review, undo, auto-arrange, and lecture-to-Blueprint navigation.
-- Lecture-focused Blueprint with a Whole course option for shared concepts and cross-lecture prerequisites.
+- Course Flow React Flow workspace as the sole course-level structural destination, with Live/Design, compact ungrouped sequences, module swimlanes only when modules exist, typed nodes/relationships, a persistent `New lecture` action, add/edit/remove, impact review, undo, auto-arrange, and contextual lecture-to-Blueprint navigation.
+- Lecture-focused Blueprint opened contextually from a lecture node, with a breadcrumb back to Course Flow. A secondary `Cross-lecture concept map` appears only when multiple lectures make shared concepts and cross-lecture prerequisites distinct.
 - Standalone quizzes with reviewed concept-grounded questions; assignments with reviewed instructions, concept/source coverage, and learner completion but no submission/grading workflow.
 - Course Director context and typed proposals spanning both Course Flow and detailed Blueprint, using the same manual mutation services and independent `Accept / Edit / Dismiss` review.
 - Published learner course outline and progression driven by Course Flow, with lecture adaptive paths, standalone quizzes, assignments, prerequisites, and persisted unit progress.
@@ -349,7 +349,7 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 **Human test checklist**
 
 - [ ] Add a second lecture and confirm it appears as a separate Course Flow node without changing the course title.
-- [ ] Open each lecture and confirm its Blueprint contains only its focused artifacts while Whole course preserves cross-lecture concepts.
+- [ ] Open each lecture and confirm its Blueprint contains only its focused artifacts while the Cross-lecture concept map preserves shared concepts.
 - [ ] Add a standalone quiz and assignment and confirm both appear consistently in Course Flow, Assessments, Preview, and learner view.
 - [ ] Move units between module swimlanes and publish; confirm learner order changes only after publication.
 - [ ] Ask Course Director to modify the course structure and a lecture's internal structure; confirm every operation is accurately scoped and independently reviewable.

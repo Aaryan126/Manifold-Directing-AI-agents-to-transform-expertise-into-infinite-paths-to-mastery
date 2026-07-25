@@ -29,6 +29,7 @@ import {
 import {
   Activity,
   ArrowLeft,
+  ArrowRight,
   ArrowDown,
   ArrowUp,
   Check,
@@ -1532,6 +1533,12 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     () => filterBlueprintForLecture(workingBlueprint, lectureFocusVideoId),
     [workingBlueprint, lectureFocusVideoId],
   );
+  const focusedLectureUnit = useMemo(
+    () => (workingCourseFlow ?? activeCourseFlow)?.units.find(
+      (unit) => unit.kind === "lecture" && unit.video_id === lectureFocusVideoId,
+    ) ?? null,
+    [activeCourseFlow, lectureFocusVideoId, workingCourseFlow],
+  );
 
   const courseDirector = (
     <section
@@ -1630,10 +1637,9 @@ export function CourseStudio({ courseId }: { courseId: string }) {
           </div>
           {!focusedCreation ? (
             <nav className={styles.studioViewTabs} aria-label="Course views">
-              <CanvasTab active={canvasView === "flow"} icon={<GraduationCap />} label="Course Flow" onClick={() => setCanvasView("flow")} />
-              <CanvasTab active={canvasView === "blueprint"} icon={<Network />} label="Blueprint" onClick={() => {
+              <CanvasTab active={canvasView === "flow" || canvasView === "blueprint"} icon={<GraduationCap />} label="Course Flow" onClick={() => {
                 setLectureFocusVideoId(null);
-                setCanvasView("blueprint");
+                setCanvasView("flow");
               }} />
               {course?.status !== "published" ? <CanvasTab active={canvasView === "review"} badge={course?.pending_review_count || undefined} icon={<ClipboardCheck />} label="Review" onClick={() => setCanvasView("review")} /> : null}
               {course?.status === "published" ? <CanvasTab active={canvasView === "assessments"} icon={<Check />} label="Assessments" onClick={() => setCanvasView("assessments")} /> : null}
@@ -1703,6 +1709,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     activeBlueprint={focusedActiveBlueprint}
                     agentTasks={agentTasks}
                     blueprintEvidence={blueprintEvidence}
+                    contextTitle={focusedLectureUnit?.title ?? "Cross-lecture concept map"}
                     dashboard={dashboardSummary}
                     disabled={sending}
                     mode={blueprintMode}
@@ -1729,6 +1736,10 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     onUpdateTopic={updateBlueprintTopic}
                     onOpenAssessments={() => setCanvasView("assessments")}
                     onOpenSources={() => setSourcesOpen(true)}
+                    onBackToCourseFlow={() => {
+                      setLectureFocusVideoId(null);
+                      setCanvasView("flow");
+                    }}
                     onModeChange={setBlueprintMode}
                     clips={assessmentWorkspace?.clips ?? []}
                     undoing={blueprintUndoing}
@@ -2667,6 +2678,8 @@ function CourseFlowWorkspace({
   const modules = useMemo(() => [...(flow?.modules ?? [])].sort(
     (left, right) => left.sequence_rank - right.sequence_rank,
   ), [flow]);
+  const lectureCount = units.filter((unit) => unit.kind === "lecture").length;
+  const compactSequence = modules.length === 0 && units.length <= 2;
   const groups = useMemo(() => [
     ...modules.map((module) => ({
       id: module.logical_id,
@@ -2684,6 +2697,12 @@ function CourseFlowWorkspace({
 
   const arrangedPositions = useMemo(() => {
     const next: Record<string, { x: number; y: number }> = {};
+    if (compactSequence) {
+      units.forEach((unit, unitIndex) => {
+        next[unit.logical_id] = { x: 70 + unitIndex * 330, y: 72 };
+      });
+      return next;
+    }
     groups.forEach((group, groupIndex) => {
       const laneX = 58 + groupIndex * 360;
       group.units.forEach((unit, unitIndex) => {
@@ -2694,7 +2713,7 @@ function CourseFlowWorkspace({
       });
     });
     return next;
-  }, [groups]);
+  }, [compactSequence, groups, units]);
 
   useEffect(() => {
     if (!flow) return;
@@ -2712,7 +2731,7 @@ function CourseFlowWorkspace({
   }, [arrangedPositions, flow]);
 
   const graphNodes = useMemo<Node[]>(() => {
-    const laneNodes: Node[] = groups.map((group, groupIndex) => {
+    const laneNodes: Node[] = compactSequence ? [] : groups.map((group, groupIndex) => {
       const laneX = 58 + groupIndex * 360;
       const laneHeight = Math.max(270, 136 + group.units.length * 154);
       return {
@@ -2744,7 +2763,7 @@ function CourseFlowWorkspace({
       data: {
         label: (
           <div className={styles.courseFlowGraphUnit} data-kind={unit.kind} data-status={unit.status}>
-            <span>
+            <span className={styles.courseFlowGraphUnitIcon}>
               {unit.kind === "lecture" ? <FileVideo /> : unit.kind === "quiz" ? <ClipboardCheck /> : <FilePenLine />}
             </span>
             <div>
@@ -2779,7 +2798,7 @@ function CourseFlowWorkspace({
                   <Trash2 />Remove
                 </button>
               </div>
-            ) : null}
+            ) : unit.kind === "lecture" ? <span className={styles.courseFlowGraphOpen}>Open Blueprint <ArrowRight /></span> : null}
           </div>
         ),
       },
@@ -2791,7 +2810,7 @@ function CourseFlowWorkspace({
       zIndex: 3,
     }));
     return [...laneNodes, ...unitNodes];
-  }, [arrangedPositions, disabled, graphPositions, groups, mode, onRemove, units]);
+  }, [arrangedPositions, compactSequence, disabled, graphPositions, groups, mode, onRemove, units]);
 
   const graphEdges = useMemo<Edge[]>(() => (flow?.edges ?? []).map((edge) => ({
     id: edge.logical_id,
@@ -2836,6 +2855,11 @@ function CourseFlowWorkspace({
     }
   }
 
+  function beginNewLecture() {
+    if (mode !== "design") onModeChange("design");
+    onAddLecture();
+  }
+
   return (
     <section className={styles.courseFlowWorkspace}>
       <header className={styles.courseFlowHeader}>
@@ -2845,18 +2869,18 @@ function CourseFlowWorkspace({
           <p>Lectures hold detailed Blueprints. Quizzes and assignments connect them into one coherent course.</p>
         </div>
         <div className={styles.courseFlowActions}>
+          <button className={styles.courseFlowPrimaryAction} disabled={disabled} onClick={beginNewLecture} type="button"><Plus />New lecture</button>
           <div className={styles.blueprintModeToggle}>
             <button className={mode === "live" ? styles.activeMode : ""} onClick={() => onModeChange("live")} type="button">Live</button>
             <button className={mode === "design" ? styles.activeMode : ""} onClick={() => onModeChange("design")} type="button">Design</button>
           </div>
           {mode === "design" ? <button className={styles.secondaryAction} disabled={disabled || graphBusy} onClick={() => void autoArrangeCourseFlow()} type="button"><GitFork />Auto arrange</button> : null}
           {mode === "design" ? <button className={styles.secondaryAction} disabled={disabled || undoing || !undoLabel} onClick={() => void onUndo()} title={undoLabel ? `Undo ${undoLabel.toLowerCase()}` : "Nothing to undo"} type="button"><RotateCcw />Undo</button> : null}
-          <button className={styles.secondaryAction} onClick={onOpenWholeCourse} type="button"><Network />Whole-course Blueprint</button>
+          {lectureCount > 1 ? <button className={styles.secondaryAction} onClick={onOpenWholeCourse} type="button"><Network />Cross-lecture map</button> : null}
         </div>
       </header>
       {mode === "design" ? (
         <div className={styles.courseFlowAuthoring}>
-          <button disabled={disabled} onClick={onAddLecture} type="button"><Plus /><FileVideo />Lecture</button>
           <button disabled={disabled} onClick={() => setModuleEditorOpen(true)} type="button"><Plus /><BookOpenCheck />Module</button>
           <button disabled={disabled} onClick={() => setEditor({ kind: "quiz" })} type="button"><Plus /><ClipboardCheck />Quiz</button>
           <button disabled={disabled} onClick={() => setEditor({ kind: "assignment" })} type="button"><Plus /><FilePenLine />Assignment</button>
@@ -2874,7 +2898,7 @@ function CourseFlowWorkspace({
           <GraduationCap />
           <h3>Start with a lecture</h3>
           <p>Add the first lecture and Course Director will build its detailed Blueprint.</p>
-          {mode === "design" ? <button onClick={onAddLecture} type="button">Add lecture</button> : null}
+          <button onClick={beginNewLecture} type="button">Add lecture</button>
         </div>
       ) : (
         <div className={styles.courseFlowCanvas}>
@@ -2891,12 +2915,13 @@ function CourseFlowWorkspace({
               })}
             </section>
           ) : null}
-          <div className={styles.courseFlowGraph}>
+          <div className={styles.courseFlowGraph} data-compact={compactSequence || undefined}>
             <ReactFlow
               colorMode="light"
               edges={graphEdges}
               fitView
               fitViewOptions={{ padding: .14 }}
+              maxZoom={compactSequence ? .9 : 1.5}
               minZoom={.35}
               nodes={graphNodes}
               nodesConnectable={false}
@@ -2929,6 +2954,11 @@ function CourseFlowWorkspace({
               <Background color="#dedad2" gap={22} size={1} />
               <Controls orientation="horizontal" position="bottom-left" showInteractive={false} />
             </ReactFlow>
+            {compactSequence ? (
+              <button className={styles.courseFlowCompactAdd} disabled={disabled} onClick={beginNewLecture} type="button">
+                <Plus />Add next lecture
+              </button>
+            ) : null}
           </div>
           {mode === "design" ? (
             <div className={styles.courseFlowGraphSelection}>
@@ -3135,6 +3165,7 @@ function BlueprintWorkspace({
   activeBlueprint,
   agentTasks,
   blueprintEvidence,
+  contextTitle,
   dashboard,
   disabled,
   mode,
@@ -3147,6 +3178,7 @@ function BlueprintWorkspace({
   onLoadPack,
   onLayout,
   onOpenAssessments,
+  onBackToCourseFlow,
   onOpenSources,
   onModeChange,
   onPrepare,
@@ -3167,6 +3199,7 @@ function BlueprintWorkspace({
   activeBlueprint: CourseBlueprint | null;
   agentTasks: CourseAgentTask[];
   blueprintEvidence: BlueprintConceptEvidence[];
+  contextTitle: string;
   dashboard: DashboardSummary | null;
   disabled: boolean;
   mode: BlueprintMode;
@@ -3200,6 +3233,7 @@ function BlueprintWorkspace({
     y: number,
     previousPosition?: { x: number; y: number } | null,
   ) => Promise<void>;
+  onBackToCourseFlow: () => void;
   onOpenAssessments: () => void;
   onOpenSources: () => void;
   onModeChange: (mode: BlueprintMode) => void;
@@ -3533,6 +3567,14 @@ function BlueprintWorkspace({
 
   return (
     <div className={styles.blueprintWorkspace} data-mode={mode}>
+      <div className={styles.blueprintContextBar}>
+        <button onClick={onBackToCourseFlow} type="button"><ArrowLeft />Course Flow</button>
+        <span aria-hidden="true">/</span>
+        <div>
+          <strong>{contextTitle}</strong>
+          <small>{contextTitle === "Cross-lecture concept map" ? "Whole-course structure" : "Lecture Blueprint"}</small>
+        </div>
+      </div>
       <header className={styles.blueprintCommandBar}>
         <div className={styles.blueprintSummaryGroup} role="group" aria-label="Blueprint status and metrics">
           <div className={styles.blueprintStatusSummary}>

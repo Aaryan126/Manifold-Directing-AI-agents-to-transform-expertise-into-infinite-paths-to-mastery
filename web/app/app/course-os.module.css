@@ -1370,6 +1370,34 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 
 /* Unified adaptive Blueprint */
 .blueprintWorkspace { background: #fbfaf7; color: #202126; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }
+.blueprintContextBar {
+  align-items: center;
+  background: #fff;
+  border-bottom: 1px solid #e3e0d9;
+  display: flex;
+  gap: 11px;
+  min-height: 48px;
+  padding: 6px 30px;
+}
+.blueprintContextBar > button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  color: #55535a;
+  display: flex;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 750;
+  gap: 6px;
+  padding: 7px 8px;
+}
+.blueprintContextBar > button:hover { background: #f1efea; color: #202126; }
+.blueprintContextBar > button svg { height: 13px; width: 13px; }
+.blueprintContextBar > span { color: #aaa69e; font-size: 13px; }
+.blueprintContextBar > div { align-items: baseline; display: flex; gap: 9px; min-width: 0; }
+.blueprintContextBar strong { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blueprintContextBar small { color: #7b7880; font-size: 9px; white-space: nowrap; }
 .blueprintCommandBar { align-items: center; background: #fff; border-bottom: 1px solid #dedbd3; display: flex; gap: 20px; min-height: 54px; padding: 7px 22px 7px 30px; }
 .blueprintSummaryGroup { align-items: center; display: flex; flex: 1 1 720px; gap: 18px; max-width: 790px; min-width: 0; }
 .blueprintStatusSummary { align-content: center; display: grid; flex: 0 0 190px; padding-right: 2px; }
@@ -1896,6 +1924,24 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
   color: #202126;
 }
 
+.courseFlowPrimaryAction {
+  align-items: center;
+  background: #24252a;
+  border: 1px solid #24252a;
+  border-radius: 8px;
+  color: #fff;
+  display: flex;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 760;
+  gap: 7px;
+  min-height: 39px;
+  padding: 8px 13px;
+}
+
+.courseFlowPrimaryAction:disabled { cursor: wait; opacity: .5; }
+.courseFlowPrimaryAction svg { height: 15px; width: 15px; }
+
 .secondaryAction {
   align-items: center;
   background: #fff;
@@ -1958,6 +2004,12 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
   height: max(610px, calc(100dvh - 310px));
   min-height: 610px;
   overflow: hidden;
+  position: relative;
+}
+
+.courseFlowGraph[data-compact="true"] {
+  height: max(500px, calc(100dvh - 310px));
+  min-height: 500px;
 }
 
 .courseFlowGraphLane {
@@ -2057,7 +2109,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .courseFlowGraphUnit[data-kind="assignment"]::before { background: #608356; }
 .courseFlowGraphUnit[data-status="proposed"] { box-shadow: inset 0 0 0 1px #d58b45; }
 
-.courseFlowGraphUnit > span {
+.courseFlowGraphUnitIcon {
   align-items: center;
   background: rgb(255 255 255 / 68%);
   border-radius: 8px;
@@ -2068,8 +2120,8 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
   width: 35px;
 }
 
-.courseFlowGraphUnit[data-kind="quiz"] > span { color: #b45f1e; }
-.courseFlowGraphUnit[data-kind="assignment"] > span { color: #547b4b; }
+.courseFlowGraphUnit[data-kind="quiz"] .courseFlowGraphUnitIcon { color: #b45f1e; }
+.courseFlowGraphUnit[data-kind="assignment"] .courseFlowGraphUnitIcon { color: #547b4b; }
 .courseFlowGraphUnit svg { height: 17px; width: 17px; }
 .courseFlowGraphUnit > div { display: grid; gap: 4px; min-width: 0; }
 .courseFlowGraphUnit small {
@@ -2117,6 +2169,45 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 }
 .courseFlowGraphUnitActions button:last-child:hover { color: #a43e32; }
 .courseFlowGraphUnitActions button svg { height: 10px; width: 10px; }
+
+.courseFlowGraphOpen {
+  align-items: center;
+  border-top: 1px solid rgb(89 91 96 / 13%);
+  color: #456b82;
+  display: flex;
+  font-size: 9px;
+  font-weight: 800;
+  gap: 5px;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  margin-top: 5px;
+  padding-top: 8px;
+}
+
+.courseFlowGraphOpen svg { height: 11px; width: 11px; }
+
+.courseFlowCompactAdd {
+  align-items: center;
+  background: rgb(255 255 255 / 94%);
+  border: 1px dashed #b9b5ad;
+  border-radius: 8px;
+  bottom: 22px;
+  color: #55535a;
+  display: flex;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 750;
+  gap: 6px;
+  left: 50%;
+  padding: 9px 12px;
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 7;
+}
+
+.courseFlowCompactAdd:hover { background: #fff; border-color: #77747b; color: #202126; }
+.courseFlowCompactAdd:disabled { cursor: wait; opacity: .5; }
+.courseFlowCompactAdd svg { height: 13px; width: 13px; }
 
 .courseFlowGraphEdge :global(.react-flow__edge-textbg) { fill: #fbfaf7; }
 .courseFlowGraphEdge :global(.react-flow__edge-text) {
