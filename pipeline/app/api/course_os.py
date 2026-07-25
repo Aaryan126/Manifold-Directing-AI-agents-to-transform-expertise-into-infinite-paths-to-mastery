@@ -571,14 +571,22 @@ async def create_course(
     request: CourseCreateRequest,
     user_id: UserContext,
     service: CourseOSDependency,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> CourseSummaryResponse:
+    brief = dict(request.brief)
+    brief.pop("creation_request_id", None)
+    if idempotency_key is not None:
+        normalized_key = idempotency_key.strip()
+        if not normalized_key or len(normalized_key) > 200:
+            raise HTTPException(status_code=400, detail="Invalid Idempotency-Key header.")
+        brief["creation_request_id"] = normalized_key
     course = await _call(
         service.create_course(
             user_id,
             CourseCreate(
                 title=request.title,
                 description=request.description,
-                brief=request.brief,
+                brief=brief,
             ),
         )
     )

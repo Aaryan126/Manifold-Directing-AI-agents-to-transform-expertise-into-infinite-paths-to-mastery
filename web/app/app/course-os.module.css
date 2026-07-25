@@ -729,7 +729,7 @@
 .studioViewTabs i { align-items: center; background: #fff0e1; border-radius: 999px; color: #8f531d; display: flex; font-size: 9px; font-style: normal; height: 18px; justify-content: center; min-width: 18px; padding: 0 5px; }
 .studioHeaderSpacer { flex: 1; }
 .studioHeaderActions { align-items: stretch; align-self: stretch; display: flex; margin-left: auto; }
-.studioSourceButton { align-items: center; background: transparent; border: 0; border-left: 1px solid #dedbd4; color: #57565d; cursor: pointer; display: flex; font: inherit; font-size: 12px; font-weight: 650; gap: 7px; padding: 0 18px; }
+.studioSourceButton { align-items: center; background: transparent; border: 0; color: #57565d; cursor: pointer; display: flex; font: inherit; font-size: 12px; font-weight: 650; gap: 7px; padding: 0 18px; }
 .studioSourceButton:hover { background: #f4f2ed; color: #202126; }
 .studioSourceButton svg { height: 14px; width: 14px; }
 .studioSourceButton i { align-items: center; background: #efede8; border-radius: 999px; display: flex; font-size: 9px; font-style: normal; height: 19px; justify-content: center; min-width: 19px; padding: 0 5px; }
@@ -2095,7 +2095,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
   flex-direction: column;
   gap: 12px;
   min-height: 0;
-  padding: 18px 22px 22px;
+  padding: 18px 22px 8px;
   position: relative;
 }
 

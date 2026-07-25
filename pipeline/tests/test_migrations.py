@@ -49,6 +49,9 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     blueprint_migration = Path("migrations/020_unified_adaptive_blueprint.sql").read_text(
         encoding="utf-8"
     )
+    course_creation_migration = Path("migrations/022_course_creation_idempotency.sql").read_text(
+        encoding="utf-8"
+    )
 
     for table_name in [
         "users",
@@ -134,6 +137,8 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     assert "question_concepts_one_primary_idx" in blueprint_migration
     assert "create table learner_route_events" in blueprint_migration
     assert "evidence_snapshot jsonb" in blueprint_migration
+    assert "courses_instructor_creation_request_unique" in course_creation_migration
+    assert "brief->>'creation_request_id'" in course_creation_migration
 
 
 def test_legacy_schema_baseline_covers_every_migration() -> None:

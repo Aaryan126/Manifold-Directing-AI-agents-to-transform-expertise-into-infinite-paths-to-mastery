@@ -3,12 +3,13 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
 
 import app.course_os.postgres_repository as repository_module
-from app.course_os.models import BlueprintEdge, BlueprintNode
+from app.course_os.models import BlueprintEdge, BlueprintNode, CourseCreate, CourseSummary
 from app.course_os.postgres_repository import (
     PostgresCourseOSRepository,
     _message,
@@ -142,6 +143,27 @@ class _ConceptTopicConnection:
         return _Cursor()
 
 
+class _CreateCourseConnection:
+    def __init__(self, existing_course_id: UUID) -> None:
+        self.existing_course_id = existing_course_id
+        self.statements: list[str] = []
+
+    async def __aenter__(self) -> "_CreateCourseConnection":
+        return self
+
+    async def __aexit__(self, *_args: object) -> None:
+        return None
+
+    async def execute(self, query: str, parameters: object = None) -> _Cursor:
+        normalized = " ".join(query.split())
+        self.statements.append(normalized)
+        if normalized.startswith("insert into courses"):
+            return _Cursor(None)
+        if normalized.startswith("select id from courses"):
+            return _Cursor({"id": self.existing_course_id})
+        raise AssertionError(f"Unexpected query after idempotent course lookup: {normalized}")
+
+
 def test_message_reconciles_proposal_blocks_with_the_current_proposal_ledger() -> None:
     proposal_id = uuid4()
     instructor_revision = {"summary": "The instructor-edited version"}
@@ -166,6 +188,61 @@ def test_message_reconciles_proposal_blocks_with_the_current_proposal_ledger() -
 
     assert message.blocks[0]["status"] == "edited"
     assert message.blocks[0]["proposed_state"] == instructor_revision
+
+
+@pytest.mark.anyio
+async def test_create_course_reuses_the_existing_idempotent_course_without_children(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    instructor_id = uuid4()
+    existing_course_id = uuid4()
+    connection = _CreateCourseConnection(existing_course_id)
+    summary = CourseSummary(
+        id=existing_course_id,
+        instructor_id=instructor_id,
+        title="Mechanics",
+        description=None,
+        status="draft",
+        active_revision_id=None,
+        working_revision_id=uuid4(),
+        revision_status="building",
+        generation_run_id=None,
+        generation_status=None,
+        generation_phase=None,
+        generation_progress=0,
+        source_count=0,
+        topic_count=0,
+        concept_count=0,
+        pending_review_count=0,
+        open_signal_count=0,
+        updated_at=datetime.now(UTC),
+    )
+
+    async def fake_connect(*_args: object, **_kwargs: object) -> _CreateCourseConnection:
+        return connection
+
+    monkeypatch.setattr(repository_module.psycopg.AsyncConnection, "connect", fake_connect)
+    repository = PostgresCourseOSRepository("postgresql://unused")
+    repository.get_course = AsyncMock(return_value=summary)  # type: ignore[method-assign]
+
+    created = await repository.create_course(
+        instructor_id,
+        CourseCreate(
+            title="Mechanics",
+            brief={"creation_request_id": "request-123"},
+        ),
+    )
+
+    assert created == summary
+    assert any(statement.startswith("insert into courses") for statement in connection.statements)
+    assert any(
+        statement.startswith("select id from courses")
+        for statement in connection.statements
+    )
+    assert not any(
+        statement.startswith("insert into course_revisions")
+        for statement in connection.statements
+    )
 
 
 @pytest.mark.anyio

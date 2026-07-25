@@ -71,18 +71,39 @@ class PostgresCourseOSRepository(CourseOSRepository):
             self._database_url,
             row_factory=dict_row,
         ) as conn:
+            creation_request_id = str(create.brief.get("creation_request_id") or "").strip()
             course = await (
                 await conn.execute(
                     """
                     insert into courses (instructor_id, title, description, brief)
                     values (%s, %s, %s, %s::jsonb)
+                    on conflict do nothing
                     returning id
                     """,
                     (instructor_id, create.title, create.description, Jsonb(create.brief)),
                 )
             ).fetchone()
+            created = course is not None
+            if course is None and creation_request_id:
+                course = await (
+                    await conn.execute(
+                        """
+                        select id
+                        from courses
+                        where instructor_id = %s
+                          and brief->>'creation_request_id' = %s
+                        """,
+                        (instructor_id, creation_request_id),
+                    )
+                ).fetchone()
             if course is None:
                 raise RuntimeError("Failed to create course.")
+            course_id = UUID(str(course["id"]))
+            if not created:
+                summary = await self.get_course(course_id)
+                if summary is None:
+                    raise RuntimeError("Existing idempotent course could not be loaded.")
+                return summary
             revision = await (
                 await conn.execute(
                     """
@@ -92,14 +113,14 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     values (%s, 1, 'building', %s, %s::jsonb)
                     returning id
                     """,
-                    (course["id"], instructor_id, Jsonb(create.brief)),
+                    (course_id, instructor_id, Jsonb(create.brief)),
                 )
             ).fetchone()
             if revision is None:
                 raise RuntimeError("Failed to create course revision.")
             await conn.execute(
                 "update courses set working_revision_id = %s where id = %s",
-                (revision["id"], course["id"]),
+                (revision["id"], course_id),
             )
             conversation = await (
                 await conn.execute(
@@ -108,7 +129,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     values (%s, %s)
                     returning id
                     """,
-                    (course["id"], revision["id"]),
+                    (course_id, revision["id"]),
                 )
             ).fetchone()
             if conversation is None:
@@ -125,7 +146,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     Jsonb([{"type": "source_request"}]),
                 ),
             )
-        summary = await self.get_course(UUID(str(course["id"])))
+        summary = await self.get_course(course_id)
         if summary is None:
             raise RuntimeError("Created course could not be loaded.")
         return summary

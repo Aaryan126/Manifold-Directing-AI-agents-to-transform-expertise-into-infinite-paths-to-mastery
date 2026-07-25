@@ -53,6 +53,7 @@ _POST_BASELINE_MIGRATIONS = frozenset(
         "018_course_delete_fk_lifecycle.sql",
         "020_unified_adaptive_blueprint.sql",
         "021_multi_lecture_course_flow.sql",
+        "022_course_creation_idempotency.sql",
     }
 )
 

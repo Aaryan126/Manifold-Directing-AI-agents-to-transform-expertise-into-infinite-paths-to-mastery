@@ -58,6 +58,7 @@ export function TeacherDashboard() {
   const [commandResult, setCommandResult] = useState<DashboardCommandResult | null>(null);
   const [commanding, setCommanding] = useState(false);
   const [commandError, setCommandError] = useState<string | null>(null);
+  const creationRequestId = useRef<string | null>(null);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -96,6 +97,8 @@ export function TeacherDashboard() {
 
   async function createCourse(title: string) {
     if (!identity || creating || !title.trim()) return;
+    const requestId = creationRequestId.current ?? crypto.randomUUID();
+    creationRequestId.current = requestId;
     setCreating(true);
     setError(null);
     try {
@@ -103,6 +106,7 @@ export function TeacherDashboard() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Idempotency-Key": requestId,
           "X-User-ID": identity.id,
         },
         body: JSON.stringify({
@@ -119,11 +123,23 @@ export function TeacherDashboard() {
       }
       const course = (await response.json()) as CourseSummary;
       setCreateDialogOpen(false);
+      creationRequestId.current = null;
       router.push(`/app/courses/${course.id}`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not create the course.");
       setCreating(false);
     }
+  }
+
+  function openCreateDialog() {
+    creationRequestId.current = crypto.randomUUID();
+    setCreateDialogOpen(true);
+  }
+
+  function closeCreateDialog() {
+    if (creating) return;
+    creationRequestId.current = null;
+    setCreateDialogOpen(false);
   }
 
   async function deleteCourse() {
@@ -180,7 +196,7 @@ export function TeacherDashboard() {
             <h1>{identity ? `Good ${timeOfDay()}, ${firstName(identity.display_name)}.` : "Your courses"}</h1>
             <p>Build with Manifold, then focus your judgment where it changes learning.</p>
           </div>
-          <button className={styles.primaryButton} disabled={creating || loading} onClick={() => setCreateDialogOpen(true)} type="button">
+          <button className={styles.primaryButton} disabled={creating || loading} onClick={openCreateDialog} type="button">
             {creating ? <LoaderCircle className={styles.spin} aria-hidden="true" /> : <Plus aria-hidden="true" />}
             New course
           </button>
@@ -256,7 +272,7 @@ export function TeacherDashboard() {
               </div>
 
               {dashboard.courses.length === 0 ? (
-                <EmptyPortfolio onCreate={() => setCreateDialogOpen(true)} creating={creating} />
+                <EmptyPortfolio onCreate={openCreateDialog} creating={creating} />
               ) : (
                 <div className={styles.courseGrid}>
                   {visibleCourses.map((course) => (
@@ -279,7 +295,7 @@ export function TeacherDashboard() {
       {createDialogOpen ? (
         <CreateCourseDialog
           creating={creating}
-          onCancel={() => setCreateDialogOpen(false)}
+          onCancel={closeCreateDialog}
           onConfirm={(title) => void createCourse(title)}
         />
       ) : null}

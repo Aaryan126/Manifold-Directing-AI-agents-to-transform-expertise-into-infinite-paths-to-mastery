@@ -777,6 +777,44 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(page.getByText("Your complete private draft is ready for review.")).toHaveCount(0);
 });
 
+test("new course retries reuse one idempotency key", async ({ page }) => {
+  await mockCourseOS(page);
+  const requestKeys: string[] = [];
+  let attempts = 0;
+  await page.route("http://localhost:8000/courses", async (route) => {
+    attempts += 1;
+    requestKeys.push(await route.request().headerValue("idempotency-key") ?? "");
+    if (attempts === 1) {
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Please retry." }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 201,
+      json: {
+        ...course,
+        id: "99999999-9999-4999-8999-999999999999",
+        title: "Mechanics",
+      },
+    });
+  });
+  await page.goto("/app");
+
+  await page.getByRole("button", { name: "New course" }).click();
+  await page.getByLabel("Course title").fill("Mechanics");
+  await page.getByRole("button", { name: "Create course" }).click();
+  await expect(page.getByText("Please retry.")).toBeVisible();
+  await page.getByRole("button", { name: "Create course" }).click();
+
+  await expect(page).toHaveURL(/\/app\/courses\/99999999-9999-4999-8999-999999999999$/);
+  expect(requestKeys).toHaveLength(2);
+  expect(requestKeys[0]).not.toBe("");
+  expect(requestKeys[1]).toBe(requestKeys[0]);
+});
+
 test("course studio exposes Blueprint, review decisions, and a mobile-safe layout", async ({ page }) => {
   await mockCourseOS(page);
   await page.setViewportSize({ width: 390, height: 844 });
