@@ -122,6 +122,13 @@ export type LearnerPath = {
   last_route_why: string | null;
 };
 
+export type LearnerPathVisualState =
+  | "mastered"
+  | "recommended"
+  | "review"
+  | "ready"
+  | "blocked";
+
 export function courseProgressPercent(course: LearnerCourseSummary) {
   if (!course.concept_count) return 0;
   return Math.round((course.mastered_concept_count / course.concept_count) * 100);
@@ -134,6 +141,17 @@ export function courseCompositionLabels(course: LearnerCourseSummary) {
   if (course.assignment_count) labels.push(countLabel(course.assignment_count, "assignment"));
   if (labels.length === 1) labels.push(countLabel(course.concept_count, "concept"));
   return labels;
+}
+
+export function learnerPathVisualState(
+  item: LearnerPathItem,
+  recommendedConceptId: string | null,
+): LearnerPathVisualState {
+  if (item.state === "mastered") return "mastered";
+  if (item.concept_id === recommendedConceptId || item.current) {
+    return item.state === "struggling" ? "review" : "recommended";
+  }
+  return item.eligible ? "ready" : "blocked";
 }
 
 export function nextTopicId(

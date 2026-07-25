@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   courseCompositionLabels,
   courseProgressPercent,
+  learnerPathVisualState,
   nextTopicId,
   topicForDecision,
   type LearnerCourseExperience,
@@ -74,5 +75,36 @@ describe("learner course routing presentation", () => {
       target_clip_id: "clip-2",
       dashboard_signal_id: null,
     }, course, progress, "topic-1")).toBe("topic-2");
+  });
+
+  it("keeps mastery separate from recommendation and prerequisite access", () => {
+    const base = {
+      concept_id: "concept-1",
+      name: "Concept",
+      description: "",
+      sequence_rank: 1,
+      state: "not_started" as const,
+      topic_id: "topic-1",
+      topic_title: "Topic",
+      prerequisite_ids: [],
+      clip_ids: [],
+      question_ids: [],
+      aids: [],
+      eligible: true,
+      current: false,
+    };
+
+    expect(learnerPathVisualState({ ...base, current: true }, "concept-1"))
+      .toBe("recommended");
+    expect(learnerPathVisualState({ ...base, state: "struggling" }, "concept-1"))
+      .toBe("review");
+    expect(learnerPathVisualState(base, "concept-2")).toBe("ready");
+    expect(learnerPathVisualState({ ...base, eligible: false }, "concept-2"))
+      .toBe("blocked");
+    expect(learnerPathVisualState({
+      ...base,
+      eligible: false,
+      state: "mastered",
+    }, "concept-2")).toBe("mastered");
   });
 });

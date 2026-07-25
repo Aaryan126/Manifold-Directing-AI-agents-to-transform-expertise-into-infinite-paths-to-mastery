@@ -150,6 +150,7 @@ This is not a single feature — it's a constraint on every feature below. Rules
 
 ### 6.7 Learner Experience (Player)
 - Learners enroll in a course once, not in individual lectures. The learner home communicates each course's lecture and course-level activity composition; opening it shows the published Course Flow as one ordered learning journey. A lecture unit opens its adaptive topic/concept path in context, while standalone quizzes and assignments remain course units rather than fabricated lectures.
+- On desktop, concept navigation uses one primary adaptive mastery trail rather than repeating the same order above the video and in a sidebar. The trail visually separates the single recommended next concept, other prerequisite-eligible alternatives, inspectable blocked concepts with named requirements, reviewable mastered concepts, and the concept currently being viewed. The current recommendation and its evidence-based rationale appear once above the lesson and update after assessed transitions. Mobile-specific mastery-trail redesign is deferred.
 - Video player with topic/clip navigation, progress indicator per concept (not just % video watched).
 - In-line comprehension check + confidence prompt after each topic.
 - Clear "why am I seeing this" messaging when routed to a remediation/prerequisite clip (transparency builds trust — this should never feel like a punishment or a black box).

@@ -53,6 +53,7 @@ test("learner Blueprint path explains remediation, advancement, and locked prere
       return route.fulfill({ json: [
         { concept_id: "concept-1", name: "Vector direction", state: firstState, topic_id: "topic-1" },
         { concept_id: "concept-2", name: "Net force", state: "not_started", topic_id: "topic-2" },
+        { concept_id: "concept-3", name: "Vector components", state: "not_started", topic_id: "topic-2" },
       ] });
     }
     if (path === "/learners/me/courses/course-1/path") {
@@ -67,6 +68,7 @@ test("learner Blueprint path explains remediation, advancement, and locked prere
         items: [
           { concept_id: "concept-1", name: "Vector direction", description: "Magnitude plus direction", sequence_rank: 1, state: firstState, topic_id: "topic-1", topic_title: "Vector direction", prerequisite_ids: [], clip_ids: ["clip-1"], question_ids: ["question-1"], aids: [{ source_id: "source-1", title: "Vector notes", page_number: 2, excerpt: "Direction is part of the vector definition." }], eligible: true, current: !secondCurrent },
           { concept_id: "concept-2", name: "Net force", description: "Combine vectors", sequence_rank: 2, state: "not_started", topic_id: "topic-2", topic_title: "Net force", prerequisite_ids: ["concept-1"], clip_ids: ["clip-2"], question_ids: ["question-2"], aids: [], eligible: secondCurrent, current: secondCurrent },
+          { concept_id: "concept-3", name: "Vector components", description: "Resolve a vector into components", sequence_rank: 3, state: "not_started", topic_id: "topic-2", topic_title: "Net force", prerequisite_ids: [], clip_ids: ["clip-2"], question_ids: ["question-2"], aids: [], eligible: true, current: false },
         ],
       } });
     }
@@ -94,24 +96,34 @@ test("learner Blueprint path explains remediation, advancement, and locked prere
   await expect(page.getByText("Lecture 1 of 2 · Vector language")).toBeVisible();
   await expect(page.getByLabel("Course learning journey")).toContainText("Vector language");
   await expect(page.getByLabel("Course learning journey")).toContainText("Forces in motion");
-  await expect(page.getByLabel("Adaptive learning path")).toContainText("Step 1 of 2");
-  await expect(page.getByRole("heading", { name: "Mastery map" })).toBeVisible();
-  await expect(page.getByLabel("Mastery map").getByRole("button", { name: /Net force/ })).toBeDisabled();
+  await expect(page.getByText("Recommended next", { exact: true }).first()).toBeVisible();
+  await expect(page.getByLabel("Adaptive learning path")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Your learning path" })).toBeVisible();
+  const masteryTrail = page.getByLabel("Adaptive mastery trail");
+  await expect(masteryTrail.getByRole("button", { name: /Recommended next.*Vector direction/ })).toBeVisible();
+  await expect(masteryTrail.getByRole("button", { name: /Ready too.*Vector components/ })).toBeEnabled();
+  const lockedNetForce = masteryTrail.getByRole("button", { name: /Coming later.*Net force/ });
+  await expect(lockedNetForce).toBeEnabled();
+  await lockedNetForce.click();
+  await expect(masteryTrail.getByText("Complete Vector direction to unlock this topic.")).toBeVisible();
   await expect(page.getByText("Vector notes · page 2")).toBeVisible();
 
   await page.getByLabel("Your answer").fill("It has magnitude");
   await page.getByRole("button", { name: "Unsure" }).click();
   await page.getByRole("button", { name: "Submit answer" }).click();
   await expect(page.getByText("The answer missed direction, so the reviewed recovery clip is next.")).toBeVisible();
-  await expect(page.getByLabel("Mastery map").getByRole("button", { name: /Vector direction.*struggling/ })).toBeVisible();
+  await expect(masteryTrail.getByRole("button", { name: /Review recommended.*Vector direction/ })).toBeVisible();
 
   await page.getByLabel("Your answer").fill("It has direction");
   await page.getByRole("button", { name: "Confident" }).click();
   await page.getByRole("button", { name: "Submit answer" }).click();
-  await expect(page.getByText("Correct and confident; net force is now the next eligible concept.")).toBeVisible();
-  await expect(page.getByLabel("Adaptive learning path")).toContainText("Step 2 of 2");
+  await expect(page.getByText(
+    "Correct and confident; net force is now the next eligible concept.",
+  ).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Net force", level: 1 })).toBeVisible();
   await expect(page.getByText("Lecture 2 of 2 · Forces in motion")).toBeVisible();
+  await expect(masteryTrail.getByRole("button", { name: /Mastered.*Vector direction.*Review anytime/ })).toBeEnabled();
+  await expect(masteryTrail.getByRole("button", { name: /Recommended next.*Net force/ })).toBeVisible();
   expect(enrollmentRequests).toBe(0);
 
   const accessibility = await new AxeBuilder({ page })

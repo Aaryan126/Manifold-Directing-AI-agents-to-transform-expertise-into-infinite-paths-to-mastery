@@ -9,10 +9,13 @@ import { ProviderVideo } from "../../../ProviderVideo";
 import { readDevelopmentSession, type DevelopmentSession } from "../../../developmentSession";
 import { LearnerSidebar } from "../../learner-sidebar";
 import {
+  learnerPathVisualState,
   nextTopicId,
   topicForDecision,
   type LearnerCourseExperience,
   type LearnerPath,
+  type LearnerPathItem,
+  type LearnerPathVisualState,
   type LearnerProgress,
   type LearnerRouteDecision,
 } from "../../learner-course";
@@ -33,6 +36,7 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [decision, setDecision] = useState<LearnerRouteDecision | null>(null);
+  const [inspectedConceptId, setInspectedConceptId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -81,6 +85,7 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
       const currentPathItem = nextPath.items.find((item) => item.current)
         ?? nextPath.items.find((item) => item.concept_id === nextPath.current_concept_id);
       setActiveTopicId((current) => current ?? currentPathItem?.topic_id ?? nextTopicId(nextCourse, nextProgress));
+      setInspectedConceptId((current) => current ?? currentPathItem?.concept_id ?? null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not open this course.");
     } finally {
@@ -118,7 +123,17 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
   const activeLectureIndex = activeLecture
     ? lectureUnits.findIndex((unit) => unit.id === activeLecture.id)
     : -1;
+  const activeUnit = course?.units.find((unit) => unit.topic_ids.includes(activeTopic?.id ?? "")) ?? null;
+  const activeUnitIndex = activeUnit
+    ? course?.units.findIndex((unit) => unit.id === activeUnit.id) ?? -1
+    : -1;
+  const recommendedConceptId = path?.current_concept_id
+    ?? path?.items.find((item) => item.current)?.concept_id
+    ?? null;
   const mastered = progress.filter((item) => item.state === "mastered").length;
+  const courseMasteryPercent = path?.items.length
+    ? Math.round((mastered / path.items.length) * 100)
+    : 0;
 
   async function recordWatch(watchedSeconds: number) {
     if (!session || !activeClip) return;
@@ -178,6 +193,11 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
       setFeedback(grade.feedback ?? (grade.is_correct ? "Correct." : "Review the focused clip and try again."));
       setDecision(nextDecision);
       setPreferredClipId(nextDecision.target_clip_id);
+      setInspectedConceptId(
+        nextPath.items.find((item) => item.current)?.concept_id
+          ?? nextPath.current_concept_id
+          ?? null,
+      );
       const targetTopic = topicForDecision(nextDecision, course, nextProgress, activeTopic.id);
       if (targetTopic !== activeTopic.id) {
         window.setTimeout(() => setActiveTopicId(targetTopic), 900);
@@ -231,12 +251,19 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
                   <h1>{activeTopic.title}</h1>
                   <p>{activeTopic.summary || "Watch the focused explanation, then check your understanding."}</p>
                 </div>
-                <span className={styles.duration}>{mastered} of {progress.length} concepts mastered</span>
               </header>
 
-              {path ? <LearnerPathStrip activeConceptId={activePathItem?.concept_id ?? path.current_concept_id} items={path.items} onSelect={(item) => {
-                if (item.eligible && item.topic_id) setActiveTopicId(item.topic_id);
-              }} /> : null}
+              {activePathItem ? <section className={styles.adaptiveFocus} data-tone={decisionTone(decision)}>
+                <span className={styles.adaptiveFocusIcon}><Route /></span>
+                <div>
+                  <small>{focusLabel(activePathItem, recommendedConceptId, decision)}</small>
+                  <strong>{activePathItem.name}</strong>
+                  <p>{decision?.why
+                    ?? (activePathItem.concept_id === recommendedConceptId ? path?.last_route_why : null)
+                    ?? focusReason(activePathItem, path?.items ?? [])}</p>
+                </div>
+                <span className={styles.adaptiveFocusStatus}>Current lesson</span>
+              </section> : null}
 
               <div className={styles.player}>
                 {activeClip ? <ProviderVideo
@@ -256,11 +283,6 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
                   videoId={activeClip.video_id}
                   viewerId={session.id}
                 /> : <div className={styles.noMedia}>No reviewed teaching clip is available for this topic.</div>}
-              </div>
-
-              <div className={styles.routeNotice} data-tone={decisionTone(decision)}>
-                <strong>{decision ? routeTitle(decision) : "Why this is next"}</strong>
-                {decision?.why ?? path?.last_route_why ?? "This is the next eligible concept in your reviewed course path. Watch the focused clip before answering the check-in."}
               </div>
 
               {activePathItem?.aids.length ? <section className={styles.pathAids}><header><FileText /><div><small>Instructor-approved evidence</small><strong>Helpful course materials</strong></div></header>{activePathItem.aids.map((aid) => <article key={`${aid.source_id}:${aid.page_number}`}><span>{aid.title} · page {aid.page_number}</span><p>{aid.excerpt}</p></article>)}</section> : null}
@@ -283,21 +305,41 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
           </section>
 
           <aside className={styles.outline} aria-labelledby="course-outline-title">
-            <header><small>Your course</small><h2 id="course-outline-title">Learning journey</h2></header>
-            {(course.units ?? []).length ? <nav aria-label="Course learning journey" className={styles.courseJourney}>{(course.units ?? []).map((unit, index) => {
-              const active = unit.topic_ids.includes(activeTopic.id);
-              const available = unit.kind !== "lecture" || unit.topic_ids.length > 0;
-              return <button aria-current={active ? "step" : undefined} disabled={!available} key={unit.id} onClick={() => {
-                const nextTopicId = unit.topic_ids[0];
-                if (nextTopicId) setActiveTopicId(nextTopicId);
-              }} type="button">
-                <span data-kind={unit.kind}>{unit.kind === "lecture" ? <PlayCircle /> : unit.kind === "quiz" ? <ClipboardCheck /> : <FilePenLine />}</span>
-                <span><small>{String(index + 1).padStart(2, "0")} · {unit.kind}</small><strong>{unit.title}</strong><em>{unit.kind === "lecture" ? `${unit.topic_ids.length} learning moments` : unit.kind === "quiz" ? `${unit.question_count} checks` : unit.instructions || "Instructor-guided work"}</em></span>
-              </button>;
-            })}</nav> : null}
-            <div className={styles.masteryHeading}><small>Adaptive layer</small><h3>Mastery map</h3></div>
-            {path ? <div aria-label="Mastery map" className={styles.masteryMap}>{path.items.map((item, index) => <button aria-current={item.concept_id === activePathItem?.concept_id ? "step" : undefined} disabled={!item.eligible} key={item.concept_id} onClick={() => item.topic_id && setActiveTopicId(item.topic_id)} type="button"><span data-state={item.state}>{item.eligible ? index + 1 : <LockKeyhole />}</span><span><strong>{item.name}</strong><em>{item.state.replace("_", " ")}{item.current ? " · current" : ""}</em></span></button>)}</div> : null}
-            <details className={styles.topicDisclosure}><summary>Course topics <ChevronDown /></summary>
+            <header className={styles.pathSidebarHeader}>
+              <small>Your progress</small>
+              <div><h2 id="course-outline-title">{mastered} of {path?.items.length ?? progress.length} mastered</h2><strong>{courseMasteryPercent}%</strong></div>
+              <span><i style={{ width: `${courseMasteryPercent}%` }} /></span>
+            </header>
+            {(course.units ?? []).length && activeUnit ? <details className={styles.unitSwitcher}>
+              <summary>
+                <span data-kind={activeUnit.kind}>{activeUnit.kind === "lecture" ? <PlayCircle /> : activeUnit.kind === "quiz" ? <ClipboardCheck /> : <FilePenLine />}</span>
+                <span><small>{activeUnit.kind} {activeUnitIndex + 1} of {course.units.length}</small><strong>{activeUnit.title}</strong></span>
+                <ChevronDown />
+              </summary>
+              <nav aria-label="Course learning journey">{course.units.map((unit, index) => {
+                const active = unit.id === activeUnit.id;
+                const available = unit.kind !== "lecture" || unit.topic_ids.length > 0;
+                return <button aria-current={active ? "step" : undefined} disabled={!available} key={unit.id} onClick={() => {
+                  const nextTopicId = unit.topic_ids[0];
+                  if (nextTopicId) setActiveTopicId(nextTopicId);
+                }} type="button">
+                  <span data-kind={unit.kind}>{unit.kind === "lecture" ? <PlayCircle /> : unit.kind === "quiz" ? <ClipboardCheck /> : <FilePenLine />}</span>
+                  <span><small>{String(index + 1).padStart(2, "0")} · {unit.kind}</small><strong>{unit.title}</strong></span>
+                </button>;
+              })}</nav>
+            </details> : null}
+            <div className={styles.masteryHeading}><small>Adaptive mastery</small><h3>Your learning path</h3><p>One recommended step, with every alternative and prerequisite explained.</p></div>
+            {path ? <AdaptiveMasteryTrail
+              inspectedConceptId={inspectedConceptId}
+              items={path.items}
+              onSelect={(item, state) => {
+                setInspectedConceptId(item.concept_id);
+                if (state !== "blocked" && item.topic_id) setActiveTopicId(item.topic_id);
+              }}
+              recommendedConceptId={recommendedConceptId}
+              viewingConceptId={activePathItem?.concept_id ?? null}
+            /> : null}
+            <details className={styles.topicDisclosure}><summary>Lecture outline <ChevronDown /></summary>
             <nav aria-label="Course topics">{course.topics.map((topic, index) => {
               const state = topicState(topic.id, progress);
               return <button aria-current={topic.id === activeTopic.id ? "true" : undefined} key={topic.id} onClick={() => setActiveTopicId(topic.id)} type="button"><span>{String(index + 1).padStart(2, "0")}</span><span><strong>{topic.title}</strong><em>{state.replace("_", " ")}</em></span></button>;
@@ -310,15 +352,47 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
   );
 }
 
-function LearnerPathStrip({ activeConceptId, items, onSelect }: {
-  activeConceptId: string | null;
+function AdaptiveMasteryTrail({
+  inspectedConceptId,
+  items,
+  onSelect,
+  recommendedConceptId,
+  viewingConceptId,
+}: {
+  inspectedConceptId: string | null;
   items: LearnerPath["items"];
-  onSelect: (item: LearnerPath["items"][number]) => void;
+  onSelect: (item: LearnerPathItem, state: LearnerPathVisualState) => void;
+  recommendedConceptId: string | null;
+  viewingConceptId: string | null;
 }) {
-  const activeIndex = items.findIndex((item) => item.concept_id === activeConceptId);
-  const windowStart = Math.max(0, activeIndex - 1);
-  const visible = items.slice(windowStart, Math.min(items.length, windowStart + 4));
-  return <section className={styles.pathStrip} aria-label="Adaptive learning path"><header><Route /><span><small>Adaptive path</small><strong>{activeIndex >= 0 ? `Step ${activeIndex + 1} of ${items.length}` : `${items.length} concepts`}</strong></span></header><div>{visible.map((item) => <button aria-current={item.concept_id === activeConceptId ? "step" : undefined} disabled={!item.eligible} key={item.concept_id} onClick={() => onSelect(item)} type="button"><i data-state={item.state}>{item.eligible ? items.indexOf(item) + 1 : <LockKeyhole />}</i><span><strong>{item.name}</strong><small>{item.current ? "Why this is next" : item.state.replace("_", " ")}</small></span></button>)}</div></section>;
+  return <nav aria-label="Adaptive mastery trail" className={styles.masteryTrail}>
+    {items.map((item, index) => {
+      const state = learnerPathVisualState(item, recommendedConceptId);
+      const expanded = inspectedConceptId === item.concept_id;
+      const unmet = unmetPrerequisiteNames(item, items);
+      return <article data-expanded={expanded || undefined} data-state={state} key={item.concept_id}>
+        <button
+          aria-current={item.concept_id === viewingConceptId ? "step" : undefined}
+          aria-expanded={expanded}
+          onClick={() => onSelect(item, state)}
+          type="button"
+        >
+          <span className={styles.masteryNodeMarker}>{masteryNodeIcon(state, index)}</span>
+          <span className={styles.masteryNodeCopy}>
+            <small>{masteryStateLabel(state)}</small>
+            <strong>{item.name}</strong>
+            <em>{masteryStateSummary(state, unmet)}</em>
+          </span>
+        </button>
+        {expanded ? <div className={styles.masteryNodeDetail}>
+          <p>{masteryNodeExplanation(state, unmet)}</p>
+          <span>{state === "blocked"
+            ? "Select any locked topic to understand its prerequisites."
+            : item.concept_id === viewingConceptId ? "Open in the current lesson" : "Select to open this teaching moment"}</span>
+        </div> : null}
+      </article>;
+    })}
+  </nav>;
 }
 
 function topicState(topicId: string, progress: LearnerProgress[]) {
@@ -336,9 +410,80 @@ function decisionTone(decision: LearnerRouteDecision | null) {
   return "support";
 }
 
-function routeTitle(decision: LearnerRouteDecision) {
-  if (decision.action === "advance") return "You’re ready to move forward";
-  if (decision.action === "complete") return "Course path complete";
-  if (decision.action === "flag_instructor") return "Your instructor has been notified";
-  return "A focused review will help";
+function focusLabel(
+  item: LearnerPathItem,
+  recommendedConceptId: string | null,
+  decision: LearnerRouteDecision | null,
+) {
+  if (decision?.action === "remediate" || decision?.action === "reinforce") {
+    return "Review recommended";
+  }
+  return item.concept_id === recommendedConceptId ? "Recommended next" : "Ready to learn";
+}
+
+function focusReason(item: LearnerPathItem, items: LearnerPathItem[]) {
+  const prerequisites = item.prerequisite_ids
+    .map((id) => items.find((candidate) => candidate.concept_id === id)?.name)
+    .filter((name): name is string => Boolean(name));
+  if (prerequisites.length) {
+    return `You are ready for this because you completed ${joinNames(prerequisites)}.`;
+  }
+  return "This is the strongest available next step in your instructor-reviewed course path.";
+}
+
+function unmetPrerequisiteNames(item: LearnerPathItem, items: LearnerPathItem[]) {
+  return item.prerequisite_ids
+    .map((id) => items.find((candidate) => candidate.concept_id === id))
+    .filter((candidate): candidate is LearnerPathItem => (
+      Boolean(candidate) && candidate?.state !== "mastered"
+    ))
+    .map((candidate) => candidate.name);
+}
+
+function masteryNodeIcon(state: LearnerPathVisualState, index: number) {
+  if (state === "mastered") return <CheckCircle2 />;
+  if (state === "blocked") return <LockKeyhole />;
+  if (state === "recommended" || state === "review") return <Route />;
+  return index + 1;
+}
+
+function masteryStateLabel(state: LearnerPathVisualState) {
+  if (state === "mastered") return "Mastered";
+  if (state === "recommended") return "Recommended next";
+  if (state === "review") return "Review recommended";
+  if (state === "ready") return "Ready too";
+  return "Coming later";
+}
+
+function masteryStateSummary(state: LearnerPathVisualState, unmet: string[]) {
+  if (state === "mastered") return "Review anytime";
+  if (state === "recommended") return "Your best next step";
+  if (state === "review") return "Focused support is ready";
+  if (state === "ready") return "Available as an alternative";
+  return unmet.length ? `Needs ${joinNames(unmet)}` : "Prerequisites are still in progress";
+}
+
+function masteryNodeExplanation(state: LearnerPathVisualState, unmet: string[]) {
+  if (state === "mastered") {
+    return "You have demonstrated mastery here. Reopen this teaching moment whenever you want a review.";
+  }
+  if (state === "recommended") {
+    return "This is the single next step Manifold recommends. The lesson panel explains why it was selected.";
+  }
+  if (state === "review") {
+    return "A focused review is recommended before you move forward. Your current lesson has the supporting explanation.";
+  }
+  if (state === "ready") {
+    return "This topic is available now. You can choose it, or continue with the recommended step above it.";
+  }
+  if (unmet.length) {
+    return `Complete ${joinNames(unmet)} to unlock this topic.`;
+  }
+  return "This topic will open when its reviewed prerequisites are complete.";
+}
+
+function joinNames(names: string[]) {
+  if (names.length < 2) return names[0] ?? "the required foundation";
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
 }
