@@ -740,7 +740,8 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   const blueprintSummaryBounds = await blueprintSummary.boundingBox();
   expect(blueprintSummaryBounds).not.toBeNull();
   expect(blueprintSummaryBounds!.height).toBeLessThanOrEqual(44);
-  expect(blueprintSummaryBounds!.width).toBeLessThan(520);
+  expect(blueprintSummaryBounds!.width).toBeGreaterThan(560);
+  expect(blueprintSummaryBounds!.width).toBeLessThan(820);
   await expect(page.getByText("Blueprint status")).toHaveCount(0);
   await expect(page.getByText("Learner-facing course")).toHaveCount(0);
   await expect(page.getByText("Adaptive course system")).toHaveCount(0);

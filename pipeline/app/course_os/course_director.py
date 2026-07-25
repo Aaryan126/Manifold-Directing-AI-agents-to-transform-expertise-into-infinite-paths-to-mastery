@@ -1,13 +1,14 @@
 import json
 import re
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from typing import Any, Literal, Protocol
 from uuid import UUID
 
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.course_os.models import CourseBlueprint
+from app.course_os.models import BlueprintNode, CourseBlueprint
 
 DirectorOperation = Literal[
     "update_artifact",
@@ -187,7 +188,15 @@ class OpenAICourseDirector:
         parsed = response.output_parsed
         if parsed is None:
             raise RuntimeError("Course Director did not return a valid edit plan.")
-        return _validated_plan(parsed, blueprint)
+        plan = _validated_plan(parsed, blueprint)
+        published_only_match = _published_only_removal_match(
+            instruction,
+            blueprint,
+            active_blueprint,
+        )
+        if not plan.actions and published_only_match is not None:
+            return _already_removed_plan(published_only_match.title)
+        return plan
 
 
 def _blueprint_context(
@@ -258,7 +267,11 @@ class LocalCourseDirector:
         normalized = instruction.strip()
         lowered = normalized.lower()
         matches = sorted(
-            (node for node in blueprint.nodes if node.title.lower() in lowered),
+            (
+                node
+                for node in blueprint.nodes
+                if _instruction_matches_title(normalized, node.title)
+            ),
             key=lambda node: len(node.title),
             reverse=True,
         )
@@ -283,7 +296,7 @@ class LocalCourseDirector:
                     node
                     for node in active_blueprint.nodes
                     if node.logical_id not in working_logical_ids
-                    and node.title.lower() in lowered
+                    and _instruction_matches_title(normalized, node.title)
                 ),
                 key=lambda node: len(node.title),
                 reverse=True,
@@ -484,17 +497,86 @@ def _validated_plan(output: _DirectorPlanOutput, blueprint: CourseBlueprint) -> 
                 previous_source_logical_id=previous_source_id,
                 previous_target_logical_id=previous_target_id,
                 proposed_state=proposed_state,
-                summary=candidate.summary,
-                rationale=candidate.rationale,
+                summary=_clear_director_text(candidate.summary) or "Prepare a private change",
+                rationale=_clear_director_text(candidate.rationale)
+                or "This change follows the instructor's request.",
             )
         )
-    clarification = output.clarification
+    clarification = _clear_director_text(output.clarification)
     if not actions and not clarification:
         clarification = "I could not map that request to a safe, bounded Blueprint edit."
     return CourseDirectorPlan(
-        summary=output.summary,
+        summary=_clear_director_text(output.summary)
+        or "I reviewed that request against the current Blueprint.",
         actions=tuple(actions),
         clarification=clarification,
+    )
+
+
+def _clear_director_text(value: str | None) -> str | None:
+    """Keep instructor-facing replies concise and free of internal implementation detail."""
+
+    if value is None:
+        return None
+    text = re.sub(
+        r"\s*\(\s*(?:logical[_\s-]*id|artifact[_\s-]*id|id)\s*:\s*"
+        r"[0-9a-f]{8}-[0-9a-f-]{27,}\s*\)",
+        "",
+        value,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"\b[0-9a-f]{8}-[0-9a-f-]{27,}\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"[\u3400-\u9fff]+/?", "", text)
+    text = re.sub(r"\s+You can\s*/?\s*$", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+([,.;:!?])", r"\1", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return text.strip(" \n/") or None
+
+
+def _normalized_title(value: str) -> str:
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", value.lower().replace(",", "")).split())
+
+
+def _instruction_matches_title(instruction: str, title: str) -> bool:
+    normalized_instruction = _normalized_title(instruction)
+    normalized_title = _normalized_title(title)
+    if normalized_title in normalized_instruction:
+        return True
+    title_tokens = set(normalized_title.split())
+    instruction_tokens = set(normalized_instruction.split())
+    token_coverage = len(title_tokens & instruction_tokens) / max(len(title_tokens), 1)
+    return (
+        token_coverage >= 0.72
+        or SequenceMatcher(None, normalized_instruction, normalized_title).ratio() >= 0.68
+    )
+
+
+def _published_only_removal_match(
+    instruction: str,
+    blueprint: CourseBlueprint,
+    active_blueprint: CourseBlueprint | None,
+) -> BlueprintNode | None:
+    lowered = instruction.lower()
+    if active_blueprint is None or not re.search(r"\b(remove|delete)\b", lowered):
+        return None
+    working_ids = {node.logical_id for node in blueprint.nodes}
+    matches = [
+        node
+        for node in active_blueprint.nodes
+        if node.logical_id not in working_ids
+        and _instruction_matches_title(instruction, node.title)
+    ]
+    return max(matches, key=lambda node: len(node.title), default=None)
+
+
+def _already_removed_plan(title: str) -> CourseDirectorPlan:
+    return CourseDirectorPlan(
+        summary=f"{title} is already removed from the private revision.",
+        actions=(),
+        clarification=(
+            f"“{title}” is already removed from Design. It remains visible in Live until "
+            "you publish the update."
+        ),
     )
 
 

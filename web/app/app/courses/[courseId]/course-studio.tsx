@@ -475,7 +475,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       body: JSON.stringify({ video_id: videoId, ingestion_job_id: ingestionJobId }),
     });
     setRun(nextRun);
-    setSourceLabel("Lecture received. Manifold is building your private draft.");
+    setSourceLabel("Lecture received. Course Director is building your private draft.");
     setCourse(await request<CourseSummary>(`/courses/${courseId}/studio`, identity));
   }
 
@@ -600,6 +600,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     await Promise.all([
       refreshArtifacts(identity),
       refreshStructuredWorkspace(identity),
+      refreshBlueprint(identity, nextCourse),
       refreshRevisionDiff(identity, nextCourse),
     ]);
   }
@@ -707,6 +708,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         refreshIntelligence(identity),
         refreshArtifacts(identity),
         refreshStructuredWorkspace(identity),
+        refreshBlueprint(identity, nextCourse),
         refreshRevisionDiff(identity, nextCourse),
       ]);
       setSourcesOpen(true);
@@ -739,6 +741,8 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       await Promise.all([
         refreshIntelligence(identity),
         refreshArtifacts(identity),
+        refreshStructuredWorkspace(identity),
+        refreshBlueprint(identity, nextCourse),
         refreshRevisionDiff(identity, nextCourse),
       ]);
     } catch (caught) {
@@ -788,7 +792,11 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       }
       const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
       setCourse(nextCourse);
-      await refreshRevisionDiff(identity, nextCourse);
+      await Promise.all([
+        refreshBlueprint(identity, nextCourse),
+        refreshStructuredWorkspace(identity),
+        refreshRevisionDiff(identity, nextCourse),
+      ]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not update the learner sequence.");
     } finally {
@@ -856,6 +864,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       await Promise.all([
         refreshBlueprint(identity, nextCourse),
         refreshArtifacts(identity),
+        refreshStructuredWorkspace(identity),
         refreshRevisionDiff(identity, nextCourse),
       ]);
       return next;
@@ -893,6 +902,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       setCourse(nextCourse);
       await Promise.all([
         refreshBlueprint(identity, nextCourse),
+        refreshStructuredWorkspace(identity),
         refreshRevisionDiff(identity, nextCourse),
       ]);
       return next;
@@ -938,6 +948,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       setCourse(nextCourse);
       await Promise.all([
         refreshBlueprint(identity, nextCourse),
+        refreshStructuredWorkspace(identity),
         refreshRevisionDiff(identity, nextCourse),
       ]);
       return next;
@@ -979,6 +990,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       setCourse(nextCourse);
       await Promise.all([
         refreshBlueprint(identity, nextCourse),
+        refreshStructuredWorkspace(identity),
         refreshRevisionDiff(identity, nextCourse),
       ]);
       return next;
@@ -1017,7 +1029,11 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       }
       const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
       setCourse(nextCourse);
-      await refreshRevisionDiff(identity, nextCourse);
+      await Promise.all([
+        refreshBlueprint(identity, nextCourse),
+        refreshStructuredWorkspace(identity),
+        refreshRevisionDiff(identity, nextCourse),
+      ]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not update that concept.");
       throw caught;
@@ -1278,7 +1294,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     >
       {!focusedCreation ? (
         <div className={styles.panelHeader}>
-          <div className={styles.directorIdentity}><MessageSquareText /><span><strong id="conversation-title">Course Director</strong><small>Manifold</small></span></div>
+          <div className={styles.directorIdentity}><MessageSquareText /><span><strong id="conversation-title">Course Director</strong></span></div>
         </div>
       ) : null}
       {composerCentered ? (
@@ -1288,7 +1304,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         </div>
       ) : null}
       <div className={styles.messageList}>
-        {!composerCentered ? messages.map((message) => (
+        {!composerCentered ? messages.filter((message) => message.role !== "system").map((message) => (
           <MessageBubble
             key={message.id}
             message={message}
@@ -1318,7 +1334,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
           type="file"
         />
         <textarea
-          aria-label="Message Manifold"
+          aria-label="Message Course Director"
           onChange={(event) => setComposer(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
@@ -1329,7 +1345,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
           placeholder={editingLocked
             ? "Ask about learner evidence, or request a private course change…"
             : (course?.source_count ?? 0) === 0
-              ? (composerCentered ? "What would you like to teach? Paste a lecture link or add a file…" : "Paste a lecture link, or tell Manifold about the course…")
+              ? (composerCentered ? "What would you like to teach? Paste a lecture link or add a file…" : "Paste a lecture link, or tell Course Director about the course…")
               : "Ask about or change this course…"}
           rows={focusedCreation ? 4 : 3}
           value={composer}
@@ -1447,7 +1463,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
               </div>
               </section>
               <button aria-expanded={directorOpen} aria-label="Open Course Director" className={styles.directorLauncher} onClick={() => setDirectorOpen((current) => !current)} type="button">
-                <MessageCircleMore />
+                <MessageSquareText />
                 <span>Course Director</span>
               </button>
               {directorOpen ? (
@@ -1494,9 +1510,9 @@ function MessageBubble({ message, proposalStates, onResolve }: {
   const [proposalDraft, setProposalDraft] = useState("");
   return (
     <article className={styles.messageBubble} data-role={message.role}>
-      {message.role === "manifold" ? <span className={styles.agentAvatar}><GitFork /></span> : null}
+      {message.role === "manifold" ? <span className={styles.agentAvatar}><MessageSquareText /></span> : null}
       <div>
-        <small>{message.role === "manifold" ? "Manifold" : "You"}</small>
+        <small>{message.role === "manifold" ? "Course Director" : "You"}</small>
         <p>{message.content}</p>
         {message.blocks.map((block, index) => {
           if (block.type === "evidence") {
@@ -2736,7 +2752,7 @@ function BlueprintWorkspace({
         <section className={styles.blueprintCleanupPrompt} aria-live="polite">
           <div>
             <Check />
-            <p><strong>Private edit saved</strong><span>Manifold can inspect the surrounding course and prepare optional cleanup.</span></p>
+            <p><strong>Private edit saved</strong><span>Course Director can inspect the surrounding course and prepare optional cleanup.</span></p>
           </div>
           <div>
             <button onClick={() => setCleanupAnchorLogicalId(null)} type="button">Not now</button>
@@ -3120,7 +3136,7 @@ function BlueprintRelationshipKindDialog({
             <div>
               <small>Connect from {source.kind}</small>
               <h3 id="relationship-kind-title">What should this connection mean?</h3>
-              <p>Choose the learning relationship first. Manifold will then highlight valid targets.</p>
+              <p>Choose the learning relationship first. Course Director will then highlight valid targets.</p>
             </div>
           </div>
           <button aria-label="Cancel relationship" onClick={onClose} type="button"><X /></button>
@@ -3461,7 +3477,7 @@ function useBlueprintFlow(
 }
 
 function ConceptEvidencePanel({ evidence }: { evidence: BlueprintConceptEvidence | null }) {
-  if (!evidence?.attempts) return <div className={styles.blueprintEmptyEvidence}><Activity /><p><strong>No learner evidence yet</strong>Manifold is monitoring this concept. Structure and coverage checks remain available.</p></div>;
+  if (!evidence?.attempts) return <div className={styles.blueprintEmptyEvidence}><Activity /><p><strong>No learner evidence yet</strong>Course Director is monitoring this concept. Structure and coverage checks remain available.</p></div>;
   const masteryTotal = Object.values(evidence.mastery).reduce((total, value) => total + value, 0);
   return <section className={styles.conceptEvidence}><h4>Learning evidence</h4><div><article><strong>{Math.round(evidence.correct_percent ?? 0)}%</strong><span>Correct</span></article><article><strong>{Math.round(evidence.confident_percent ?? 0)}%</strong><span>Confident</span></article><article data-alert={evidence.confident_incorrect > 0}><strong>{evidence.confident_incorrect}</strong><span>Confident + incorrect</span></article></div><dl><div><dt>Learners reached</dt><dd>{evidence.touched_learners}</dd></div><div><dt>Mastered</dt><dd>{evidence.mastery.mastered ?? 0}/{masteryTotal}</dd></div><div><dt>Remediation routes</dt><dd>{evidence.route_actions.remediate ?? 0}</dd></div></dl></section>;
 }
@@ -3982,7 +3998,7 @@ export function CourseMapCanvas({ courseMap, onLayout, run }: {
       <div className={styles.canvasEmpty}>
         <span className={styles.mapConstellation}><i /><i /><i /><i /></span>
         <h2>{run ? generationPhaseLabel(run.phase) : "Your course will take shape here"}</h2>
-        <p>Topics, concepts, prerequisites, assessments, and learning paths appear as Manifold builds them.</p>
+        <p>Topics, concepts, prerequisites, assessments, and learning paths appear as Course Director builds them.</p>
       </div>
     );
   }
@@ -4041,7 +4057,7 @@ function ReviewCanvas({ bundles, onBundle, onItem }: { bundles: ReviewBundle[]; 
   const [editing, setEditing] = useState<ReviewItem | null>(null);
   const [revision, setRevision] = useState("");
   const active = bundles.find((bundle) => bundle.id === activeBundleId) ?? bundles[0];
-  if (!active) return <div className={styles.canvasEmpty}><ClipboardList /><h2>No review bundle yet</h2><p>Manifold will assemble a small set of high-leverage decisions after the full private draft is built.</p></div>;
+  if (!active) return <div className={styles.canvasEmpty}><ClipboardList /><h2>No review bundle yet</h2><p>Course Director will assemble a small set of high-leverage decisions after the full private draft is built.</p></div>;
   const pending = active.items.filter((item) => item.status === "pending");
   return (
     <div className={styles.reviewCanvas}>

@@ -1361,7 +1361,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
     async def list_messages(
         self,
         course_id: UUID,
-        revision_id: UUID,
+        _revision_id: UUID,
     ) -> tuple[ConversationMessage, ...]:
         async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
             rows = await (
@@ -1369,10 +1369,10 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     """
                     select m.* from course_messages m
                     join course_conversations c on c.id = m.conversation_id
-                    where c.course_id = %s and c.revision_id = %s
+                    where c.course_id = %s
                     order by m.created_at
                     """,
-                    (course_id, revision_id),
+                    (course_id,),
                 )
             ).fetchall()
             proposal_rows = await (
@@ -1380,9 +1380,9 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     """
                     select id, status, instructor_revision
                     from course_proposals
-                    where course_id = %s and revision_id = %s
+                    where course_id = %s
                     """,
-                    (course_id, revision_id),
+                    (course_id,),
                 )
             ).fetchall()
         proposal_states = {

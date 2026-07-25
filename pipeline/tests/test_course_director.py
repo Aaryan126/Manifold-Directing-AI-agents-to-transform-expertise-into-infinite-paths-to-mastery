@@ -5,6 +5,7 @@ import pytest
 from app.course_os.course_director import (
     LocalCourseDirector,
     _blueprint_context,
+    _clear_director_text,
     _DirectorActionOutput,
     _DirectorPlanOutput,
     _validated_plan,
@@ -194,6 +195,50 @@ async def test_local_director_explains_artifact_already_removed_from_private_rev
     assert plan.clarification is not None
     assert "already removed in Design" in plan.clarification
     assert "Publish updates" in plan.clarification
+
+
+@pytest.mark.anyio
+async def test_local_director_fuzzily_matches_small_numeric_title_typo() -> None:
+    working = _blueprint()
+    removed_topic = BlueprintNode(
+        id=uuid4(),
+        logical_id=uuid4(),
+        kind="topic",
+        title="Debunking the popular 10,000-hour rule",
+        status="accepted",
+        parent_id=None,
+        metadata={},
+    )
+    active = CourseBlueprint(
+        course_id=working.course_id,
+        revision_id=uuid4(),
+        revision_kind="active",
+        nodes=(*working.nodes, removed_topic),
+        edges=(),
+        uncovered_concept_ids=(),
+    )
+
+    plan = await LocalCourseDirector().plan(
+        "Remove the debunking the popular 1000 hour rule topic",
+        working,
+        active,
+    )
+
+    assert plan.actions == ()
+    assert plan.clarification == (
+        "“Debunking the popular 10,000-hour rule” is already removed in Design. "
+        "Live still shows the published course until you choose Publish updates."
+    )
+
+
+def test_director_reply_removes_internal_ids_and_stray_non_english_fragments() -> None:
+    value = (
+        'The topic "Debunking" '
+        "(logical_id: fa435b53-2e7f-4678-81ab-ee81f43b42b0) is already removed. "
+        "You can确认/"
+    )
+
+    assert _clear_director_text(value) == 'The topic "Debunking" is already removed.'
 
 
 @pytest.mark.anyio
