@@ -113,6 +113,11 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
   const question = course?.questions.find((item) => activePathItem?.question_ids.includes(item.id))
     ?? course?.questions.find((item) => item.topic_id === activeTopic?.id)
     ?? null;
+  const lectureUnits = course?.units.filter((unit) => unit.kind === "lecture") ?? [];
+  const activeLecture = lectureUnits.find((unit) => unit.topic_ids.includes(activeTopic?.id ?? "")) ?? null;
+  const activeLectureIndex = activeLecture
+    ? lectureUnits.findIndex((unit) => unit.id === activeLecture.id)
+    : -1;
   const mastered = progress.filter((item) => item.state === "mastered").length;
 
   async function recordWatch(watchedSeconds: number) {
@@ -212,14 +217,20 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
       <main className={styles.courseMain}>
         <header className={styles.courseTopbar}>
           <Link aria-label="Back to learner dashboard" href="/learn"><ArrowLeft /></Link>
-          <div><small>Adaptive course</small><strong>{course.title}</strong></div>
+          <div><small>Enrolled course</small><strong>{course.title}</strong></div>
         </header>
 
         <div className={styles.courseLayout}>
           <section className={styles.lesson}>
             <div className={styles.lessonInner}>
               <header className={styles.lessonHeader}>
-                <div><small>Current teaching moment</small><h1>{activeTopic.title}</h1><p>{activeTopic.summary || "Watch the focused explanation, then check your understanding."}</p></div>
+                <div>
+                  <small>{activeLecture
+                    ? `Lecture ${activeLectureIndex + 1} of ${lectureUnits.length} · ${activeLecture.title}`
+                    : "Current teaching moment"}</small>
+                  <h1>{activeTopic.title}</h1>
+                  <p>{activeTopic.summary || "Watch the focused explanation, then check your understanding."}</p>
+                </div>
                 <span className={styles.duration}>{mastered} of {progress.length} concepts mastered</span>
               </header>
 

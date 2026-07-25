@@ -25,12 +25,14 @@
 .courseBody { padding: 20px; }
 .courseBody h3 { font-size: 16px; line-height: 1.35; margin: 0 0 7px; }
 .courseBody > p { color: #77757c; display: -webkit-box; font-size: 12px; line-height: 1.5; margin: 0; min-height: 36px; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.progress { display: grid; gap: 7px; margin: 18px 0; }
+.progress { display: grid; gap: 7px; margin: 13px 0 18px; }
 .progress > span { background: #eceae4; border-radius: 999px; display: block; height: 6px; overflow: hidden; }
 .progress i { background: #6c9253; border-radius: inherit; display: block; height: 100%; }
 .progress small { color: #6f6d74; font-size: 10px; }
-.courseMeta { align-items: center; color: #77757c; display: flex; font-size: 11px; gap: 6px; margin: 18px 0; }
-.courseMeta svg { height: 14px; width: 14px; }
+.courseComposition { align-items: center; color: #77757c; display: flex; flex-wrap: wrap; font-size: 10px; gap: 8px; margin: 17px 0 0; }
+.courseComposition > span { align-items: center; display: flex; gap: 8px; }
+.courseComposition i { background: #aaa8af; border-radius: 50%; height: 3px; width: 3px; }
+.courseComposition + button { margin-top: 18px; }
 .courseBody button { align-items: center; background: #24252a; border: 1px solid #24252a; border-radius: 8px; color: #fff; cursor: pointer; display: grid; font: inherit; font-size: 11px; font-weight: 650; gap: 8px; grid-template-columns: 16px 1fr 16px; min-height: 42px; padding: 0 12px; width: 100%; }
 .courseBody button span { text-align: left; }
 .courseBody button svg { height: 15px; width: 15px; }

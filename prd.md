@@ -149,6 +149,7 @@ This is not a single feature — it's a constraint on every feature below. Rules
 - Instructor-configurable policy knobs: mastery threshold definition, "allow advancing with partial understanding" vs. "require mastery" per concept, max remediation attempts before flagging to instructor. The normal interface presents graph-informed Foundation, Standard, and Applied-practice groups and a single bulk confirmation; concept-level controls remain collapsed for exceptional cases. Confirmed policy coverage is required before publishing.
 
 ### 6.7 Learner Experience (Player)
+- Learners enroll in a course once, not in individual lectures. The learner home communicates each course's lecture and course-level activity composition; opening it shows the published Course Flow as one ordered learning journey. A lecture unit opens its adaptive topic/concept path in context, while standalone quizzes and assignments remain course units rather than fabricated lectures.
 - Video player with topic/clip navigation, progress indicator per concept (not just % video watched).
 - In-line comprehension check + confidence prompt after each topic.
 - Clear "why am I seeing this" messaging when routed to a remediation/prerequisite clip (transparency builds trust — this should never feel like a punishment or a black box).
@@ -173,7 +174,7 @@ This is not a single feature — it's a constraint on every feature below. Rules
 
 ### 6.9 Publishing, Enrollment & Development Identity
 - Courses have an explicit draft/published state. Learners cannot enroll in or access learner content for draft courses.
-- Enrollment records link learner-role users to published courses and gate learner progress/attempt APIs.
+- Enrollment records uniquely link learner-role users to published courses—not lecture units—and pin access to a published course revision. The enrolled learner receives every reviewed unit in that revision's Course Flow while progress remains attributable to its lecture/quiz/assignment unit and underlying concepts.
 - The current project uses an explicit development login gate backed by persisted instructor and learner identities so complete role-specific journeys can be tested. Fixed demonstration credentials route David to the instructor Course OS and Brian to the learner Course OS, but the API still uses the development `X-User-ID` context. This is not production authentication: secure password storage, signed sessions, account recovery, account administration, and security hardening remain future work.
 
 ### 6.10 Agent Runs, Review Bundles & Course Revisions

@@ -11,6 +11,7 @@ const learner = {
 test("learner Blueprint path explains remediation, advancement, and locked prerequisites", async ({ page }) => {
   let firstState: "not_started" | "struggling" | "mastered" = "not_started";
   let secondCurrent = false;
+  let enrollmentRequests = 0;
 
   await page.addInitScript((identity) => {
     window.localStorage.setItem("manifold.development-session", JSON.stringify(identity));
@@ -20,11 +21,19 @@ test("learner Blueprint path explains remediation, advancement, and locked prere
   await page.route(`${pipeline}/**`, async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
+    if (path === "/courses/course-1/enrollment") {
+      enrollmentRequests += 1;
+      return route.fulfill({ json: { enrolled: true } });
+    }
     if (path === "/learners/me/courses/course-1") {
       return route.fulfill({ json: {
         id: "course-1",
         title: "Vector Foundations",
         description: "A reviewed adaptive mechanics course.",
+        units: [
+          { id: "unit-1", logical_id: "lecture-1", kind: "lecture", title: "Vector language", summary: "", instructions: "", video_id: "video-1", sequence_rank: 1, status: "in_progress", topic_ids: ["topic-1"], question_count: 1 },
+          { id: "unit-2", logical_id: "lecture-2", kind: "lecture", title: "Forces in motion", summary: "", instructions: "", video_id: "video-1", sequence_rank: 2, status: "not_started", topic_ids: ["topic-2"], question_count: 1 },
+        ],
         topics: [
           { id: "topic-1", title: "Vector direction", summary: "Use magnitude and direction together." },
           { id: "topic-2", title: "Net force", summary: "Combine reviewed vector ideas." },
@@ -82,6 +91,9 @@ test("learner Blueprint path explains remediation, advancement, and locked prere
 
   await page.goto("/learn/courses/course-1");
   await expect(page.getByRole("heading", { name: "Vector direction", level: 1 })).toBeVisible();
+  await expect(page.getByText("Lecture 1 of 2 · Vector language")).toBeVisible();
+  await expect(page.getByLabel("Course learning journey")).toContainText("Vector language");
+  await expect(page.getByLabel("Course learning journey")).toContainText("Forces in motion");
   await expect(page.getByLabel("Adaptive learning path")).toContainText("Step 1 of 2");
   await expect(page.getByRole("heading", { name: "Mastery map" })).toBeVisible();
   await expect(page.getByLabel("Mastery map").getByRole("button", { name: /Net force/ })).toBeDisabled();
@@ -99,6 +111,8 @@ test("learner Blueprint path explains remediation, advancement, and locked prere
   await expect(page.getByText("Correct and confident; net force is now the next eligible concept.")).toBeVisible();
   await expect(page.getByLabel("Adaptive learning path")).toContainText("Step 2 of 2");
   await expect(page.getByRole("heading", { name: "Net force", level: 1 })).toBeVisible();
+  await expect(page.getByText("Lecture 2 of 2 · Forces in motion")).toBeVisible();
+  expect(enrollmentRequests).toBe(0);
 
   const accessibility = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])

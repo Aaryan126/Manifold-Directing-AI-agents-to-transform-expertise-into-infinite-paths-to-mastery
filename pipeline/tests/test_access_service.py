@@ -9,6 +9,7 @@ from app.access.models import (
     LearnerClip,
     LearnerCourseExperience,
     LearnerCourseSummary,
+    LearnerCourseUnit,
     LearnerQuestion,
     LearnerTopic,
     PublishReadiness,
@@ -180,18 +181,52 @@ async def test_learner_workspace_requires_learner_role_and_enrolled_course() -> 
 
 def learner_experience_fixture(repository: MemoryAccessRepository) -> LearnerCourseExperience:
     topic_id = uuid4()
+    second_topic_id = uuid4()
     video_id = uuid4()
     return LearnerCourseExperience(
         id=repository.course.id,
         title="Reviewed course",
         description="A learner-safe course payload.",
-        units=(),
+        units=(
+            LearnerCourseUnit(
+                id=uuid4(),
+                logical_id=uuid4(),
+                kind="lecture",
+                title="Lecture one",
+                summary="First reviewed lecture.",
+                instructions="",
+                video_id=video_id,
+                sequence_rank=1,
+                status="in_progress",
+                topic_ids=(topic_id,),
+                question_count=1,
+            ),
+            LearnerCourseUnit(
+                id=uuid4(),
+                logical_id=uuid4(),
+                kind="lecture",
+                title="Lecture two",
+                summary="Second reviewed lecture.",
+                instructions="",
+                video_id=video_id,
+                sequence_rank=2,
+                status="not_started",
+                topic_ids=(second_topic_id,),
+                question_count=0,
+            ),
+        ),
         topics=(
             LearnerTopic(
                 id=topic_id,
                 video_id=video_id,
                 title="Topic one",
                 summary="Summary",
+            ),
+            LearnerTopic(
+                id=second_topic_id,
+                video_id=video_id,
+                title="Topic two",
+                summary="Second lecture summary",
             ),
         ),
         clips=(

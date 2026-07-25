@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  courseCompositionLabels,
   courseProgressPercent,
   nextTopicId,
   topicForDecision,
@@ -44,7 +45,7 @@ const progress: LearnerProgress[] = [
 describe("learner course routing presentation", () => {
   it("resumes at the first unfinished topic and calculates portfolio progress", () => {
     expect(nextTopicId(course, progress)).toBe("topic-2");
-    expect(courseProgressPercent({
+    const summary = {
       id: "course-1",
       title: "Course",
       description: null,
@@ -52,7 +53,16 @@ describe("learner course routing presentation", () => {
       topic_count: 2,
       concept_count: 4,
       mastered_concept_count: 3,
-    })).toBe(75);
+      lecture_count: 2,
+      quiz_count: 1,
+      assignment_count: 2,
+    };
+    expect(courseProgressPercent(summary)).toBe(75);
+    expect(courseCompositionLabels(summary)).toEqual([
+      "2 lectures",
+      "1 quiz",
+      "2 assignments",
+    ]);
   });
 
   it("follows the routing engine's reviewed clip target", () => {

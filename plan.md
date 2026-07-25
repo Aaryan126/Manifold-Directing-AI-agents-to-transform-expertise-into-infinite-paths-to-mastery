@@ -337,6 +337,7 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 - Standalone quizzes with reviewed concept-grounded questions; assignments with reviewed instructions, concept/source coverage, and learner completion but no submission/grading workflow.
 - Course Director context and typed proposals spanning both Course Flow and detailed Blueprint, using the same manual mutation services and independent `Accept / Edit / Dismiss` review.
 - Published learner course outline and progression driven by Course Flow, with lecture adaptive paths, standalone quizzes, assignments, prerequisites, and persisted unit progress.
+- One learner enrollment per published course—not per lecture—with portfolio cards that expose lecture/activity composition and a player that keeps the ordered multi-lecture Course Flow visible while routing within the active lecture.
 
 **Automated tests**
 
@@ -349,6 +350,7 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 - UI tests cover module grouping, lecture focus/Whole course, node inspectors, relationship authoring, undo, graph refresh, and non-empty topology transitions.
 - UI tests cover title-first course creation, named empty-container portfolio visibility, explicit lecture intake, contextual navigation, the settings popover, and source → meaning → target Course Flow relationships.
 - API/repository tests prove repeated use of one course-creation idempotency key returns the original course and creates no duplicate revision or conversation.
+- API and browser regressions prove one enrolled course payload can contain multiple ordered lecture units and that changing the active topic identifies the corresponding lecture without creating another enrollment.
 
 **Human test checklist**
 

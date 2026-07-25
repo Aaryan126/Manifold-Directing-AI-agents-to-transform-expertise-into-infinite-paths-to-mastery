@@ -2,11 +2,15 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, BookOpen, CheckCircle2, Clock3, LoaderCircle, Play, Sparkles } from "lucide-react";
+import { ArrowRight, BookOpen, CheckCircle2, LoaderCircle, Play, Sparkles } from "lucide-react";
 
 import { readDevelopmentSession, type DevelopmentSession } from "../developmentSession";
 import shellStyles from "../app/course-os.module.css";
-import { courseProgressPercent, type LearnerCourseSummary } from "./learner-course";
+import {
+  courseCompositionLabels,
+  courseProgressPercent,
+  type LearnerCourseSummary,
+} from "./learner-course";
 import { LearnerSidebar } from "./learner-sidebar";
 import styles from "./learner.module.css";
 
@@ -110,15 +114,22 @@ export function LearnerDashboard() {
 
 function LearnerCourseCard({ course, loading, onOpen }: { course: LearnerCourseSummary; loading: boolean; onOpen: () => void }) {
   const progress = courseProgressPercent(course);
+  const composition = courseCompositionLabels(course);
   return <article className={styles.courseCard}>
-    <div className={styles.courseCover}><span>{course.topic_count} topics</span><BookOpen /></div>
+    <div className={styles.courseCover}><span>{composition[0]}</span><BookOpen /></div>
     <div className={styles.courseBody}>
       <h3>{course.title}</h3>
       <p>{course.description || "A reviewed adaptive course from your instructor."}</p>
-      {course.enrolled ? <div className={styles.progress}><span><i style={{ width: `${progress}%` }} /></span><small>{progress}% mastered</small></div> : <div className={styles.courseMeta}><Clock3 /><span>{course.concept_count} concepts</span></div>}
+      <div className={styles.courseComposition}>
+        {composition.map((label, index) => <span key={label}>
+          {index ? <i aria-hidden="true" /> : null}
+          {label}
+        </span>)}
+      </div>
+      {course.enrolled ? <div className={styles.progress}><span><i style={{ width: `${progress}%` }} /></span><small>{progress}% of course concepts mastered</small></div> : null}
       <button disabled={loading} onClick={onOpen} type="button">
         {loading ? <LoaderCircle className={styles.spin} /> : <Play />}
-        <span>{course.enrolled ? "Continue course" : "Enroll and start"}</span><ArrowRight />
+        <span>{course.enrolled ? "Continue course" : "Enroll in course"}</span><ArrowRight />
       </button>
     </div>
   </article>;

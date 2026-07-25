@@ -30,6 +30,9 @@ class LearnerCourseSummary:
     topic_count: int
     concept_count: int
     mastered_concept_count: int
+    lecture_count: int = 0
+    quiz_count: int = 0
+    assignment_count: int = 0
 
 
 @dataclass(frozen=True)

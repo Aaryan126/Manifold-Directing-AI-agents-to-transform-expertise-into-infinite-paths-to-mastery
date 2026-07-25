@@ -64,11 +64,15 @@ class PostgresAccessRepository(AccessRepository):
                            (enrollment.id is not null) as enrolled,
                            (select count(*) from topics topic
                             where topic.course_id = course.id
-                              and topic.revision_id = course.active_revision_id
+                              and topic.revision_id = coalesce(
+                                enrollment.revision_id, course.active_revision_id
+                              )
                               and topic.review_status in ('accepted', 'edited')) as topic_count,
                            (select count(*) from concepts concept
                             where concept.course_id = course.id
-                              and concept.revision_id = course.active_revision_id
+                              and concept.revision_id = coalesce(
+                                enrollment.revision_id, course.active_revision_id
+                              )
                               and concept.review_status in ('accepted', 'edited')) as concept_count,
                            (select count(*) from learner_concept_mastery mastery
                             join concepts concept on concept.id = mastery.concept_id
@@ -77,7 +81,31 @@ class PostgresAccessRepository(AccessRepository):
                               and concept.revision_id = coalesce(
                                 enrollment.revision_id, course.active_revision_id
                               )
-                              and mastery.state = 'mastered') as mastered_concept_count
+                              and mastery.state = 'mastered') as mastered_concept_count,
+                           (select count(*) from course_units unit
+                            where unit.course_id = course.id
+                              and unit.revision_id = coalesce(
+                                enrollment.revision_id, course.active_revision_id
+                              )
+                              and unit.kind = 'lecture'
+                              and unit.review_status in ('accepted', 'edited'))
+                              as lecture_count,
+                           (select count(*) from course_units unit
+                            where unit.course_id = course.id
+                              and unit.revision_id = coalesce(
+                                enrollment.revision_id, course.active_revision_id
+                              )
+                              and unit.kind = 'quiz'
+                              and unit.review_status in ('accepted', 'edited'))
+                              as quiz_count,
+                           (select count(*) from course_units unit
+                            where unit.course_id = course.id
+                              and unit.revision_id = coalesce(
+                                enrollment.revision_id, course.active_revision_id
+                              )
+                              and unit.kind = 'assignment'
+                              and unit.review_status in ('accepted', 'edited'))
+                              as assignment_count
                     from courses course
                     left join enrollments enrollment
                       on enrollment.course_id = course.id
@@ -98,6 +126,9 @@ class PostgresAccessRepository(AccessRepository):
                     topic_count=int(row["topic_count"]),
                     concept_count=int(row["concept_count"]),
                     mastered_concept_count=int(row["mastered_concept_count"]),
+                    lecture_count=int(row["lecture_count"]),
+                    quiz_count=int(row["quiz_count"]),
+                    assignment_count=int(row["assignment_count"]),
                 )
                 for row in rows
             )

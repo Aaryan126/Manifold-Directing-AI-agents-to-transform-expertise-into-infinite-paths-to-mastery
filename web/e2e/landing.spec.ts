@@ -58,6 +58,9 @@ test("student credentials open Brian's dedicated learner Course OS", async ({ pa
       topic_count: 6,
       concept_count: 14,
       mastered_concept_count: 2,
+      lecture_count: 2,
+      quiz_count: 1,
+      assignment_count: 0,
     }] });
   });
 
@@ -73,6 +76,11 @@ test("student credentials open Brian's dedicated learner Course OS", async ({ pa
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Continue learning" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Learn Anything in 20 Hours" })).toBeVisible();
+  const courseCard = page.getByRole("heading", { name: "Learn Anything in 20 Hours" })
+    .locator("..").locator("..");
+  await expect(courseCard).toContainText("2 lectures");
+  await expect(courseCard).toContainText("1 quiz");
+  await expect(courseCard.getByRole("button", { name: /Continue course/ })).toBeVisible();
 });
 
 test("public landing page is responsive and WCAG 2.2 AA clean", async ({ page }) => {

@@ -6,6 +6,9 @@ export type LearnerCourseSummary = {
   topic_count: number;
   concept_count: number;
   mastered_concept_count: number;
+  lecture_count: number;
+  quiz_count: number;
+  assignment_count: number;
 };
 
 export type LearnerTopic = {
@@ -124,6 +127,15 @@ export function courseProgressPercent(course: LearnerCourseSummary) {
   return Math.round((course.mastered_concept_count / course.concept_count) * 100);
 }
 
+export function courseCompositionLabels(course: LearnerCourseSummary) {
+  const lectures = course.lecture_count ?? (course.topic_count ? 1 : 0);
+  const labels = [countLabel(lectures, "lecture")];
+  if (course.quiz_count) labels.push(countLabel(course.quiz_count, "quiz"));
+  if (course.assignment_count) labels.push(countLabel(course.assignment_count, "assignment"));
+  if (labels.length === 1) labels.push(countLabel(course.concept_count, "concept"));
+  return labels;
+}
+
 export function nextTopicId(
   experience: LearnerCourseExperience,
   progress: LearnerProgress[],
@@ -153,4 +165,8 @@ export function topicForDecision(
     return experience.topics[currentIndex + 1]?.id ?? currentTopicId;
   }
   return currentTopicId;
+}
+
+function countLabel(count: number, noun: string) {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }

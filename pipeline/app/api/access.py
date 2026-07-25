@@ -34,6 +34,9 @@ class LearnerCourseSummaryResponse(BaseModel):
     topic_count: int
     concept_count: int
     mastered_concept_count: int
+    lecture_count: int
+    quiz_count: int
+    assignment_count: int
 
 
 class LearnerTopicResponse(BaseModel):
@@ -179,6 +182,9 @@ async def learner_courses(
             topic_count=course.topic_count,
             concept_count=course.concept_count,
             mastered_concept_count=course.mastered_concept_count,
+            lecture_count=course.lecture_count,
+            quiz_count=course.quiz_count,
+            assignment_count=course.assignment_count,
         )
         for course in courses
     ]
