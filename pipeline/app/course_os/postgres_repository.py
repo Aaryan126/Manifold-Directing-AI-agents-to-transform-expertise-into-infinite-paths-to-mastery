@@ -2100,7 +2100,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
             revision_id=revision_id,
             revision_kind=revision_kind,
             nodes=tuple(nodes),
-            edges=tuple(edges),
+            edges=tuple(_visible_blueprint_edges(nodes, edges)),
             uncovered_concept_ids=uncovered,
         )
 
@@ -6025,6 +6025,20 @@ async def _apply_typed_proposal(
 
 def _json_dict(value: object) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
+
+
+def _visible_blueprint_edges(
+    nodes: list[BlueprintNode],
+    edges: list[BlueprintEdge],
+) -> list[BlueprintEdge]:
+    """Keep the Blueprint response internally consistent after reviewed removals."""
+
+    visible_node_ids = {node.id for node in nodes}
+    return [
+        edge
+        for edge in edges
+        if edge.source_id in visible_node_ids and edge.target_id in visible_node_ids
+    ]
 
 
 def _percentage(numerator: object, denominator: object) -> float | None:

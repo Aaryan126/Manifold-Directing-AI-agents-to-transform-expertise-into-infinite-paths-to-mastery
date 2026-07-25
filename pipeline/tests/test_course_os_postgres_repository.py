@@ -8,11 +8,53 @@ from uuid import UUID, uuid4
 import pytest
 
 import app.course_os.postgres_repository as repository_module
+from app.course_os.models import BlueprintEdge, BlueprintNode
 from app.course_os.postgres_repository import (
     PostgresCourseOSRepository,
     _message,
     _publication_blockers,
+    _visible_blueprint_edges,
 )
+
+
+def test_visible_blueprint_edges_remove_orphaned_relationships() -> None:
+    visible = BlueprintNode(
+        id=uuid4(),
+        logical_id=uuid4(),
+        kind="concept",
+        title="Visible concept",
+        status="accepted",
+        parent_id=None,
+        metadata={},
+    )
+    second_visible = BlueprintNode(
+        id=uuid4(),
+        logical_id=uuid4(),
+        kind="concept",
+        title="Second visible concept",
+        status="accepted",
+        parent_id=None,
+        metadata={},
+    )
+    orphaned = BlueprintEdge(
+        id=f"assesses:{uuid4()}",
+        source_id=visible.id,
+        target_id=uuid4(),
+        kind="assesses",
+        status="accepted",
+    )
+    complete = BlueprintEdge(
+        id=f"requires:{uuid4()}",
+        source_id=visible.id,
+        target_id=second_visible.id,
+        kind="requires",
+        status="accepted",
+    )
+
+    assert _visible_blueprint_edges(
+        [visible, second_visible],
+        [orphaned, complete],
+    ) == [complete]
 
 
 class _Cursor:

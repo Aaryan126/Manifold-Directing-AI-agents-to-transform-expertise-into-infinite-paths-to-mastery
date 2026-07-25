@@ -730,14 +730,14 @@
 .workspaceStage { flex: 1; min-height: 0; position: relative; }
 .workspaceStage > .canvasPanel { height: 100%; width: 100%; }
 .directorDock { background: #fff; box-shadow: -18px 0 50px rgb(31 31 35 / 14%); inset: 56px 0 0 auto; max-width: 460px; position: absolute; width: min(42vw, 460px); z-index: 15; }
-.directorDockClose { align-items: center; background: #fff; border: 1px solid #dcd8d0; border-radius: 8px; color: #5e5c63; cursor: pointer; display: flex; height: 34px; justify-content: center; position: absolute; right: 16px; top: 16px; width: 34px; z-index: 18; }
+.directorDockClose { align-items: center; background: #fff; border: 1px solid #dcd8d0; border-radius: 8px; color: #5e5c63; cursor: pointer; display: flex; height: 34px; justify-content: center; position: absolute; right: 16px; top: 22px; width: 34px; z-index: 18; }
 .directorDockClose:hover { background: #f1efe9; color: #202126; }
 .directorDockClose svg { height: 17px; width: 17px; }
 .dockedConversation { border-right: 0; height: 100%; width: 100%; }
 .directorLauncher { align-items: center; background: #24252a; border: 1px solid #24252a; border-radius: 999px; bottom: 24px; box-shadow: 0 12px 32px rgb(31 31 35 / 18%); color: #fff; cursor: pointer; display: flex; font: inherit; font-size: 13px; font-weight: 650; gap: 9px; min-height: 48px; padding: 0 17px; position: absolute; right: 24px; z-index: 12; }
 .directorLauncher:hover,.directorLauncher[aria-expanded="true"] { background: #393a40; }
 .directorLauncher svg { height: 19px; width: 19px; }
-.panelHeader { align-items: center; border-bottom: 1px solid #eeece7; display: flex; flex: none; height: 66px; justify-content: space-between; padding: 0 20px; }
+.panelHeader { align-items: center; border-bottom: 1px solid #eeece7; display: flex; flex: none; height: 78px; justify-content: space-between; padding: 0 20px; }
 .directorIdentity,.panelHeaderActions { align-items: center; display: flex; gap: 10px; }
 .directorIdentity > svg { color: #292a30; height: 19px; width: 19px; }
 .directorIdentity span { display: grid; }

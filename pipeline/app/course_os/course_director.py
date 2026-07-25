@@ -134,9 +134,14 @@ class OpenAICourseDirector:
                         "Blueprint. "
                         "Never imply learner-facing changes are already made: every action becomes "
                         "an independent Accept/Edit/Dismiss proposal. Use exact logical IDs. "
-                        "Supported updates: topic title/summary/start_seconds/end_seconds; concept "
-                        "name/description; clip type/difficulty/start_seconds/end_seconds; "
-                        "question body/type/correct_answer/confidence_prompt. Supported "
+                        "Supported operations include update_artifact and remove_artifact for any "
+                        "supplied topic, concept, clip, question, or source; create_topic, "
+                        "create_concept, create_question; and the relationship operations below. "
+                        "When an instructor asks to remove or delete one exact named artifact, use "
+                        "remove_artifact with its exact artifact_kind and logical_artifact_id. "
+                        "Editable fields are topic title/summary/start_seconds/end_seconds; "
+                        "concept name/description; clip type/difficulty/start_seconds/end_seconds; "
+                        "and question body/type/correct_answer/confidence_prompt. Supported "
                         "relationship "
                         "semantics are contains(topic→concept), requires(concept→concept), "
                         "teaches(concept→clip), assesses(concept→question), "
@@ -157,44 +162,7 @@ class OpenAICourseDirector:
                 },
                 {
                     "role": "user",
-                    "content": json.dumps(
-                        {
-                            "instruction": instruction,
-                            "revision_id": str(blueprint.revision_id),
-                            "nodes": [
-                                {
-                                    "logical_id": str(node.logical_id),
-                                    "kind": node.kind,
-                                    "title": node.title,
-                                    "status": node.status,
-                                    "metadata": node.metadata,
-                                }
-                                for node in blueprint.nodes
-                            ],
-                            "relationships": [
-                                {
-                                    "kind": edge.kind,
-                                    "source_logical_id": str(
-                                        next(
-                                            node.logical_id
-                                            for node in blueprint.nodes
-                                            if node.id == edge.source_id
-                                        )
-                                    ),
-                                    "target_logical_id": str(
-                                        next(
-                                            node.logical_id
-                                            for node in blueprint.nodes
-                                            if node.id == edge.target_id
-                                        )
-                                    ),
-                                    "status": edge.status,
-                                }
-                                for edge in blueprint.edges
-                                if edge.kind != "next"
-                            ],
-                        }
-                    ),
+                    "content": json.dumps(_blueprint_context(instruction, blueprint)),
                 },
             ],
             text_format=_DirectorPlanOutput,
@@ -203,6 +171,45 @@ class OpenAICourseDirector:
         if parsed is None:
             raise RuntimeError("Course Director did not return a valid edit plan.")
         return _validated_plan(parsed, blueprint)
+
+
+def _blueprint_context(instruction: str, blueprint: CourseBlueprint) -> dict[str, Any]:
+    """Build model context without allowing legacy orphaned edges to crash a request."""
+
+    logical_ids_by_node_id = {node.id: node.logical_id for node in blueprint.nodes}
+    relationships = []
+    for edge in blueprint.edges:
+        source_logical_id = logical_ids_by_node_id.get(edge.source_id)
+        target_logical_id = logical_ids_by_node_id.get(edge.target_id)
+        if (
+            edge.kind == "next"
+            or source_logical_id is None
+            or target_logical_id is None
+        ):
+            continue
+        relationships.append(
+            {
+                "kind": edge.kind,
+                "source_logical_id": str(source_logical_id),
+                "target_logical_id": str(target_logical_id),
+                "status": edge.status,
+            }
+        )
+    return {
+        "instruction": instruction,
+        "revision_id": str(blueprint.revision_id),
+        "nodes": [
+            {
+                "logical_id": str(node.logical_id),
+                "kind": node.kind,
+                "title": node.title,
+                "status": node.status,
+                "metadata": node.metadata,
+            }
+            for node in blueprint.nodes
+        ],
+        "relationships": relationships,
+    }
 
 
 class LocalCourseDirector:

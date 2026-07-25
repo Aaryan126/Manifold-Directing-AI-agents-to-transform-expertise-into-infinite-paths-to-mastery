@@ -668,6 +668,18 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await page.getByRole("button", { name: "Open Course Director" }).click();
   await expect(page.getByText("Your complete private draft is ready for review.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Close Course Director" })).toBeVisible();
+  const directorTitle = page.locator("#conversation-title");
+  const directorHeaderBounds = await directorTitle.locator("xpath=../../..").boundingBox();
+  const directorIdentityBounds = await directorTitle.locator("..").boundingBox();
+  expect(directorHeaderBounds).not.toBeNull();
+  expect(directorIdentityBounds).not.toBeNull();
+  const directorHeaderTopGap = directorIdentityBounds!.y - directorHeaderBounds!.y;
+  const directorHeaderBottomGap = directorHeaderBounds!.y
+    + directorHeaderBounds!.height
+    - directorIdentityBounds!.y
+    - directorIdentityBounds!.height;
+  expect(Math.abs(directorHeaderTopGap - directorHeaderBottomGap)).toBeLessThanOrEqual(1);
+  expect(directorHeaderTopGap).toBeGreaterThanOrEqual(16);
   await page.getByRole("button", { name: "Close Course Director" }).click();
   await expect(page.getByText("Your complete private draft is ready for review.")).toHaveCount(0);
 });
