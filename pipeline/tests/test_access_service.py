@@ -185,7 +185,15 @@ def learner_experience_fixture(repository: MemoryAccessRepository) -> LearnerCou
         id=repository.course.id,
         title="Reviewed course",
         description="A learner-safe course payload.",
-        topics=(LearnerTopic(id=topic_id, title="Topic one", summary="Summary"),),
+        units=(),
+        topics=(
+            LearnerTopic(
+                id=topic_id,
+                video_id=video_id,
+                title="Topic one",
+                summary="Summary",
+            ),
+        ),
         clips=(
             LearnerClip(
                 id=uuid4(),

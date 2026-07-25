@@ -12,9 +12,10 @@ const course: LearnerCourseExperience = {
   id: "course-1",
   title: "Course",
   description: null,
+  units: [],
   topics: [
-    { id: "topic-1", title: "One", summary: null },
-    { id: "topic-2", title: "Two", summary: null },
+    { id: "topic-1", video_id: "video-1", title: "One", summary: null },
+    { id: "topic-2", video_id: "video-1", title: "Two", summary: null },
   ],
   clips: [{
     id: "clip-2",

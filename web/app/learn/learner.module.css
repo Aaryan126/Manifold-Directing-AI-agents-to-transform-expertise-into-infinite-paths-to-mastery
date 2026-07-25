@@ -147,6 +147,18 @@
 .topicDisclosure summary::-webkit-details-marker { display: none; }
 .topicDisclosure summary svg { height: 13px; transition: transform 150ms ease; width: 13px; }
 .topicDisclosure[open] summary svg { transform: rotate(180deg); }
+.courseJourney { border-bottom: 1px solid #dedbd3; display: grid; gap: 4px; padding: 10px !important; }
+.courseJourney button { border-radius: 10px !important; grid-template-columns: 32px minmax(0, 1fr) !important; padding: 10px !important; }
+.courseJourney button[aria-current="step"] { background: #fff; border-color: #d7d3ca; box-shadow: 0 4px 14px rgb(38 39 44 / 6%); }
+.courseJourney button > span:first-child { border-radius: 9px !important; height: 32px !important; }
+.courseJourney button > span:first-child[data-kind="lecture"] { background: #e8e5de; color: #25262b; }
+.courseJourney button > span:first-child[data-kind="quiz"] { background: #ffead8; color: #a85318; }
+.courseJourney button > span:first-child[data-kind="assignment"] { background: #dfead9; color: #426d3b; }
+.courseJourney button > span:first-child svg { height: 15px; width: 15px; }
+.courseJourney button strong { font-size: 11px; }
+.courseJourney button small { font-size: 8px; }
+.masteryHeading { display: grid; gap: 3px; padding: 14px 18px 5px; }
+.masteryHeading strong { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 16px; font-weight: 520; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 1050px) { .courseGrid { grid-template-columns: repeat(2, 1fr); } .courseLayout { grid-template-columns: minmax(0, 1fr) 270px; } }

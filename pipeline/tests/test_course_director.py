@@ -10,7 +10,13 @@ from app.course_os.course_director import (
     _DirectorPlanOutput,
     _validated_plan,
 )
-from app.course_os.models import BlueprintEdge, BlueprintNode, CourseBlueprint
+from app.course_os.models import (
+    BlueprintEdge,
+    BlueprintNode,
+    CourseBlueprint,
+    CourseFlow,
+    CourseFlowUnit,
+)
 
 
 def _blueprint() -> CourseBlueprint:
@@ -40,6 +46,40 @@ def test_openai_director_plan_uses_closed_nested_structured_output_models() -> N
     assert schema["$defs"]["_DirectorActionOutput"]["additionalProperties"] is False
     assert schema["$defs"]["_DirectorProposedStateOutput"]["additionalProperties"] is False
     assert schema["$defs"]["_DirectorCorrectAnswerOutput"]["additionalProperties"] is False
+
+
+@pytest.mark.anyio
+async def test_local_director_scopes_course_unit_removal_to_course_flow() -> None:
+    blueprint = _blueprint()
+    unit = CourseFlowUnit(
+        id=uuid4(),
+        logical_id=uuid4(),
+        module_logical_id=None,
+        kind="quiz",
+        title="Foundations checkpoint",
+        summary="",
+        instructions="",
+        video_id=None,
+        sequence_rank=1,
+        status="accepted",
+    )
+    flow = CourseFlow(
+        course_id=blueprint.course_id,
+        revision_id=blueprint.revision_id,
+        revision_kind="working",
+        modules=(),
+        units=(unit,),
+        edges=(),
+    )
+
+    plan = await LocalCourseDirector().plan(
+        "Remove the Foundations checkpoint quiz",
+        blueprint,
+        course_flow=flow,
+    )
+
+    assert plan.actions[0].operation == "remove_course_unit"
+    assert plan.actions[0].logical_artifact_id == unit.logical_id
 
 
 def test_director_context_omits_relationships_with_a_missing_endpoint() -> None:

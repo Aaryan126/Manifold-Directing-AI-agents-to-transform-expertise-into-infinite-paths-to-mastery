@@ -43,6 +43,7 @@ import {
   FileText,
   FilePenLine,
   FileVideo,
+  GraduationCap,
   GitFork,
   LoaderCircle,
   MessageCircleMore,
@@ -99,6 +100,10 @@ import {
   type BlueprintMutationImpact,
   type BlueprintNode,
   type CourseBlueprint,
+  type CourseFlow,
+  type CourseFlowEdge,
+  type CourseFlowUnit,
+  type CourseFlowUnitKind,
   type CoursePriority,
   type CourseSource,
   type CourseSummary,
@@ -119,7 +124,7 @@ import { ProviderVideo, type PlaybackInfo } from "../../../ProviderVideo";
 import { readDevelopmentSession } from "../../../developmentSession";
 
 const pipelineBase = process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localhost:8000";
-type CanvasView = "blueprint" | "review" | "assessments" | "preview" | "settings";
+type CanvasView = "flow" | "blueprint" | "review" | "assessments" | "preview" | "settings";
 type BlueprintMode = "live" | "design";
 type Decision = "accepted" | "edited" | "dismissed";
 type EditableBlueprintRelationship = Exclude<BlueprintEdgeKind, "next">;
@@ -150,6 +155,19 @@ type AssessmentDraftPayload = {
   confidence_prompt: string;
   remediation_rules: Omit<AssessmentRule, "id">[];
 };
+type CourseFlowDraftPayload = {
+  kind: CourseFlowUnitKind;
+  title: string;
+  summary: string;
+  instructions: string;
+  module_logical_id: string | null;
+  concept_logical_ids: string[];
+};
+type CourseFlowEdgeDraft = {
+  relationship: CourseFlowEdge["relationship"];
+  source_unit_logical_id: string;
+  target_unit_logical_id: string;
+};
 
 const InsightsCharts = dynamic(
   () => import("@/components/insights-charts").then((module) => module.InsightsCharts),
@@ -169,6 +187,9 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   const [run, setRun] = useState<GenerationRun | null>(null);
   const [activeBlueprint, setActiveBlueprint] = useState<CourseBlueprint | null>(null);
   const [workingBlueprint, setWorkingBlueprint] = useState<CourseBlueprint | null>(null);
+  const [activeCourseFlow, setActiveCourseFlow] = useState<CourseFlow | null>(null);
+  const [workingCourseFlow, setWorkingCourseFlow] = useState<CourseFlow | null>(null);
+  const [lectureFocusVideoId, setLectureFocusVideoId] = useState<string | null>(null);
   const [blueprintEvidence, setBlueprintEvidence] = useState<BlueprintConceptEvidence[]>([]);
   const [bundles, setBundles] = useState<ReviewBundle[]>([]);
   const [revisionDiff, setRevisionDiff] = useState<RevisionDiff | null>(null);
@@ -177,7 +198,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary | null>(null);
   const [sources, setSources] = useState<CourseSource[]>([]);
   const [agentTasks, setAgentTasks] = useState<CourseAgentTask[]>([]);
-  const [canvasView, setCanvasView] = useState<CanvasView>("blueprint");
+  const [canvasView, setCanvasView] = useState<CanvasView>("flow");
   const [blueprintMode, setBlueprintMode] = useState<BlueprintMode>("live");
   const [composer, setComposer] = useState("");
   const [sending, setSending] = useState(false);
@@ -282,6 +303,21 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     setBlueprintEvidence(evidenceResult);
   }, [courseId, request]);
 
+  const refreshCourseFlow = useCallback(async (
+    user: DevelopmentIdentity,
+    summary: CourseSummary,
+  ) => {
+    const active = summary.active_revision_id
+      ? request<CourseFlow>(`/courses/${courseId}/course-flow?revision=active`, user)
+      : Promise.resolve(null);
+    const working = summary.working_revision_id
+      ? request<CourseFlow>(`/courses/${courseId}/course-flow?revision=working`, user)
+      : Promise.resolve(null);
+    const [activeResult, workingResult] = await Promise.all([active, working]);
+    setActiveCourseFlow(activeResult);
+    setWorkingCourseFlow(workingResult);
+  }, [courseId, request]);
+
   const refreshRevisionDiff = useCallback(async (
     user: DevelopmentIdentity,
     summary: CourseSummary,
@@ -328,7 +364,10 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       }
       await refreshArtifacts(user);
       if (courseResult.active_revision_id || courseResult.working_revision_id) {
-        await refreshBlueprint(user, courseResult);
+        await Promise.all([
+          refreshBlueprint(user, courseResult),
+          refreshCourseFlow(user, courseResult),
+        ]);
       }
       await refreshRevisionDiff(user, courseResult);
       if (courseResult.active_revision_id || courseResult.working_revision_id) {
@@ -339,9 +378,9 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       }
       if (courseResult.status === "published") {
         setCanvasView(
-          requestedCanvasView && ["blueprint", "assessments", "preview", "settings"].includes(requestedCanvasView)
+          requestedCanvasView && ["flow", "blueprint", "assessments", "preview", "settings"].includes(requestedCanvasView)
             ? requestedCanvasView as CanvasView
-            : "blueprint",
+            : "flow",
         );
       }
       else if (courseResult.pending_review_count > 0) setCanvasView("review");
@@ -350,7 +389,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [courseId, refreshArtifacts, refreshBlueprint, refreshIntelligence, refreshStructuredWorkspace, refreshRevisionDiff, request, requestedCanvasView, router]);
+  }, [courseId, refreshArtifacts, refreshBlueprint, refreshCourseFlow, refreshIntelligence, refreshStructuredWorkspace, refreshRevisionDiff, request, requestedCanvasView, router]);
 
   useEffect(() => {
     void loadStudio();
@@ -367,6 +406,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
             setCourse(nextCourse);
             await refreshArtifacts(identity);
             await refreshStructuredWorkspace(identity, false);
+            await refreshCourseFlow(identity, nextCourse);
             await refreshRevisionDiff(identity, nextCourse);
             setCanvasView("review");
           }
@@ -374,7 +414,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not refresh generation."));
     }, 2200);
     return () => window.clearInterval(interval);
-  }, [courseId, identity, refreshArtifacts, refreshStructuredWorkspace, refreshRevisionDiff, request, run]);
+  }, [courseId, identity, refreshArtifacts, refreshCourseFlow, refreshStructuredWorkspace, refreshRevisionDiff, request, run]);
 
   useEffect(() => {
     if (!identity || !agentTasks.some((task) => ["queued", "running"].includes(task.status))) return;
@@ -409,6 +449,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       await refreshArtifacts(identity);
       await Promise.all([
         refreshBlueprint(identity, nextCourse),
+        refreshCourseFlow(identity, nextCourse),
         refreshRevisionDiff(identity, nextCourse),
         refreshStructuredWorkspace(identity, nextCourse.status === "published"),
       ]);
@@ -479,6 +520,201 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     setCourse(await request<CourseSummary>(`/courses/${courseId}/studio`, identity));
   }
 
+  async function saveCourseFlowUnit(
+    draft: CourseFlowDraftPayload,
+    unit?: CourseFlowUnit,
+  ) {
+    if (!identity) return;
+    setSending(true);
+    setError(null);
+    try {
+      const next = await request<CourseFlow>(
+        unit
+          ? `/courses/${courseId}/course-flow/units/${unit.logical_id}`
+          : `/courses/${courseId}/course-flow/units`,
+        identity,
+        {
+          method: unit ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...draft,
+            module_logical_id: draft.module_logical_id,
+          }),
+        },
+      );
+      setWorkingCourseFlow(next);
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
+      setBlueprintMode("design");
+      await Promise.all([
+        refreshBlueprint(identity, nextCourse),
+        refreshStructuredWorkspace(identity),
+        refreshRevisionDiff(identity, nextCourse),
+      ]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not save the course unit.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function createCourseFlowModule(title: string, summary: string) {
+    if (!identity) return;
+    setSending(true);
+    setError(null);
+    try {
+      setWorkingCourseFlow(await request<CourseFlow>(
+        `/courses/${courseId}/course-flow/modules`,
+        identity,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title, summary }),
+        },
+      ));
+      setBlueprintMode("design");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not add this module.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function saveCourseFlowPosition(
+    logicalArtifactId: string,
+    x: number,
+    y: number,
+    previous?: { x: number; y: number },
+    rememberUndo = true,
+  ) {
+    if (!identity) return;
+    setError(null);
+    try {
+      setWorkingCourseFlow(await request<CourseFlow>(
+        `/courses/${courseId}/course-flow/layout/${logicalArtifactId}`,
+        identity,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ x, y }),
+        },
+      ));
+      setBlueprintMode("design");
+      if (rememberUndo && previous && (previous.x !== x || previous.y !== y)) {
+        rememberBlueprintUndo("Move course unit", async () => {
+          await saveCourseFlowPosition(
+            logicalArtifactId,
+            previous.x,
+            previous.y,
+            { x, y },
+            false,
+          );
+        });
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not save the Course Flow layout.");
+      throw caught;
+    }
+  }
+
+  async function removeCourseFlowUnit(unit: CourseFlowUnit) {
+    if (!identity) return;
+    setSending(true);
+    setError(null);
+    try {
+      setWorkingCourseFlow(await request<CourseFlow>(
+        `/courses/${courseId}/course-flow/units/${unit.logical_id}`,
+        identity,
+        { method: "DELETE" },
+      ));
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
+      setBlueprintMode("design");
+      await Promise.all([
+        refreshBlueprint(identity, nextCourse),
+        refreshStructuredWorkspace(identity),
+        refreshRevisionDiff(identity, nextCourse),
+      ]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not remove the course unit.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function reviewCourseFlowArtifact(
+    artifactKind: "unit" | "relationship",
+    logicalArtifactId: string,
+    decision: "accepted" | "edited" | "dismissed",
+  ) {
+    if (!identity) return;
+    setSending(true);
+    setError(null);
+    try {
+      setWorkingCourseFlow(await request<CourseFlow>(
+        `/courses/${courseId}/course-flow/review`,
+        identity,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            artifact_kind: artifactKind,
+            logical_artifact_id: logicalArtifactId,
+            decision,
+          }),
+        },
+      ));
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
+      await refreshRevisionDiff(identity, nextCourse);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not review this Course Flow proposal.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function mutateCourseFlowEdge(
+    draft: CourseFlowEdgeDraft,
+    action: "create" | "delete",
+    rememberUndo = true,
+  ) {
+    if (!identity) return;
+    setSending(true);
+    setError(null);
+    try {
+      setWorkingCourseFlow(await request<CourseFlow>(
+        `/courses/${courseId}/course-flow/relationships`,
+        identity,
+        {
+          method: action === "create" ? "POST" : "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(draft),
+        },
+      ));
+      setBlueprintMode("design");
+      const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
+      setCourse(nextCourse);
+      await refreshRevisionDiff(identity, nextCourse);
+      if (rememberUndo) {
+        rememberBlueprintUndo(
+          `${action === "create" ? "Add" : "Remove"} course relationship`,
+          async () => {
+            await mutateCourseFlowEdge(
+              draft,
+              action === "create" ? "delete" : "create",
+              false,
+            );
+          },
+        );
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not change this Course Flow relationship.");
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function resolveProposal(
     proposalId: string,
     decision: Decision,
@@ -514,6 +750,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         setBlueprintMode("design");
         await Promise.all([
           refreshBlueprint(identity, nextCourse),
+          refreshCourseFlow(identity, nextCourse),
           refreshRevisionDiff(identity, nextCourse),
           refreshStructuredWorkspace(identity, nextCourse.status === "published"),
         ]);
@@ -551,7 +788,8 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       await refreshArtifacts(identity);
       await refreshStructuredWorkspace(identity);
       await refreshBlueprint(identity, nextCourse);
-      setCanvasView("blueprint");
+      await refreshCourseFlow(identity, nextCourse);
+      setCanvasView("flow");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not publish this revision.");
     } finally {
@@ -601,6 +839,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       refreshArtifacts(identity),
       refreshStructuredWorkspace(identity),
       refreshBlueprint(identity, nextCourse),
+      refreshCourseFlow(identity, nextCourse),
       refreshRevisionDiff(identity, nextCourse),
     ]);
   }
@@ -1285,6 +1524,15 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     )
   );
 
+  const focusedActiveBlueprint = useMemo(
+    () => filterBlueprintForLecture(activeBlueprint, lectureFocusVideoId),
+    [activeBlueprint, lectureFocusVideoId],
+  );
+  const focusedWorkingBlueprint = useMemo(
+    () => filterBlueprintForLecture(workingBlueprint, lectureFocusVideoId),
+    [workingBlueprint, lectureFocusVideoId],
+  );
+
   const courseDirector = (
     <section
       className={`${styles.conversationPanel} ${focusedCreation ? styles.creationConversation : styles.dockedConversation}`}
@@ -1382,7 +1630,11 @@ export function CourseStudio({ courseId }: { courseId: string }) {
           </div>
           {!focusedCreation ? (
             <nav className={styles.studioViewTabs} aria-label="Course views">
-              <CanvasTab active={canvasView === "blueprint"} icon={<Network />} label="Blueprint" onClick={() => setCanvasView("blueprint")} />
+              <CanvasTab active={canvasView === "flow"} icon={<GraduationCap />} label="Course Flow" onClick={() => setCanvasView("flow")} />
+              <CanvasTab active={canvasView === "blueprint"} icon={<Network />} label="Blueprint" onClick={() => {
+                setLectureFocusVideoId(null);
+                setCanvasView("blueprint");
+              }} />
               {course?.status !== "published" ? <CanvasTab active={canvasView === "review"} badge={course?.pending_review_count || undefined} icon={<ClipboardCheck />} label="Review" onClick={() => setCanvasView("review")} /> : null}
               {course?.status === "published" ? <CanvasTab active={canvasView === "assessments"} icon={<Check />} label="Assessments" onClick={() => setCanvasView("assessments")} /> : null}
               <CanvasTab active={canvasView === "preview"} icon={<Eye />} label="Preview" onClick={() => setCanvasView("preview")} />
@@ -1418,9 +1670,37 @@ export function CourseStudio({ courseId }: { courseId: string }) {
             <div className={styles.workspaceStage}>
               <section className={styles.canvasPanel} aria-label="Course workspace canvas">
               <div className={styles.canvasBody}>
+                {canvasView === "flow" ? (
+                  <CourseFlowWorkspace
+                    activeFlow={activeCourseFlow}
+                    concepts={(workingBlueprint ?? activeBlueprint)?.nodes.filter((node) => node.kind === "concept") ?? []}
+                    disabled={sending}
+                    mode={blueprintMode}
+                    onAddLecture={() => fileInput.current?.click()}
+                    onAddModule={(title, summary) => void createCourseFlowModule(title, summary)}
+                    onModeChange={setBlueprintMode}
+                    onOpenLecture={(unit) => {
+                      setLectureFocusVideoId(unit.video_id);
+                      setCanvasView("blueprint");
+                    }}
+                    onOpenWholeCourse={() => {
+                      setLectureFocusVideoId(null);
+                      setCanvasView("blueprint");
+                    }}
+                    onLayout={saveCourseFlowPosition}
+                    onRelationship={mutateCourseFlowEdge}
+                    onRemove={(unit) => void removeCourseFlowUnit(unit)}
+                    onReview={reviewCourseFlowArtifact}
+                    onSave={(draft, unit) => void saveCourseFlowUnit(draft, unit)}
+                    onUndo={undoBlueprintChange}
+                    undoLabel={latestBlueprintUndo?.label ?? null}
+                    undoing={blueprintUndoing}
+                    workingFlow={workingCourseFlow}
+                  />
+                ) : null}
                 {canvasView === "blueprint" ? (
                   <BlueprintWorkspace
-                    activeBlueprint={activeBlueprint}
+                    activeBlueprint={focusedActiveBlueprint}
                     agentTasks={agentTasks}
                     blueprintEvidence={blueprintEvidence}
                     dashboard={dashboardSummary}
@@ -1453,12 +1733,12 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     clips={assessmentWorkspace?.clips ?? []}
                     undoing={blueprintUndoing}
                     undoLabel={latestBlueprintUndo?.label ?? null}
-                    workingBlueprint={workingBlueprint}
+                    workingBlueprint={focusedWorkingBlueprint}
                   />
                 ) : null}
                 {canvasView === "review" && course?.status !== "published" ? <ReviewCanvas bundles={bundles} onBundle={decideBundle} onItem={decideItem} /> : null}
-                {canvasView === "assessments" ? <AssessmentsCanvas disabled={sending} onRemove={removeAssessment} onSave={saveAssessment} workspace={assessmentWorkspace} /> : null}
-                {canvasView === "preview" ? <PreviewCanvas course={course} workspace={assessmentWorkspace} /> : null}
+                {canvasView === "assessments" ? <AssessmentsCanvas courseFlow={workingCourseFlow ?? activeCourseFlow} disabled={sending} onRemove={removeAssessment} onSave={saveAssessment} workspace={assessmentWorkspace} /> : null}
+                {canvasView === "preview" ? <PreviewCanvas course={course} courseFlow={workingCourseFlow ?? activeCourseFlow} workspace={assessmentWorkspace} /> : null}
                 {canvasView === "settings" ? <SettingsCanvas disabled={sending} onRemove={removeRoutingPolicy} onSave={saveRoutingPolicy} workspace={routingWorkspace} /> : null}
               </div>
               </section>
@@ -1658,6 +1938,41 @@ function greetingTime() {
 
 function teacherFirstName(name: string | undefined) {
   return name?.trim().split(/\s+/)[0] || "Teacher";
+}
+
+function filterBlueprintForLecture(
+  blueprint: CourseBlueprint | null,
+  videoId: string | null,
+): CourseBlueprint | null {
+  if (!blueprint || !videoId) return blueprint;
+  const lectureTopicIds = new Set(
+    blueprint.nodes
+      .filter((node) => node.kind === "topic" && node.metadata.video_id === videoId)
+      .map((node) => node.id),
+  );
+  const visibleIds = new Set<string>();
+  for (const node of blueprint.nodes) {
+    if (node.kind === "source") visibleIds.add(node.id);
+    else if (node.kind === "topic" && lectureTopicIds.has(node.id)) visibleIds.add(node.id);
+    else if (
+      node.kind === "concept"
+      && Array.isArray(node.metadata.topic_ids)
+      && node.metadata.topic_ids.some((topicId) => lectureTopicIds.has(String(topicId)))
+    ) visibleIds.add(node.id);
+    else if (
+      (node.kind === "clip" || node.kind === "question")
+      && node.parent_id
+      && lectureTopicIds.has(node.parent_id)
+    ) visibleIds.add(node.id);
+  }
+  return {
+    ...blueprint,
+    nodes: blueprint.nodes.filter((node) => visibleIds.has(node.id)),
+    edges: blueprint.edges.filter(
+      (edge) => visibleIds.has(edge.source_id) && visibleIds.has(edge.target_id),
+    ),
+    uncovered_concept_ids: blueprint.uncovered_concept_ids.filter((id) => visibleIds.has(id)),
+  };
 }
 
 function CanvasTab({ active, badge, icon, label, onClick }: { active: boolean; badge?: number; icon: ReactNode; label: string; onClick: () => void }) {
@@ -2283,6 +2598,535 @@ function StructuredBlueprintFlow({
         <Background color="#e2ded6" gap={22} size={1} />
         <Controls orientation="horizontal" position="bottom-left" showInteractive={false} />
       </ReactFlow>
+    </div>
+  );
+}
+
+function CourseFlowWorkspace({
+  activeFlow,
+  concepts,
+  disabled,
+  mode,
+  onAddLecture,
+  onAddModule,
+  onModeChange,
+  onOpenLecture,
+  onOpenWholeCourse,
+  onLayout,
+  onRelationship,
+  onRemove,
+  onReview,
+  onSave,
+  onUndo,
+  undoLabel,
+  undoing,
+  workingFlow,
+}: {
+  activeFlow: CourseFlow | null;
+  concepts: BlueprintNode[];
+  disabled: boolean;
+  mode: BlueprintMode;
+  onAddLecture: () => void;
+  onAddModule: (title: string, summary: string) => void;
+  onModeChange: (mode: BlueprintMode) => void;
+  onOpenLecture: (unit: CourseFlowUnit) => void;
+  onOpenWholeCourse: () => void;
+  onLayout: (
+    logicalArtifactId: string,
+    x: number,
+    y: number,
+    previous?: { x: number; y: number },
+  ) => Promise<void>;
+  onRelationship: (draft: CourseFlowEdgeDraft, action: "create" | "delete") => Promise<void>;
+  onRemove: (unit: CourseFlowUnit) => void;
+  onReview: (
+    artifactKind: "unit" | "relationship",
+    logicalId: string,
+    decision: "accepted" | "edited" | "dismissed",
+  ) => Promise<void>;
+  onSave: (draft: CourseFlowDraftPayload, unit?: CourseFlowUnit) => void;
+  onUndo: () => Promise<void>;
+  undoLabel: string | null;
+  undoing: boolean;
+  workingFlow: CourseFlow | null;
+}) {
+  const [editor, setEditor] = useState<{
+    kind: CourseFlowUnitKind;
+    unit?: CourseFlowUnit;
+  } | null>(null);
+  const [relationshipEditorOpen, setRelationshipEditorOpen] = useState(false);
+  const [editingRelationship, setEditingRelationship] = useState<CourseFlowEdge | null>(null);
+  const [moduleEditorOpen, setModuleEditorOpen] = useState(false);
+  const [graphPositions, setGraphPositions] = useState<Record<string, { x: number; y: number }>>({});
+  const [graphBusy, setGraphBusy] = useState(false);
+  const graphInstance = useRef<ReactFlowInstance | null>(null);
+  const flow = mode === "design" ? (workingFlow ?? activeFlow) : activeFlow;
+  const units = useMemo(() => [...(flow?.units ?? [])].sort(
+    (left, right) => left.sequence_rank - right.sequence_rank,
+  ), [flow]);
+  const modules = useMemo(() => [...(flow?.modules ?? [])].sort(
+    (left, right) => left.sequence_rank - right.sequence_rank,
+  ), [flow]);
+  const groups = useMemo(() => [
+    ...modules.map((module) => ({
+      id: module.logical_id,
+      title: module.title,
+      summary: module.summary,
+      units: units.filter((unit) => unit.module_logical_id === module.logical_id),
+    })),
+    {
+      id: "unassigned",
+      title: modules.length ? "Independent course units" : "Course sequence",
+      summary: modules.length ? "Units outside a module" : "The learner-facing course order",
+      units: units.filter((unit) => !unit.module_logical_id),
+    },
+  ].filter((group) => group.units.length || group.id === "unassigned"), [modules, units]);
+
+  const arrangedPositions = useMemo(() => {
+    const next: Record<string, { x: number; y: number }> = {};
+    groups.forEach((group, groupIndex) => {
+      const laneX = 58 + groupIndex * 360;
+      group.units.forEach((unit, unitIndex) => {
+        next[unit.logical_id] = {
+          x: laneX + 28,
+          y: 116 + unitIndex * 154,
+        };
+      });
+    });
+    return next;
+  }, [groups]);
+
+  useEffect(() => {
+    if (!flow) return;
+    setGraphPositions((current) => {
+      const next = { ...current };
+      for (const unit of flow.units) {
+        if (unit.x !== null && unit.y !== null) {
+          next[unit.logical_id] = { x: unit.x, y: unit.y };
+        } else if (!next[unit.logical_id] && arrangedPositions[unit.logical_id]) {
+          next[unit.logical_id] = arrangedPositions[unit.logical_id];
+        }
+      }
+      return next;
+    });
+  }, [arrangedPositions, flow]);
+
+  const graphNodes = useMemo<Node[]>(() => {
+    const laneNodes: Node[] = groups.map((group, groupIndex) => {
+      const laneX = 58 + groupIndex * 360;
+      const laneHeight = Math.max(270, 136 + group.units.length * 154);
+      return {
+        id: `module:${group.id}`,
+        position: { x: laneX, y: 34 },
+        data: {
+          label: (
+            <div className={styles.courseFlowGraphLaneLabel}>
+              <small>{group.id === "unassigned" ? "Course lane" : "Module"}</small>
+              <strong>{group.title}</strong>
+              <span>{group.summary}</span>
+              <em>{group.units.length} {group.units.length === 1 ? "unit" : "units"}</em>
+            </div>
+          ),
+        },
+        draggable: false,
+        selectable: false,
+        connectable: false,
+        className: styles.courseFlowGraphLane,
+        style: { height: laneHeight, width: 320 },
+        zIndex: 0,
+      };
+    });
+    const unitNodes: Node[] = units.map((unit) => ({
+      id: unit.logical_id,
+      position: graphPositions[unit.logical_id]
+        ?? arrangedPositions[unit.logical_id]
+        ?? { x: 86, y: 116 + unit.sequence_rank * 154 },
+      data: {
+        label: (
+          <div className={styles.courseFlowGraphUnit} data-kind={unit.kind} data-status={unit.status}>
+            <span>
+              {unit.kind === "lecture" ? <FileVideo /> : unit.kind === "quiz" ? <ClipboardCheck /> : <FilePenLine />}
+            </span>
+            <div>
+              <small>{unit.kind}{unit.status === "proposed" ? " · review" : ""}</small>
+              <strong>{unit.title}</strong>
+              <em>
+                {unit.kind === "lecture"
+                  ? `${unit.topic_count} topics · ${unit.concept_count} concepts`
+                  : unit.kind === "quiz"
+                    ? `${unit.question_count} questions · ${unit.concept_count} concepts`
+                    : `${unit.concept_count} concepts · ${unit.source_count} resources`}
+              </em>
+            </div>
+            {mode === "design" ? (
+              <div className={styles.courseFlowGraphUnitActions}>
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setEditor({ kind: unit.kind, unit });
+                  }}
+                  type="button"
+                >
+                  <Pencil />Edit
+                </button>
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRemove(unit);
+                  }}
+                  type="button"
+                >
+                  <Trash2 />Remove
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ),
+      },
+      draggable: mode === "design" && !disabled,
+      connectable: false,
+      className: styles.courseFlowGraphNode,
+      sourcePosition: Position.Bottom,
+      targetPosition: Position.Top,
+      zIndex: 3,
+    }));
+    return [...laneNodes, ...unitNodes];
+  }, [arrangedPositions, disabled, graphPositions, groups, mode, onRemove, units]);
+
+  const graphEdges = useMemo<Edge[]>(() => (flow?.edges ?? []).map((edge) => ({
+    id: edge.logical_id,
+    source: edge.source_unit_logical_id,
+    target: edge.target_unit_logical_id,
+    label: edge.relationship === "next" ? "next" : edge.relationship,
+    type: "smoothstep",
+    animated: edge.status === "proposed",
+    className: styles.courseFlowGraphEdge,
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      color: edge.relationship === "assesses" ? "#c97029" : edge.relationship === "requires" ? "#6c7f99" : "#7a7770",
+      height: 16,
+      width: 16,
+    },
+    style: {
+      stroke: edge.relationship === "assesses" ? "#c97029" : edge.relationship === "requires" ? "#6c7f99" : "#7a7770",
+      strokeDasharray: edge.relationship === "requires" ? "5 4" : undefined,
+      strokeWidth: 1.6,
+    },
+    zIndex: 2,
+  })), [flow?.edges]);
+
+  async function autoArrangeCourseFlow() {
+    setGraphBusy(true);
+    setGraphPositions(arrangedPositions);
+    try {
+      for (const unit of units) {
+        const position = arrangedPositions[unit.logical_id];
+        if (position) {
+          await onLayout(
+            unit.logical_id,
+            position.x,
+            position.y,
+            graphPositions[unit.logical_id],
+          );
+        }
+      }
+      window.setTimeout(() => graphInstance.current?.fitView({ duration: 350, padding: .14 }), 40);
+    } finally {
+      setGraphBusy(false);
+    }
+  }
+
+  return (
+    <section className={styles.courseFlowWorkspace}>
+      <header className={styles.courseFlowHeader}>
+        <div>
+          <small>Course Flow</small>
+          <h2>Design the whole learning journey</h2>
+          <p>Lectures hold detailed Blueprints. Quizzes and assignments connect them into one coherent course.</p>
+        </div>
+        <div className={styles.courseFlowActions}>
+          <div className={styles.blueprintModeToggle}>
+            <button className={mode === "live" ? styles.activeMode : ""} onClick={() => onModeChange("live")} type="button">Live</button>
+            <button className={mode === "design" ? styles.activeMode : ""} onClick={() => onModeChange("design")} type="button">Design</button>
+          </div>
+          {mode === "design" ? <button className={styles.secondaryAction} disabled={disabled || graphBusy} onClick={() => void autoArrangeCourseFlow()} type="button"><GitFork />Auto arrange</button> : null}
+          {mode === "design" ? <button className={styles.secondaryAction} disabled={disabled || undoing || !undoLabel} onClick={() => void onUndo()} title={undoLabel ? `Undo ${undoLabel.toLowerCase()}` : "Nothing to undo"} type="button"><RotateCcw />Undo</button> : null}
+          <button className={styles.secondaryAction} onClick={onOpenWholeCourse} type="button"><Network />Whole-course Blueprint</button>
+        </div>
+      </header>
+      {mode === "design" ? (
+        <div className={styles.courseFlowAuthoring}>
+          <button disabled={disabled} onClick={onAddLecture} type="button"><Plus /><FileVideo />Lecture</button>
+          <button disabled={disabled} onClick={() => setModuleEditorOpen(true)} type="button"><Plus /><BookOpenCheck />Module</button>
+          <button disabled={disabled} onClick={() => setEditor({ kind: "quiz" })} type="button"><Plus /><ClipboardCheck />Quiz</button>
+          <button disabled={disabled} onClick={() => setEditor({ kind: "assignment" })} type="button"><Plus /><FilePenLine />Assignment</button>
+          <button disabled={disabled || units.length < 2} onClick={() => {
+            setEditingRelationship(null);
+            setRelationshipEditorOpen(true);
+          }} type="button"><Plus /><Network />Relationship</button>
+          <span>Every change remains private until you publish the revision.</span>
+        </div>
+      ) : null}
+      {!flow ? (
+        <div className={styles.courseFlowEmpty}><LoaderCircle className={styles.spin} />Loading Course Flow…</div>
+      ) : units.length === 0 ? (
+        <div className={styles.courseFlowEmpty}>
+          <GraduationCap />
+          <h3>Start with a lecture</h3>
+          <p>Add the first lecture and Course Director will build its detailed Blueprint.</p>
+          {mode === "design" ? <button onClick={onAddLecture} type="button">Add lecture</button> : null}
+        </div>
+      ) : (
+        <div className={styles.courseFlowCanvas}>
+          {flow.edges.some((edge) => edge.status === "proposed") && mode === "design" ? (
+            <section className={styles.courseFlowPending}>
+              <strong>Relationship proposals</strong>
+              {flow.edges.filter((edge) => edge.status === "proposed").map((edge) => {
+                const source = units.find((unit) => unit.logical_id === edge.source_unit_logical_id);
+                const target = units.find((unit) => unit.logical_id === edge.target_unit_logical_id);
+                return <article key={edge.logical_id}><span><small>{edge.relationship}</small>{source?.title ?? "Unit"} → {target?.title ?? "Unit"}</span><div><button onClick={() => onReview("relationship", edge.logical_id, "accepted")} type="button"><Check />Accept</button><button onClick={() => {
+                  setEditingRelationship(edge);
+                  setRelationshipEditorOpen(true);
+                }} type="button"><Pencil />Edit</button><button onClick={() => onReview("relationship", edge.logical_id, "dismissed")} type="button"><X />Dismiss</button></div></article>;
+              })}
+            </section>
+          ) : null}
+          <div className={styles.courseFlowGraph}>
+            <ReactFlow
+              colorMode="light"
+              edges={graphEdges}
+              fitView
+              fitViewOptions={{ padding: .14 }}
+              minZoom={.35}
+              nodes={graphNodes}
+              nodesConnectable={false}
+              nodesDraggable={mode === "design" && !disabled}
+              onEdgeClick={(_, edge) => {
+                if (mode !== "design") return;
+                const found = flow.edges.find((candidate) => candidate.logical_id === edge.id);
+                if (!found) return;
+                setEditingRelationship(found);
+                setRelationshipEditorOpen(true);
+              }}
+              onInit={(instance) => {
+                graphInstance.current = instance;
+              }}
+              onNodeClick={(_, node) => {
+                if (node.id.startsWith("module:")) return;
+                const unit = units.find((candidate) => candidate.logical_id === node.id);
+                if (!unit) return;
+                if (unit.kind === "lecture") onOpenLecture(unit);
+                else setEditor({ kind: unit.kind, unit });
+              }}
+              onNodeDragStop={(_, node) => {
+                if (node.id.startsWith("module:")) return;
+                const previous = graphPositions[node.id] ?? arrangedPositions[node.id];
+                setGraphPositions((current) => ({ ...current, [node.id]: node.position }));
+                void onLayout(node.id, node.position.x, node.position.y, previous);
+              }}
+              proOptions={{ hideAttribution: true }}
+            >
+              <Background color="#dedad2" gap={22} size={1} />
+              <Controls orientation="horizontal" position="bottom-left" showInteractive={false} />
+            </ReactFlow>
+          </div>
+          {mode === "design" ? (
+            <div className={styles.courseFlowGraphSelection}>
+              <span>Select a unit to open it. Drag to organize. Select a relationship to edit it.</span>
+              {units.some((unit) => unit.status === "proposed") ? (
+                <div>
+                  {units.filter((unit) => unit.status === "proposed").map((unit) => (
+                    <article key={unit.logical_id}>
+                      <strong>{unit.title}</strong>
+                      <button onClick={() => onReview("unit", unit.logical_id, "accepted")} type="button"><Check />Accept</button>
+                      <button onClick={() => setEditor({ kind: unit.kind, unit })} type="button"><Pencil />Edit</button>
+                      <button onClick={() => onReview("unit", unit.logical_id, "dismissed")} type="button"><X />Dismiss</button>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      )}
+      {editor ? (
+        <CourseFlowUnitDialog
+          concepts={concepts}
+          kind={editor.kind}
+          modules={modules}
+          onClose={() => setEditor(null)}
+          onSave={(draft) => {
+            onSave(draft, editor.unit);
+            setEditor(null);
+          }}
+          unit={editor.unit}
+        />
+      ) : null}
+      {moduleEditorOpen ? (
+        <CourseFlowModuleDialog
+          onClose={() => setModuleEditorOpen(false)}
+          onSave={(title, summary) => {
+            onAddModule(title, summary);
+            setModuleEditorOpen(false);
+          }}
+        />
+      ) : null}
+      {relationshipEditorOpen ? (
+        <CourseFlowRelationshipDialog
+          edges={flow?.edges ?? []}
+          initialEdge={editingRelationship}
+          onClose={() => setRelationshipEditorOpen(false)}
+          onSave={async (draft, action) => {
+            if (editingRelationship) {
+              await onReview("relationship", editingRelationship.logical_id, "dismissed");
+            }
+            await onRelationship(draft, action);
+            setRelationshipEditorOpen(false);
+            setEditingRelationship(null);
+          }}
+          units={units}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function CourseFlowModuleDialog({
+  onClose,
+  onSave,
+}: {
+  onClose: () => void;
+  onSave: (title: string, summary: string) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [summary, setSummary] = useState("");
+  return <div className={styles.dialogBackdrop} role="presentation" onMouseDown={(event) => {
+    if (event.currentTarget === event.target) onClose();
+  }}><form className={styles.courseFlowDialog} onSubmit={(event) => {
+    event.preventDefault();
+    if (title.trim()) onSave(title.trim(), summary.trim());
+  }}><header><div><small>Course structure</small><h3>New module</h3></div><button aria-label="Close" onClick={onClose} type="button"><X /></button></header><label>Title<input autoFocus onChange={(event) => setTitle(event.target.value)} value={title} /></label><label>Purpose<textarea onChange={(event) => setSummary(event.target.value)} rows={3} value={summary} /></label><footer><button onClick={onClose} type="button">Cancel</button><button disabled={!title.trim()} type="submit">Add module</button></footer></form></div>;
+}
+
+function CourseFlowRelationshipDialog({
+  edges,
+  initialEdge,
+  onClose,
+  onSave,
+  units,
+}: {
+  edges: CourseFlowEdge[];
+  initialEdge: CourseFlowEdge | null;
+  onClose: () => void;
+  onSave: (draft: CourseFlowEdgeDraft, action: "create" | "delete") => Promise<void>;
+  units: CourseFlowUnit[];
+}) {
+  const [action, setAction] = useState<"create" | "delete">("create");
+  const [relationship, setRelationship] = useState<CourseFlowEdge["relationship"]>(initialEdge?.relationship ?? "next");
+  const [source, setSource] = useState(initialEdge?.source_unit_logical_id ?? units[0]?.logical_id ?? "");
+  const [target, setTarget] = useState(initialEdge?.target_unit_logical_id ?? units[1]?.logical_id ?? "");
+  const matchingEdge = edges.find((edge) => (
+    edge.relationship === relationship
+    && edge.source_unit_logical_id === source
+    && edge.target_unit_logical_id === target
+  ));
+  return (
+    <div className={styles.dialogBackdrop} role="presentation" onMouseDown={(event) => {
+      if (event.currentTarget === event.target) onClose();
+    }}>
+      <form className={styles.courseFlowDialog} onSubmit={async (event) => {
+        event.preventDefault();
+        if (!source || !target || source === target || (action === "delete" && !matchingEdge)) return;
+        await onSave({
+          relationship,
+          source_unit_logical_id: source,
+          target_unit_logical_id: target,
+        }, action);
+      }}>
+        <header>
+          <div><small>Course relationship</small><h3>Connect learning units</h3></div>
+          <button aria-label="Close" onClick={onClose} type="button"><X /></button>
+        </header>
+        {!initialEdge ? <label>Action<select onChange={(event) => setAction(event.target.value as "create" | "delete")} value={action}><option value="create">Add relationship</option><option value="delete">Remove relationship</option></select></label> : null}
+        <label>Relationship<select onChange={(event) => setRelationship(event.target.value as CourseFlowEdge["relationship"])} value={relationship}><option value="next">Next in sequence</option><option value="requires">Requires first</option><option value="assesses">Assesses lecture</option></select></label>
+        <label>From<select onChange={(event) => setSource(event.target.value)} value={source}>{units.map((unit) => <option key={unit.logical_id} value={unit.logical_id}>{unit.title} · {unit.kind}</option>)}</select></label>
+        <label>To<select onChange={(event) => setTarget(event.target.value)} value={target}>{units.map((unit) => <option key={unit.logical_id} value={unit.logical_id}>{unit.title} · {unit.kind}</option>)}</select></label>
+        <p className={styles.courseFlowRelationshipHint}>{relationship === "next" ? "Learners encounter the destination after the source." : relationship === "requires" ? "The destination stays dependent on completing the source." : "Use a lecture as the source and a quiz or assignment as the destination."}</p>
+        <footer>
+          <button onClick={onClose} type="button">Cancel</button>
+          <button disabled={!source || !target || source === target || (action === "delete" && !matchingEdge)} type="submit">{initialEdge ? "Save relationship" : action === "create" ? "Add relationship" : "Remove relationship"}</button>
+        </footer>
+      </form>
+    </div>
+  );
+}
+
+function CourseFlowUnitDialog({
+  concepts,
+  kind,
+  modules,
+  onClose,
+  onSave,
+  unit,
+}: {
+  concepts: BlueprintNode[];
+  kind: CourseFlowUnitKind;
+  modules: CourseFlow["modules"];
+  onClose: () => void;
+  onSave: (draft: CourseFlowDraftPayload) => void;
+  unit?: CourseFlowUnit;
+}) {
+  const [title, setTitle] = useState(unit?.title ?? "");
+  const [summary, setSummary] = useState(unit?.summary ?? "");
+  const [instructions, setInstructions] = useState(unit?.instructions ?? "");
+  const [conceptIds, setConceptIds] = useState<string[]>(unit?.concept_logical_ids ?? []);
+  const [moduleId, setModuleId] = useState(unit?.module_logical_id ?? "");
+  return (
+    <div className={styles.dialogBackdrop} role="presentation" onMouseDown={(event) => {
+      if (event.currentTarget === event.target) onClose();
+    }}>
+      <form className={styles.courseFlowDialog} onSubmit={(event) => {
+        event.preventDefault();
+        if (!title.trim() || (kind !== "lecture" && conceptIds.length === 0)) return;
+        onSave({
+          kind,
+          title: title.trim(),
+          summary: summary.trim(),
+          instructions: instructions.trim(),
+          module_logical_id: moduleId || null,
+          concept_logical_ids: conceptIds,
+        });
+      }}>
+        <header>
+          <div><small>{unit ? "Edit" : "Add"} {kind}</small><h3>{unit?.title ?? `New ${kind}`}</h3></div>
+          <button aria-label="Close" onClick={onClose} type="button"><X /></button>
+        </header>
+        <label>Title<input autoFocus maxLength={240} onChange={(event) => setTitle(event.target.value)} value={title} /></label>
+        <label>Purpose<textarea onChange={(event) => setSummary(event.target.value)} rows={2} value={summary} /></label>
+        <label>{kind === "assignment" ? "Learner instructions" : "Quiz guidance"}<textarea onChange={(event) => setInstructions(event.target.value)} rows={4} value={instructions} /></label>
+        <label>Module<select onChange={(event) => setModuleId(event.target.value)} value={moduleId}><option value="">Independent course unit</option>{modules.map((module) => <option key={module.logical_id} value={module.logical_id}>{module.title}</option>)}</select></label>
+        {kind !== "lecture" ? <fieldset>
+          <legend>Concept coverage <small>Select at least one concept</small></legend>
+          <div className={styles.courseFlowConceptList}>
+            {concepts.map((concept) => (
+              <label key={concept.logical_id}>
+                <input
+                  checked={conceptIds.includes(concept.logical_id)}
+                  onChange={(event) => setConceptIds((current) => event.target.checked
+                    ? [...current, concept.logical_id]
+                    : current.filter((id) => id !== concept.logical_id))}
+                  type="checkbox"
+                />
+                <span>{concept.title}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset> : null}
+        <footer>
+          <button onClick={onClose} type="button">Cancel</button>
+          <button disabled={!title.trim() || (kind !== "lecture" && conceptIds.length === 0)} type="submit">{unit ? "Save changes" : `Add ${kind}`}</button>
+        </footer>
+      </form>
     </div>
   );
 }
@@ -4436,7 +5280,8 @@ function SourcesDrawer({ disabled, onClose, onRetry, onUpdate, onUpload, sources
   );
 }
 
-function AssessmentsCanvas({ workspace, disabled, onSave, onRemove }: {
+function AssessmentsCanvas({ courseFlow, workspace, disabled, onSave, onRemove }: {
+  courseFlow: CourseFlow | null;
   workspace: AssessmentWorkspace | null;
   disabled: boolean;
   onSave: (draft: AssessmentDraftPayload, question?: CourseAssessment) => Promise<void>;
@@ -4458,6 +5303,7 @@ function AssessmentsCanvas({ workspace, disabled, onSave, onRemove }: {
   return (
     <div className={styles.structuredCanvas}>
       <header><div><h2>Assessments</h2><p>Every question in the current course revision, including its answer and remediation route.</p></div><div><button aria-expanded={editing === "new"} aria-controls="assessment-editor" disabled={disabled || !workspace.topics.length} onClick={() => setEditing("new")} type="button"><Plus />Add assessment</button></div></header>
+      {courseFlow?.units.some((unit) => unit.kind !== "lecture") ? <section className={styles.courseUnitSummary}><small>Course-level units</small><div>{courseFlow.units.filter((unit) => unit.kind !== "lecture").map((unit) => <article key={unit.logical_id}><span>{unit.kind === "quiz" ? <ClipboardCheck /> : <FilePenLine />}</span><div><strong>{unit.title}</strong><p>{unit.kind === "quiz" ? `${unit.question_count} reviewed questions · ${unit.concept_count} concepts` : `${unit.concept_count} concepts · ${unit.source_count} resources`}</p></div><em>{unit.status}</em></article>)}</div></section> : null}
       {editing ? <div className={styles.editorReveal} id="assessment-editor" ref={editorRef}><AssessmentEditor key={editing === "new" ? "new" : editing.id} question={editing === "new" ? null : editing} workspace={workspace} onCancel={() => setEditing(null)} onSave={async (draft) => { await onSave(draft, editing === "new" ? undefined : editing); setEditing(null); }} /></div> : null}
       <div className={styles.assessmentList}>
         {questions.map((question, index) => {
@@ -4672,8 +5518,9 @@ function PolicyEditor({ conceptId, concepts, initial, onCancel, onSave }: {
   );
 }
 
-function PreviewCanvas({ course, workspace }: {
+function PreviewCanvas({ course, courseFlow, workspace }: {
   course: CourseSummary | null;
+  courseFlow: CourseFlow | null;
   workspace: AssessmentWorkspace | null;
 }) {
   const clips = workspace?.clips ?? [];
@@ -4686,6 +5533,7 @@ function PreviewCanvas({ course, workspace }: {
         <div><h2>Learner clip preview</h2><p>Review the exact teaching moments in this course revision, in the order learners may encounter them.</p></div>
         <span>{clips.length} {clips.length === 1 ? "clip" : "clips"}</span>
       </header>
+      {courseFlow?.units.length ? <section className={styles.previewJourney}><small>Published course sequence</small><div>{courseFlow.units.map((unit, index) => <article data-kind={unit.kind} key={unit.logical_id}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{unit.title}</strong><p>{unit.kind} · {unit.kind === "lecture" ? `${unit.topic_count} topics` : `${unit.concept_count} concepts`}</p></div></article>)}</div></section> : null}
       {!workspace ? <div className={styles.canvasEmpty}><LoaderCircle className={styles.spin} /><h2>Loading learner preview</h2></div> : null}
       {workspace && !clips.length ? <div className={styles.inlineEmpty}><FileVideo /><div><strong>No teaching clips in this revision</strong><p>Generate or add clips before publishing so learners have focused teaching moments to revisit.</p></div></div> : null}
       {selectedClip ? (

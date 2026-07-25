@@ -10,8 +10,23 @@ export type LearnerCourseSummary = {
 
 export type LearnerTopic = {
   id: string;
+  video_id: string;
   title: string;
   summary: string | null;
+};
+
+export type LearnerCourseUnit = {
+  id: string;
+  logical_id: string;
+  kind: "lecture" | "quiz" | "assignment";
+  title: string;
+  summary: string;
+  instructions: string;
+  video_id: string | null;
+  sequence_rank: number;
+  status: "not_started" | "in_progress" | "completed";
+  topic_ids: string[];
+  question_count: number;
 };
 
 export type LearnerClip = {
@@ -43,6 +58,7 @@ export type LearnerCourseExperience = {
   id: string;
   title: string;
   description: string | null;
+  units: LearnerCourseUnit[];
   topics: LearnerTopic[];
   clips: LearnerClip[];
   questions: LearnerQuestion[];

@@ -23,6 +23,12 @@ from app.course_os.models import (
     CourseAssessment,
     CourseBlueprint,
     CourseCreate,
+    CourseFlow,
+    CourseFlowEdge,
+    CourseFlowModule,
+    CourseFlowModuleDraft,
+    CourseFlowUnit,
+    CourseFlowUnitDraft,
     CourseMap,
     CourseMapEdge,
     CourseMapNode,
@@ -335,24 +341,159 @@ class PostgresCourseOSRepository(CourseOSRepository):
             )
             await conn.execute(
                 """
+                insert into course_modules (
+                  logical_id, course_id, revision_id, title, summary, sequence_rank,
+                  review_status, ai_proposal, instructor_revision, dismissed_at
+                )
+                select logical_id, course_id, %s, title, summary, sequence_rank,
+                       review_status, ai_proposal, instructor_revision, dismissed_at
+                from course_modules where revision_id = %s
+                """,
+                (working_revision_id, active_revision_id),
+            )
+            await conn.execute(
+                """
+                insert into course_units (
+                  logical_id, course_id, revision_id, module_id, kind, title, summary,
+                  instructions, video_id, sequence_rank, review_status, ai_proposal,
+                  instructor_revision, dismissed_at
+                )
+                select
+                  old_unit.logical_id,
+                  old_unit.course_id,
+                  %s,
+                  new_module.id,
+                  old_unit.kind,
+                  old_unit.title,
+                  old_unit.summary,
+                  old_unit.instructions,
+                  old_unit.video_id,
+                  old_unit.sequence_rank,
+                  old_unit.review_status,
+                  old_unit.ai_proposal,
+                  old_unit.instructor_revision,
+                  old_unit.dismissed_at
+                from course_units old_unit
+                left join course_modules old_module on old_module.id = old_unit.module_id
+                left join course_modules new_module
+                  on new_module.revision_id = %s
+                 and new_module.logical_id = old_module.logical_id
+                where old_unit.revision_id = %s
+                """,
+                (working_revision_id, working_revision_id, active_revision_id),
+            )
+            await conn.execute(
+                """
+                insert into course_unit_concepts (unit_id, concept_id, revision_id)
+                select new_unit.id, new_concept.id, %s
+                from course_unit_concepts old_link
+                join course_units old_unit on old_unit.id = old_link.unit_id
+                join concepts old_concept on old_concept.id = old_link.concept_id
+                join course_units new_unit
+                  on new_unit.revision_id = %s
+                 and new_unit.logical_id = old_unit.logical_id
+                join concepts new_concept
+                  on new_concept.revision_id = %s
+                 and new_concept.logical_id = old_concept.logical_id
+                where old_link.revision_id = %s
+                """,
+                (
+                    working_revision_id,
+                    working_revision_id,
+                    working_revision_id,
+                    active_revision_id,
+                ),
+            )
+            await conn.execute(
+                """
+                insert into course_unit_edges (
+                  logical_id, course_id, revision_id, source_unit_id, target_unit_id,
+                  relationship, review_status, ai_proposal, instructor_revision,
+                  dismissed_at
+                )
+                select
+                  old_edge.logical_id,
+                  old_edge.course_id,
+                  %s,
+                  new_source.id,
+                  new_target.id,
+                  old_edge.relationship,
+                  old_edge.review_status,
+                  old_edge.ai_proposal,
+                  old_edge.instructor_revision,
+                  old_edge.dismissed_at
+                from course_unit_edges old_edge
+                join course_units old_source on old_source.id = old_edge.source_unit_id
+                join course_units old_target on old_target.id = old_edge.target_unit_id
+                join course_units new_source
+                  on new_source.revision_id = %s
+                 and new_source.logical_id = old_source.logical_id
+                join course_units new_target
+                  on new_target.revision_id = %s
+                 and new_target.logical_id = old_target.logical_id
+                where old_edge.revision_id = %s
+                """,
+                (
+                    working_revision_id,
+                    working_revision_id,
+                    working_revision_id,
+                    active_revision_id,
+                ),
+            )
+            await conn.execute(
+                """
+                insert into course_unit_sources (unit_id, source_id, revision_id)
+                select new_unit.id, old_link.source_id, %s
+                from course_unit_sources old_link
+                join course_units old_unit on old_unit.id = old_link.unit_id
+                join course_units new_unit
+                  on new_unit.revision_id = %s
+                 and new_unit.logical_id = old_unit.logical_id
+                where old_link.revision_id = %s
+                """,
+                (working_revision_id, working_revision_id, active_revision_id),
+            )
+            await conn.execute(
+                """
+                insert into course_flow_layouts (
+                  revision_id, logical_artifact_id, x, y
+                )
+                select %s, logical_artifact_id, x, y
+                from course_flow_layouts where revision_id = %s
+                on conflict (revision_id, logical_artifact_id) do nothing
+                """,
+                (working_revision_id, active_revision_id),
+            )
+            await conn.execute(
+                """
                 insert into questions (
-                  topic_id, body, type, correct_answer, confidence_prompt,
+                  topic_id, course_unit_id, body, type, correct_answer, confidence_prompt,
                   ai_proposal, instructor_revision, approved_at, review_status,
                   dismissed_at, revision_id, logical_id
                 )
-                select new_topic.id, old_question.body, old_question.type,
+                select new_topic.id, new_unit.id, old_question.body, old_question.type,
                        old_question.correct_answer, old_question.confidence_prompt,
                        old_question.ai_proposal, old_question.instructor_revision,
                        old_question.approved_at, old_question.review_status,
                        old_question.dismissed_at, %s, old_question.logical_id
                 from questions old_question
-                join topics old_topic on old_topic.id = old_question.topic_id
-                join topics new_topic
+                left join topics old_topic on old_topic.id = old_question.topic_id
+                left join topics new_topic
                   on new_topic.revision_id = %s
                  and new_topic.logical_id = old_topic.logical_id
+                left join course_units old_unit on old_unit.id = old_question.course_unit_id
+                left join course_units new_unit
+                  on new_unit.revision_id = %s
+                 and new_unit.logical_id = old_unit.logical_id
                 where old_question.revision_id = %s
+                  and (new_topic.id is not null or new_unit.id is not null)
                 """,
-                (working_revision_id, working_revision_id, active_revision_id),
+                (
+                    working_revision_id,
+                    working_revision_id,
+                    working_revision_id,
+                    active_revision_id,
+                ),
             )
             await conn.execute(
                 """
@@ -527,6 +668,14 @@ class PostgresCourseOSRepository(CourseOSRepository):
                        where revision_id = %s and review_status = 'proposed') as proposed_edges,
                       (select count(*) from questions
                        where revision_id = %s and review_status = 'proposed') as proposed_questions,
+                      (select count(*) from course_modules
+                       where revision_id = %s and review_status = 'proposed') as proposed_modules,
+                      (select count(*) from course_units
+                       where revision_id = %s and review_status = 'proposed') as proposed_units,
+                      (
+                        select count(*) from course_unit_edges
+                        where revision_id = %s and review_status = 'proposed'
+                      ) as proposed_unit_edges,
                       (select count(*) from topics
                        where revision_id = %s and review_status in ('accepted', 'edited'))
                         as reviewed_topics,
@@ -550,7 +699,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
                              and (rp.concept_id = c.id or rp.concept_id is null)
                          )) as concepts_without_policy
                     """,
-                    (working_revision_id,) * 10,
+                    (working_revision_id,) * 13,
                 )
             ).fetchone()
             blockers = _publication_blockers(
@@ -577,6 +726,35 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     set state = excluded.state, updated_at = now()
                     """,
                     (working_revision_id, active_revision_id),
+                )
+                await conn.execute(
+                    """
+                    insert into learner_unit_progress (
+                      learner_id, course_id, revision_id, unit_id, status,
+                      started_at, completed_at, updated_at
+                    )
+                    select
+                      progress.learner_id,
+                      progress.course_id,
+                      %s,
+                      new_unit.id,
+                      progress.status,
+                      progress.started_at,
+                      progress.completed_at,
+                      now()
+                    from learner_unit_progress progress
+                    join course_units old_unit on old_unit.id = progress.unit_id
+                    join course_units new_unit
+                      on new_unit.revision_id = %s
+                     and new_unit.logical_id = old_unit.logical_id
+                    where old_unit.revision_id = %s
+                    on conflict (learner_id, unit_id) do update
+                    set status = excluded.status,
+                        started_at = excluded.started_at,
+                        completed_at = excluded.completed_at,
+                        updated_at = now()
+                    """,
+                    (working_revision_id, working_revision_id, active_revision_id),
                 )
                 await conn.execute(
                     "update enrollments set revision_id = %s where course_id = %s",
@@ -951,6 +1129,89 @@ class PostgresCourseOSRepository(CourseOSRepository):
             ).fetchone()
             if active is not None:
                 raise ValueError("This course already has an active generation run.")
+            lecture = await (
+                await conn.execute(
+                    """
+                    insert into course_units (
+                      logical_id, course_id, revision_id, kind, title, video_id,
+                      sequence_rank, review_status, ai_proposal
+                    )
+                    select
+                      %s, %s, %s, 'lecture',
+                      coalesce(
+                        nullif(v.source_metadata->>'title', ''),
+                        nullif(v.source_metadata->>'filename', ''),
+                        'New lecture'
+                      ),
+                      v.id,
+                      coalesce((
+                        select max(sequence_rank) + 1
+                        from course_units where revision_id = %s
+                      ), 0),
+                      'proposed',
+                      %s::jsonb
+                    from videos v where v.id = %s
+                    on conflict (revision_id, video_id) do update
+                    set updated_at = now()
+                    returning id
+                    """,
+                    (
+                        video_id,
+                        course_id,
+                        revision_id,
+                        revision_id,
+                        Jsonb(
+                            {
+                                "source": "lecture_ingestion",
+                                "review_note": (
+                                    "Confirm the lecture title and position before publishing."
+                                ),
+                            }
+                        ),
+                        video_id,
+                    ),
+                )
+            ).fetchone()
+            if lecture is None:
+                raise RuntimeError("Failed to add the lecture to Course Flow.")
+            previous = await (
+                await conn.execute(
+                    """
+                    select id from course_units
+                    where revision_id = %s and id <> %s
+                      and review_status <> 'dismissed'
+                    order by sequence_rank desc, created_at desc
+                    limit 1
+                    """,
+                    (revision_id, lecture["id"]),
+                )
+            ).fetchone()
+            if previous is not None:
+                await conn.execute(
+                    """
+                    insert into course_unit_edges (
+                      course_id, revision_id, source_unit_id, target_unit_id,
+                      relationship, review_status, ai_proposal
+                    )
+                    values (%s, %s, %s, %s, 'next', 'proposed', %s::jsonb)
+                    on conflict (revision_id, source_unit_id, target_unit_id, relationship)
+                    do nothing
+                    """,
+                    (
+                        course_id,
+                        revision_id,
+                        previous["id"],
+                        lecture["id"],
+                        Jsonb(
+                            {
+                                "source": "lecture_ingestion",
+                                "review_note": (
+                                    "Confirm that this lecture follows the previous course unit."
+                                ),
+                            }
+                        ),
+                    ),
+                )
             run = await (
                 await conn.execute(
                     """
@@ -978,7 +1239,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
                         run["id"],
                         task_type,
                         list(dependencies[task_type]),
-                        f"{revision_id}:{task_type}:course",
+                        f"{revision_id}:{video_id}:{task_type}:lecture",
                         Jsonb(
                             {
                                 "video_id": str(video_id),
@@ -1179,16 +1440,22 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     (error_message[:2000], row["run_id"]),
                 )
 
-    async def generation_topic_ids(self, revision_id: UUID) -> tuple[UUID, ...]:
+    async def generation_topic_ids(
+        self,
+        revision_id: UUID,
+        video_id: UUID | None = None,
+    ) -> tuple[UUID, ...]:
         async with pooled_connection(self._database_url) as conn:
             rows = await (
                 await conn.execute(
                     """
                     select id from topics
-                    where revision_id = %s and review_status <> 'dismissed'
+                    where revision_id = %s
+                      and (%s::uuid is null or video_id = %s)
+                      and review_status <> 'dismissed'
                     order by start_seconds
                     """,
-                    (revision_id,),
+                    (revision_id, video_id, video_id),
                 )
             ).fetchall()
         return tuple(UUID(str(row[0])) for row in rows)
@@ -1197,6 +1464,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
         self,
         course_id: UUID,
         revision_id: UUID,
+        video_id: UUID | None = None,
     ) -> str | None:
         async with await psycopg.AsyncConnection.connect(
             self._database_url,
@@ -1212,23 +1480,45 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     left join lateral (
                       select ai_proposal from topics
                       where revision_id = r.id
+                        and (%s::uuid is null or video_id = %s)
                         and nullif(ai_proposal ->> 'course_title', '') is not null
                       order by start_seconds limit 1
                     ) t on true
-                    where c.id = %s and c.status = 'draft'
+                    where c.id = %s
                     for update of c
                     """,
-                    (revision_id, course_id),
+                    (revision_id, video_id, video_id, course_id),
                 )
             ).fetchone()
             if row is None or row["proposed_title"] is None:
                 return None
             current_title = str(row["current_title"]).strip()
             proposed_title = str(row["proposed_title"]).strip()[:90]
-            if current_title.casefold() not in {"untitled course", "new course", "course studio"}:
-                return None
             if not proposed_title:
                 return None
+            if video_id is not None:
+                await conn.execute(
+                    """
+                    update course_units
+                    set title = %s,
+                        ai_proposal = coalesce(ai_proposal, '{}'::jsonb)
+                          || %s::jsonb,
+                        updated_at = now()
+                    where revision_id = %s and video_id = %s
+                    """,
+                    (
+                        proposed_title,
+                        Jsonb({"proposed_title": proposed_title}),
+                        revision_id,
+                        video_id,
+                    ),
+                )
+            if current_title.casefold() not in {
+                "untitled course",
+                "new course",
+                "course studio",
+            }:
+                return proposed_title
             title_proposal = {
                 "title": proposed_title,
                 "original_title": current_title,
@@ -1745,6 +2035,639 @@ class PostgresCourseOSRepository(CourseOSRepository):
             ),
         )
 
+    async def course_flow(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        revision_kind: str,
+    ) -> CourseFlow:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            modules = await (
+                await conn.execute(
+                    """
+                    select m.*, layout.x, layout.y
+                    from course_modules m
+                    left join course_flow_layouts layout
+                      on layout.revision_id = m.revision_id
+                     and layout.logical_artifact_id = m.logical_id
+                    where m.course_id = %s and m.revision_id = %s
+                      and m.review_status <> 'dismissed'
+                    order by m.sequence_rank, m.title, m.id
+                    """,
+                    (course_id, revision_id),
+                )
+            ).fetchall()
+            units = await (
+                await conn.execute(
+                    """
+                    select
+                      u.*,
+                      module.logical_id as module_logical_id,
+                      layout.x,
+                      layout.y,
+                      case when u.kind = 'lecture' then (
+                        select count(*) from topics t
+                        where t.revision_id = u.revision_id
+                          and t.video_id = u.video_id
+                          and t.review_status <> 'dismissed'
+                      ) else 0 end as topic_count,
+                      case when u.kind = 'lecture' then (
+                        select count(distinct tc.concept_id)
+                        from topics t
+                        join topic_concepts tc
+                          on tc.topic_id = t.id and tc.revision_id = t.revision_id
+                        join concepts c on c.id = tc.concept_id
+                        where t.revision_id = u.revision_id
+                          and t.video_id = u.video_id
+                          and t.review_status <> 'dismissed'
+                          and c.review_status <> 'dismissed'
+                      ) else (
+                        select count(*) from course_unit_concepts uc
+                        where uc.unit_id = u.id
+                      ) end as concept_count,
+                      (
+                        select count(distinct q.id)
+                        from questions q
+                        left join question_concepts qc
+                          on qc.question_id = q.id
+                        where q.revision_id = u.revision_id
+                          and q.review_status <> 'dismissed'
+                          and (
+                            q.course_unit_id = u.id
+                            or qc.concept_id in (
+                              select uc.concept_id from course_unit_concepts uc
+                              where uc.unit_id = u.id
+                            )
+                          )
+                      ) as question_count,
+                      (
+                        select count(*) from course_unit_sources us
+                        where us.unit_id = u.id
+                      ) as source_count,
+                      case when u.kind = 'lecture' then array(
+                        select distinct c.logical_id
+                        from topics t
+                        join topic_concepts tc
+                          on tc.topic_id = t.id and tc.revision_id = t.revision_id
+                        join concepts c on c.id = tc.concept_id
+                        where t.revision_id = u.revision_id
+                          and t.video_id = u.video_id
+                          and t.review_status <> 'dismissed'
+                          and c.review_status <> 'dismissed'
+                        order by c.logical_id
+                      ) else array(
+                        select c.logical_id
+                        from course_unit_concepts uc
+                        join concepts c on c.id = uc.concept_id
+                        where uc.unit_id = u.id
+                          and c.review_status <> 'dismissed'
+                        order by c.logical_id
+                      ) end as concept_logical_ids
+                    from course_units u
+                    left join course_modules module on module.id = u.module_id
+                    left join course_flow_layouts layout
+                      on layout.revision_id = u.revision_id
+                     and layout.logical_artifact_id = u.logical_id
+                    where u.course_id = %s and u.revision_id = %s
+                      and u.review_status <> 'dismissed'
+                    order by u.sequence_rank, u.title, u.id
+                    """,
+                    (course_id, revision_id),
+                )
+            ).fetchall()
+            edges = await (
+                await conn.execute(
+                    """
+                    select
+                      edge.*,
+                      source.logical_id as source_logical_id,
+                      target.logical_id as target_logical_id
+                    from course_unit_edges edge
+                    join course_units source on source.id = edge.source_unit_id
+                    join course_units target on target.id = edge.target_unit_id
+                    where edge.course_id = %s and edge.revision_id = %s
+                      and edge.review_status <> 'dismissed'
+                      and source.review_status <> 'dismissed'
+                      and target.review_status <> 'dismissed'
+                    order by edge.created_at, edge.id
+                    """,
+                    (course_id, revision_id),
+                )
+            ).fetchall()
+        return CourseFlow(
+            course_id=course_id,
+            revision_id=revision_id,
+            revision_kind=revision_kind,  # type: ignore[arg-type]
+            modules=tuple(
+                CourseFlowModule(
+                    id=UUID(str(row["id"])),
+                    logical_id=UUID(str(row["logical_id"])),
+                    title=str(row["title"]),
+                    summary=str(row["summary"] or ""),
+                    sequence_rank=int(row["sequence_rank"]),
+                    status=str(row["review_status"]),
+                    x=float(row["x"]) if row["x"] is not None else None,
+                    y=float(row["y"]) if row["y"] is not None else None,
+                )
+                for row in modules
+            ),
+            units=tuple(
+                CourseFlowUnit(
+                    id=UUID(str(row["id"])),
+                    logical_id=UUID(str(row["logical_id"])),
+                    module_logical_id=(
+                        UUID(str(row["module_logical_id"]))
+                        if row["module_logical_id"] is not None else None
+                    ),
+                    kind=str(row["kind"]),  # type: ignore[arg-type]
+                    title=str(row["title"]),
+                    summary=str(row["summary"] or ""),
+                    instructions=str(row["instructions"] or ""),
+                    video_id=UUID(str(row["video_id"])) if row["video_id"] else None,
+                    sequence_rank=int(row["sequence_rank"]),
+                    status=str(row["review_status"]),
+                    topic_count=int(row["topic_count"]),
+                    concept_count=int(row["concept_count"]),
+                    question_count=int(row["question_count"]),
+                    source_count=int(row["source_count"]),
+                    concept_logical_ids=tuple(
+                        UUID(str(value)) for value in (row["concept_logical_ids"] or ())
+                    ),
+                    x=float(row["x"]) if row["x"] is not None else None,
+                    y=float(row["y"]) if row["y"] is not None else None,
+                )
+                for row in units
+            ),
+            edges=tuple(
+                CourseFlowEdge(
+                    id=UUID(str(row["id"])),
+                    logical_id=UUID(str(row["logical_id"])),
+                    source_unit_logical_id=UUID(str(row["source_logical_id"])),
+                    target_unit_logical_id=UUID(str(row["target_logical_id"])),
+                    relationship=str(row["relationship"]),  # type: ignore[arg-type]
+                    status=str(row["review_status"]),
+                )
+                for row in edges
+            ),
+        )
+
+    async def create_course_flow_unit(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        draft: CourseFlowUnitDraft,
+    ) -> UUID:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            owned = await (
+                await conn.execute(
+                    """
+                    select 1 from courses
+                    where id = %s and instructor_id = %s and working_revision_id = %s
+                    """,
+                    (course_id, instructor_id, revision_id),
+                )
+            ).fetchone()
+            if owned is None:
+                raise ValueError("Course Flow changes require the private working revision.")
+            module_id = None
+            if draft.module_logical_id is not None:
+                module = await (
+                    await conn.execute(
+                        """
+                        select id from course_modules
+                        where course_id = %s and revision_id = %s and logical_id = %s
+                          and review_status <> 'dismissed'
+                        """,
+                        (course_id, revision_id, draft.module_logical_id),
+                    )
+                ).fetchone()
+                if module is None:
+                    raise ValueError("Course module not found.")
+                module_id = module["id"]
+            rank_row = await (
+                await conn.execute(
+                    """
+                    select coalesce(max(sequence_rank), -1) + 1 as next_rank
+                    from course_units where revision_id = %s
+                    """,
+                    (revision_id,),
+                )
+            ).fetchone()
+            row = await (
+                await conn.execute(
+                    """
+                    insert into course_units (
+                      course_id, revision_id, module_id, kind, title, summary,
+                      instructions, sequence_rank, review_status, instructor_revision
+                    )
+                    values (%s, %s, %s, %s, %s, %s, %s, %s, 'edited', %s::jsonb)
+                    returning logical_id
+                    """,
+                    (
+                        course_id,
+                        revision_id,
+                        module_id,
+                        draft.kind,
+                        draft.title,
+                        draft.summary,
+                        draft.instructions,
+                        int(rank_row["next_rank"]) if rank_row else 0,
+                        Jsonb({"created_by": "instructor"}),
+                    ),
+                )
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("Failed to create course unit.")
+            unit = await (
+                await conn.execute(
+                    "select id from course_units where revision_id = %s and logical_id = %s",
+                    (revision_id, row["logical_id"]),
+                )
+            ).fetchone()
+            if unit is None:
+                raise RuntimeError("Created course unit was not found.")
+            if draft.concept_logical_ids:
+                await conn.execute(
+                    """
+                    insert into course_unit_concepts (unit_id, concept_id, revision_id)
+                    select %s, c.id, %s
+                    from concepts c
+                    where c.revision_id = %s and c.logical_id = any(%s)
+                      and c.review_status <> 'dismissed'
+                    on conflict do nothing
+                    """,
+                    (unit["id"], revision_id, revision_id, list(draft.concept_logical_ids)),
+                )
+        return UUID(str(row["logical_id"]))
+
+    async def save_course_flow_layout(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        logical_artifact_id: UUID,
+        x: float,
+        y: float,
+    ) -> None:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            owned = await (
+                await conn.execute(
+                    """
+                    select 1
+                    from courses
+                    where id = %s and instructor_id = %s and working_revision_id = %s
+                      and (
+                        exists (
+                          select 1 from course_modules
+                          where course_id = %s and revision_id = %s
+                            and logical_id = %s and review_status <> 'dismissed'
+                        )
+                        or exists (
+                          select 1 from course_units
+                          where course_id = %s and revision_id = %s
+                            and logical_id = %s and review_status <> 'dismissed'
+                        )
+                      )
+                    """,
+                    (
+                        course_id,
+                        instructor_id,
+                        revision_id,
+                        course_id,
+                        revision_id,
+                        logical_artifact_id,
+                        course_id,
+                        revision_id,
+                        logical_artifact_id,
+                    ),
+                )
+            ).fetchone()
+            if owned is None:
+                raise ValueError("Course Flow artifact not found in the private revision.")
+            await conn.execute(
+                """
+                insert into course_flow_layouts (
+                  revision_id, logical_artifact_id, x, y, updated_at
+                )
+                values (%s, %s, %s, %s, now())
+                on conflict (revision_id, logical_artifact_id)
+                do update set x = excluded.x, y = excluded.y, updated_at = now()
+                """,
+                (revision_id, logical_artifact_id, x, y),
+            )
+
+    async def create_course_flow_module(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        draft: CourseFlowModuleDraft,
+    ) -> UUID:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            rank = await (
+                await conn.execute(
+                    """
+                    select coalesce(max(sequence_rank), -1) + 1 as value
+                    from course_modules where revision_id = %s
+                    """,
+                    (revision_id,),
+                )
+            ).fetchone()
+            row = await (
+                await conn.execute(
+                    """
+                    insert into course_modules (
+                      course_id, revision_id, title, summary, sequence_rank,
+                      review_status, instructor_revision
+                    )
+                    select %s, %s, %s, %s, %s, 'edited', %s::jsonb
+                    from courses
+                    where id = %s and instructor_id = %s and working_revision_id = %s
+                    returning logical_id
+                    """,
+                    (
+                        course_id,
+                        revision_id,
+                        draft.title,
+                        draft.summary,
+                        int(rank["value"]) if rank else 0,
+                        Jsonb({"created_by": "instructor"}),
+                        course_id,
+                        instructor_id,
+                        revision_id,
+                    ),
+                )
+            ).fetchone()
+            if row is None:
+                raise ValueError("Course modules require the private working revision.")
+            return UUID(str(row["logical_id"]))
+
+    async def update_course_flow_unit(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        unit_logical_id: UUID,
+        draft: CourseFlowUnitDraft,
+    ) -> None:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            module_id = None
+            if draft.module_logical_id is not None:
+                module = await (
+                    await conn.execute(
+                        """
+                        select id from course_modules
+                        where course_id = %s and revision_id = %s and logical_id = %s
+                          and review_status <> 'dismissed'
+                        """,
+                        (course_id, revision_id, draft.module_logical_id),
+                    )
+                ).fetchone()
+                if module is None:
+                    raise ValueError("Course module not found.")
+                module_id = module["id"]
+            row = await (
+                await conn.execute(
+                    """
+                    update course_units u
+                    set title = %s, summary = %s, instructions = %s, module_id = %s,
+                        review_status = 'edited', updated_at = now()
+                    from courses c
+                    where u.course_id = c.id and c.id = %s and c.instructor_id = %s
+                      and c.working_revision_id = %s and u.revision_id = %s
+                      and u.logical_id = %s and u.kind = %s
+                    returning u.id
+                    """,
+                    (
+                        draft.title,
+                        draft.summary,
+                        draft.instructions,
+                        module_id,
+                        course_id,
+                        instructor_id,
+                        revision_id,
+                        revision_id,
+                        unit_logical_id,
+                        draft.kind,
+                    ),
+                )
+            ).fetchone()
+            if row is None:
+                raise ValueError("Course unit not found in the private working revision.")
+            await conn.execute("delete from course_unit_concepts where unit_id = %s", (row["id"],))
+            if draft.concept_logical_ids:
+                await conn.execute(
+                    """
+                    insert into course_unit_concepts (unit_id, concept_id, revision_id)
+                    select %s, id, %s from concepts
+                    where revision_id = %s and logical_id = any(%s)
+                      and review_status <> 'dismissed'
+                    """,
+                    (row["id"], revision_id, revision_id, list(draft.concept_logical_ids)),
+                )
+
+    async def remove_course_flow_unit(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        unit_logical_id: UUID,
+    ) -> None:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            unit = await (
+                await conn.execute(
+                    """
+                    select u.* from course_units u
+                    join courses c on c.id = u.course_id
+                    where c.id = %s and c.instructor_id = %s
+                      and c.working_revision_id = %s and u.revision_id = %s
+                      and u.logical_id = %s and u.review_status <> 'dismissed'
+                    for update
+                    """,
+                    (course_id, instructor_id, revision_id, revision_id, unit_logical_id),
+                )
+            ).fetchone()
+            if unit is None:
+                raise ValueError("Course unit not found in the private working revision.")
+            await conn.execute(
+                """
+                update course_units set review_status = 'dismissed', dismissed_at = now(),
+                  updated_at = now() where id = %s
+                """,
+                (unit["id"],),
+            )
+            await conn.execute(
+                """
+                update course_unit_edges set review_status = 'dismissed',
+                  dismissed_at = now(), updated_at = now()
+                where revision_id = %s
+                  and (source_unit_id = %s or target_unit_id = %s)
+                """,
+                (revision_id, unit["id"], unit["id"]),
+            )
+            if str(unit["kind"]) == "lecture":
+                await conn.execute(
+                    """
+                    update topics set review_status = 'dismissed', dismissed_at = now()
+                    where revision_id = %s and video_id = %s
+                    """,
+                    (revision_id, unit["video_id"]),
+                )
+                await conn.execute(
+                    """
+                    update questions q set review_status = 'dismissed', dismissed_at = now()
+                    from topics t where q.topic_id = t.id and t.revision_id = %s
+                      and t.video_id = %s
+                    """,
+                    (revision_id, unit["video_id"]),
+                )
+                await conn.execute(
+                    """
+                    update clips clip set status = 'superseded'
+                    from topics t where clip.topic_id = t.id and t.revision_id = %s
+                      and t.video_id = %s
+                    """,
+                    (revision_id, unit["video_id"]),
+                )
+
+    async def mutate_course_flow_edge(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        action: str,
+        relationship: str,
+        source_logical_id: UUID,
+        target_logical_id: UUID,
+    ) -> None:
+        if relationship not in {"next", "requires", "assesses"}:
+            raise ValueError("Unsupported Course Flow relationship.")
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            rows = await (
+                await conn.execute(
+                    """
+                    select u.id, u.logical_id, u.kind from course_units u
+                    join courses c on c.id = u.course_id
+                    where c.id = %s and c.instructor_id = %s
+                      and c.working_revision_id = %s and u.revision_id = %s
+                      and u.logical_id = any(%s) and u.review_status <> 'dismissed'
+                    """,
+                    (
+                        course_id,
+                        instructor_id,
+                        revision_id,
+                        revision_id,
+                        [source_logical_id, target_logical_id],
+                    ),
+                )
+            ).fetchall()
+            by_logical = {UUID(str(row["logical_id"])): row for row in rows}
+            source = by_logical.get(source_logical_id)
+            target = by_logical.get(target_logical_id)
+            if source is None or target is None or source_logical_id == target_logical_id:
+                raise ValueError("Choose two different visible Course Flow units.")
+            if relationship == "assesses" and (
+                str(source["kind"]) != "lecture"
+                or str(target["kind"]) not in {"quiz", "assignment"}
+            ):
+                raise ValueError(
+                    "An assesses relationship runs from a lecture to a quiz or assignment."
+                )
+            if action == "delete":
+                await conn.execute(
+                    """
+                    update course_unit_edges set review_status = 'dismissed',
+                      dismissed_at = now(), updated_at = now()
+                    where revision_id = %s and source_unit_id = %s
+                      and target_unit_id = %s and relationship = %s
+                    """,
+                    (revision_id, source["id"], target["id"], relationship),
+                )
+                return
+            if action != "create":
+                raise ValueError("Unsupported Course Flow relationship action.")
+            if relationship in {"next", "requires"}:
+                cycle = await (
+                    await conn.execute(
+                        """
+                        with recursive reachable(id) as (
+                          select target_unit_id from course_unit_edges
+                          where revision_id = %s and source_unit_id = %s
+                            and relationship = %s and review_status <> 'dismissed'
+                          union
+                          select edge.target_unit_id from course_unit_edges edge
+                          join reachable on edge.source_unit_id = reachable.id
+                          where edge.revision_id = %s and edge.relationship = %s
+                            and edge.review_status <> 'dismissed'
+                        )
+                        select 1 from reachable where id = %s
+                        """,
+                        (
+                            revision_id,
+                            target["id"],
+                            relationship,
+                            revision_id,
+                            relationship,
+                            source["id"],
+                        ),
+                    )
+                ).fetchone()
+                if cycle is not None:
+                    raise ValueError("That relationship would create a cycle.")
+            await conn.execute(
+                """
+                insert into course_unit_edges (
+                  course_id, revision_id, source_unit_id, target_unit_id,
+                  relationship, review_status, instructor_revision
+                )
+                values (%s, %s, %s, %s, %s, 'edited', %s::jsonb)
+                on conflict (revision_id, source_unit_id, target_unit_id, relationship)
+                do update set review_status = 'edited', dismissed_at = null, updated_at = now()
+                """,
+                (
+                    course_id,
+                    revision_id,
+                    source["id"],
+                    target["id"],
+                    relationship,
+                    Jsonb({"created_by": "instructor"}),
+                ),
+            )
+            if relationship == "next":
+                await conn.execute(
+                    """
+                    with source_rank as (
+                      select sequence_rank
+                      from course_units
+                      where revision_id = %s and id = %s
+                    ),
+                    reordered as (
+                      select unit.id,
+                             row_number() over (
+                               order by
+                                 case
+                                   when unit.id = %s
+                                     then source_rank.sequence_rank::numeric + 0.5
+                                   else unit.sequence_rank::numeric
+                                 end,
+                                 unit.created_at,
+                                 unit.id
+                             ) - 1 as next_rank
+                      from course_units unit
+                      cross join source_rank
+                      where unit.revision_id = %s
+                        and unit.review_status <> 'dismissed'
+                    )
+                    update course_units unit
+                    set sequence_rank = reordered.next_rank,
+                        updated_at = now()
+                    from reordered
+                    where unit.id = reordered.id
+                    """,
+                    (revision_id, source["id"], target["id"], revision_id),
+                )
+
     async def blueprint(
         self,
         course_id: UUID,
@@ -1755,7 +2678,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
             topics = await (
                 await conn.execute(
                     """
-                    select id, logical_id, title, summary, review_status,
+                    select id, logical_id, video_id, title, summary, review_status,
                            start_seconds, end_seconds
                     from topics
                     where course_id = %s and revision_id = %s
@@ -1814,7 +2737,8 @@ class PostgresCourseOSRepository(CourseOSRepository):
                              as primary_concept_id
                     from questions q
                     left join question_concepts qc on qc.question_id = q.id
-                    where q.revision_id = %s and q.review_status <> 'dismissed'
+                    where q.revision_id = %s and q.topic_id is not null
+                      and q.review_status <> 'dismissed'
                     group by q.id
                     order by q.created_at
                     """,
@@ -1907,6 +2831,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     parent_id=None,
                     metadata={
                         "summary": str(row["summary"] or ""),
+                        "video_id": str(row["video_id"]),
                         "start_seconds": float(row["start_seconds"]),
                         "end_seconds": float(row["end_seconds"]),
                         "layout": layout.get(logical_id),
@@ -2600,6 +3525,56 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     revision_id,
                 ),
             )
+
+    async def review_course_flow_artifact(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        artifact_kind: str,
+        logical_artifact_id: UUID,
+        decision: ReviewDecision,
+    ) -> None:
+        table = {"unit": "course_units", "relationship": "course_unit_edges"}.get(
+            artifact_kind
+        )
+        if table is None:
+            raise ValueError("Unsupported Course Flow artifact.")
+        next_status = {
+            ReviewDecision.ACCEPTED: "accepted",
+            ReviewDecision.EDITED: "edited",
+            ReviewDecision.DISMISSED: "dismissed",
+        }[decision]
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            row = await (
+                await conn.execute(
+                    f"""
+                    update {table} artifact
+                    set review_status = %s,
+                        dismissed_at = case when %s = 'dismissed' then now() else null end,
+                        updated_at = now()
+                    from courses course
+                    where artifact.course_id = course.id
+                      and course.id = %s and course.instructor_id = %s
+                      and course.working_revision_id = %s
+                      and artifact.revision_id = %s
+                      and artifact.logical_id = %s
+                      and artifact.review_status = 'proposed'
+                    returning artifact.id
+                    """,
+                    (
+                        next_status,
+                        next_status,
+                        course_id,
+                        instructor_id,
+                        revision_id,
+                        revision_id,
+                        logical_artifact_id,
+                    ),
+                )
+            ).fetchone()
+            if row is None:
+                raise ValueError("This Course Flow proposal is no longer awaiting review.")
 
     async def remove_blueprint_prerequisite(
         self,
@@ -4898,6 +5873,9 @@ def _publication_blockers(
             "proposed_concepts",
             "proposed_edges",
             "proposed_questions",
+            "proposed_modules",
+            "proposed_units",
+            "proposed_unit_edges",
         )
     ):
         blockers.append("Accept, edit, or dismiss every AI proposal before publishing.")
@@ -5607,6 +6585,100 @@ async def _apply_typed_proposal(
     revision_id: UUID,
     resolved_state: dict[str, Any],
 ) -> None:
+    if artifact_type == "course_unit_remove":
+        row = await (
+            await conn.execute(
+                """
+                update course_units
+                set review_status = 'dismissed', dismissed_at = now(), updated_at = now()
+                where course_id = %s and revision_id = %s and logical_id = %s
+                  and review_status <> 'dismissed'
+                returning id
+                """,
+                (course_id, revision_id, logical_artifact_id),
+            )
+        ).fetchone()
+        if row is None:
+            raise ValueError("That Course Flow unit is already removed.")
+        await conn.execute(
+            """
+            update course_unit_edges
+            set review_status = 'dismissed', dismissed_at = now(), updated_at = now()
+            where revision_id = %s
+              and (source_unit_id = %s or target_unit_id = %s)
+            """,
+            (revision_id, row["id"], row["id"]),
+        )
+        return
+    if artifact_type == "course_unit_create":
+        kind = str(resolved_state.get("course_unit_kind", "")).strip()
+        title = str(resolved_state.get("title", "")).strip()
+        summary = str(resolved_state.get("summary", "")).strip()
+        instructions = str(resolved_state.get("instructions", "")).strip()
+        try:
+            concept_logical_ids = [
+                UUID(str(value))
+                for value in resolved_state.get("concept_logical_ids", [])
+            ]
+        except (TypeError, ValueError) as exc:
+            raise ValueError("The Course Flow unit has invalid concept coverage.") from exc
+        if kind not in {"quiz", "assignment"} or not title or not concept_logical_ids:
+            raise ValueError(
+                "A quiz or assignment needs a title and at least one covered concept."
+            )
+        concepts = await (
+            await conn.execute(
+                """
+                select id from concepts
+                where revision_id = %s and logical_id = any(%s::uuid[])
+                  and review_status <> 'dismissed'
+                """,
+                (revision_id, concept_logical_ids),
+            )
+        ).fetchall()
+        if len(concepts) != len(set(concept_logical_ids)):
+            raise ValueError("Every covered concept must belong to this revision.")
+        rank = await (
+            await conn.execute(
+                """
+                select coalesce(max(sequence_rank), -1) + 1 as value
+                from course_units where revision_id = %s and review_status <> 'dismissed'
+                """,
+                (revision_id,),
+            )
+        ).fetchone()
+        unit = await (
+            await conn.execute(
+                """
+                insert into course_units (
+                  logical_id, course_id, revision_id, kind, title, summary,
+                  instructions, sequence_rank, review_status, instructor_revision
+                ) values (%s, %s, %s, %s, %s, %s, %s, %s, 'edited', %s::jsonb)
+                returning id
+                """,
+                (
+                    logical_artifact_id,
+                    course_id,
+                    revision_id,
+                    kind,
+                    title,
+                    summary,
+                    instructions,
+                    int(rank["value"]) if rank else 0,
+                    Jsonb({"action": "add", "source": "course_director"}),
+                ),
+            )
+        ).fetchone()
+        assert unit is not None
+        for concept in concepts:
+            await conn.execute(
+                """
+                insert into course_unit_concepts (unit_id, concept_id, revision_id)
+                values (%s, %s, %s)
+                """,
+                (unit["id"], concept["id"], revision_id),
+            )
+        return
     if artifact_type in {
         "blueprint_relationship_create",
         "blueprint_relationship_reconnect",

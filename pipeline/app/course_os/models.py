@@ -263,6 +263,75 @@ class CourseBlueprint:
 
 
 @dataclass(frozen=True)
+class CourseFlowModule:
+    id: UUID
+    logical_id: UUID
+    title: str
+    summary: str
+    sequence_rank: int
+    status: str
+    x: float | None = None
+    y: float | None = None
+
+
+@dataclass(frozen=True)
+class CourseFlowUnit:
+    id: UUID
+    logical_id: UUID
+    module_logical_id: UUID | None
+    kind: Literal["lecture", "quiz", "assignment"]
+    title: str
+    summary: str
+    instructions: str
+    video_id: UUID | None
+    sequence_rank: int
+    status: str
+    topic_count: int = 0
+    concept_count: int = 0
+    question_count: int = 0
+    source_count: int = 0
+    concept_logical_ids: tuple[UUID, ...] = ()
+    x: float | None = None
+    y: float | None = None
+
+
+@dataclass(frozen=True)
+class CourseFlowEdge:
+    id: UUID
+    logical_id: UUID
+    source_unit_logical_id: UUID
+    target_unit_logical_id: UUID
+    relationship: Literal["next", "requires", "assesses"]
+    status: str
+
+
+@dataclass(frozen=True)
+class CourseFlow:
+    course_id: UUID
+    revision_id: UUID
+    revision_kind: Literal["active", "working"]
+    modules: tuple[CourseFlowModule, ...]
+    units: tuple[CourseFlowUnit, ...]
+    edges: tuple[CourseFlowEdge, ...]
+
+
+@dataclass(frozen=True)
+class CourseFlowUnitDraft:
+    kind: Literal["lecture", "quiz", "assignment"]
+    title: str
+    summary: str = ""
+    instructions: str = ""
+    module_logical_id: UUID | None = None
+    concept_logical_ids: tuple[UUID, ...] = ()
+
+
+@dataclass(frozen=True)
+class CourseFlowModuleDraft:
+    title: str
+    summary: str = ""
+
+
+@dataclass(frozen=True)
 class BlueprintMutationImpact:
     artifact_kind: str
     logical_artifact_id: UUID

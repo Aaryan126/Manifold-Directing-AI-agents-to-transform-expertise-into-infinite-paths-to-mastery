@@ -8,7 +8,7 @@ from uuid import UUID
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.course_os.models import BlueprintNode, CourseBlueprint
+from app.course_os.models import BlueprintNode, CourseBlueprint, CourseFlow
 
 DirectorOperation = Literal[
     "update_artifact",
@@ -19,6 +19,8 @@ DirectorOperation = Literal[
     "create_relationship",
     "reconnect_relationship",
     "remove_relationship",
+    "create_course_unit",
+    "remove_course_unit",
 ]
 DirectorRelationship = Literal[
     "contains",
@@ -59,6 +61,7 @@ class CourseDirector(Protocol):
         instruction: str,
         blueprint: CourseBlueprint,
         active_blueprint: CourseBlueprint | None = None,
+        course_flow: CourseFlow | None = None,
     ) -> CourseDirectorPlan: ...
 
 
@@ -91,6 +94,8 @@ class _DirectorProposedStateOutput(BaseModel):
     sequence_after_id: str | None = None
     topic_logical_id: str | None = None
     primary_concept_logical_id: str | None = None
+    course_unit_kind: Literal["quiz", "assignment"] | None = None
+    concept_logical_ids: list[str] | None = None
 
     def as_proposal_state(self) -> dict[str, Any]:
         return self.model_dump(exclude_none=True)
@@ -102,7 +107,9 @@ class _DirectorActionOutput(BaseModel):
     operation: DirectorOperation
     summary: str = Field(min_length=1, max_length=120)
     rationale: str = Field(min_length=1, max_length=240)
-    artifact_kind: Literal["topic", "concept", "clip", "question", "source"] | None = None
+    artifact_kind: Literal[
+        "topic", "concept", "clip", "question", "source", "course_unit"
+    ] | None = None
     logical_artifact_id: str | None = None
     relationship_type: DirectorRelationship | None = None
     source_logical_id: str | None = None
@@ -133,6 +140,7 @@ class OpenAICourseDirector:
         instruction: str,
         blueprint: CourseBlueprint,
         active_blueprint: CourseBlueprint | None = None,
+        course_flow: CourseFlow | None = None,
     ) -> CourseDirectorPlan:
         response = await self._client.responses.parse(
             model=self._model,
@@ -148,6 +156,10 @@ class OpenAICourseDirector:
                         "Supported operations include update_artifact and remove_artifact for any "
                         "supplied topic, concept, clip, question, or source; create_topic, "
                         "create_concept, create_question; and the relationship operations below. "
+                        "At whole-course scope, create_course_unit can add a standalone quiz or "
+                        "assignment with title, summary, instructions, course_unit_kind, and "
+                        "concept_logical_ids. remove_course_unit removes one supplied Course Flow "
+                        "unit. Never use these operations for a lecture. "
                         "When an instructor asks to remove or delete one exact named artifact, use "
                         "remove_artifact with its exact artifact_kind and logical_artifact_id. "
                         "Editable fields are topic title/summary/start_seconds/end_seconds; "
@@ -179,7 +191,9 @@ class OpenAICourseDirector:
                 {
                     "role": "user",
                     "content": json.dumps(
-                        _blueprint_context(instruction, blueprint, active_blueprint)
+                        _blueprint_context(
+                            instruction, blueprint, active_blueprint, course_flow
+                        )
                     ),
                 },
             ],
@@ -188,7 +202,7 @@ class OpenAICourseDirector:
         parsed = response.output_parsed
         if parsed is None:
             raise RuntimeError("Course Director did not return a valid edit plan.")
-        plan = _validated_plan(parsed, blueprint)
+        plan = _validated_plan(parsed, blueprint, course_flow)
         published_only_match = _published_only_removal_match(
             instruction,
             blueprint,
@@ -203,6 +217,7 @@ def _blueprint_context(
     instruction: str,
     blueprint: CourseBlueprint,
     active_blueprint: CourseBlueprint | None = None,
+    course_flow: CourseFlow | None = None,
 ) -> dict[str, Any]:
     """Build model context without allowing legacy orphaned edges to crash a request."""
 
@@ -252,6 +267,19 @@ def _blueprint_context(
         ],
         "relationships": relationships,
         "published_artifacts_absent_from_private_revision": published_only_nodes,
+        "course_flow": [
+            {
+                "logical_id": str(unit.logical_id),
+                "kind": unit.kind,
+                "title": unit.title,
+                "summary": unit.summary,
+                "status": unit.status,
+                "concept_logical_ids": [
+                    str(value) for value in unit.concept_logical_ids
+                ],
+            }
+            for unit in (course_flow.units if course_flow else ())
+        ],
     }
 
 
@@ -263,9 +291,36 @@ class LocalCourseDirector:
         instruction: str,
         blueprint: CourseBlueprint,
         active_blueprint: CourseBlueprint | None = None,
+        course_flow: CourseFlow | None = None,
     ) -> CourseDirectorPlan:
         normalized = instruction.strip()
         lowered = normalized.lower()
+        flow_matches = sorted(
+            (
+                unit
+                for unit in (course_flow.units if course_flow else ())
+                if _instruction_matches_title(normalized, unit.title)
+            ),
+            key=lambda unit: len(unit.title),
+            reverse=True,
+        )
+        if ("remove" in lowered or "delete" in lowered) and flow_matches:
+            unit = flow_matches[0]
+            return CourseDirectorPlan(
+                summary=f"Prepare removal of {unit.title} from the Course Flow.",
+                actions=(
+                    CourseDirectorAction(
+                        operation="remove_course_unit",
+                        artifact_kind="course_unit",
+                        logical_artifact_id=unit.logical_id,
+                        summary=f"Remove {unit.title}",
+                        rationale=(
+                            "The instructor explicitly requested this private "
+                            "Course Flow change."
+                        ),
+                    ),
+                ),
+            )
         matches = sorted(
             (
                 node
@@ -275,6 +330,52 @@ class LocalCourseDirector:
             key=lambda node: len(node.title),
             reverse=True,
         )
+        requested_unit_kind = (
+            "quiz" if "quiz" in lowered
+            else "assignment" if "assignment" in lowered
+            else None
+        )
+        matched_concepts = [node for node in matches if node.kind == "concept"]
+        if ("add" in lowered or "create" in lowered) and requested_unit_kind:
+            if not matched_concepts:
+                return CourseDirectorPlan(
+                    summary=f"I can prepare that {requested_unit_kind}.",
+                    actions=(),
+                    clarification=(
+                        "Name at least one exact concept the new "
+                        f"{requested_unit_kind} should assess."
+                    ),
+                )
+            concept_titles = ", ".join(node.title for node in matched_concepts)
+            title = (
+                f"{requested_unit_kind.title()}: {matched_concepts[0].title}"
+            )
+            return CourseDirectorPlan(
+                summary=f"Prepare a standalone {requested_unit_kind}.",
+                actions=(
+                    CourseDirectorAction(
+                        operation="create_course_unit",
+                        artifact_kind="course_unit",
+                        proposed_state={
+                            "course_unit_kind": requested_unit_kind,
+                            "title": title,
+                            "summary": f"Checks understanding of {concept_titles}.",
+                            "instructions": (
+                                "Complete this after the connected lecture and "
+                                "explain your reasoning."
+                            ),
+                            "concept_logical_ids": [
+                                str(node.logical_id) for node in matched_concepts
+                            ],
+                        },
+                        summary=f"Add {title}",
+                        rationale=(
+                            "The instructor requested a new whole-course learning unit "
+                            "grounded in these reviewed concepts."
+                        ),
+                    ),
+                ),
+            )
         if ("remove" in lowered or "delete" in lowered) and matches:
             node = matches[0]
             return CourseDirectorPlan(
@@ -388,7 +489,11 @@ class LocalCourseDirector:
         )
 
 
-def _validated_plan(output: _DirectorPlanOutput, blueprint: CourseBlueprint) -> CourseDirectorPlan:
+def _validated_plan(
+    output: _DirectorPlanOutput,
+    blueprint: CourseBlueprint,
+    course_flow: CourseFlow | None = None,
+) -> CourseDirectorPlan:
     nodes = {node.logical_id: node for node in blueprint.nodes}
     node_logical_ids = {node.id: node.logical_id for node in blueprint.nodes}
     relationships = {
@@ -399,6 +504,9 @@ def _validated_plan(output: _DirectorPlanOutput, blueprint: CourseBlueprint) -> 
         )
         for edge in blueprint.edges
         if edge.kind != "next"
+    }
+    course_units = {
+        unit.logical_id: unit for unit in (course_flow.units if course_flow else ())
     }
     actions: list[CourseDirectorAction] = []
     for candidate in output.actions:
@@ -423,6 +531,27 @@ def _validated_plan(output: _DirectorPlanOutput, blueprint: CourseBlueprint) -> 
             continue
         if candidate.operation in {"update_artifact", "remove_artifact"}:
             if logical_id not in nodes or nodes[logical_id].kind != candidate.artifact_kind:
+                continue
+        if candidate.operation == "remove_course_unit":
+            if logical_id not in course_units or candidate.artifact_kind != "course_unit":
+                continue
+        if candidate.operation == "create_course_unit":
+            state = proposed_state
+            try:
+                concept_ids = [
+                    UUID(str(value)) for value in state.get("concept_logical_ids", [])
+                ]
+            except (TypeError, ValueError):
+                continue
+            if (
+                state.get("course_unit_kind") not in {"quiz", "assignment"}
+                or not str(state.get("title", "")).strip()
+                or not concept_ids
+                or any(
+                    concept_id not in nodes or nodes[concept_id].kind != "concept"
+                    for concept_id in concept_ids
+                )
+            ):
                 continue
         if candidate.operation == "create_question":
             state = proposed_state

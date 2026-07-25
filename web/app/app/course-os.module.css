@@ -1833,3 +1833,582 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
   .blueprintDialog > footer button { width: 100%; }
   .blueprintCleanupPrompt > div:last-child { width: 100%; }
 }
+
+/* Course Flow — course-level lecture, quiz, and assignment sequence. */
+.courseFlowWorkspace {
+  background: #fbfaf7;
+  color: #202126;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.courseFlowHeader {
+  align-items: flex-end;
+  background: #fff;
+  border-bottom: 1px solid #dedbd3;
+  display: flex;
+  gap: 30px;
+  justify-content: space-between;
+  padding: 28px 34px 24px;
+}
+
+.courseFlowHeader > div:first-child {
+  display: grid;
+  gap: 7px;
+  max-width: 760px;
+}
+
+.courseFlowHeader small {
+  color: #9a561d;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.courseFlowHeader h2 {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: clamp(30px, 3vw, 43px);
+  font-weight: 500;
+  letter-spacing: -.035em;
+  line-height: 1;
+  margin: 0;
+}
+
+.courseFlowHeader p {
+  color: #69676f;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.courseFlowActions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 9px;
+}
+
+.courseFlowActions .activeMode {
+  background: #fff;
+  box-shadow: 0 2px 8px rgb(28 29 33 / 10%);
+  color: #202126;
+}
+
+.secondaryAction {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #d8d4cb;
+  border-radius: 8px;
+  color: #292a2f;
+  display: flex;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+  gap: 7px;
+  min-height: 39px;
+  padding: 8px 12px;
+}
+
+.secondaryAction svg { height: 15px; width: 15px; }
+
+.courseFlowAuthoring {
+  align-items: center;
+  background: #fff;
+  border-bottom: 1px solid #dedbd3;
+  display: flex;
+  gap: 7px;
+  padding: 10px 34px;
+}
+
+.courseFlowAuthoring button {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #d8d4cb;
+  border-radius: 8px;
+  color: #292a2f;
+  display: flex;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+  gap: 6px;
+  min-height: 38px;
+  padding: 8px 11px;
+}
+
+.courseFlowAuthoring button:disabled { cursor: wait; opacity: .5; }
+.courseFlowAuthoring button svg { height: 14px; width: 14px; }
+.courseFlowAuthoring button svg + svg { margin-left: -3px; }
+.courseFlowAuthoring span { color: #77747b; font-size: 10px; margin-left: 7px; }
+
+.courseFlowCanvas {
+  display: grid;
+  gap: 12px;
+  min-height: 610px;
+  padding: 18px 22px 22px;
+  position: relative;
+}
+
+.courseFlowGraph {
+  background: #fbfaf7;
+  border: 1px solid #dedbd3;
+  border-radius: 14px;
+  box-shadow: 0 8px 28px rgb(30 31 35 / 4%);
+  height: max(610px, calc(100dvh - 310px));
+  min-height: 610px;
+  overflow: hidden;
+}
+
+.courseFlowGraphLane {
+  background: rgb(242 240 235 / 76%) !important;
+  border: 1px solid #d8d4cc !important;
+  border-radius: 14px !important;
+  box-shadow: none !important;
+  color: #202126 !important;
+  padding: 0 !important;
+  text-align: left !important;
+}
+
+.courseFlowGraphLaneLabel {
+  border-bottom: 1px solid #d8d4cc;
+  display: grid;
+  gap: 4px;
+  padding: 16px 18px 14px;
+}
+
+.courseFlowGraphLaneLabel small {
+  color: #8b571f;
+  font-size: 8px;
+  font-weight: 850;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.courseFlowGraphLaneLabel strong {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 20px;
+  font-weight: 550;
+  line-height: 1.12;
+}
+
+.courseFlowGraphLaneLabel span {
+  color: #747179;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.courseFlowGraphLaneLabel em {
+  color: #77747b;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 750;
+  margin-top: 2px;
+  text-transform: uppercase;
+}
+
+.courseFlowGraphNode {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 7px 18px rgb(27 28 32 / 10%) !important;
+  padding: 0 !important;
+  text-align: left !important;
+  width: 264px !important;
+}
+
+.courseFlowGraphNode:global(.selected) {
+  box-shadow: 0 0 0 2px #292a2f, 0 10px 24px rgb(27 28 32 / 15%) !important;
+}
+
+.courseFlowGraphUnit {
+  align-items: start;
+  background: #edf3f6;
+  border: 1px solid #9db5c3;
+  border-radius: 11px;
+  color: #202126;
+  display: grid;
+  gap: 11px;
+  grid-template-columns: 35px minmax(0, 1fr);
+  min-height: 105px;
+  overflow: hidden;
+  padding: 15px;
+  position: relative;
+}
+
+.courseFlowGraphUnit::before {
+  background: #587b91;
+  content: "";
+  height: 4px;
+  inset: 0 0 auto;
+  position: absolute;
+}
+
+.courseFlowGraphUnit[data-kind="quiz"] {
+  background: #fff1e3;
+  border-color: #e2a66f;
+}
+
+.courseFlowGraphUnit[data-kind="quiz"]::before { background: #c96e26; }
+.courseFlowGraphUnit[data-kind="assignment"] {
+  background: #edf5ea;
+  border-color: #a9c19f;
+}
+.courseFlowGraphUnit[data-kind="assignment"]::before { background: #608356; }
+.courseFlowGraphUnit[data-status="proposed"] { box-shadow: inset 0 0 0 1px #d58b45; }
+
+.courseFlowGraphUnit > span {
+  align-items: center;
+  background: rgb(255 255 255 / 68%);
+  border-radius: 8px;
+  color: #456b82;
+  display: flex;
+  height: 35px;
+  justify-content: center;
+  width: 35px;
+}
+
+.courseFlowGraphUnit[data-kind="quiz"] > span { color: #b45f1e; }
+.courseFlowGraphUnit[data-kind="assignment"] > span { color: #547b4b; }
+.courseFlowGraphUnit svg { height: 17px; width: 17px; }
+.courseFlowGraphUnit > div { display: grid; gap: 4px; min-width: 0; }
+.courseFlowGraphUnit small {
+  color: #6e6b72;
+  font-size: 8px;
+  font-weight: 850;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.courseFlowGraphUnit strong {
+  display: -webkit-box;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+.courseFlowGraphUnit em {
+  color: #6e6b72;
+  font-size: 8px;
+  font-style: normal;
+  line-height: 1.35;
+}
+.courseFlowGraphUnit .courseFlowGraphUnitActions {
+  border-top: 1px solid rgb(89 91 96 / 13%);
+  display: flex;
+  gap: 5px;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  margin: 5px -4px -4px;
+  padding: 8px 0 0;
+}
+.courseFlowGraphUnitActions button {
+  align-items: center;
+  background: rgb(255 255 255 / 70%);
+  border: 1px solid rgb(91 88 82 / 18%);
+  border-radius: 6px;
+  color: #55535a;
+  display: flex;
+  font: inherit;
+  font-size: 8px;
+  font-weight: 750;
+  gap: 3px;
+  padding: 5px 6px;
+}
+.courseFlowGraphUnitActions button:last-child:hover { color: #a43e32; }
+.courseFlowGraphUnitActions button svg { height: 10px; width: 10px; }
+
+.courseFlowGraphEdge :global(.react-flow__edge-textbg) { fill: #fbfaf7; }
+.courseFlowGraphEdge :global(.react-flow__edge-text) {
+  fill: #625f67;
+  font-size: 8px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.courseFlowGraphSelection {
+  align-items: center;
+  background: rgb(255 255 255 / 94%);
+  border: 1px solid #d8d4cb;
+  border-radius: 9px;
+  bottom: 42px;
+  box-shadow: 0 8px 24px rgb(28 29 33 / 9%);
+  display: flex;
+  gap: 12px;
+  left: 50%;
+  max-width: calc(100% - 140px);
+  padding: 8px 10px;
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 8;
+}
+
+.courseFlowGraphSelection > span { color: #716e75; font-size: 9px; white-space: nowrap; }
+.courseFlowGraphSelection > div { display: flex; gap: 6px; overflow-x: auto; }
+.courseFlowGraphSelection article {
+  align-items: center;
+  background: #fff7ec;
+  border: 1px solid #e8c89f;
+  border-radius: 7px;
+  display: flex;
+  gap: 5px;
+  padding: 5px 6px 5px 8px;
+  white-space: nowrap;
+}
+.courseFlowGraphSelection article strong { font-size: 9px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.courseFlowGraphSelection button {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #d9d5cd;
+  border-radius: 6px;
+  display: flex;
+  font: inherit;
+  font-size: 8px;
+  font-weight: 750;
+  gap: 3px;
+  padding: 5px 6px;
+}
+.courseFlowGraphSelection button:first-of-type { background: #25262b; border-color: #25262b; color: #fff; }
+.courseFlowGraphSelection button svg { height: 10px; width: 10px; }
+
+.courseFlowLane {
+  background: #fff;
+  border: 1px solid #dedbd3;
+  border-radius: 14px;
+  box-shadow: 0 9px 28px rgb(30 31 35 / 4%);
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.courseFlowLaneTitle {
+  align-content: start;
+  background: #f1efea;
+  border-right: 1px solid #dedbd3;
+  display: grid;
+  gap: 5px;
+  padding: 22px;
+}
+
+.courseFlowLaneTitle span {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.courseFlowLaneTitle small {
+  color: #6e6b73;
+  font-size: 10px;
+  line-height: 1.45;
+  text-transform: none;
+}
+
+.courseFlowSequence {
+  align-items: stretch;
+  display: flex;
+  gap: 0;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 22px;
+}
+
+.courseFlowStep {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.courseFlowCard {
+  background: #fff;
+  border: 1px solid #d9d5cd;
+  border-radius: 11px;
+  box-shadow: 0 5px 16px rgb(28 29 33 / 5%);
+  display: grid;
+  min-height: 128px;
+  overflow: hidden;
+  position: relative;
+  width: 260px;
+}
+
+.courseFlowCard::before {
+  background: #6b8395;
+  content: "";
+  height: 4px;
+  inset: 0 0 auto;
+  position: absolute;
+}
+
+.courseFlowCard[data-kind="quiz"]::before { background: #cf762c; }
+.courseFlowCard[data-kind="assignment"]::before { background: #6d8a59; }
+.courseFlowCard[data-status="proposed"] { border-color: #ddb88e; }
+
+.courseFlowCardMain {
+  align-items: flex-start;
+  background: transparent;
+  border: 0;
+  color: #202126;
+  display: grid;
+  font: inherit;
+  gap: 11px;
+  grid-template-columns: 35px minmax(0, 1fr);
+  padding: 18px 15px 13px;
+  text-align: left;
+  width: 100%;
+}
+
+.courseFlowCardMain > span:last-child { display: grid; gap: 5px; min-width: 0; }
+.courseFlowCardMain small { color: #77747b; font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.courseFlowCardMain strong { font-size: 13px; line-height: 1.35; }
+.courseFlowCardMain em { color: #6f6c74; font-size: 10px; font-style: normal; line-height: 1.4; }
+
+.courseFlowIcon {
+  align-items: center;
+  background: #edf2f5;
+  border-radius: 8px;
+  color: #4f6d82;
+  display: flex;
+  height: 35px;
+  justify-content: center;
+  width: 35px;
+}
+
+.courseFlowCard[data-kind="quiz"] .courseFlowIcon { background: #fff0e2; color: #b86522; }
+.courseFlowCard[data-kind="assignment"] .courseFlowIcon { background: #edf4ea; color: #55794e; }
+.courseFlowIcon svg { height: 17px; width: 17px; }
+
+.courseFlowCardActions {
+  align-items: center;
+  border-top: 1px solid #ebe8e2;
+  display: flex;
+  gap: 3px;
+  justify-content: flex-end;
+  padding: 6px 8px;
+}
+
+.courseFlowCardActions button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #6c6971;
+  display: flex;
+  height: 27px;
+  justify-content: center;
+  width: 27px;
+}
+
+.courseFlowCardActions button:hover { background: #efede8; color: #202126; }
+.courseFlowCardActions button:last-child:hover { background: #fff0ed; color: #a33e32; }
+.courseFlowCardActions svg { height: 14px; width: 14px; }
+
+.courseFlowConnector {
+  align-items: center;
+  color: #9d9a92;
+  display: flex;
+  padding: 0 10px;
+}
+
+.courseFlowConnector span { background: #c3c0b8; height: 1px; width: 24px; }
+.courseFlowConnector svg { height: 14px; transform: rotate(-90deg); width: 14px; }
+
+.courseFlowEmpty {
+  align-items: center;
+  color: #6f6c74;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  justify-content: center;
+  min-height: 430px;
+  padding: 40px;
+  text-align: center;
+}
+
+.courseFlowEmpty > svg { color: #7b787f; height: 34px; width: 34px; }
+.courseFlowEmpty h3 { color: #202126; font-family: var(--font-display), Georgia, serif; font-size: 28px; font-weight: 500; margin: 0; }
+.courseFlowEmpty p { font-size: 12px; margin: 0; }
+.courseFlowEmpty button { background: #24252a; border: 0; border-radius: 8px; color: #fff; font: inherit; font-size: 11px; font-weight: 750; margin-top: 8px; padding: 10px 13px; }
+
+.courseFlowDialog {
+  background: #fff;
+  border: 1px solid #d9d5cd;
+  border-radius: 15px;
+  box-shadow: 0 24px 70px rgb(25 26 30 / 25%);
+  box-sizing: border-box;
+  display: grid;
+  gap: 15px;
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+  padding: 24px;
+  width: min(620px, 100%);
+}
+
+.courseFlowDialog > header {
+  align-items: flex-start;
+  border-bottom: 1px solid #e3e0d9;
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 17px;
+}
+
+.courseFlowDialog > header > div { display: grid; gap: 5px; }
+.courseFlowDialog > header small { color: #9a561d; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.courseFlowDialog h3 { font-family: var(--font-display), Georgia, serif; font-size: 28px; font-weight: 500; letter-spacing: -.025em; line-height: 1.1; margin: 0; }
+.courseFlowDialog > header > button { align-items: center; background: transparent; border: 0; border-radius: 7px; color: #6f6d74; display: flex; height: 31px; justify-content: center; width: 31px; }
+.courseFlowDialog > header > button:hover { background: #f0eee9; }
+.courseFlowDialog > header > button svg { height: 17px; width: 17px; }
+.courseFlowDialog > label,.courseFlowDialog fieldset { color: #625f67; display: grid; font-size: 10px; font-weight: 750; gap: 6px; margin: 0; text-transform: uppercase; }
+.courseFlowDialog input,.courseFlowDialog textarea,.courseFlowDialog select { background: #fff; border: 1px solid #d7d3cb; border-radius: 8px; box-sizing: border-box; color: #202126; font: inherit; font-size: 12px; padding: 10px 11px; resize: vertical; text-transform: none; width: 100%; }
+.courseFlowRelationshipHint { background: #f4f2ed; border-radius: 9px; color: #625f67; font-size: 11px; line-height: 1.55; margin: 0; padding: 11px 13px; }
+.courseFlowPending { background: #fff8ee; border: 1px solid #eccca9; border-radius: 12px; display: grid; gap: 8px; margin: 0 26px; padding: 13px; }
+.courseFlowPending > strong { font-size: 11px; }
+.courseFlowPending article { align-items: center; background: #fff; border: 1px solid #eadbc9; border-radius: 9px; display: flex; gap: 14px; justify-content: space-between; padding: 9px 11px; }
+.courseFlowPending article > span { font-size: 10px; font-weight: 650; }
+.courseFlowPending article small { color: #9a561d; font-size: 8px; font-weight: 800; margin-right: 8px; text-transform: uppercase; }
+.courseFlowPending article div { display: flex; gap: 6px; }
+.courseFlowPending button { align-items: center; background: #fff; border: 1px solid #d7d3cb; border-radius: 7px; display: flex; font: inherit; font-size: 9px; font-weight: 750; gap: 4px; padding: 6px 8px; }
+.courseFlowPending button:first-child { background: #25262b; border-color: #25262b; color: #fff; }
+.courseFlowPending button svg { height: 11px; width: 11px; }
+.courseUnitSummary,.previewJourney { border-bottom: 1px solid #e1ded7; display: grid; gap: 10px; padding: 16px 24px; }
+.courseUnitSummary > small,.previewJourney > small { color: #6e6b72; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.courseUnitSummary > div,.previewJourney > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.courseUnitSummary article,.previewJourney article { align-items: center; background: #f7f5f1; border: 1px solid #ddd9d1; border-radius: 10px; display: grid; gap: 9px; grid-template-columns: 30px minmax(160px, 1fr) auto; min-width: 245px; padding: 10px 12px; }
+.courseUnitSummary article > span { align-items: center; background: #fff; border-radius: 7px; display: flex; height: 30px; justify-content: center; }
+.courseUnitSummary article svg { height: 15px; width: 15px; }
+.courseUnitSummary article div,.previewJourney article div { display: grid; gap: 2px; }
+.courseUnitSummary article strong,.previewJourney article strong { font-size: 11px; }
+.courseUnitSummary article p,.previewJourney article p { color: #6b6870; font-size: 9px; margin: 0; }
+.courseUnitSummary article em { color: #9a561d; font-size: 9px; font-style: normal; text-transform: capitalize; }
+.previewJourney article { grid-template-columns: 26px minmax(150px, 1fr); min-width: 210px; }
+.previewJourney article > span { align-items: center; background: #fff; border: 1px solid #ddd9d1; border-radius: 50%; display: flex; font-size: 8px; height: 26px; justify-content: center; }
+.previewJourney article[data-kind="quiz"] { background: #fff5ea; border-color: #efc79f; }
+.previewJourney article[data-kind="assignment"] { background: #eff5ec; border-color: #c8d8c2; }
+.courseFlowDialog fieldset { border: 1px solid #dfdcd4; border-radius: 9px; padding: 12px; }
+.courseFlowDialog legend { padding: 0 6px; }
+.courseFlowDialog legend small { color: #7a777e; font-weight: 500; margin-left: 6px; text-transform: none; }
+.courseFlowConceptList { display: grid; gap: 5px; max-height: 220px; overflow: auto; }
+.courseFlowConceptList label { align-items: center; border-radius: 7px; display: flex; font-size: 11px; font-weight: 500; gap: 8px; padding: 7px; text-transform: none; }
+.courseFlowConceptList label:hover { background: #f4f2ed; }
+.courseFlowConceptList input { accent-color: #24252a; height: 15px; margin: 0; padding: 0; width: 15px; }
+.courseFlowDialog > footer { align-items: center; border-top: 1px solid #e3e0d9; display: flex; gap: 8px; justify-content: flex-end; padding-top: 17px; }
+.courseFlowDialog > footer button { background: #fff; border: 1px solid #d7d3cb; border-radius: 8px; color: #24252a; font: inherit; font-size: 11px; font-weight: 750; min-height: 38px; padding: 9px 13px; }
+.courseFlowDialog > footer button:last-child { background: #24252a; border-color: #24252a; color: #fff; }
+.courseFlowDialog > footer button:disabled { cursor: not-allowed; opacity: .45; }
+
+@media (max-width: 900px) {
+  .courseFlowHeader { align-items: flex-start; flex-direction: column; }
+  .courseFlowActions { justify-content: space-between; width: 100%; }
+  .courseFlowLane { grid-template-columns: 1fr; }
+  .courseFlowLaneTitle { border-bottom: 1px solid #dedbd3; border-right: 0; }
+}
+
+@media (max-width: 620px) {
+  .courseFlowHeader { padding: 22px 18px; }
+  .courseFlowActions,.courseFlowAuthoring { align-items: stretch; flex-direction: column; }
+  .courseFlowActions .blueprintModeToggle { width: 100%; }
+  .courseFlowActions .blueprintModeToggle button { flex: 1; }
+  .courseFlowAuthoring { padding-inline: 18px; }
+  .courseFlowAuthoring span { margin: 4px 0 0; }
+  .courseFlowCanvas { padding: 18px 14px 60px; }
+  .courseFlowDialog { border-radius: 15px 15px 0 0; max-height: 90dvh; padding: 20px; }
+  .dialogBackdrop:has(.courseFlowDialog) { align-items: flex-end; padding: 0; }
+}

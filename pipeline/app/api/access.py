@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -38,8 +38,23 @@ class LearnerCourseSummaryResponse(BaseModel):
 
 class LearnerTopicResponse(BaseModel):
     id: UUID
+    video_id: UUID
     title: str
     summary: str | None
+
+
+class LearnerCourseUnitResponse(BaseModel):
+    id: UUID
+    logical_id: UUID
+    kind: Literal["lecture", "quiz", "assignment"]
+    title: str
+    summary: str
+    instructions: str
+    video_id: UUID | None
+    sequence_rank: int
+    status: Literal["not_started", "in_progress", "completed"]
+    topic_ids: list[UUID]
+    question_count: int
 
 
 class LearnerClipResponse(BaseModel):
@@ -78,6 +93,7 @@ class LearnerCourseExperienceResponse(BaseModel):
     id: UUID
     title: str
     description: str | None
+    units: list[LearnerCourseUnitResponse]
     topics: list[LearnerTopicResponse]
     clips: list[LearnerClipResponse]
     questions: list[LearnerQuestionResponse]
@@ -185,6 +201,12 @@ async def learner_course_experience(
         id=course.id,
         title=course.title,
         description=course.description,
+        units=[
+            LearnerCourseUnitResponse(
+                **{**unit.__dict__, "topic_ids": list(unit.topic_ids)}
+            )
+            for unit in course.units
+        ],
         topics=[LearnerTopicResponse(**topic.__dict__) for topic in course.topics],
         clips=[LearnerClipResponse(**clip.__dict__) for clip in course.clips],
         questions=[

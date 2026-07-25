@@ -97,6 +97,7 @@ class CourseGenerationWorker:
             course_title = await self._repository.apply_course_title_proposal(
                 run.course_id,
                 run.revision_id,
+                video_id,
             )
             return {
                 "topic_ids": [str(topic.id) for topic in topics],
@@ -108,7 +109,10 @@ class CourseGenerationWorker:
             return {"concept_count": len(graph.concepts), "edge_count": len(graph.edges)}
         if task.task_type == "clips":
             clip_ids: list[str] = []
-            for topic_id in await self._repository.generation_topic_ids(run.revision_id):
+            for topic_id in await self._repository.generation_topic_ids(
+                run.revision_id,
+                video_id,
+            ):
                 clips = await self._clips.generate_clips_for_topic(
                     topic_id,
                     provisional=True,
@@ -117,7 +121,10 @@ class CourseGenerationWorker:
             return {"clip_ids": clip_ids, "count": len(clip_ids)}
         if task.task_type == "assessments":
             question_ids: list[str] = []
-            for topic_id in await self._repository.generation_topic_ids(run.revision_id):
+            for topic_id in await self._repository.generation_topic_ids(
+                run.revision_id,
+                video_id,
+            ):
                 question = await self._assessments.generate_question(
                     topic_id,
                     provisional=True,

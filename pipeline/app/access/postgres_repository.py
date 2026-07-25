@@ -11,6 +11,7 @@ from app.access.models import (
     LearnerClip,
     LearnerCourseExperience,
     LearnerCourseSummary,
+    LearnerCourseUnit,
     LearnerQuestion,
     LearnerResource,
     LearnerTopic,
@@ -125,10 +126,56 @@ class PostgresAccessRepository(AccessRepository):
             if course is None:
                 return None
             revision_id = UUID(str(course["revision_id"]))
+            unit_rows = await (
+                await conn.execute(
+                    """
+                    select
+                      unit.id, unit.logical_id, unit.kind, unit.title, unit.summary,
+                      unit.instructions, unit.video_id, unit.sequence_rank,
+                      coalesce(progress.status, 'not_started') as learner_status,
+                      case when unit.kind = 'lecture' then array(
+                        select topic.id from topics topic
+                        where topic.revision_id = unit.revision_id
+                          and topic.video_id = unit.video_id
+                          and topic.review_status in ('accepted', 'edited')
+                        order by topic.start_seconds, topic.id
+                      ) else array(
+                        select distinct topic.id
+                        from course_unit_concepts uc
+                        join topic_concepts tc on tc.concept_id = uc.concept_id
+                        join topics topic on topic.id = tc.topic_id
+                        where uc.unit_id = unit.id
+                          and topic.review_status in ('accepted', 'edited')
+                        order by topic.id
+                      ) end as topic_ids,
+                      (
+                        select count(distinct question.id)
+                        from questions question
+                        left join question_concepts qc on qc.question_id = question.id
+                        where question.revision_id = unit.revision_id
+                          and question.review_status in ('accepted', 'edited')
+                          and (
+                            question.course_unit_id = unit.id
+                            or qc.concept_id in (
+                              select uc.concept_id from course_unit_concepts uc
+                              where uc.unit_id = unit.id
+                            )
+                          )
+                      ) as question_count
+                    from course_units unit
+                    left join learner_unit_progress progress
+                      on progress.unit_id = unit.id and progress.learner_id = %s
+                    where unit.course_id = %s and unit.revision_id = %s
+                      and unit.review_status in ('accepted', 'edited')
+                    order by unit.sequence_rank, unit.created_at, unit.id
+                    """,
+                    (learner_id, course_id, revision_id),
+                )
+            ).fetchall()
             topic_rows = await (
                 await conn.execute(
                     """
-                    select id, title, summary from topics
+                    select id, video_id, title, summary from topics
                     where course_id = %s and revision_id = %s
                       and review_status in ('accepted', 'edited')
                     order by start_seconds, title
@@ -196,9 +243,26 @@ class PostgresAccessRepository(AccessRepository):
                 id=UUID(str(course["id"])),
                 title=str(course["title"]),
                 description=str(course["description"]) if course["description"] else None,
+                units=tuple(
+                    LearnerCourseUnit(
+                        id=UUID(str(row["id"])),
+                        logical_id=UUID(str(row["logical_id"])),
+                        kind=str(row["kind"]),
+                        title=str(row["title"]),
+                        summary=str(row["summary"] or ""),
+                        instructions=str(row["instructions"] or ""),
+                        video_id=UUID(str(row["video_id"])) if row["video_id"] else None,
+                        sequence_rank=int(row["sequence_rank"]),
+                        status=str(row["learner_status"]),
+                        topic_ids=tuple(UUID(str(value)) for value in (row["topic_ids"] or ())),
+                        question_count=int(row["question_count"]),
+                    )
+                    for row in unit_rows
+                ),
                 topics=tuple(
                     LearnerTopic(
                         id=UUID(str(row["id"])),
+                        video_id=UUID(str(row["video_id"])),
                         title=str(row["title"]),
                         summary=str(row["summary"]) if row["summary"] else None,
                     )

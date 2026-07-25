@@ -262,6 +262,57 @@ export type CourseBlueprint = {
   uncovered_concept_ids: string[];
 };
 
+export type CourseFlowModule = {
+  id: string;
+  logical_id: string;
+  title: string;
+  summary: string;
+  sequence_rank: number;
+  status: string;
+  x: number | null;
+  y: number | null;
+};
+
+export type CourseFlowUnitKind = "lecture" | "quiz" | "assignment";
+
+export type CourseFlowUnit = {
+  id: string;
+  logical_id: string;
+  module_logical_id: string | null;
+  kind: CourseFlowUnitKind;
+  title: string;
+  summary: string;
+  instructions: string;
+  video_id: string | null;
+  sequence_rank: number;
+  status: string;
+  topic_count: number;
+  concept_count: number;
+  question_count: number;
+  source_count: number;
+  concept_logical_ids: string[];
+  x: number | null;
+  y: number | null;
+};
+
+export type CourseFlowEdge = {
+  id: string;
+  logical_id: string;
+  source_unit_logical_id: string;
+  target_unit_logical_id: string;
+  relationship: "next" | "requires" | "assesses";
+  status: string;
+};
+
+export type CourseFlow = {
+  course_id: string;
+  revision_id: string;
+  revision_kind: "active" | "working";
+  modules: CourseFlowModule[];
+  units: CourseFlowUnit[];
+  edges: CourseFlowEdge[];
+};
+
 export type BlueprintConceptEvidence = {
   concept_id: string;
   attempts: number;

@@ -133,6 +133,7 @@ async def test_outline_task_applies_reviewable_course_title_proposal() -> None:
     repository.apply_course_title_proposal.assert_awaited_once_with(
         run.course_id,
         run.revision_id,
+        UUID(task.input["video_id"]),
     )
     repository.complete_generation_task.assert_awaited_once_with(
         task.id,

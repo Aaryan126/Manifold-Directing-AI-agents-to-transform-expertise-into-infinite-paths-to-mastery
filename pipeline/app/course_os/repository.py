@@ -11,6 +11,9 @@ from app.course_os.models import (
     CourseAssessment,
     CourseBlueprint,
     CourseCreate,
+    CourseFlow,
+    CourseFlowModuleDraft,
+    CourseFlowUnitDraft,
     CourseMap,
     CourseProposal,
     CourseRoutingPolicy,
@@ -102,13 +105,18 @@ class CourseOSRepository(ABC):
     ) -> None: ...
 
     @abstractmethod
-    async def generation_topic_ids(self, revision_id: UUID) -> tuple[UUID, ...]: ...
+    async def generation_topic_ids(
+        self,
+        revision_id: UUID,
+        video_id: UUID | None = None,
+    ) -> tuple[UUID, ...]: ...
 
     @abstractmethod
     async def apply_course_title_proposal(
         self,
         course_id: UUID,
         revision_id: UUID,
+        video_id: UUID | None = None,
     ) -> str | None: ...
 
     @abstractmethod
@@ -186,6 +194,85 @@ class CourseOSRepository(ABC):
         revision_id: UUID,
         revision_kind: str,
     ) -> CourseBlueprint: ...
+
+    @abstractmethod
+    async def course_flow(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        revision_kind: str,
+    ) -> CourseFlow: ...
+
+    @abstractmethod
+    async def save_course_flow_layout(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        logical_artifact_id: UUID,
+        x: float,
+        y: float,
+    ) -> None: ...
+
+    @abstractmethod
+    async def create_course_flow_module(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        draft: CourseFlowModuleDraft,
+    ) -> UUID: ...
+
+    @abstractmethod
+    async def create_course_flow_unit(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        draft: CourseFlowUnitDraft,
+    ) -> UUID: ...
+
+    @abstractmethod
+    async def update_course_flow_unit(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        unit_logical_id: UUID,
+        draft: CourseFlowUnitDraft,
+    ) -> None: ...
+
+    @abstractmethod
+    async def remove_course_flow_unit(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        unit_logical_id: UUID,
+    ) -> None: ...
+
+    @abstractmethod
+    async def mutate_course_flow_edge(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        action: str,
+        relationship: str,
+        source_logical_id: UUID,
+        target_logical_id: UUID,
+    ) -> None: ...
+
+    @abstractmethod
+    async def review_course_flow_artifact(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        instructor_id: UUID,
+        artifact_kind: str,
+        logical_artifact_id: UUID,
+        decision: ReviewDecision,
+    ) -> None: ...
 
     @abstractmethod
     async def blueprint_evidence(

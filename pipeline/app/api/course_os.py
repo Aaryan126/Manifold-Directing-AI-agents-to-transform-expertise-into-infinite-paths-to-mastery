@@ -13,6 +13,9 @@ from app.course_os.models import (
     CourseAssessment,
     CourseBlueprint,
     CourseCreate,
+    CourseFlow,
+    CourseFlowModuleDraft,
+    CourseFlowUnitDraft,
     CourseMap,
     CourseProposal,
     CourseRoutingPolicy,
@@ -296,6 +299,86 @@ class CourseBlueprintResponse(BaseModel):
     nodes: list[BlueprintNodeResponse]
     edges: list[BlueprintEdgeResponse]
     uncovered_concept_ids: list[UUID]
+
+
+class CourseFlowModuleResponse(BaseModel):
+    id: UUID
+    logical_id: UUID
+    title: str
+    summary: str
+    sequence_rank: int
+    status: str
+    x: float | None
+    y: float | None
+
+
+class CourseFlowUnitResponse(BaseModel):
+    id: UUID
+    logical_id: UUID
+    module_logical_id: UUID | None
+    kind: Literal["lecture", "quiz", "assignment"]
+    title: str
+    summary: str
+    instructions: str
+    video_id: UUID | None
+    sequence_rank: int
+    status: str
+    topic_count: int
+    concept_count: int
+    question_count: int
+    source_count: int
+    concept_logical_ids: list[UUID]
+    x: float | None
+    y: float | None
+
+
+class CourseFlowEdgeResponse(BaseModel):
+    id: UUID
+    logical_id: UUID
+    source_unit_logical_id: UUID
+    target_unit_logical_id: UUID
+    relationship: Literal["next", "requires", "assesses"]
+    status: str
+
+
+class CourseFlowResponse(BaseModel):
+    course_id: UUID
+    revision_id: UUID
+    revision_kind: Literal["active", "working"]
+    modules: list[CourseFlowModuleResponse]
+    units: list[CourseFlowUnitResponse]
+    edges: list[CourseFlowEdgeResponse]
+
+
+class CourseFlowUnitRequest(BaseModel):
+    kind: Literal["lecture", "quiz", "assignment"]
+    title: str = Field(min_length=1, max_length=240)
+    summary: str = Field(default="", max_length=4000)
+    instructions: str = Field(default="", max_length=12000)
+    module_logical_id: UUID | None = None
+    concept_logical_ids: list[UUID] = Field(default_factory=list)
+
+
+class CourseFlowModuleRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=240)
+    summary: str = Field(default="", max_length=4000)
+
+
+class CourseFlowLayoutRequest(BaseModel):
+    x: float
+    y: float
+
+
+class CourseFlowEdgeRequest(BaseModel):
+    relationship: Literal["next", "requires", "assesses"]
+    source_unit_logical_id: UUID
+    target_unit_logical_id: UUID
+
+
+class CourseFlowReviewRequest(BaseModel):
+    artifact_kind: Literal["unit", "relationship"]
+    logical_artifact_id: UUID
+    decision: Literal["accepted", "edited", "dismissed"]
 
 
 class BlueprintConceptEvidenceResponse(BaseModel):
@@ -666,6 +749,198 @@ async def course_blueprint(
     revision: Literal["active", "working"] = "active",
 ) -> CourseBlueprintResponse:
     return _blueprint_response(await _call(service.blueprint(course_id, user_id, revision)))
+
+
+@router.get("/courses/{course_id}/course-flow", response_model=CourseFlowResponse)
+async def course_flow(
+    course_id: UUID,
+    user_id: UserContext,
+    service: CourseOSDependency,
+    revision: Literal["active", "working"] = "active",
+) -> CourseFlowResponse:
+    return _course_flow_response(
+        await _call(service.course_flow(course_id, user_id, revision))
+    )
+
+
+@router.post(
+    "/courses/{course_id}/course-flow/modules",
+    response_model=CourseFlowResponse,
+    status_code=201,
+)
+async def create_course_flow_module(
+    course_id: UUID,
+    request: CourseFlowModuleRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseFlowResponse:
+    return _course_flow_response(
+        await _call(
+            service.create_course_flow_module(
+                course_id,
+                user_id,
+                CourseFlowModuleDraft(title=request.title, summary=request.summary),
+            )
+        )
+    )
+
+
+@router.put(
+    "/courses/{course_id}/course-flow/layout/{logical_artifact_id}",
+    response_model=CourseFlowResponse,
+)
+async def save_course_flow_layout(
+    course_id: UUID,
+    logical_artifact_id: UUID,
+    request: CourseFlowLayoutRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseFlowResponse:
+    return _course_flow_response(
+        await _call(
+            service.save_course_flow_layout(
+                course_id,
+                user_id,
+                logical_artifact_id,
+                request.x,
+                request.y,
+            )
+        )
+    )
+
+
+@router.post(
+    "/courses/{course_id}/course-flow/units",
+    response_model=CourseFlowResponse,
+    status_code=201,
+)
+async def create_course_flow_unit(
+    course_id: UUID,
+    request: CourseFlowUnitRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseFlowResponse:
+    return _course_flow_response(
+        await _call(
+            service.create_course_flow_unit(
+                course_id,
+                user_id,
+                _course_flow_unit_draft(request),
+            )
+        )
+    )
+
+
+@router.patch(
+    "/courses/{course_id}/course-flow/units/{unit_logical_id}",
+    response_model=CourseFlowResponse,
+)
+async def update_course_flow_unit(
+    course_id: UUID,
+    unit_logical_id: UUID,
+    request: CourseFlowUnitRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseFlowResponse:
+    return _course_flow_response(
+        await _call(
+            service.update_course_flow_unit(
+                course_id,
+                user_id,
+                unit_logical_id,
+                _course_flow_unit_draft(request),
+            )
+        )
+    )
+
+
+@router.delete(
+    "/courses/{course_id}/course-flow/units/{unit_logical_id}",
+    response_model=CourseFlowResponse,
+)
+async def remove_course_flow_unit(
+    course_id: UUID,
+    unit_logical_id: UUID,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseFlowResponse:
+    return _course_flow_response(
+        await _call(
+            service.remove_course_flow_unit(course_id, user_id, unit_logical_id)
+        )
+    )
+
+
+@router.post(
+    "/courses/{course_id}/course-flow/relationships",
+    response_model=CourseFlowResponse,
+    status_code=201,
+)
+async def create_course_flow_relationship(
+    course_id: UUID,
+    request: CourseFlowEdgeRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseFlowResponse:
+    return _course_flow_response(
+        await _call(
+            service.mutate_course_flow_edge(
+                course_id,
+                user_id,
+                "create",
+                request.relationship,
+                request.source_unit_logical_id,
+                request.target_unit_logical_id,
+            )
+        )
+    )
+
+
+@router.delete(
+    "/courses/{course_id}/course-flow/relationships",
+    response_model=CourseFlowResponse,
+)
+async def remove_course_flow_relationship(
+    course_id: UUID,
+    request: CourseFlowEdgeRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseFlowResponse:
+    return _course_flow_response(
+        await _call(
+            service.mutate_course_flow_edge(
+                course_id,
+                user_id,
+                "delete",
+                request.relationship,
+                request.source_unit_logical_id,
+                request.target_unit_logical_id,
+            )
+        )
+    )
+
+
+@router.post(
+    "/courses/{course_id}/course-flow/review",
+    response_model=CourseFlowResponse,
+)
+async def review_course_flow_artifact(
+    course_id: UUID,
+    request: CourseFlowReviewRequest,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> CourseFlowResponse:
+    return _course_flow_response(
+        await _call(
+            service.review_course_flow_artifact(
+                course_id,
+                user_id,
+                request.artifact_kind,
+                request.logical_artifact_id,
+                ReviewDecision(request.decision),
+            )
+        )
+    )
 
 
 @router.get(
@@ -1330,6 +1605,28 @@ def _blueprint_response(blueprint: CourseBlueprint) -> CourseBlueprintResponse:
         nodes=[BlueprintNodeResponse(**node.__dict__) for node in blueprint.nodes],
         edges=[BlueprintEdgeResponse(**edge.__dict__) for edge in blueprint.edges],
         uncovered_concept_ids=list(blueprint.uncovered_concept_ids),
+    )
+
+
+def _course_flow_response(course_flow: CourseFlow) -> CourseFlowResponse:
+    return CourseFlowResponse(
+        course_id=course_flow.course_id,
+        revision_id=course_flow.revision_id,
+        revision_kind=course_flow.revision_kind,
+        modules=[CourseFlowModuleResponse(**module.__dict__) for module in course_flow.modules],
+        units=[CourseFlowUnitResponse(**unit.__dict__) for unit in course_flow.units],
+        edges=[CourseFlowEdgeResponse(**edge.__dict__) for edge in course_flow.edges],
+    )
+
+
+def _course_flow_unit_draft(request: CourseFlowUnitRequest) -> CourseFlowUnitDraft:
+    return CourseFlowUnitDraft(
+        kind=request.kind,
+        title=request.title,
+        summary=request.summary,
+        instructions=request.instructions,
+        module_logical_id=request.module_logical_id,
+        concept_logical_ids=tuple(request.concept_logical_ids),
     )
 
 

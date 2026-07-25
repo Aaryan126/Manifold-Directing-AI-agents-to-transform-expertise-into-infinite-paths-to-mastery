@@ -35,8 +35,24 @@ class LearnerCourseSummary:
 @dataclass(frozen=True)
 class LearnerTopic:
     id: UUID
+    video_id: UUID
     title: str
     summary: str | None
+
+
+@dataclass(frozen=True)
+class LearnerCourseUnit:
+    id: UUID
+    logical_id: UUID
+    kind: str
+    title: str
+    summary: str
+    instructions: str
+    video_id: UUID | None
+    sequence_rank: int
+    status: str
+    topic_ids: tuple[UUID, ...]
+    question_count: int
 
 
 @dataclass(frozen=True)
@@ -79,6 +95,7 @@ class LearnerCourseExperience:
     id: UUID
     title: str
     description: str | None
+    units: tuple[LearnerCourseUnit, ...]
     topics: tuple[LearnerTopic, ...]
     clips: tuple[LearnerClip, ...]
     questions: tuple[LearnerQuestion, ...]

@@ -16,6 +16,9 @@ from app.course_os.models import (
     CourseAssessment,
     CourseBlueprint,
     CourseCreate,
+    CourseFlow,
+    CourseFlowModuleDraft,
+    CourseFlowUnitDraft,
     CourseMap,
     CourseProposal,
     CourseRoutingPolicy,
@@ -388,10 +391,16 @@ class CourseOSService:
             and course.active_revision_id != revision_id
             else None
         )
+        course_flow = await self._repository.course_flow(
+            course_id,
+            revision_id,
+            "working",
+        )
         plan = await self._course_director.plan(
             instruction,
             blueprint,
             active_blueprint,
+            course_flow,
         )
         if not plan.actions:
             response = await self._repository.add_message(
@@ -478,6 +487,28 @@ class CourseOSService:
                 raise CourseOSValidationError("That artifact cannot be removed from Blueprint.")
             artifact_type = f"{node.kind}_remove"
             proposed_state = {"action": "remove", "summary": action.summary}
+        elif action.operation == "remove_course_unit":
+            flow = await self._repository.course_flow(course_id, revision_id, "working")
+            unit = next(
+                (
+                    item
+                    for item in flow.units
+                    if item.logical_id == action.logical_artifact_id
+                ),
+                None,
+            )
+            if unit is None:
+                raise CourseOSValidationError("Course Director targeted a missing course unit.")
+            artifact_type = "course_unit_remove"
+            before_state = {
+                "kind": unit.kind,
+                "title": unit.title,
+                "summary": unit.summary,
+                "instructions": unit.instructions,
+            }
+            proposed_state = {"action": "remove", "summary": action.summary}
+        elif action.operation == "create_course_unit":
+            artifact_type = "course_unit_create"
         elif action.operation == "create_topic":
             artifact_type = "topic_create"
         elif action.operation == "create_concept":
@@ -587,6 +618,194 @@ class CourseOSService:
             revision_id,
             revision_kind,
         )
+
+    async def course_flow(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        revision_kind: str,
+    ) -> CourseFlow:
+        course = await self._require_owned_course(course_id, instructor_id)
+        revision_id = _selected_revision(course, revision_kind)
+        return await self._repository.course_flow(
+            course_id,
+            revision_id,
+            revision_kind,
+        )
+
+    async def create_course_flow_unit(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        draft: CourseFlowUnitDraft,
+    ) -> CourseFlow:
+        if not draft.title.strip():
+            raise CourseOSValidationError("Course unit title is required.")
+        if draft.kind == "lecture":
+            raise CourseOSValidationError("Add a lecture by uploading its source.")
+        course = await self._require_editable_course(course_id, instructor_id)
+        revision_id = _current_revision(course)
+        try:
+            await self._repository.create_course_flow_unit(
+                course_id,
+                revision_id,
+                instructor_id,
+                CourseFlowUnitDraft(
+                    kind=draft.kind,
+                    title=draft.title.strip()[:240],
+                    summary=draft.summary.strip()[:4000],
+                    instructions=draft.instructions.strip()[:12000],
+                    module_logical_id=draft.module_logical_id,
+                    concept_logical_ids=draft.concept_logical_ids,
+                ),
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        return await self._repository.course_flow(course_id, revision_id, "working")
+
+    async def save_course_flow_layout(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        logical_artifact_id: UUID,
+        x: float,
+        y: float,
+    ) -> CourseFlow:
+        course = await self._require_editable_course(course_id, instructor_id)
+        revision_id = _current_revision(course)
+        try:
+            await self._repository.save_course_flow_layout(
+                course_id,
+                revision_id,
+                instructor_id,
+                logical_artifact_id,
+                x,
+                y,
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        return await self._repository.course_flow(course_id, revision_id, "working")
+
+    async def create_course_flow_module(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        draft: CourseFlowModuleDraft,
+    ) -> CourseFlow:
+        if not draft.title.strip():
+            raise CourseOSValidationError("Course module title is required.")
+        course = await self._require_editable_course(course_id, instructor_id)
+        revision_id = _current_revision(course)
+        try:
+            await self._repository.create_course_flow_module(
+                course_id,
+                revision_id,
+                instructor_id,
+                CourseFlowModuleDraft(
+                    title=draft.title.strip()[:240],
+                    summary=draft.summary.strip()[:4000],
+                ),
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        return await self._repository.course_flow(course_id, revision_id, "working")
+
+    async def update_course_flow_unit(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        unit_logical_id: UUID,
+        draft: CourseFlowUnitDraft,
+    ) -> CourseFlow:
+        if not draft.title.strip():
+            raise CourseOSValidationError("Course unit title is required.")
+        course = await self._require_editable_course(course_id, instructor_id)
+        revision_id = _current_revision(course)
+        try:
+            await self._repository.update_course_flow_unit(
+                course_id,
+                revision_id,
+                instructor_id,
+                unit_logical_id,
+                CourseFlowUnitDraft(
+                    kind=draft.kind,
+                    title=draft.title.strip()[:240],
+                    summary=draft.summary.strip()[:4000],
+                    instructions=draft.instructions.strip()[:12000],
+                    module_logical_id=draft.module_logical_id,
+                    concept_logical_ids=draft.concept_logical_ids,
+                ),
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        return await self._repository.course_flow(course_id, revision_id, "working")
+
+    async def remove_course_flow_unit(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        unit_logical_id: UUID,
+    ) -> CourseFlow:
+        course = await self._require_editable_course(course_id, instructor_id)
+        revision_id = _current_revision(course)
+        try:
+            await self._repository.remove_course_flow_unit(
+                course_id,
+                revision_id,
+                instructor_id,
+                unit_logical_id,
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        return await self._repository.course_flow(course_id, revision_id, "working")
+
+    async def mutate_course_flow_edge(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        action: str,
+        relationship: str,
+        source_logical_id: UUID,
+        target_logical_id: UUID,
+    ) -> CourseFlow:
+        course = await self._require_editable_course(course_id, instructor_id)
+        revision_id = _current_revision(course)
+        try:
+            await self._repository.mutate_course_flow_edge(
+                course_id,
+                revision_id,
+                instructor_id,
+                action,
+                relationship,
+                source_logical_id,
+                target_logical_id,
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        return await self._repository.course_flow(course_id, revision_id, "working")
+
+    async def review_course_flow_artifact(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        artifact_kind: str,
+        logical_artifact_id: UUID,
+        decision: ReviewDecision,
+    ) -> CourseFlow:
+        course = await self._require_editable_course(course_id, instructor_id)
+        revision_id = _current_revision(course)
+        try:
+            await self._repository.review_course_flow_artifact(
+                course_id,
+                revision_id,
+                instructor_id,
+                artifact_kind,
+                logical_artifact_id,
+                decision,
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        return await self._repository.course_flow(course_id, revision_id, "working")
 
     async def blueprint_evidence(
         self,

@@ -322,8 +322,45 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 
 ---
 
+## Phase 12 — Multi-lecture Course Flow
+
+**Goal:** Let one course contain multiple lectures and course-level assessments without flattening lecture-internal topics, concepts, clips, and questions into one unreadable authoring surface. Course Flow becomes the default graph; Blueprint remains the detailed lecture system.
+
+**Deliverables**
+
+- Revisioned optional modules plus lecture, standalone quiz, and assignment units with `next`, `requires`, and `assesses` relationships, stable logical identities, saved layouts, audit history, and atomic publication.
+- Existing videos backfilled as lecture units. New lecture generation is video-scoped, does not rename an established course, and refreshes the cross-course concept graph without duplicating other lectures' clips or questions.
+- Course Flow React Flow workspace with Live/Design, module swimlanes, typed nodes/relationships, add/edit/remove, impact review, undo, auto-arrange, and lecture-to-Blueprint navigation.
+- Lecture-focused Blueprint with a Whole course option for shared concepts and cross-lecture prerequisites.
+- Standalone quizzes with reviewed concept-grounded questions; assignments with reviewed instructions, concept/source coverage, and learner completion but no submission/grading workflow.
+- Course Director context and typed proposals spanning both Course Flow and detailed Blueprint, using the same manual mutation services and independent `Accept / Edit / Dismiss` review.
+- Published learner course outline and progression driven by Course Flow, with lecture adaptive paths, standalone quizzes, assignments, prerequisites, and persisted unit progress.
+
+**Automated tests**
+
+- Migration/backfill preserves every existing artifact and creates one lecture unit per revision/video pair.
+- Working-revision clone and publication preserve module/unit logical identities, relationships, layouts, quiz ownership, sources, and learner progress.
+- Adding a second lecture produces only that lecture's topics/clips/questions and never overwrites the established course title.
+- Course Flow rejects invalid endpoints, cycles, invalid relationship directions, orphan quiz questions, and unreviewed learner-facing units.
+- Manual and Course Director mutations produce equivalent private states; ambiguous AI targets clarify and accepted operations never bypass publication.
+- Course Flow, Blueprint, Assessments, Preview, and learner runtime read the same persisted artifacts after add/edit/remove, reload, and publish.
+- UI tests cover module grouping, lecture focus/Whole course, node inspectors, relationship authoring, undo, graph refresh, and non-empty topology transitions.
+
+**Human test checklist**
+
+- [ ] Add a second lecture and confirm it appears as a separate Course Flow node without changing the course title.
+- [ ] Open each lecture and confirm its Blueprint contains only its focused artifacts while Whole course preserves cross-lecture concepts.
+- [ ] Add a standalone quiz and assignment and confirm both appear consistently in Course Flow, Assessments, Preview, and learner view.
+- [ ] Move units between module swimlanes and publish; confirm learner order changes only after publication.
+- [ ] Ask Course Director to modify the course structure and a lecture's internal structure; confirm every operation is accurately scoped and independently reviewable.
+- [ ] Reject or edit an AI proposal and confirm no unintended artifact changes.
+- [ ] Confirm published learners continue seeing the previous revision while private edits are underway.
+- [ ] Confirm no empty, duplicated, disconnected, or stale nodes appear after generation, mutation, reload, or publication.
+
+---
+
 ## Notes on sequencing flexibility
 
-Phases 2–5 (segmentation → graph → clips → assessments) are pipeline stages with real dependencies and should stay in this order. Phase 6 depends on Phases 3 and 5 (needs the graph and the assessments/remediation maps). Phase 7 can be built in parallel with late Phase 6 once the engine's interface is stable. Phase 8 depends on real usage data existing, so it necessarily comes after Phase 7 is usable enough to generate that data (even if from test/simulated learners). Phase 9 and 10 are cross-cutting hardening passes. Phase 11 is a deliberate product-integration phase built on their persisted evidence, revision, and agent foundations; it does not imply Phase 10's separate human gate has passed.
+Phases 2–5 (segmentation → graph → clips → assessments) are pipeline stages with real dependencies and should stay in this order. Phase 6 depends on Phases 3 and 5 (needs the graph and the assessments/remediation maps). Phase 7 can be built in parallel with late Phase 6 once the engine's interface is stable. Phase 8 depends on real usage data existing, so it necessarily comes after Phase 7 is usable enough to generate that data (even if from test/simulated learners). Phase 9 and 10 are cross-cutting hardening passes. Phase 11 is a deliberate product-integration phase built on their persisted evidence, revision, and agent foundations; it does not imply Phase 10's separate human gate has passed. Phase 12 adds a revisioned course hierarchy above Phase 11 without marking either earlier human gate complete.
 
 If direction changes significantly (e.g. a phase turns out to need splitting, or scope changes per a decision recorded in `implementation.md`), update this document accordingly — see `AGENTS.md` for the process.
