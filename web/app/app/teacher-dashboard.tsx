@@ -48,6 +48,7 @@ export function TeacherDashboard() {
   const [dashboard, setDashboard] = useState<DashboardSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteCandidate, setDeleteCandidate] = useState<CourseSummary | null>(null);
   const [showAllAttention, setShowAllAttention] = useState(false);
@@ -93,8 +94,8 @@ export function TeacherDashboard() {
     );
   }, [dashboard, query]);
 
-  async function createCourse() {
-    if (!identity || creating) return;
+  async function createCourse(title: string) {
+    if (!identity || creating || !title.trim()) return;
     setCreating(true);
     setError(null);
     try {
@@ -105,8 +106,11 @@ export function TeacherDashboard() {
           "X-User-ID": identity.id,
         },
         body: JSON.stringify({
-          title: "Untitled course",
-          brief: { origin: "teacher_command_center" },
+          title: title.trim(),
+          brief: {
+            origin: "teacher_command_center",
+            creation_mode: "course_container",
+          },
         }),
       });
       if (!response.ok) {
@@ -114,6 +118,7 @@ export function TeacherDashboard() {
         throw new Error(payload?.detail ?? "Could not create the course.");
       }
       const course = (await response.json()) as CourseSummary;
+      setCreateDialogOpen(false);
       router.push(`/app/courses/${course.id}`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not create the course.");
@@ -175,7 +180,7 @@ export function TeacherDashboard() {
             <h1>{identity ? `Good ${timeOfDay()}, ${firstName(identity.display_name)}.` : "Your courses"}</h1>
             <p>Build with Manifold, then focus your judgment where it changes learning.</p>
           </div>
-          <button className={styles.primaryButton} disabled={creating || loading} onClick={createCourse} type="button">
+          <button className={styles.primaryButton} disabled={creating || loading} onClick={() => setCreateDialogOpen(true)} type="button">
             {creating ? <LoaderCircle className={styles.spin} aria-hidden="true" /> : <Plus aria-hidden="true" />}
             New course
           </button>
@@ -251,7 +256,7 @@ export function TeacherDashboard() {
               </div>
 
               {dashboard.courses.length === 0 ? (
-                <EmptyPortfolio onCreate={createCourse} creating={creating} />
+                <EmptyPortfolio onCreate={() => setCreateDialogOpen(true)} creating={creating} />
               ) : (
                 <div className={styles.courseGrid}>
                   {visibleCourses.map((course) => (
@@ -269,6 +274,13 @@ export function TeacherDashboard() {
           deleting={deleting}
           onCancel={() => setDeleteCandidate(null)}
           onConfirm={() => void deleteCourse()}
+        />
+      ) : null}
+      {createDialogOpen ? (
+        <CreateCourseDialog
+          creating={creating}
+          onCancel={() => setCreateDialogOpen(false)}
+          onConfirm={(title) => void createCourse(title)}
         />
       ) : null}
     </div>
@@ -404,6 +416,65 @@ function ConfirmDeleteDialog({
           </button>
         </div>
       </section>
+    </div>
+  );
+}
+
+function CreateCourseDialog({
+  creating,
+  onCancel,
+  onConfirm,
+}: {
+  creating: boolean;
+  onCancel: () => void;
+  onConfirm: (title: string) => void;
+}) {
+  const [title, setTitle] = useState("");
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !creating) onCancel();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [creating, onCancel]);
+
+  return (
+    <div className={styles.dialogBackdrop} onMouseDown={(event) => {
+      if (event.currentTarget === event.target && !creating) onCancel();
+    }}>
+      <form
+        aria-describedby="create-course-description"
+        aria-labelledby="create-course-title"
+        aria-modal="true"
+        className={styles.createCourseDialog}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (title.trim()) onConfirm(title.trim());
+        }}
+        role="dialog"
+      >
+        <small>New course</small>
+        <h2 id="create-course-title">Name the course</h2>
+        <p id="create-course-description">Create the course home first. You’ll add lectures and build their Blueprints from Course Flow.</p>
+        <label>
+          Course title
+          <input
+            autoFocus
+            maxLength={180}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="e.g. Foundations of Product Design"
+            value={title}
+          />
+        </label>
+        <div>
+          <button disabled={creating} onClick={onCancel} type="button">Cancel</button>
+          <button disabled={creating || !title.trim()} type="submit">
+            {creating ? <LoaderCircle className={styles.spin} aria-hidden="true" /> : <ArrowUpRight aria-hidden="true" />}
+            Create course
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

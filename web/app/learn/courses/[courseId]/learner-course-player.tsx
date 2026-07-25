@@ -273,7 +273,7 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
 
           <aside className={styles.outline} aria-labelledby="course-outline-title">
             <header><small>Your course</small><h2 id="course-outline-title">Learning journey</h2></header>
-            {course.units.length ? <nav aria-label="Course learning journey" className={styles.courseJourney}>{course.units.map((unit, index) => {
+            {(course.units ?? []).length ? <nav aria-label="Course learning journey" className={styles.courseJourney}>{(course.units ?? []).map((unit, index) => {
               const active = unit.topic_ids.includes(activeTopic.id);
               const available = unit.kind !== "lecture" || unit.topic_ids.length > 0;
               return <button aria-current={active ? "step" : undefined} disabled={!available} key={unit.id} onClick={() => {
@@ -284,8 +284,8 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
                 <span><small>{String(index + 1).padStart(2, "0")} · {unit.kind}</small><strong>{unit.title}</strong><em>{unit.kind === "lecture" ? `${unit.topic_ids.length} learning moments` : unit.kind === "quiz" ? `${unit.question_count} checks` : unit.instructions || "Instructor-guided work"}</em></span>
               </button>;
             })}</nav> : null}
-            <div className={styles.masteryHeading}><small>Adaptive layer</small><strong>Mastery map</strong></div>
-            {path ? <div className={styles.masteryMap}>{path.items.map((item, index) => <button aria-current={item.concept_id === activePathItem?.concept_id ? "step" : undefined} disabled={!item.eligible} key={item.concept_id} onClick={() => item.topic_id && setActiveTopicId(item.topic_id)} type="button"><span data-state={item.state}>{item.eligible ? index + 1 : <LockKeyhole />}</span><span><strong>{item.name}</strong><em>{item.state.replace("_", " ")}{item.current ? " · current" : ""}</em></span></button>)}</div> : null}
+            <div className={styles.masteryHeading}><small>Adaptive layer</small><h3>Mastery map</h3></div>
+            {path ? <div aria-label="Mastery map" className={styles.masteryMap}>{path.items.map((item, index) => <button aria-current={item.concept_id === activePathItem?.concept_id ? "step" : undefined} disabled={!item.eligible} key={item.concept_id} onClick={() => item.topic_id && setActiveTopicId(item.topic_id)} type="button"><span data-state={item.state}>{item.eligible ? index + 1 : <LockKeyhole />}</span><span><strong>{item.name}</strong><em>{item.state.replace("_", " ")}{item.current ? " · current" : ""}</em></span></button>)}</div> : null}
             <details className={styles.topicDisclosure}><summary>Course topics <ChevronDown /></summary>
             <nav aria-label="Course topics">{course.topics.map((topic, index) => {
               const state = topicState(topic.id, progress);

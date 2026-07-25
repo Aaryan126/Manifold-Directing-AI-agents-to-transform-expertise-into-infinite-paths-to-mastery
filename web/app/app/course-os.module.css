@@ -569,6 +569,29 @@
 .confirmDialog button:disabled { cursor: wait; opacity: 0.55; }
 .confirmDialog button svg { height: 15px; width: 15px; }
 
+.createCourseDialog {
+  background: #fff;
+  border: 1px solid #dedbd4;
+  border-radius: 15px;
+  box-shadow: 0 24px 70px rgb(24 24 28 / 20%);
+  display: grid;
+  gap: 0;
+  max-width: 460px;
+  padding: 30px;
+  width: 100%;
+}
+.createCourseDialog > small { color: #9a561d; font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+.createCourseDialog h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 31px; font-weight: 500; letter-spacing: -.035em; margin: 10px 0 7px; }
+.createCourseDialog p { color: #6d6a72; font-size: 14px; line-height: 1.55; margin: 0 0 24px; }
+.createCourseDialog label { color: #55535a; display: grid; font-size: 12px; font-weight: 700; gap: 8px; }
+.createCourseDialog input { background: #fff; border: 1px solid #d3d0c8; border-radius: 9px; color: #202126; font: inherit; font-size: 15px; outline: 0; padding: 13px 14px; }
+.createCourseDialog input:focus { border-color: #858178; box-shadow: 0 0 0 3px rgb(77 75 70 / 8%); }
+.createCourseDialog > div { display: flex; gap: 9px; justify-content: flex-end; margin-top: 24px; }
+.createCourseDialog button { align-items: center; background: #fff; border: 1px solid #d7d4cd; border-radius: 8px; color: #444349; cursor: pointer; display: flex; font: inherit; font-size: 13px; font-weight: 700; gap: 7px; min-height: 42px; padding: 0 15px; }
+.createCourseDialog button:last-child { background: #24252a; border-color: #24252a; color: #fff; }
+.createCourseDialog button:disabled { cursor: not-allowed; opacity: .5; }
+.createCourseDialog button svg { height: 15px; width: 15px; }
+
 .courseCover {
   align-items: flex-end;
   background-color: #e9e7e2;
@@ -710,6 +733,50 @@
 .studioSourceButton:hover { background: #f4f2ed; color: #202126; }
 .studioSourceButton svg { height: 14px; width: 14px; }
 .studioSourceButton i { align-items: center; background: #efede8; border-radius: 999px; display: flex; font-size: 9px; font-style: normal; height: 19px; justify-content: center; min-width: 19px; padding: 0 5px; }
+.studioIntakeBack,.studioSettingsButton { align-items: center; background: transparent; border: 0; color: #626168; cursor: pointer; display: flex; font: inherit; font-size: 12px; font-weight: 700; gap: 6px; padding: 0 14px; }
+.studioIntakeBack:hover,.studioSettingsButton:hover { background: #f2f0eb; color: #202126; }
+.studioIntakeBack svg,.studioSettingsButton svg { height: 16px; width: 16px; }
+.studioSettingsMenu { align-self: stretch; display: flex; position: relative; }
+.studioSettingsButton { border-left: 1px solid #e7e4de; border-right: 1px solid #e7e4de; width: 52px; }
+.courseSettingsPopover {
+  background: #fff;
+  border: 1px solid #dad7cf;
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgb(28 29 33 / 17%);
+  color: #25262b;
+  max-height: min(720px, calc(100dvh - 92px));
+  overflow: auto;
+  padding: 18px;
+  position: absolute;
+  right: 8px;
+  top: 60px;
+  width: min(420px, calc(100vw - 40px));
+  z-index: 50;
+}
+.courseSettingsPopover > header { align-items: center; display: flex; justify-content: space-between; }
+.courseSettingsPopover > header > div { display: grid; gap: 3px; }
+.courseSettingsPopover > header small { color: #9a561d; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.courseSettingsPopover > header strong { font-size: 17px; letter-spacing: -.02em; }
+.courseSettingsPopover > header > button { align-items: center; background: transparent; border: 0; border-radius: 7px; color: #706e75; cursor: pointer; display: flex; height: 30px; justify-content: center; width: 30px; }
+.courseSettingsPopover > header > button:hover { background: #f1efe9; }
+.courseSettingsPopover > header svg { height: 15px; width: 15px; }
+.courseSettingsPopover > p { align-items: center; color: #77757c; display: flex; font-size: 11px; gap: 7px; line-height: 1.5; margin: 9px 0 16px; }
+.courseSettingsPopover .policyEditor { border: 1px solid #dedbd3; border-radius: 9px; padding: 14px; }
+.courseSettingsDefault { align-items: flex-start; background: #f7f6f2; border: 1px solid #dedbd4; border-radius: 9px; display: flex; justify-content: space-between; padding: 13px; }
+.courseSettingsDefault > div { display: grid; gap: 4px; }
+.courseSettingsDefault small { color: #9a561d; font-size: 8px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.courseSettingsDefault strong { font-size: 13px; }
+.courseSettingsDefault p,.courseSettingsOverrides p { color: #77757c; font-size: 9px; line-height: 1.45; margin: 0; }
+.courseSettingsDefault > button,.courseSettingsOverrides button { align-items: center; background: #fff; border: 1px solid #d8d5ce; border-radius: 6px; color: #66656c; cursor: pointer; display: flex; font: inherit; font-size: 9px; font-weight: 700; gap: 4px; min-height: 29px; justify-content: center; padding: 0 8px; }
+.courseSettingsDefault > button { width: 30px; }
+.courseSettingsDefault button svg,.courseSettingsOverrides button svg { height: 12px; width: 12px; }
+.courseSettingsOverrides { border-top: 1px solid #e2dfd8; display: grid; gap: 8px; margin-top: 14px; padding-top: 14px; }
+.courseSettingsOverrides > div:first-child { align-items: center; display: flex; justify-content: space-between; }
+.courseSettingsOverrides > div:first-child > strong { font-size: 12px; }
+.courseSettingsOverrides > article { align-items: flex-start; border: 1px solid #e2dfd8; border-radius: 8px; display: flex; gap: 10px; justify-content: space-between; padding: 10px; }
+.courseSettingsOverrides > article > div:first-child { display: grid; gap: 4px; }
+.courseSettingsOverrides > article > div:first-child > strong { font-size: 11px; }
+.courseSettingsOverrides > article > div:last-child { display: flex; gap: 4px; }
 .studioStatus { align-items: center; display: flex; gap: 10px; }
 .studioStatus > span { align-items: center; background: #eeede9; border-radius: 999px; color: #67666d; display: flex; font-size: 11px; font-weight: 680; gap: 6px; min-height: 32px; padding: 0 12px; text-transform: uppercase; }
 .studioStatus > span[data-tone="building"] { background: #eeeae4; color: #55524d; }
@@ -1397,7 +1464,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintContextBar > span { color: #aaa69e; font-size: 13px; }
 .blueprintContextBar > div { align-items: baseline; display: flex; gap: 9px; min-width: 0; }
 .blueprintContextBar strong { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.blueprintContextBar small { color: #7b7880; font-size: 9px; white-space: nowrap; }
+.blueprintContextBar small { color: #69666e; font-size: 9px; white-space: nowrap; }
 .blueprintCommandBar { align-items: center; background: #fff; border-bottom: 1px solid #dedbd3; display: flex; gap: 20px; min-height: 54px; padding: 7px 22px 7px 30px; }
 .blueprintSummaryGroup { align-items: center; display: flex; flex: 1 1 720px; gap: 18px; max-width: 790px; min-width: 0; }
 .blueprintStatusSummary { align-content: center; display: grid; flex: 0 0 190px; padding-right: 2px; }
@@ -2083,9 +2150,23 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
   gap: 11px;
   grid-template-columns: 35px minmax(0, 1fr);
   min-height: 105px;
-  overflow: hidden;
+  overflow: visible;
   padding: 15px;
   position: relative;
+}
+
+.courseFlowGraphUnit[data-relationship-source="true"] {
+  box-shadow: 0 0 0 2px #26272c, 0 9px 24px rgb(28 29 33 / 14%);
+}
+
+.courseFlowGraphUnit[data-relationship-target="true"] {
+  box-shadow: 0 0 0 3px #5b8f52, 0 9px 24px rgb(55 105 52 / 16%);
+  cursor: crosshair;
+}
+
+.courseFlowGraphUnit[data-relationship-invalid="true"] {
+  filter: grayscale(.72);
+  opacity: .42;
 }
 
 .courseFlowGraphUnit::before {
@@ -2169,6 +2250,95 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 }
 .courseFlowGraphUnitActions button:last-child:hover { color: #a43e32; }
 .courseFlowGraphUnitActions button svg { height: 10px; width: 10px; }
+
+.courseFlowPortAction {
+  align-items: center;
+  background: #24252a;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  box-shadow: 0 3px 10px rgb(22 23 27 / 22%);
+  color: #fff;
+  cursor: crosshair;
+  display: flex;
+  height: 23px;
+  justify-content: center;
+  opacity: 0;
+  padding: 0;
+  pointer-events: none;
+  position: absolute;
+  transform: translate(-50%, -50%) scale(.8);
+  transition: opacity 120ms ease, transform 120ms ease;
+  width: 23px;
+  z-index: 8;
+}
+
+.courseFlowGraphUnit:hover .courseFlowPortAction,
+.courseFlowGraphUnit:focus-within .courseFlowPortAction,
+.courseFlowGraphUnit[data-relationship-source="true"] .courseFlowPortAction {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.courseFlowPortAction[data-side="top"] { left: 50%; top: 0; }
+.courseFlowPortAction[data-side="right"] { left: 100%; top: 50%; }
+.courseFlowPortAction[data-side="bottom"] { left: 50%; top: 100%; }
+.courseFlowPortAction[data-side="left"] { left: 0; top: 50%; }
+.courseFlowPortAction svg { height: 12px !important; width: 12px !important; }
+.courseFlowPortAction:disabled { cursor: not-allowed; opacity: .35 !important; }
+
+.courseFlowRelationshipPicker {
+  background: #fff;
+  border: 1px solid #d9d5cd;
+  border-radius: 14px;
+  box-shadow: 0 24px 70px rgb(25 26 30 / 22%);
+  max-width: 480px;
+  padding: 20px;
+  width: min(480px, calc(100vw - 32px));
+}
+.courseFlowRelationshipPicker > header {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+.courseFlowRelationshipPicker > header small {
+  color: #9a561d;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.courseFlowRelationshipPicker h3 { font-family: var(--font-serif); font-size: 22px; margin: 5px 0 0; }
+.courseFlowRelationshipPicker > header > button {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #d8d4cc;
+  border-radius: 8px;
+  color: #6c6970;
+  cursor: pointer;
+  display: flex;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+.courseFlowRelationshipPicker > header svg { height: 15px; width: 15px; }
+.courseFlowRelationshipPicker > p { color: #747179; font-size: 12px; margin: 18px 0 10px; }
+.courseFlowRelationshipPicker > div { display: grid; gap: 8px; }
+.courseFlowRelationshipPicker > div > button {
+  background: #faf9f6;
+  border: 1px solid #ddd9d1;
+  border-radius: 9px;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  padding: 13px 14px;
+  text-align: left;
+}
+.courseFlowRelationshipPicker > div > button:hover { background: #f1efe9; border-color: #aaa69e; }
+.courseFlowRelationshipPicker > div > button:disabled { cursor: not-allowed; opacity: .4; }
+.courseFlowRelationshipPicker > div strong { color: #27282d; font-size: 12px; }
+.courseFlowRelationshipPicker > div span { color: #747179; font-size: 10px; line-height: 1.45; }
 
 .courseFlowGraphOpen {
   align-items: center;

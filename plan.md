@@ -331,7 +331,9 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 - Revisioned optional modules plus lecture, standalone quiz, and assignment units with `next`, `requires`, and `assesses` relationships, stable logical identities, saved layouts, audit history, and atomic publication.
 - Existing videos backfilled as lecture units. New lecture generation is video-scoped, does not rename an established course, and refreshes the cross-course concept graph without duplicating other lectures' clips or questions.
 - Course Flow React Flow workspace as the sole course-level structural destination, with Live/Design, compact ungrouped sequences, module swimlanes only when modules exist, typed nodes/relationships, a persistent `New lecture` action, add/edit/remove, impact review, undo, auto-arrange, and contextual lecture-to-Blueprint navigation.
+- Dashboard `New course` is title-first and creates a named empty course container. Course Flow `New lecture` owns the existing full URL/file intake, durable generation progress, and lecture-scoped Blueprint creation; source-less named containers remain visible and resumable.
 - Lecture-focused Blueprint opened contextually from a lecture node, with a breadcrumb back to Course Flow. A secondary `Cross-lecture concept map` appears only when multiple lectures make shared concepts and cross-lecture prerequisites distinct.
+- Course-level navigation is deliberately narrow: Course Flow plus a compact course-wide routing-settings popover. Blueprint, Assessments, and Preview appear only in a selected lecture context. Course Flow relationships use contextual node-edge `+` controls followed by relationship meaning and target selection; no separate generic `Add relationship` toolbar action remains.
 - Standalone quizzes with reviewed concept-grounded questions; assignments with reviewed instructions, concept/source coverage, and learner completion but no submission/grading workflow.
 - Course Director context and typed proposals spanning both Course Flow and detailed Blueprint, using the same manual mutation services and independent `Accept / Edit / Dismiss` review.
 - Published learner course outline and progression driven by Course Flow, with lecture adaptive paths, standalone quizzes, assignments, prerequisites, and persisted unit progress.
@@ -345,11 +347,15 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 - Manual and Course Director mutations produce equivalent private states; ambiguous AI targets clarify and accepted operations never bypass publication.
 - Course Flow, Blueprint, Assessments, Preview, and learner runtime read the same persisted artifacts after add/edit/remove, reload, and publish.
 - UI tests cover module grouping, lecture focus/Whole course, node inspectors, relationship authoring, undo, graph refresh, and non-empty topology transitions.
+- UI tests cover title-first course creation, named empty-container portfolio visibility, explicit lecture intake, contextual navigation, the settings popover, and source → meaning → target Course Flow relationships.
 
 **Human test checklist**
 
 - [ ] Add a second lecture and confirm it appears as a separate Course Flow node without changing the course title.
+- [ ] Create a named empty course from the dashboard, confirm it appears in the portfolio, then use `New lecture` inside Course Flow to submit a URL/file and confirm the generated lecture Blueprint stays inside that course.
 - [ ] Open each lecture and confirm its Blueprint contains only its focused artifacts while the Cross-lecture concept map preserves shared concepts.
+- [ ] Confirm Course Flow does not expose lecture-only Assessments/Preview tabs, a selected lecture does expose them, and course-wide routing settings remain available from the header popover at both levels.
+- [ ] In Course Flow Design, hover/focus a unit edge, choose a relationship meaning, select a valid target, and confirm the relationship persists without a separate toolbar relationship button.
 - [ ] Add a standalone quiz and assignment and confirm both appear consistently in Course Flow, Assessments, Preview, and learner view.
 - [ ] Move units between module swimlanes and publish; confirm learner order changes only after publication.
 - [ ] Ask Course Director to modify the course structure and a lecture's internal structure; confirm every operation is accurately scoped and independently reviewable.

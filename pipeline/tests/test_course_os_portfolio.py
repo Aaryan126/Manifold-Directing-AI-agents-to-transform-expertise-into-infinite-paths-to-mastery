@@ -29,7 +29,7 @@ def _course() -> CourseSummary:
     )
 
 
-def test_portfolio_excludes_empty_shells_and_active_builds() -> None:
+def test_portfolio_excludes_placeholder_shells_and_active_builds() -> None:
     shell = _course()
     active = replace(
         shell,
@@ -40,6 +40,19 @@ def test_portfolio_excludes_empty_shells_and_active_builds() -> None:
 
     assert not _is_portfolio_course(shell)
     assert not _is_portfolio_course(active)
+
+
+def test_portfolio_includes_named_empty_course_containers_and_active_lectures() -> None:
+    container = replace(_course(), title="Learning Systems")
+    active = replace(
+        container,
+        source_count=1,
+        generation_status="running",
+        generation_progress=42,
+    )
+
+    assert _is_portfolio_course(container)
+    assert _is_portfolio_course(active)
 
 
 def test_portfolio_includes_named_completed_drafts_and_published_courses() -> None:

@@ -83,8 +83,6 @@ import {
   performancePercent,
   masteryStateForConcept,
   shouldHydrateGenerationRun,
-  shouldCenterCreationComposer,
-  studioPresentationMode,
   topicLogicalIdsForConcept,
   reorderBlueprintConcepts,
   visibleBlueprintNodeIds,
@@ -125,9 +123,15 @@ import { ProviderVideo, type PlaybackInfo } from "../../../ProviderVideo";
 import { readDevelopmentSession } from "../../../developmentSession";
 
 const pipelineBase = process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localhost:8000";
-type CanvasView = "flow" | "blueprint" | "review" | "assessments" | "preview" | "settings";
+type CanvasView = "flow" | "blueprint" | "review" | "assessments" | "preview";
 type BlueprintMode = "live" | "design";
 type Decision = "accepted" | "edited" | "dismissed";
+type CourseFlowPortSide = "top" | "right" | "bottom" | "left";
+type CourseFlowRelationshipDraft = {
+  source: CourseFlowUnit;
+  side: CourseFlowPortSide;
+  relationship: CourseFlowEdge["relationship"] | null;
+};
 type EditableBlueprintRelationship = Exclude<BlueprintEdgeKind, "next">;
 type BlueprintPortSide = "top" | "right" | "bottom" | "left";
 type BlueprintRelationshipSpec = {
@@ -209,6 +213,9 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   const [proposalStates, setProposalStates] = useState<Record<string, string>>({});
   const [directorOpen, setDirectorOpen] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [lectureIntakeOpen, setLectureIntakeOpen] = useState(false);
+  const [lectureCreationVideoId, setLectureCreationVideoId] = useState<string | null>(null);
   const [blueprintUndoEntries, setBlueprintUndoEntries] = useState<BlueprintUndoEntry[]>([]);
   const [blueprintUndoing, setBlueprintUndoing] = useState(false);
 
@@ -216,14 +223,8 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     (run && ["queued", "running"].includes(run.status))
     || (course && ["queued", "running"].includes(course.generation_status ?? "")),
   );
-  const focusedCreation = studioPresentationMode(course) === "creation";
-  const composerCentered = shouldCenterCreationComposer(
-    course,
-    messages.some((message) => message.role === "instructor"),
-    Boolean(run),
-    Boolean(sourceLabel),
-    sending,
-  );
+  const focusedCreation = lectureIntakeOpen;
+  const composerCentered = lectureIntakeOpen && !run && !sourceLabel && !sending;
 
   const request = useCallback(async <T,>(path: string, user: DevelopmentIdentity, init?: RequestInit): Promise<T> => {
     const headers = new Headers(init?.headers);
@@ -362,6 +363,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
           user,
         );
         setRun(runResult);
+        if (["queued", "running"].includes(runResult.status)) setLectureIntakeOpen(true);
       }
       await refreshArtifacts(user);
       if (courseResult.active_revision_id || courseResult.working_revision_id) {
@@ -379,12 +381,18 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       }
       if (courseResult.status === "published") {
         setCanvasView(
-          requestedCanvasView && ["flow", "blueprint", "assessments", "preview", "settings"].includes(requestedCanvasView)
+          requestedCanvasView && ["flow", "blueprint", "assessments", "preview"].includes(requestedCanvasView)
             ? requestedCanvasView as CanvasView
             : "flow",
         );
       }
-      else if (courseResult.pending_review_count > 0) setCanvasView("review");
+      else {
+        setCanvasView(
+          requestedCanvasView && ["flow", "blueprint", "assessments", "preview", "review"].includes(requestedCanvasView)
+            ? requestedCanvasView as CanvasView
+            : "flow",
+        );
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not open the course studio.");
     } finally {
@@ -407,15 +415,27 @@ export function CourseStudio({ courseId }: { courseId: string }) {
             setCourse(nextCourse);
             await refreshArtifacts(identity);
             await refreshStructuredWorkspace(identity, false);
+            await refreshBlueprint(identity, nextCourse);
             await refreshCourseFlow(identity, nextCourse);
             await refreshRevisionDiff(identity, nextCourse);
-            setCanvasView("review");
+            const nextFlow = await request<CourseFlow>(`/courses/${courseId}/course-flow?revision=working`, identity);
+            setWorkingCourseFlow(nextFlow);
+            const generatedLecture = nextFlow.units.find(
+              (unit) => unit.kind === "lecture" && unit.video_id === lectureCreationVideoId,
+            ) ?? [...nextFlow.units]
+              .filter((unit) => unit.kind === "lecture")
+              .sort((left, right) => right.sequence_rank - left.sequence_rank)[0];
+            setLectureFocusVideoId(generatedLecture?.video_id ?? lectureCreationVideoId);
+            setBlueprintMode("design");
+            setLectureIntakeOpen(false);
+            setSourceLabel(null);
+            setCanvasView("blueprint");
           }
         })
         .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not refresh generation."));
     }, 2200);
     return () => window.clearInterval(interval);
-  }, [courseId, identity, refreshArtifacts, refreshCourseFlow, refreshStructuredWorkspace, refreshRevisionDiff, request, run]);
+  }, [courseId, identity, lectureCreationVideoId, refreshArtifacts, refreshBlueprint, refreshCourseFlow, refreshStructuredWorkspace, refreshRevisionDiff, request, run]);
 
   useEffect(() => {
     if (!identity || !agentTasks.some((task) => ["queued", "running"].includes(task.status))) return;
@@ -432,7 +452,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     if (!identity || !composer.trim() || sending) return;
     const content = composer.trim();
     setComposer("");
-    if (looksLikeUrl(content) && (course?.source_count ?? 0) === 0) {
+    if (looksLikeUrl(content) && (lectureIntakeOpen || (course?.source_count ?? 0) === 0)) {
       await ingestUrl(content);
       return;
     }
@@ -511,13 +531,15 @@ export function CourseStudio({ courseId }: { courseId: string }) {
 
   async function startGeneration(videoId: string, ingestionJobId: string) {
     if (!identity) return;
+    setLectureCreationVideoId(videoId);
+    setLectureFocusVideoId(videoId);
     const nextRun = await request<GenerationRun>(`/courses/${courseId}/generation-runs`, identity, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ video_id: videoId, ingestion_job_id: ingestionJobId }),
     });
     setRun(nextRun);
-    setSourceLabel("Lecture received. Course Director is building your private draft.");
+    setSourceLabel("Lecture received. Course Director is building its private Blueprint.");
     setCourse(await request<CourseSummary>(`/courses/${courseId}/studio`, identity));
   }
 
@@ -1490,7 +1512,8 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   }
 
   async function leaveStudio() {
-    if (identity && course?.status === "draft" && course.source_count === 0) {
+    const disposablePlaceholder = course?.title.trim().toLowerCase() === "untitled course";
+    if (identity && course?.status === "draft" && course.source_count === 0 && disposablePlaceholder) {
       setSending(true);
       setError(null);
       try {
@@ -1533,8 +1556,16 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     () => filterBlueprintForLecture(workingBlueprint, lectureFocusVideoId),
     [workingBlueprint, lectureFocusVideoId],
   );
+  const focusedAssessmentWorkspace = useMemo(
+    () => filterAssessmentWorkspaceForBlueprint(
+      assessmentWorkspace,
+      focusedWorkingBlueprint ?? focusedActiveBlueprint,
+      lectureFocusVideoId,
+    ),
+    [assessmentWorkspace, focusedActiveBlueprint, focusedWorkingBlueprint, lectureFocusVideoId],
+  );
   const focusedLectureUnit = useMemo(
-    () => (workingCourseFlow ?? activeCourseFlow)?.units.find(
+    () => (workingCourseFlow?.units ?? activeCourseFlow?.units ?? []).find(
       (unit) => unit.kind === "lecture" && unit.video_id === lectureFocusVideoId,
     ) ?? null,
     [activeCourseFlow, lectureFocusVideoId, workingCourseFlow],
@@ -1559,7 +1590,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         </div>
       ) : null}
       <div className={styles.messageList}>
-        {!composerCentered ? messages.filter((message) => message.role !== "system").map((message) => (
+        {!focusedCreation ? messages.filter((message) => message.role !== "system").map((message) => (
           <MessageBubble
             key={message.id}
             message={message}
@@ -1568,7 +1599,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
           />
         )) : null}
 
-        {!composerCentered && (course?.source_count ?? 0) === 0 ? (
+        {!focusedCreation && (course?.source_count ?? 0) === 0 ? (
           <SourceRequest onChoose={() => fileInput.current?.click()} />
         ) : null}
 
@@ -1597,16 +1628,18 @@ export function CourseStudio({ courseId }: { courseId: string }) {
               event.currentTarget.form?.requestSubmit();
             }
           }}
-          placeholder={editingLocked
+          placeholder={editingLocked && !lectureIntakeOpen
             ? "Ask about learner evidence, or request a private course change…"
-            : (course?.source_count ?? 0) === 0
-              ? (composerCentered ? "What would you like to teach? Paste a lecture link or add a file…" : "Paste a lecture link, or tell Course Director about the course…")
+            : lectureIntakeOpen
+              ? "What lecture would you like to add? Paste a lecture link or add a file…"
+              : (course?.source_count ?? 0) === 0
+                ? "Ask about or change this course…"
               : "Ask about or change this course…"}
           rows={focusedCreation ? 4 : 3}
           value={composer}
         />
         <div>
-          <button aria-label="Attach lecture" disabled={editingLocked} onClick={() => fileInput.current?.click()} type="button">{composerCentered ? <Plus /> : <Paperclip />}</button>
+          <button aria-label="Attach lecture" disabled={editingLocked && !lectureIntakeOpen} onClick={() => fileInput.current?.click()} type="button">{composerCentered ? <Plus /> : <Paperclip />}</button>
           <span>{composerCentered ? null : "Enter to send · Shift + Enter for a new line"}</span>
           <button aria-label="Send message" className={styles.sendButton} disabled={!composer.trim() || sending} type="submit">
             {sending ? <LoaderCircle className={styles.spin} /> : <ArrowUp />}
@@ -1637,21 +1670,35 @@ export function CourseStudio({ courseId }: { courseId: string }) {
           </div>
           {!focusedCreation ? (
             <nav className={styles.studioViewTabs} aria-label="Course views">
-              <CanvasTab active={canvasView === "flow" || canvasView === "blueprint"} icon={<GraduationCap />} label="Course Flow" onClick={() => {
+              <CanvasTab active={canvasView === "flow"} icon={<GraduationCap />} label="Course Flow" onClick={() => {
                 setLectureFocusVideoId(null);
                 setCanvasView("flow");
               }} />
-              {course?.status !== "published" ? <CanvasTab active={canvasView === "review"} badge={course?.pending_review_count || undefined} icon={<ClipboardCheck />} label="Review" onClick={() => setCanvasView("review")} /> : null}
-              {course?.status === "published" ? <CanvasTab active={canvasView === "assessments"} icon={<Check />} label="Assessments" onClick={() => setCanvasView("assessments")} /> : null}
-              <CanvasTab active={canvasView === "preview"} icon={<Eye />} label="Preview" onClick={() => setCanvasView("preview")} />
-              {course?.status === "published" ? <CanvasTab active={canvasView === "settings"} icon={<Settings2 />} label="Settings" onClick={() => setCanvasView("settings")} /> : null}
+              {lectureFocusVideoId ? <CanvasTab active={canvasView === "blueprint"} icon={<GitFork />} label="Blueprint" onClick={() => setCanvasView("blueprint")} /> : null}
+              {lectureFocusVideoId && course?.status !== "published" ? <CanvasTab active={canvasView === "review"} badge={course?.pending_review_count || undefined} icon={<ClipboardCheck />} label="Review" onClick={() => setCanvasView("review")} /> : null}
+              {lectureFocusVideoId ? <CanvasTab active={canvasView === "assessments"} icon={<Check />} label="Assessments" onClick={() => setCanvasView("assessments")} /> : null}
+              {lectureFocusVideoId ? <CanvasTab active={canvasView === "preview"} icon={<Eye />} label="Preview" onClick={() => setCanvasView("preview")} /> : null}
             </nav>
           ) : <span className={styles.studioHeaderSpacer} />}
           <div className={styles.studioHeaderActions}>
-            {course?.status === "published" && !focusedCreation ? (
-              <button className={styles.studioSourceButton} onClick={() => setSourcesOpen(true)} type="button">
-                <FileText /><span>Sources</span><i>{sources.length}</i>
-              </button>
+            {focusedCreation ? (
+              <button className={styles.studioIntakeBack} disabled={sending && Boolean(run)} onClick={() => {
+                setLectureIntakeOpen(false);
+                setSourceLabel(null);
+                setComposer("");
+                setCanvasView("flow");
+              }} type="button"><ArrowLeft />Course Flow</button>
+            ) : null}
+            {!focusedCreation ? (
+              <>
+                <div className={styles.studioSettingsMenu}>
+                  <button aria-expanded={settingsOpen} aria-label="Course settings" className={styles.studioSettingsButton} onClick={() => setSettingsOpen((current) => !current)} type="button"><Settings2 /></button>
+                  {settingsOpen ? <CourseSettingsPopover disabled={sending} onClose={() => setSettingsOpen(false)} onRemove={removeRoutingPolicy} onSave={saveRoutingPolicy} workspace={routingWorkspace} /> : null}
+                </div>
+                <button className={styles.studioSourceButton} onClick={() => setSourcesOpen(true)} type="button">
+                  <FileText /><span>Sources</span><i>{sources.length}</i>
+                </button>
+              </>
             ) : null}
             <div className={styles.studioStatus}>
               {isBuilding ? <span data-tone="building"><LoaderCircle className={styles.spin} />{Math.round(run?.progress ?? course?.generation_progress ?? 0)}% building</span>
@@ -1682,7 +1729,13 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     concepts={(workingBlueprint ?? activeBlueprint)?.nodes.filter((node) => node.kind === "concept") ?? []}
                     disabled={sending}
                     mode={blueprintMode}
-                    onAddLecture={() => fileInput.current?.click()}
+                    onAddLecture={() => {
+                      setRun(null);
+                      setSourceLabel(null);
+                      setComposer("");
+                      setLectureCreationVideoId(null);
+                      setLectureIntakeOpen(true);
+                    }}
                     onAddModule={(title, summary) => void createCourseFlowModule(title, summary)}
                     onModeChange={setBlueprintMode}
                     onOpenLecture={(unit) => {
@@ -1748,9 +1801,8 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                   />
                 ) : null}
                 {canvasView === "review" && course?.status !== "published" ? <ReviewCanvas bundles={bundles} onBundle={decideBundle} onItem={decideItem} /> : null}
-                {canvasView === "assessments" ? <AssessmentsCanvas courseFlow={workingCourseFlow ?? activeCourseFlow} disabled={sending} onRemove={removeAssessment} onSave={saveAssessment} workspace={assessmentWorkspace} /> : null}
-                {canvasView === "preview" ? <PreviewCanvas course={course} courseFlow={workingCourseFlow ?? activeCourseFlow} workspace={assessmentWorkspace} /> : null}
-                {canvasView === "settings" ? <SettingsCanvas disabled={sending} onRemove={removeRoutingPolicy} onSave={saveRoutingPolicy} workspace={routingWorkspace} /> : null}
+                {canvasView === "assessments" ? <AssessmentsCanvas courseFlow={null} disabled={sending} onRemove={removeAssessment} onSave={saveAssessment} workspace={focusedAssessmentWorkspace} /> : null}
+                {canvasView === "preview" ? <PreviewCanvas course={course} courseFlow={null} workspace={focusedAssessmentWorkspace} /> : null}
               </div>
               </section>
               <button aria-expanded={directorOpen} aria-label="Open Course Director" className={styles.directorLauncher} onClick={() => setDirectorOpen((current) => !current)} type="button">
@@ -1967,8 +2019,13 @@ function filterBlueprintForLecture(
     else if (node.kind === "topic" && lectureTopicIds.has(node.id)) visibleIds.add(node.id);
     else if (
       node.kind === "concept"
-      && Array.isArray(node.metadata.topic_ids)
-      && node.metadata.topic_ids.some((topicId) => lectureTopicIds.has(String(topicId)))
+      && (
+        (node.parent_id != null && lectureTopicIds.has(node.parent_id))
+        || (
+          Array.isArray(node.metadata.topic_ids)
+          && node.metadata.topic_ids.some((topicId) => lectureTopicIds.has(String(topicId)))
+        )
+      )
     ) visibleIds.add(node.id);
     else if (
       (node.kind === "clip" || node.kind === "question")
@@ -1983,6 +2040,56 @@ function filterBlueprintForLecture(
       (edge) => visibleIds.has(edge.source_id) && visibleIds.has(edge.target_id),
     ),
     uncovered_concept_ids: blueprint.uncovered_concept_ids.filter((id) => visibleIds.has(id)),
+  };
+}
+
+function filterAssessmentWorkspaceForBlueprint(
+  workspace: AssessmentWorkspace | null,
+  blueprint: CourseBlueprint | null,
+  videoId: string | null,
+): AssessmentWorkspace | null {
+  if (!workspace || !videoId || !blueprint) return workspace;
+  const topicIds = new Set(
+    blueprint.nodes.filter((node) => node.kind === "topic").map((node) => node.id),
+  );
+  const conceptIds = new Set(
+    blueprint.nodes.filter((node) => node.kind === "concept").map((node) => node.id),
+  );
+  const questionIds = new Set(
+    blueprint.nodes.filter((node) => node.kind === "question").map((node) => node.id),
+  );
+  const questionLogicalIds = new Set(
+    blueprint.nodes
+      .filter((node) => node.kind === "question")
+      .map((node) => node.logical_id),
+  );
+  const clipIds = new Set(
+    blueprint.nodes.filter((node) => node.kind === "clip").map((node) => node.id),
+  );
+  const topics = workspace.topics ?? [];
+  const concepts = workspace.concepts ?? [];
+  const questions = workspace.questions ?? [];
+  const clips = workspace.clips ?? [];
+  // The structured workspace can still describe the active revision while the
+  // Blueprint is showing a private working revision. Video-linked clips give us
+  // the stable lecture boundary without comparing revision-specific topic IDs.
+  clips
+    .filter((clip) => clip.video_id === videoId)
+    .forEach((clip) => topicIds.add(clip.topic_id));
+  return {
+    ...workspace,
+    topics: topics.filter((topic) => topicIds.has(topic.id)),
+    concepts: concepts.filter(
+      (concept) => conceptIds.has(concept.id) || (concept.topic_ids ?? []).some((topicId) => topicIds.has(topicId)),
+    ),
+    questions: questions.filter(
+      (question) => questionIds.has(question.id)
+        || questionLogicalIds.has(question.logical_id)
+        || topicIds.has(question.topic_id),
+    ),
+    clips: clips.filter(
+      (clip) => clip.video_id === videoId || clipIds.has(clip.id) || topicIds.has(clip.topic_id),
+    ),
   };
 }
 
@@ -2667,6 +2774,7 @@ function CourseFlowWorkspace({
   } | null>(null);
   const [relationshipEditorOpen, setRelationshipEditorOpen] = useState(false);
   const [editingRelationship, setEditingRelationship] = useState<CourseFlowEdge | null>(null);
+  const [relationshipDraft, setRelationshipDraft] = useState<CourseFlowRelationshipDraft | null>(null);
   const [moduleEditorOpen, setModuleEditorOpen] = useState(false);
   const [graphPositions, setGraphPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [graphBusy, setGraphBusy] = useState(false);
@@ -2730,6 +2838,15 @@ function CourseFlowWorkspace({
     });
   }, [arrangedPositions, flow]);
 
+  useEffect(() => {
+    if (!relationshipDraft) return;
+    function cancelRelationship(event: KeyboardEvent) {
+      if (event.key === "Escape") setRelationshipDraft(null);
+    }
+    window.addEventListener("keydown", cancelRelationship);
+    return () => window.removeEventListener("keydown", cancelRelationship);
+  }, [relationshipDraft]);
+
   const graphNodes = useMemo<Node[]>(() => {
     const laneNodes: Node[] = compactSequence ? [] : groups.map((group, groupIndex) => {
       const laneX = 58 + groupIndex * 360;
@@ -2755,14 +2872,37 @@ function CourseFlowWorkspace({
         zIndex: 0,
       };
     });
-    const unitNodes: Node[] = units.map((unit) => ({
+    const unitNodes: Node[] = units.map((unit) => {
+      const isRelationshipSource = relationshipDraft?.source.logical_id === unit.logical_id;
+      const isRelationshipTarget = Boolean(
+        relationshipDraft?.relationship
+        && relationshipDraft.source.logical_id !== unit.logical_id
+        && isValidCourseFlowRelationshipTarget(
+          relationshipDraft.source,
+          unit,
+          relationshipDraft.relationship,
+        )
+      );
+      const isInvalidRelationshipTarget = Boolean(
+        relationshipDraft?.relationship
+        && relationshipDraft.source.logical_id !== unit.logical_id
+        && !isRelationshipTarget
+      );
+      return {
       id: unit.logical_id,
       position: graphPositions[unit.logical_id]
         ?? arrangedPositions[unit.logical_id]
         ?? { x: 86, y: 116 + unit.sequence_rank * 154 },
       data: {
         label: (
-          <div className={styles.courseFlowGraphUnit} data-kind={unit.kind} data-status={unit.status}>
+          <div
+            className={styles.courseFlowGraphUnit}
+            data-kind={unit.kind}
+            data-relationship-source={isRelationshipSource || undefined}
+            data-relationship-target={isRelationshipTarget || undefined}
+            data-relationship-invalid={isInvalidRelationshipTarget || undefined}
+            data-status={unit.status}
+          >
             <span className={styles.courseFlowGraphUnitIcon}>
               {unit.kind === "lecture" ? <FileVideo /> : unit.kind === "quiz" ? <ClipboardCheck /> : <FilePenLine />}
             </span>
@@ -2778,39 +2918,59 @@ function CourseFlowWorkspace({
               </em>
             </div>
             {mode === "design" ? (
-              <div className={styles.courseFlowGraphUnitActions}>
-                <button
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setEditor({ kind: unit.kind, unit });
-                  }}
-                  type="button"
-                >
-                  <Pencil />Edit
-                </button>
-                <button
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onRemove(unit);
-                  }}
-                  type="button"
-                >
-                  <Trash2 />Remove
-                </button>
-              </div>
+              <>
+                <div className={styles.courseFlowGraphUnitActions}>
+                  <button
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setEditor({ kind: unit.kind, unit });
+                    }}
+                    type="button"
+                  >
+                    <Pencil />Edit
+                  </button>
+                  <button
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onRemove(unit);
+                    }}
+                    type="button"
+                  >
+                    <Trash2 />Remove
+                  </button>
+                </div>
+                {(["top", "right", "bottom", "left"] as CourseFlowPortSide[]).map((side) => (
+                  <button
+                    aria-label={`Connect from ${side} of ${unit.title}`}
+                    className={styles.courseFlowPortAction}
+                    data-side={side}
+                    disabled={disabled}
+                    key={side}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setRelationshipDraft({ source: unit, side, relationship: null });
+                    }}
+                    title="Add relationship"
+                    type="button"
+                  >
+                    <Plus />
+                  </button>
+                ))}
+              </>
             ) : unit.kind === "lecture" ? <span className={styles.courseFlowGraphOpen}>Open Blueprint <ArrowRight /></span> : null}
           </div>
         ),
       },
-      draggable: mode === "design" && !disabled,
+      draggable: mode === "design" && !disabled && !relationshipDraft,
       connectable: false,
       className: styles.courseFlowGraphNode,
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top,
       zIndex: 3,
-    }));
+    };
+    });
     return [...laneNodes, ...unitNodes];
-  }, [arrangedPositions, compactSequence, disabled, graphPositions, groups, mode, onRemove, units]);
+  }, [arrangedPositions, compactSequence, disabled, graphPositions, groups, mode, onRemove, relationshipDraft, units]);
 
   const graphEdges = useMemo<Edge[]>(() => (flow?.edges ?? []).map((edge) => ({
     id: edge.logical_id,
@@ -2884,10 +3044,6 @@ function CourseFlowWorkspace({
           <button disabled={disabled} onClick={() => setModuleEditorOpen(true)} type="button"><Plus /><BookOpenCheck />Module</button>
           <button disabled={disabled} onClick={() => setEditor({ kind: "quiz" })} type="button"><Plus /><ClipboardCheck />Quiz</button>
           <button disabled={disabled} onClick={() => setEditor({ kind: "assignment" })} type="button"><Plus /><FilePenLine />Assignment</button>
-          <button disabled={disabled || units.length < 2} onClick={() => {
-            setEditingRelationship(null);
-            setRelationshipEditorOpen(true);
-          }} type="button"><Plus /><Network />Relationship</button>
           <span>Every change remains private until you publish the revision.</span>
         </div>
       ) : null}
@@ -2940,6 +3096,24 @@ function CourseFlowWorkspace({
                 if (node.id.startsWith("module:")) return;
                 const unit = units.find((candidate) => candidate.logical_id === node.id);
                 if (!unit) return;
+                if (relationshipDraft?.relationship) {
+                  if (
+                    unit.logical_id !== relationshipDraft.source.logical_id
+                    && isValidCourseFlowRelationshipTarget(
+                      relationshipDraft.source,
+                      unit,
+                      relationshipDraft.relationship,
+                    )
+                  ) {
+                    void onRelationship({
+                      relationship: relationshipDraft.relationship,
+                      source_unit_logical_id: relationshipDraft.source.logical_id,
+                      target_unit_logical_id: unit.logical_id,
+                    }, "create");
+                    setRelationshipDraft(null);
+                  }
+                  return;
+                }
                 if (unit.kind === "lecture") onOpenLecture(unit);
                 else setEditor({ kind: unit.kind, unit });
               }}
@@ -2962,7 +3136,11 @@ function CourseFlowWorkspace({
           </div>
           {mode === "design" ? (
             <div className={styles.courseFlowGraphSelection}>
-              <span>Select a unit to open it. Drag to organize. Select a relationship to edit it.</span>
+              <span>
+                {relationshipDraft?.relationship
+                  ? `Choose a destination for the ${relationshipDraft.relationship} relationship. Press Esc to cancel.`
+                  : "Select a unit to open it. Hover its edge to connect it. Drag to organize."}
+              </span>
               {units.some((unit) => unit.status === "proposed") ? (
                 <div>
                   {units.filter((unit) => unit.status === "proposed").map((unit) => (
@@ -3017,7 +3195,72 @@ function CourseFlowWorkspace({
           units={units}
         />
       ) : null}
+      {relationshipDraft && !relationshipDraft.relationship ? (
+        <CourseFlowRelationshipKindDialog
+          onChoose={(relationship) => setRelationshipDraft((current) => current ? { ...current, relationship } : null)}
+          onClose={() => setRelationshipDraft(null)}
+          source={relationshipDraft.source}
+        />
+      ) : null}
     </section>
+  );
+}
+
+function isValidCourseFlowRelationshipTarget(
+  source: CourseFlowUnit,
+  target: CourseFlowUnit,
+  relationship: CourseFlowEdge["relationship"],
+): boolean {
+  if (source.logical_id === target.logical_id) return false;
+  if (relationship === "assesses") {
+    return source.kind === "lecture" && ["quiz", "assignment"].includes(target.kind);
+  }
+  return true;
+}
+
+function CourseFlowRelationshipKindDialog({
+  onChoose,
+  onClose,
+  source,
+}: {
+  onChoose: (relationship: CourseFlowEdge["relationship"]) => void;
+  onClose: () => void;
+  source: CourseFlowUnit;
+}) {
+  const options: Array<{
+    relationship: CourseFlowEdge["relationship"];
+    title: string;
+    detail: string;
+  }> = [
+    { relationship: "next", title: "Learning order", detail: "Learners continue from this unit to the selected unit." },
+    { relationship: "requires", title: "Prerequisite", detail: "The selected unit depends on this unit." },
+    { relationship: "assesses", title: "Assessment", detail: "Connect this lecture to a quiz or assignment that checks it." },
+  ];
+  return (
+    <div className={styles.dialogBackdrop} onMouseDown={(event) => {
+      if (event.currentTarget === event.target) onClose();
+    }} role="presentation">
+      <section className={styles.courseFlowRelationshipPicker} role="dialog" aria-modal="true">
+        <header>
+          <div><small>Connect from</small><h3>{source.title}</h3></div>
+          <button aria-label="Close" onClick={onClose} type="button"><X /></button>
+        </header>
+        <p>What should this connection mean?</p>
+        <div>
+          {options.map((option) => (
+            <button
+              disabled={option.relationship === "assesses" && source.kind !== "lecture"}
+              key={option.relationship}
+              onClick={() => onChoose(option.relationship)}
+              type="button"
+            >
+              <strong>{option.title}</strong>
+              <span>{option.detail}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -3281,7 +3524,6 @@ function BlueprintWorkspace({
   } | null>(null);
   const [cleanupAnchorLogicalId, setCleanupAnchorLogicalId] = useState<string | null>(null);
   const [cleanupRunning, setCleanupRunning] = useState(false);
-  const lastFittedViewport = useRef<string | null>(null);
   const dragStartPositions = useRef<Record<string, { x: number; y: number }>>({});
   const blueprint = mode === "live"
     ? (activeBlueprint ?? workingBlueprint)
@@ -3325,15 +3567,6 @@ function BlueprintWorkspace({
     if (!blueprint) return "empty";
     return `${mode}:${focusTopicLogicalId ?? "course"}:${autoArrangeVersion}`;
   }, [autoArrangeVersion, blueprint, focusTopicLogicalId, mode]);
-  const graphTopologyKey = useMemo(() => {
-    if (!blueprint) return "empty";
-    const nodeIds = blueprint.nodes.map((node) => node.id).sort().join(",");
-    const edgeIds = blueprint.edges
-      .map((edge) => `${edge.id}:${edge.source_id}:${edge.target_id}:${edge.kind}`)
-      .sort()
-      .join(",");
-    return `${blueprint.revision_id}:${nodeIds}:${edgeIds}`;
-  }, [blueprint]);
   const viewportFitKey = `${reactFlowMountKey}:${flow.layoutKey ?? "pending"}`;
   const evidence = selected?.kind === "concept"
     ? blueprintEvidence.find((item) => item.concept_id === selected.id) ?? null
@@ -3403,19 +3636,32 @@ function BlueprintWorkspace({
   }, [disabled, mode, performUndo, undoing, undoLabel]);
 
   useEffect(() => {
-    if (!flowInstance || !flow.layoutReady || !flow.nodes.length || lastFittedViewport.current === viewportFitKey) return;
-    let secondFrame = 0;
-    const firstFrame = window.requestAnimationFrame(() => {
-      secondFrame = window.requestAnimationFrame(() => {
-        lastFittedViewport.current = viewportFitKey;
-        void flowInstance.fitView({ duration: 420, maxZoom: 1, padding: 0.14 });
+    if (!flowInstance || !flow.layoutReady || !flow.nodes.length) return;
+    // React Flow measures custom nodes after they enter the DOM. Fitting during
+    // that measurement window can cache an off-canvas transform, especially
+    // after undo or auto-arrange remounts the graph. Wait for measurement and
+    // then perform one authoritative fit for the completed layout.
+    const timer = window.setTimeout(() => {
+      void flowInstance.fitView({ duration: 0, maxZoom: 1, padding: 0.14 });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [flow.layoutReady, flow.nodes.length, flowInstance, selectedLogicalId, viewportFitKey]);
+
+  const closeArtifactInspector = useCallback(() => {
+    setSelectedLogicalId(null);
+    // Closing the floating inspector changes the usable canvas bounds. React
+    // Flow's ResizeObserver and React's state update do not always settle in
+    // the same frame, so fit again after both the next paint and the inspector
+    // transition window. This prevents a valid graph being left off-canvas.
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        void flowInstance?.fitView({ duration: 0, maxZoom: 1, padding: 0.14 });
       });
     });
-    return () => {
-      window.cancelAnimationFrame(firstFrame);
-      if (secondFrame) window.cancelAnimationFrame(secondFrame);
-    };
-  }, [flow.layoutReady, flow.nodes.length, flowInstance, viewportFitKey]);
+    window.setTimeout(() => {
+      void flowInstance?.fitView({ duration: 0, maxZoom: 1, padding: 0.14 });
+    }, 260);
+  }, [flowInstance]);
 
   async function chooseRelationshipTarget(target: BlueprintNode) {
     if (!relationshipDraft?.kind || !blueprint) return;
@@ -3749,19 +3995,18 @@ function BlueprintWorkspace({
               <LoaderCircle className={styles.spin} />
               <span>Arranging the course system…</span>
             </div>
-          ) : (
-            <ReactFlow
+          ) : null}
+          <ReactFlow
             edgeTypes={blueprintEdgeTypes}
             edges={flow.edges}
             fitView
             fitViewOptions={{ maxZoom: 1, padding: 0.14 }}
-            key={graphTopologyKey}
+            key={reactFlowMountKey}
             nodeTypes={blueprintNodeTypes}
             nodes={flow.nodes}
             nodesConnectable={false}
             nodesDraggable={mode === "design"}
             onInit={(instance) => {
-              lastFittedViewport.current = null;
               setFlowInstance(instance);
             }}
             onNodesChange={(changes) => {
@@ -3815,8 +4060,7 @@ function BlueprintWorkspace({
           >
             <Background color="#e2ded6" gap={22} size={1} />
             <Controls orientation="horizontal" position="bottom-left" showInteractive={false} />
-            </ReactFlow>
-          )}
+          </ReactFlow>
           {mode === "design" ? <p className={styles.blueprintCanvasHint}><GitFork />Move an artifact, hover a node edge to connect it, or select any relationship to change it.</p> : null}
           {relationshipDraft?.kind ? (
             <section className={styles.blueprintRelationshipGuide} aria-live="polite">
@@ -3834,7 +4078,7 @@ function BlueprintWorkspace({
           {selected ? (
             <aside aria-label={`${selected.title} artifact inspector`} className={styles.blueprintInspector} role="dialog">
             <>
-              <header><span data-kind={selected.kind}>{blueprintKindIcon(selected.kind)}</span><div><small>{selected.kind}</small><h3>{selected.title}</h3><em data-status={selected.status}>{selected.status}</em></div><button aria-label="Close artifact inspector" className={styles.inspectorClose} onClick={() => setSelectedLogicalId(null)} type="button"><X /></button></header>
+              <header><span data-kind={selected.kind}>{blueprintKindIcon(selected.kind)}</span><div><small>{selected.kind}</small><h3>{selected.title}</h3><em data-status={selected.status}>{selected.status}</em></div><button aria-label="Close artifact inspector" className={styles.inspectorClose} onClick={closeArtifactInspector} type="button"><X /></button></header>
               {selected.kind === "concept"
                 ? <ConceptEvidencePanel evidence={evidence} />
                 : <ArtifactCoveragePanel clip={selectedClip} node={selected} neighbors={neighbors} />}
@@ -5477,62 +5721,56 @@ function AssessmentEditor({ question, workspace, onCancel, onSave }: {
   );
 }
 
-function SettingsCanvas({ workspace, disabled, onSave, onRemove }: {
+function CourseSettingsPopover({ workspace, disabled, onSave, onRemove, onClose }: {
   workspace: RoutingWorkspace | null;
   disabled: boolean;
   onSave: (conceptId: string | null, policy: RoutingPolicy) => Promise<void>;
   onRemove: (conceptId: string) => Promise<void>;
+  onClose: () => void;
 }) {
   const [editing, setEditing] = useState<string | "default" | "new" | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
-  const [testPolicyId, setTestPolicyId] = useState("default");
-  const [correct, setCorrect] = useState(true);
-  const [confidence, setConfidence] = useState(3);
-  const [priorCorrect, setPriorCorrect] = useState(0);
-  const [remediationAttempts, setRemediationAttempts] = useState(0);
-  const editorRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!editing) return;
-    const frame = window.requestAnimationFrame(() => {
-      editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [editing]);
-  if (!workspace) return <div className={styles.canvasEmpty}><LoaderCircle className={styles.spin} /><h2>Loading course settings</h2></div>;
+  if (!workspace) return <section className={styles.courseSettingsPopover}><header><div><small>Course-wide</small><strong>Routing settings</strong></div><button aria-label="Close settings" onClick={onClose} type="button"><X /></button></header><p>Add a lecture before configuring mastery and remediation policies.</p></section>;
   const defaultPolicy = workspace.policies.find((item) => item.concept_id === null)!;
   const overrides = workspace.policies.filter((item) => item.concept_id !== null);
-  const testRecord = workspace.policies.find((item) => (item.concept_id ?? "default") === testPolicyId) ?? defaultPolicy;
-  const testResult = simulatePolicy(testRecord.policy, correct, confidence, priorCorrect, remediationAttempts);
   const editingRecord = editing && editing !== "new"
     ? workspace.policies.find((item) => (item.concept_id ?? "default") === editing)
     : null;
   return (
-    <div className={styles.settingsCanvas}>
-      <header><div><h2>Settings & policies</h2><p>Control how learners advance, revisit concepts, and receive remediation.</p></div></header>
-      <div className={styles.settingsGrid}>
-        <section className={styles.policySection}>
-          <header><div><h3>Learner routing</h3><p>The default applies everywhere unless a concept override is present.</p></div><button aria-controls="policy-editor" aria-expanded={editing === "new"} disabled={disabled || overrides.length >= workspace.concepts.length} onClick={() => setEditing("new")} type="button"><Plus />Add override</button></header>
-          {editing ? <div className={styles.editorReveal} id="policy-editor" ref={editorRef}><PolicyEditor key={editing} conceptId={editing === "default" ? null : editing === "new" ? undefined : editing} concepts={workspace.concepts.filter((concept) => !overrides.some((record) => record.concept_id === concept.id))} initial={editingRecord?.policy ?? defaultPolicy.policy} onCancel={() => setEditing(null)} onSave={async (conceptId, policy) => { await onSave(conceptId, policy); setEditing(null); }} /></div> : null}
-          <article className={styles.defaultPolicy}><div><span>Course default</span><h4>Default mastery policy</h4><PolicySummary policy={defaultPolicy.policy} /></div><button aria-controls="policy-editor" aria-expanded={editing === "default"} aria-label="Edit default policy" disabled={disabled} onClick={() => setEditing("default")} type="button"><Pencil /></button></article>
-          <div className={styles.policyOverrides}>
-            {overrides.map((record) => <article key={record.concept_id}><div><span>Concept override</span><h4>{record.concept_name}</h4><PolicySummary policy={record.policy} /></div><div><button aria-controls="policy-editor" aria-expanded={editing === record.concept_id} aria-label={`Edit ${record.concept_name} policy`} disabled={disabled} onClick={() => setEditing(record.concept_id!)} type="button"><Pencil /></button>{confirmRemove === record.concept_id ? <div><button onClick={() => setConfirmRemove(null)} type="button">Keep</button><button onClick={() => void onRemove(record.concept_id!).then(() => setConfirmRemove(null))} type="button">Remove</button></div> : <button aria-label={`Remove ${record.concept_name} override`} disabled={disabled} onClick={() => setConfirmRemove(record.concept_id)} type="button"><Trash2 /></button>}</div></article>)}
-            {!overrides.length ? <div className={styles.inlineEmpty}><GitFork /><div><strong>No concept overrides</strong><p>Every concept currently inherits the course default.</p></div></div> : null}
+    <section className={styles.courseSettingsPopover}>
+      <header><div><small>Course-wide</small><strong>Routing settings</strong></div><button aria-label="Close settings" onClick={onClose} type="button"><X /></button></header>
+      <p>Control mastery and remediation across every lecture. Changes stay private until publication.</p>
+      {editing ? (
+        <PolicyEditor
+          key={editing}
+          conceptId={editing === "default" ? null : editing === "new" ? undefined : editing}
+          concepts={workspace.concepts.filter((concept) => !overrides.some((record) => record.concept_id === concept.id))}
+          initial={editingRecord?.policy ?? defaultPolicy.policy}
+          onCancel={() => setEditing(null)}
+          onSave={async (conceptId, policy) => {
+            await onSave(conceptId, policy);
+            setEditing(null);
+          }}
+        />
+      ) : (
+        <>
+          <article className={styles.courseSettingsDefault}>
+            <div><small>Course default</small><strong>Mastery policy</strong><PolicySummary policy={defaultPolicy.policy} /></div>
+            <button aria-label="Edit course default" disabled={disabled} onClick={() => setEditing("default")} type="button"><Pencil /></button>
+          </article>
+          <div className={styles.courseSettingsOverrides}>
+            <div><strong>Concept overrides</strong><button disabled={disabled || overrides.length >= workspace.concepts.length} onClick={() => setEditing("new")} type="button"><Plus />Add</button></div>
+            {overrides.map((record) => (
+              <article key={record.concept_id}>
+                <div><strong>{record.concept_name}</strong><PolicySummary policy={record.policy} /></div>
+                <div><button aria-label={`Edit ${record.concept_name} policy`} disabled={disabled} onClick={() => setEditing(record.concept_id!)} type="button"><Pencil /></button>{confirmRemove === record.concept_id ? <><button onClick={() => setConfirmRemove(null)} type="button">Keep</button><button onClick={() => void onRemove(record.concept_id!).then(() => setConfirmRemove(null))} type="button">Remove</button></> : <button aria-label={`Remove ${record.concept_name} override`} disabled={disabled} onClick={() => setConfirmRemove(record.concept_id)} type="button"><Trash2 /></button>}</div>
+              </article>
+            ))}
+            {!overrides.length ? <p>Every concept inherits the course default.</p> : null}
           </div>
-        </section>
-        <section className={styles.policyTester}>
-          <header><div><h3>Preview routing behavior</h3><p>Try a hypothetical learner outcome against a saved policy. This preview never changes learner progress.</p></div></header>
-          <div className={styles.policyTesterGrid}>
-            <label>Policy<select onChange={(event) => setTestPolicyId(event.target.value)} value={testPolicyId}><option value="default">Course default</option>{overrides.map((record) => <option key={record.concept_id} value={record.concept_id!}>{record.concept_name}</option>)}</select></label>
-            <label className={styles.toggleField}><input checked={correct} onChange={(event) => setCorrect(event.target.checked)} type="checkbox" /><span>Answer is correct</span></label>
-            <label>Confidence <strong>{confidence}/4</strong><input max="4" min="1" onChange={(event) => setConfidence(Number(event.target.value))} type="range" value={confidence} /></label>
-            <label>Prior confident correct attempts<input min="0" onChange={(event) => setPriorCorrect(Number(event.target.value))} type="number" value={priorCorrect} /></label>
-            <label>Remediation attempts used<input min="0" onChange={(event) => setRemediationAttempts(Number(event.target.value))} type="number" value={remediationAttempts} /></label>
-            <div className={styles.testResult} data-action={testResult.action}><span>Predicted route</span><strong>{testResult.action.replaceAll("_", " ")}</strong><p>{testResult.why}</p></div>
-          </div>
-        </section>
-      </div>
-      <section className={styles.releaseSettings}><div><h3>Changes do not reach learners automatically</h3><p>Assessment and routing edits accumulate privately until you choose Publish updates in the course header.</p></div><Check /></section>
-    </div>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -5846,28 +6084,6 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-function simulatePolicy(
-  policy: RoutingPolicy,
-  correct: boolean,
-  confidence: number,
-  priorCorrect: number,
-  remediationAttempts: number,
-) {
-  if (correct && confidence >= policy.confidence_threshold
-    && priorCorrect + 1 >= policy.correct_attempts_for_mastery) {
-    return { action: "advance", why: "The learner met both the correctness and confidence threshold for mastery." };
-  }
-  if (correct && policy.advancement_mode === "allow_partial_understanding") {
-    return { action: "advance", why: "The answer is correct and this policy allows partial-understanding advancement." };
-  }
-  if (correct) {
-    return { action: "reinforce", why: "The answer is correct, but this policy requires more confidence or repeated evidence." };
-  }
-  if (remediationAttempts < policy.max_remediation_attempts) {
-    return { action: "remediate", why: "The learner is routed to the reviewed remediation target before trying again." };
-  }
-  return { action: "flag_instructor", why: "The remediation limit is reached, so the learner is surfaced for teacher attention." };
 }
 function looksLikeUrl(value: string) { try { const url = new URL(value); return url.protocol === "http:" || url.protocol === "https:"; } catch { return false; } }
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }

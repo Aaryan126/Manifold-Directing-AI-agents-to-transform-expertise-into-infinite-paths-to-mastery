@@ -5912,14 +5912,7 @@ def _is_placeholder_title(title: str) -> bool:
 
 
 def _is_portfolio_course(course: CourseSummary) -> bool:
-    if _is_placeholder_title(course.title):
-        return False
-    if course.status == "published":
-        return True
-    return course.source_count > 0 and course.generation_status in {
-        GenerationRunStatus.WAITING_REVIEW.value,
-        GenerationRunStatus.COMPLETE.value,
-    }
+    return not _is_placeholder_title(course.title)
 
 
 async def _apply_artifact_review(

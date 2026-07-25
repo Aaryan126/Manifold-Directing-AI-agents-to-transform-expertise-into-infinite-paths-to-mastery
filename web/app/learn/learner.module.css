@@ -158,7 +158,7 @@
 .courseJourney button strong { font-size: 11px; }
 .courseJourney button small { font-size: 8px; }
 .masteryHeading { display: grid; gap: 3px; padding: 14px 18px 5px; }
-.masteryHeading strong { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 16px; font-weight: 520; }
+.masteryHeading h3 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 16px; font-weight: 520; margin: 0; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 1050px) { .courseGrid { grid-template-columns: repeat(2, 1fr); } .courseLayout { grid-template-columns: minmax(0, 1fr) 270px; } }

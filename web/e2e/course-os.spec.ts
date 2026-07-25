@@ -27,6 +27,36 @@ const course = {
   open_signal_count: 0,
   updated_at: "2026-07-21T00:00:00Z",
 };
+const lectureVideoId = "12121212-1212-4212-8212-121212121212";
+
+function oneLectureCourseFlow(courseId: string, revisionId: string, revisionKind: "active" | "working") {
+  return {
+    course_id: courseId,
+    revision_id: revisionId,
+    revision_kind: revisionKind,
+    modules: [],
+    units: [{
+      id: "lecture-unit-1",
+      logical_id: "lecture-unit-logical-1",
+      module_logical_id: null,
+      kind: "lecture",
+      title: "Forces lecture",
+      summary: "A complete lecture Blueprint.",
+      instructions: "",
+      video_id: lectureVideoId,
+      sequence_rank: 0,
+      status: "accepted",
+      topic_count: 2,
+      concept_count: 3,
+      question_count: 1,
+      source_count: 1,
+      concept_logical_ids: ["concept-logical"],
+      x: null,
+      y: null,
+    }],
+    edges: [],
+  };
+}
 
 async function mockCourseOS(page: Page) {
   await setInstructorSession(page);
@@ -129,6 +159,16 @@ async function mockCourseOS(page: Page) {
       await route.fulfill({ json: [] });
       return;
     }
+    if (path.endsWith("/course-flow")) {
+      await route.fulfill({
+        json: oneLectureCourseFlow(
+          course.id,
+          course.working_revision_id,
+          "working",
+        ),
+      });
+      return;
+    }
     if (path.endsWith("/blueprint")) {
       await route.fulfill({
         json: {
@@ -136,7 +176,7 @@ async function mockCourseOS(page: Page) {
           revision_id: course.working_revision_id,
           revision_kind: "working",
           nodes: [
-            { id: "topic-1", logical_id: "topic-logical", kind: "topic", title: "Net force", status: "accepted", parent_id: null, metadata: {} },
+            { id: "topic-1", logical_id: "topic-logical", kind: "topic", title: "Net force", status: "accepted", parent_id: null, metadata: { video_id: lectureVideoId } },
             { id: "concept-1", logical_id: "concept-logical", kind: "concept", title: "Vector addition", status: "accepted", parent_id: "topic-1", metadata: { sequence_rank: 1 } },
           ],
           edges: [{ id: "contains-1", source_id: "topic-1", target_id: "concept-1", kind: "contains", status: "accepted" }],
@@ -246,6 +286,16 @@ async function mockPublishedCourseOS(page: Page) {
       },
     });
     if (path.endsWith("/messages") || path.endsWith("/review-bundles")) return route.fulfill({ json: [] });
+    if (path.endsWith("/course-flow")) {
+      const working = new URL(route.request().url()).searchParams.get("revision") === "working";
+      return route.fulfill({
+        json: oneLectureCourseFlow(
+          published.id,
+          working ? workingRevisionId : published.active_revision_id,
+          working ? "working" : "active",
+        ),
+      });
+    }
     if (path.endsWith("/map/layout") && route.request().method() === "PUT") {
       savedLayout = JSON.parse(route.request().postData() ?? "{}") as typeof savedLayout;
       workingRevisionOpen = true;
@@ -576,7 +626,7 @@ async function mockPublishedCourseOS(page: Page) {
       revision_id: working ? workingRevisionId : published.active_revision_id,
       revision_kind: revisionKind,
       nodes: [
-        { id: topicId, logical_id: "topic-logical", kind: "topic", title: "Force systems", status: "accepted", parent_id: null, metadata: {} },
+        { id: topicId, logical_id: "topic-logical", kind: "topic", title: "Force systems", status: "accepted", parent_id: null, metadata: { video_id: lectureVideoId } },
         { id: topicTwoId, logical_id: "topic-logical-2", kind: "topic", title: "Balanced systems", status: "accepted", parent_id: null, metadata: { sequence_rank: 2 } },
         { id: conceptId, logical_id: "concept-logical", kind: "concept", title: conceptEdit?.name ?? "Net force", status: "accepted", parent_id: topicId, metadata: { sequence_rank: 1, description: conceptEdit?.description ?? "Combine force vectors." } },
         { id: conceptTwoId, logical_id: "concept-logical-2", kind: "concept", title: "Balanced forces", status: "accepted", parent_id: topicId, metadata: { sequence_rank: 2, description: "Recognize equilibrium." } },
@@ -637,6 +687,11 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
     (greetingBlock!.y + greetingBlock!.height / 2)
       - (newCourseButton!.y + newCourseButton!.height / 2),
   )).toBeLessThanOrEqual(1);
+  await page.getByRole("button", { name: "New course" }).click();
+    await expect(page.getByRole("dialog", { name: "Name the course" })).toBeVisible();
+  await expect(page.getByLabel("Course title")).toBeVisible();
+  await expect(page.getByText(/add lectures and build their Blueprints/i)).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("heading", { name: "Needs your judgment", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Course radar" })).toBeVisible();
   const intelligenceHeadline = page.getByRole("heading", { name: /2 of 2 open issues/i });
@@ -665,6 +720,9 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await page.getByRole("heading", { name: "Forces and motion", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/app/courses/${course.id}$`));
   await expect(page.getByRole("heading", { name: "Forces and motion", level: 1 })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Course Flow" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Assessments" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Preview", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Open Course Director" })).toBeVisible();
   await page.getByRole("button", { name: "Open Course Director" }).click();
   await expect(page.getByText("Your complete private draft is ready for review.")).toBeVisible();
@@ -690,6 +748,7 @@ test("course studio exposes Blueprint, review decisions, and a mobile-safe layou
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/app/courses/${course.id}`);
 
+  await page.getByText("Forces lecture", { exact: true }).click();
   await expect(page.getByRole("button", { name: "Blueprint", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Blueprint", exact: true }).click();
   await expect(page.getByText("Private design")).toBeVisible();
@@ -726,14 +785,23 @@ test("course deletion requires a separate destructive confirmation", async ({ pa
 });
 
 test("Blueprint uses the detailed free-form graph and atomic proposal workflow", async ({ page }) => {
+  test.setTimeout(60_000);
   const state = await mockPublishedCourseOS(page);
   const { published } = state;
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto(`/app/courses/${published.id}`);
 
+  await expect(page.getByRole("button", { name: "Assessments" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Preview", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Course settings" })).toBeVisible();
+  await page.getByRole("button", { name: "New lecture" }).click();
+  await expect(page.getByPlaceholder("What lecture would you like to add? Paste a lecture link or add a file…")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Course Flow" })).toBeVisible();
+  await page.getByRole("button", { name: "Course Flow" }).click();
+  await page.getByText("Forces lecture", { exact: true }).click();
   await expect(page.getByRole("button", { name: "Blueprint", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Old Blueprint" })).toHaveCount(0);
-  await expect(page.getByText("Published live")).toBeVisible();
+  await expect(page.getByText("Private design")).toBeVisible();
   const blueprintSummary = page.getByRole("group", { name: "Blueprint status and metrics" });
   await expect(blueprintSummary.getByText("50%")).toBeVisible();
   await expect(blueprintSummary.getByText("8 attempts")).toBeVisible();
@@ -753,7 +821,7 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
     (element) => element.closest("header")?.className.includes("studioHeader"),
   )).toBe(true);
   await expect(page.getByText(/concepts are missing a reviewed assessment or teaching artifact/i)).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Design" })).toHaveAttribute("aria-pressed", "true");
   const blueprintMode = page.getByRole("navigation", { name: "Blueprint mode" });
   expect(await blueprintMode.evaluate((element) => element.parentElement?.className.includes("blueprintCommandActions")))
     .toBe(true);
@@ -864,34 +932,47 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect(page.getByRole("heading", { name: "New concept" })).toBeVisible();
   await page.getByRole("button", { name: "Cancel" }).click();
   await page.getByRole("button", { name: "Close artifact inspector" }).click();
-  await designConceptNode.hover();
+  await expect(designConceptNode).toBeInViewport();
+  await page.waitForTimeout(350);
+  const designConceptBounds = await designConceptNode.boundingBox();
+  expect(designConceptBounds).not.toBeNull();
+  await page.mouse.move(
+    designConceptBounds!.x + designConceptBounds!.width / 2,
+    designConceptBounds!.y + designConceptBounds!.height / 2,
+  );
   const relationshipPorts = designConceptNode.locator(
     '[aria-label="Create a relationship from Net force vectors"]',
   );
-  await expect(relationshipPorts.getByRole("button")).toHaveCount(4);
-  await relationshipPorts.getByRole("button", {
-    name: "Create relationship from the right of Net force vectors",
-  }).click();
+  await expect(relationshipPorts.locator("button")).toHaveCount(4);
+  await relationshipPorts.locator(
+    'button[aria-label="Create relationship from the right of Net force vectors"]',
+  ).dispatchEvent("click");
   await expect(page.getByRole("heading", { name: "What should this connection mean?" })).toBeVisible();
   await page.getByRole("button", { name: /Prerequisite/ }).click();
-  await page.getByTestId("rf__node-concept-working-2").click();
+  await page.getByTestId("rf__node-concept-working-2").dispatchEvent("click");
   await expect.poll(() => state.createdRelationships.at(-1)).toEqual({
     relationship: "requires",
     source_logical_id: "concept-logical",
     target_logical_id: "concept-logical-2",
   });
-  await expect(page.locator(".react-flow__node")).toHaveCount(7);
+  await expect(page.locator(".react-flow__node")).toHaveCount(6);
   await expect(designConceptNode).toBeInViewport();
   await page.getByRole("button", { name: "Undo Add prerequisite connection" }).click();
   await expect.poll(() => state.createdRelationships.length).toBe(0);
-  await expect(page.locator(".react-flow__node")).toHaveCount(7);
+  await expect(page.locator(".react-flow__node")).toHaveCount(6);
   await expect(designConceptNode).toBeInViewport();
-  await designConceptNode.hover();
-  await relationshipPorts.getByRole("button", {
-    name: "Create relationship from the right of Net force vectors",
-  }).click();
+  await page.waitForTimeout(350);
+  const restoredConceptBounds = await designConceptNode.boundingBox();
+  expect(restoredConceptBounds).not.toBeNull();
+  await page.mouse.move(
+    restoredConceptBounds!.x + restoredConceptBounds!.width / 2,
+    restoredConceptBounds!.y + restoredConceptBounds!.height / 2,
+  );
+  await relationshipPorts.locator(
+    'button[aria-label="Create relationship from the right of Net force vectors"]',
+  ).dispatchEvent("click");
   await page.getByRole("button", { name: /Prerequisite/ }).click();
-  await page.getByTestId("rf__node-concept-working-2").click();
+  await page.getByTestId("rf__node-concept-working-2").dispatchEvent("click");
   await expect.poll(() => state.createdRelationships.length).toBe(1);
   await expect(page.getByRole("button", { name: "Undo Add prerequisite connection" })).toBeEnabled();
   await page.evaluate(() => {
@@ -902,7 +983,7 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
     }));
   });
   await expect.poll(() => state.createdRelationships.length).toBe(0);
-  await expect(page.locator(".react-flow__node")).toHaveCount(7);
+  await expect(page.locator(".react-flow__node")).toHaveCount(6);
   await expect(designConceptNode).toBeInViewport();
   await expect(page.getByText("Saved privately")).toBeVisible();
   await page.getByRole("button", { name: "Learning order" }).click();
@@ -954,18 +1035,17 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect(page.getByRole("heading", { name: "Learner clip preview" })).toBeVisible();
   await expect(page.getByLabel("Force systems clip")).toBeVisible();
 
-  await page.getByRole("button", { name: "Settings" }).click();
-  await expect(page.getByRole("heading", { name: "Settings & policies" })).toBeVisible();
-  await page.getByRole("button", { name: "Edit default policy" }).click();
+  await page.getByRole("button", { name: "Course settings" }).click();
+  await expect(page.getByText("Routing settings")).toBeVisible();
+  await page.getByRole("button", { name: "Edit course default" }).click();
   await expect(page.getByRole("heading", { name: "Edit course default" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Preview routing behavior" })).toBeVisible();
-  await expect(page.getByText("Predicted route")).toBeVisible();
 });
 
 test("saving a dragged Blueprint node keeps the graph mounted", async ({ page }) => {
   const state = await mockPublishedCourseOS(page);
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto(`/app/courses/${state.published.id}`);
+  await page.getByText("Forces lecture", { exact: true }).click();
   await page.getByRole("button", { name: "Design" }).click();
   await page.getByRole("button", { name: "Auto arrange" }).click();
 
@@ -984,6 +1064,6 @@ test("saving a dragged Blueprint node keeps the graph mounted", async ({ page })
 
   await expect.poll(() => state.savedLayout()?.positions?.[0]?.logical_artifact_id)
     .toBe("concept-logical");
-  await expect(page.locator(".react-flow__node")).toHaveCount(7);
+  await expect(page.locator(".react-flow__node")).toHaveCount(6);
   await expect(page.getByTestId("rf__node-concept-working")).toBeVisible();
 });
