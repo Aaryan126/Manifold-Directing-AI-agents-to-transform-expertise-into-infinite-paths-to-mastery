@@ -734,6 +734,13 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect(page.getByRole("button", { name: "Blueprint", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Old Blueprint" })).toHaveCount(0);
   await expect(page.getByText("Published live")).toBeVisible();
+  const blueprintSummary = page.getByRole("group", { name: "Blueprint status and metrics" });
+  await expect(blueprintSummary.getByText("50%")).toBeVisible();
+  await expect(blueprintSummary.getByText("8 attempts")).toBeVisible();
+  const blueprintSummaryBounds = await blueprintSummary.boundingBox();
+  expect(blueprintSummaryBounds).not.toBeNull();
+  expect(blueprintSummaryBounds!.height).toBeLessThanOrEqual(44);
+  expect(blueprintSummaryBounds!.width).toBeLessThan(520);
   await expect(page.getByText("Blueprint status")).toHaveCount(0);
   await expect(page.getByText("Learner-facing course")).toHaveCount(0);
   await expect(page.getByText("Adaptive course system")).toHaveCount(0);
@@ -805,8 +812,9 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   })).toBe(true);
   await conceptNode.click();
   await expect(citationEdge).toHaveCSS("opacity", "1");
-  await expect(page.getByRole("heading", { name: "Net force" })).toBeVisible();
-  await expect(page.getByText("50%", { exact: true })).toBeVisible();
+  const conceptInspector = page.getByRole("dialog", { name: "Net force artifact inspector" });
+  await expect(conceptInspector.getByRole("heading", { name: "Net force" })).toBeVisible();
+  await expect(conceptInspector.getByText("50%", { exact: true })).toBeVisible();
   await expect(page.getByText("Private proposal pack")).toBeVisible();
   await expect(page.getByText("3 decisions")).toBeVisible();
   await expect(page.getByRole("button", { name: "Accept" })).toHaveCount(3);

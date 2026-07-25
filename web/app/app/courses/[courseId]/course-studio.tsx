@@ -2452,6 +2452,12 @@ function BlueprintWorkspace({
     : [];
   const pendingEdges = blueprint?.edges.filter((edge) => edge.kind === "requires" && edge.status === "proposed") ?? [];
   const coverageGaps = blueprint?.uncovered_concept_ids.length ?? 0;
+  const coveragePercent = concepts.length
+    ? Math.max(0, Math.min(100, Math.round(((concepts.length - coverageGaps) / concepts.length) * 100)))
+    : 100;
+  const activePrivateTasks = agentTasks.filter((task) => (
+    ["queued", "running", "waiting_review"].includes(task.status)
+  )).length;
   const selectedTask = selected
     ? agentTasks.find((task) => (
       task.target_logical_artifact_id === selected.logical_id
@@ -2668,16 +2674,30 @@ function BlueprintWorkspace({
   return (
     <div className={styles.blueprintWorkspace} data-mode={mode}>
       <header className={styles.blueprintCommandBar}>
-        <div className={styles.blueprintStatusSummary}>
-          <p>
-            <i data-mode={mode} />
-            <strong>{mode === "design" ? "Private design" : "Published live"}</strong>
-          </p>
-        </div>
-        <div className={styles.blueprintCompactMetrics}>
-          <article><small>Coverage</small><strong>{coverageGaps ? `${coverageGaps} gaps` : "Complete"}</strong></article>
-          <article><small>Evidence</small><strong>{dashboard?.attempt_count ?? 0} attempts</strong></article>
-          <article><small>Private</small><strong>{agentTasks.filter((task) => ["queued", "running", "waiting_review"].includes(task.status)).length} active</strong></article>
+        <div className={styles.blueprintSummaryGroup} role="group" aria-label="Blueprint status and metrics">
+          <div className={styles.blueprintStatusSummary}>
+            <p>
+              <i data-mode={mode} />
+              <strong>{mode === "design" ? "Private design" : "Published live"}</strong>
+            </p>
+          </div>
+          <div className={styles.blueprintCompactMetrics}>
+            <article title={coverageGaps ? `${coverageGaps} coverage gaps` : "Coverage complete"}>
+              <small>Coverage</small>
+              <div className={styles.blueprintCoverageValue}>
+                <strong>{coveragePercent}%</strong>
+                <span aria-hidden="true"><i style={{ width: `${coveragePercent}%` }} /></span>
+              </div>
+            </article>
+            <article>
+              <small>Evidence</small>
+              <strong>{dashboard?.attempt_count ?? 0} attempts</strong>
+            </article>
+            <article>
+              <small>Private</small>
+              <strong>{activePrivateTasks} active</strong>
+            </article>
+          </div>
         </div>
         <div className={styles.blueprintCommandActions}>
           <nav className={styles.blueprintModeToggle} aria-label="Blueprint mode">

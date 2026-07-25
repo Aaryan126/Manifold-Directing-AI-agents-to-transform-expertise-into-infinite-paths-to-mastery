@@ -1371,18 +1371,22 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 
 /* Unified adaptive Blueprint */
 .blueprintWorkspace { background: #fbfaf7; color: #202126; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }
-.blueprintCommandBar { align-items: stretch; background: #fff; border-bottom: 1px solid #dedbd3; display: grid; grid-template-columns: minmax(160px, .7fr) minmax(360px, 1.5fr) auto; min-height: 68px; padding: 0 22px 0 30px; }
-.blueprintStatusSummary { align-content: center; border-right: 1px solid #e4e1da; display: grid; padding-right: 22px; }
-.blueprintCompactMetrics small { color: #77747b; font-size: 10px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.blueprintCommandBar { align-items: center; background: #fff; border-bottom: 1px solid #dedbd3; display: flex; gap: 20px; min-height: 54px; padding: 7px 22px 7px 30px; }
+.blueprintSummaryGroup { align-items: center; display: flex; gap: 14px; min-width: 0; }
+.blueprintStatusSummary { align-content: center; display: grid; flex: 0 0 auto; padding-right: 2px; }
+.blueprintCompactMetrics small { color: #66636a; font-size: 10px; font-weight: 800; letter-spacing: .07em; line-height: 1; text-transform: uppercase; }
 .blueprintStatusSummary p { align-items: center; display: flex; font-size: 11px; gap: 8px; margin: 0; min-width: 0; }
 .blueprintStatusSummary p i { background: #5d8a55; border-radius: 50%; flex: 0 0 auto; height: 7px; width: 7px; }
 .blueprintStatusSummary p i[data-mode="design"] { background: #bd681f; }
 .blueprintStatusSummary p strong { font-size: 13px; white-space: nowrap; }
-.blueprintCompactMetrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.blueprintCompactMetrics article { align-content: center; display: grid; gap: 6px; padding: 0 20px; }
-.blueprintCompactMetrics article + article { border-left: 1px solid #e4e1da; }
-.blueprintCompactMetrics strong { font-size: 13px; font-weight: 750; white-space: nowrap; }
-.blueprintCommandActions { align-items: center; border-left: 1px solid #e4e1da; display: flex; gap: 10px; padding-left: 18px; }
+.blueprintCompactMetrics { background: #f4f3f0; border: 1px solid #ebe8e2; border-radius: 9px; box-sizing: border-box; display: grid; grid-template-columns: 122px 112px 96px; min-height: 40px; overflow: hidden; }
+.blueprintCompactMetrics article { align-content: center; display: grid; gap: 2px; padding: 6px 13px; }
+.blueprintCompactMetrics article + article { border-left: 1px solid #dedbd4; }
+.blueprintCompactMetrics strong { font-size: 13px; font-weight: 750; line-height: 1; white-space: nowrap; }
+.blueprintCoverageValue { align-items: center; display: grid; gap: 9px; grid-template-columns: auto minmax(34px, 1fr); }
+.blueprintCoverageValue > span { background: #dedbd4; border-radius: 99px; display: block; height: 4px; overflow: hidden; }
+.blueprintCoverageValue > span i { background: #a45b1e; border-radius: inherit; display: block; height: 100%; min-width: 3px; }
+.blueprintCommandActions { align-items: center; display: flex; gap: 10px; margin-left: auto; }
 .blueprintModeToggle { background: #efede8; border: 1px solid #d9d5cd; border-radius: 8px; display: flex; padding: 3px; }
 .blueprintModeToggle button { background: transparent; border: 0; border-radius: 6px; color: #66646b; cursor: pointer; font: inherit; font-size: 10px; font-weight: 750; min-width: 60px; padding: 8px 11px; }
 .blueprintModeToggle button:hover { color: #202126; }
@@ -1803,7 +1807,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .proposalPack footer svg { height: 11px; width: 11px; }
 
 @media (max-width: 1180px) {
-  .blueprintCommandBar { grid-template-columns: minmax(170px, 1fr) auto; }
+  .blueprintCommandBar { gap: 12px; }
   .blueprintCompactMetrics { display: none; }
   .blueprintBody { grid-template-columns: 220px minmax(0, 1fr); }
   .blueprintTypeLegend { display: none; }
@@ -1811,7 +1815,6 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 
 @media (max-width: 900px) {
   .blueprintCommandBar { padding-left: 20px; }
-  .blueprintCommandActions { padding-left: 12px; }
   .blueprintBody { display: grid; grid-template-columns: 190px minmax(500px, 1fr); overflow-x: auto; }
   .blueprintGraphControls { flex-wrap: wrap; padding-left: 20px; }
   .blueprintDesignActions { border-left: 0; order: 3; padding-left: 0; width: 100%; }
