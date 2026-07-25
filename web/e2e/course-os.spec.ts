@@ -774,6 +774,7 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   const controlBounds = await blueprintFlow.locator(".react-flow__controls").boundingBox();
   expect(blueprintBounds).not.toBeNull();
   expect(controlBounds).not.toBeNull();
+  expect(Math.abs((blueprintBounds!.y + blueprintBounds!.height) - 960)).toBeLessThan(3);
   expect(controlBounds!.x - blueprintBounds!.x).toBeLessThan(32);
   expect((blueprintBounds!.y + blueprintBounds!.height) - (controlBounds!.y + controlBounds!.height)).toBeLessThan(40);
   expect(await blueprintFlow.locator("article[class*='blueprintTypedNode']").evaluateAll((nodes) => nodes.every((node) => {
