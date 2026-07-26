@@ -2,7 +2,7 @@
 
 **Status:** Draft v1.0
 **Owner:** [You]
-**Last updated:** 2026-07-22
+**Last updated:** 2026-07-26
 **Companion docs:** `plan.md` (implementation phases), `implementation.md` (live build status), `AGENTS.md` (agent operating instructions)
 
 ---
@@ -155,6 +155,17 @@ This is not a single feature — it's a constraint on every feature below. Rules
 - A comprehension check + confidence prompt follows each topic as a separate learning step. Video and assessment never render simultaneously, and assessed remediation/advancement presents an explicit next action.
 - Clear "why am I seeing this" messaging when routed to a remediation/prerequisite clip (transparency builds trust — this should never feel like a punishment or a black box).
 - Learner-facing mastery map (which concepts mastered, which in progress) — motivational and orienting.
+
+### 6.7.1 Agentic In-Course Learning Guide
+- On first course open, the learner receives a short in-course orientation with three choices: continue with the recommended reviewed path, take a reviewed placement check, or review foundations. Placement is resumable, idempotent, policy-driven, and may use only accepted/edited primary questions from the learner's pinned published revision.
+- The learner starts or resumes a bounded study session by choosing an immediate goal and a soft 10-, 20-, 30-, or custom 5–120-minute budget. Manifold prepares a small plan of exact reviewed clips, questions, resources, and reflection steps from persisted prerequisites, attempts, confidence, route history, review schedule, and mastery.
+- The opened course uses one continuous `Plan → Learn → Practice → Reflect` loop. The active activity remains primary; the compact plan and mastery trail orient the learner without duplicating the recommendation or producing a three-column wall.
+- `Manifold Learning Guide` is an on-demand contextual action surface, not unrestricted chat. Available actions must navigate to a reviewed artifact, reveal an accepted hint, quote an accepted learner-visible source, explain deterministic persisted evidence, update a learner-owned session/goal/reflection, or create a structured help request. Unavailable actions are hidden rather than returning placeholders.
+- No learner-runtime model may generate explanations, examples, questions, hints, remediation, or unsupported claims. Hint ladders are revisioned assessment-support proposals with their own instructor `Accept / Edit / Dismiss` checkpoint and publication gate.
+- Concept readiness is explicit. An actionable concept requires satisfied prerequisites, at least one active clip explicitly linked to that concept, and at least one accepted/edited primary question explicitly linked to it in the pinned revision. The learner runtime never substitutes an unrelated topic-level artifact.
+- Session close reports what was practiced, what persisted evidence changed, remaining uncertainty, next recommendation, and review timing. Learner reflection is stored but never inferred as mastery.
+- An in-course mastery/review drawer exposes mastered, practiced, struggling, ready, blocked, and due concepts; confidence/correctness mismatches; recent route history; and reviewed review actions without streaks, points, badges, confetti, or punitive wording.
+- `I’m stuck` previews the exact evidence to be shared, creates a structured learner help request, and surfaces it in the instructor's existing attention/evidence workflow. Any resulting AI-authored course change remains private and independently reviewable before publication.
 
 ### 6.8 Instructor Dashboard
 - **Cohort analytics:** fourteen-day attempt/active-learner activity, course-wide mastery-state distribution, and concept reach/struggle aggregated from persisted attempts, enrollments, and learner-concept mastery.

@@ -371,8 +371,50 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 
 ---
 
+## Phase 13 — Agentic Learner Experience
+
+**Goal:** Make the opened course feel actively personalized before an answer is submitted through a bounded, evidence-aware Manifold Learning Guide and a persisted `Plan → Learn → Practice → Reflect` session loop. Preserve instructor-reviewed content as authoritative and do not create a Learner Command Center or runtime generative tutor.
+
+**Deliverables**
+
+- Fix transcript synchronization with one clip-relative timing contract, frame-aligned updates, provider-specific timeline origins, monotonic clip transcript words, seek/playback-rate handling, and enrollment/revision checks.
+- Make concept readiness explicit: prerequisite-eligible concepts are actionable only with reviewed concept-linked teaching and primary assessment coverage. Remove every unsafe topic-level learner fallback and provide honest incomplete-content states for legacy revisions.
+- Replace client-supplied correctness with authenticated server-side grading and atomic attempt/mastery/route persistence.
+- Add revisioned instructor-reviewed hint ladders with independent `Accept / Edit / Dismiss`; expose them to learners only after publication.
+- Add persisted learner orientation, one resumable policy-aligned placement check per revision, study sessions and concrete steps, reflections, deterministic review schedules, and structured help requests without duplicating existing attempts, routes, mastery, watch events, or unit progress.
+- Build a deterministic session planner from the learner's goal, soft time budget, current concept, prerequisites, recent attempts, confidence mismatch, last route, due review, and exact reviewed artifacts. Starting/replanning the plan must change real activity navigation.
+- Redesign the desktop in-course workspace as one calm continuous session with one primary activity, compact active plan, retained mastery trail, on-demand Learning Guide, and an in-course mastery/review drawer. `/learn` remains a course portfolio.
+- Give every Guide action a real reviewed-artifact, persisted-evidence, plan, reflection, or help-request result. Internal identifiers and instructor-only/unpublished evidence never appear.
+- Surface `I’m stuck` requests in Teacher Command Center and course evidence/attention views. Any AI-proposed repair remains private and independently `Accept / Edit / Dismiss` reviewed before publication.
+
+**Automated tests**
+
+- Migration/backward-compatibility, session create/resume/idempotency/completion/revision isolation, placement reviewed-question policy and insufficient coverage, deterministic planning, content readiness, authenticated atomic grading, hint review/publication, reflection/mastery separation, review cadence, help-request attention, privacy/ownership, and historical-record preservation.
+- Frontend tests for orientation, placement, real plan navigation, time adjustment, Guide action availability/effects, all session stages and routing outcomes, mastery/review, missing content, help evidence disclosure, transcript timing, reload resume, loading/empty/error/retry states, and no duplicated recommendation/navigation.
+- Real Chromium journeys for first placement, a 20-minute session, synchronized clip transcript, recommendation evidence, remediation, advancement, alternative eligible concept, blocked concept inspection, `I’m stuck`, persisted reload resume, keyboard-only completion, WCAG 2.2 A/AA, supported-desktop overflow, and unpublished/instructor-only isolation.
+- Complete repository verification: Ruff, strict MyPy, full Pytest, ESLint, strict TypeScript, all frontend/shared tests, production Next build, full Playwright, migration-bearing Docker rebuild, container health, and HTTP health checks.
+
+**Human test checklist**
+
+- [ ] Open a course for the first time and confirm the Learning Guide offers the recommended path, placement, and foundations without becoming a generic chat screen.
+- [ ] Complete and reload midway through a valid reviewed placement check; confirm it resumes exactly once and the final summary explains every skipped, retained, and recommended concept.
+- [ ] Open a course without sufficient reviewed placement coverage and confirm Manifold explains the limitation honestly and continues with the reviewed path.
+- [ ] Start a 20-minute session and confirm every planned step has a real duration, reason, and destination; adjust the remaining time and confirm only pending steps change.
+- [ ] Watch local/source-range and, when configured, Mux clips; seek, pause, and change playback speed while confirming transcript words follow the actual spoken audio.
+- [ ] Use every available Learning Guide action and confirm each opens an approved artifact, persisted evidence explanation, hint, question, plan change, reflection, or help flow—never placeholder text.
+- [ ] Select an eligible alternative concept and confirm the active session replans without breaking prerequisites; inspect a blocked concept and confirm it cannot be opened as eligible.
+- [ ] Submit an incorrect answer and confirm approved remediation updates the session plan and route explanation; submit a confident-correct answer and confirm advancement plus review scheduling.
+- [ ] Open mastery/review and verify mastered, practiced, struggling, ready, blocked, due, mismatch, and recent-route states agree with the learner’s actual evidence.
+- [ ] Complete a session reflection and confirm it appears after reload but does not independently change mastery.
+- [ ] Create an `I’m stuck` request, verify the learner disclosure, then open David’s Teacher Command Center/course evidence and confirm the structured request appears without learner access to instructor-only information.
+- [ ] Resume an active session after a full reload and confirm completed steps, current activity, remaining plan, transcript context, and next recommendation are preserved.
+- [ ] Complete the core loop using keyboard only, verify visible focus and screen-reader labels, run the WCAG 2.2 A/AA scan, and confirm no horizontal overflow at supported desktop widths.
+- [ ] Confirm no learner can access an unpublished revision, unrelated topic question, unreviewed hint, answer key, internal UUID, another learner’s session, or instructor-only evidence.
+
+---
+
 ## Notes on sequencing flexibility
 
 Phases 2–5 (segmentation → graph → clips → assessments) are pipeline stages with real dependencies and should stay in this order. Phase 6 depends on Phases 3 and 5 (needs the graph and the assessments/remediation maps). Phase 7 can be built in parallel with late Phase 6 once the engine's interface is stable. Phase 8 depends on real usage data existing, so it necessarily comes after Phase 7 is usable enough to generate that data (even if from test/simulated learners). Phase 9 and 10 are cross-cutting hardening passes. Phase 11 is a deliberate product-integration phase built on their persisted evidence, revision, and agent foundations; it does not imply Phase 10's separate human gate has passed. Phase 12 adds a revisioned course hierarchy above Phase 11 without marking either earlier human gate complete.
 
-If direction changes significantly (e.g. a phase turns out to need splitting, or scope changes per a decision recorded in `implementation.md`), update this document accordingly — see `AGENTS.md` for the process.
+If direction changes significantly (e.g. a phase turns out to need splitting, or scope changes per a decision recorded in `implementation.md`), update this document accordingly — see `AGENTS.md` for the process. Phase 13 builds on the learner and revision contracts from Phases 10–12 without marking any of those separate human gates complete.
