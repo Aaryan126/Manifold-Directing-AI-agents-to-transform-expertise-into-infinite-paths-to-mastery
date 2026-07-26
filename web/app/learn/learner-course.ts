@@ -110,6 +110,12 @@ export type LearnerPathItem = {
   question_ids: string[];
   aids: LearnerPathAid[];
   eligible: boolean;
+  actionable?: boolean;
+  coverage_state?:
+    | "complete"
+    | "missing_teaching"
+    | "missing_assessment"
+    | "missing_both";
   current: boolean;
 };
 
@@ -126,6 +132,96 @@ export type LearnerTranscriptWord = {
   text: string;
   start_seconds: number;
   end_seconds: number;
+};
+
+export type LearnerSessionStep = {
+  id: string;
+  ordinal: number;
+  kind: "watch" | "question" | "resource" | "reflect";
+  purpose:
+    | "foundation"
+    | "learn"
+    | "practice"
+    | "reinforcement"
+    | "remediation"
+    | "review"
+    | "reflect";
+  concept_id: string | null;
+  concept_name: string | null;
+  clip_id: string | null;
+  question_id: string | null;
+  source_id: string | null;
+  title: string;
+  estimated_minutes: number;
+  reason_code: string;
+  reason: string;
+  status: "pending" | "active" | "completed" | "skipped" | "replaced" | "unavailable";
+};
+
+export type LearnerStudySession = {
+  id: string;
+  course_id: string;
+  revision_id: string;
+  status: "planned" | "active" | "reflecting" | "completed" | "superseded";
+  goal: "continue" | "review" | "get_unstuck" | "custom";
+  goal_note: string | null;
+  budget_minutes: number;
+  plan_version: number;
+  steps: LearnerSessionStep[];
+};
+
+export type LearnerOrientation = {
+  completed: boolean;
+  entry_choice: "recommended" | "placement" | "foundations" | null;
+  default_time_budget_minutes: number | null;
+  immediate_goal: string | null;
+};
+
+export type LearnerPlacementItem = {
+  id: string;
+  ordinal: number;
+  concept_id: string;
+  concept_name: string;
+  question_id: string;
+  question_body: string;
+  choices: string[];
+  confidence_prompt: string;
+  status: "pending" | "answered" | "skipped";
+  outcome: "mastered" | "practiced" | "retained" | null;
+};
+
+export type LearnerPlacement = {
+  id: string;
+  status: "in_progress" | "completed" | "unavailable";
+  unavailable_reason: string | null;
+  items: LearnerPlacementItem[];
+};
+
+export type LearnerMasteryReview = {
+  concepts: Array<{
+    concept_id: string;
+    name: string;
+    state: LearnerProgress["state"];
+    access_state: "ready" | "blocked" | "content_unavailable";
+    coverage_state: LearnerPathItem["coverage_state"];
+    due_at: string | null;
+    mismatch: string | null;
+  }>;
+  recent_routes: Array<{
+    action: string;
+    explanation: string;
+    created_at: string;
+  }>;
+};
+
+export type LearnerWorkspace = {
+  revision_id: string;
+  orientation: LearnerOrientation;
+  session: LearnerStudySession | null;
+  placement: LearnerPlacement | null;
+  mastery: LearnerMasteryReview;
+  guide_actions: string[];
+  content_message: string | null;
 };
 
 export type LearnerPathVisualState =
@@ -157,7 +253,7 @@ export function learnerPathVisualState(
   if (item.concept_id === recommendedConceptId || item.current) {
     return item.state === "struggling" ? "review" : "recommended";
   }
-  return item.eligible ? "ready" : "blocked";
+  return item.eligible && item.actionable !== false ? "ready" : "blocked";
 }
 
 export function clipTranscriptWords(
