@@ -634,7 +634,9 @@ class LearningService:
                     "title": prerequisite.name,
                     "eligible": prerequisite.eligible and prerequisite.actionable,
                 }
-        raise LearningValidationError("That Learning Guide action is unavailable in this context.")
+        raise LearningValidationError(
+            "That Learning Assistant action is unavailable in this context."
+        )
 
     async def guide_messages(
         self,
@@ -652,7 +654,7 @@ class LearningService:
     ) -> tuple[LearningGuideMessage, LearningGuideMessage]:
         cleaned = content.strip()
         if not cleaned:
-            raise LearningValidationError("Write a message for the Learning Guide.")
+            raise LearningValidationError("Write a message for the Learning Assistant.")
         context = await self.context(learner_id, course_id)
         path = await self._path(learner_id, course_id)
         session = await self._repository.active_session(context)

@@ -373,7 +373,7 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 
 ## Phase 13 — Agentic Learner Experience
 
-**Goal:** Make the opened course feel actively personalized before an answer is submitted through a bounded, evidence-aware Manifold Learning Guide and a persisted `Plan → Learn → Practice → Reflect` session loop. Preserve instructor-reviewed content as authoritative and do not create a Learner Command Center or runtime generative tutor.
+**Goal:** Make the opened course feel actively personalized before an answer is submitted through a bounded, evidence-aware Learning Assistant and a persisted `Plan → Learn → Practice → Reflect` session loop. Preserve instructor-reviewed content as authoritative and do not create a Learner Command Center or runtime generative tutor.
 
 **Deliverables**
 
@@ -383,30 +383,30 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 - Add revisioned instructor-reviewed hint ladders with independent `Accept / Edit / Dismiss`; expose them to learners only after publication.
 - Add persisted learner orientation, one resumable policy-aligned placement check per revision, study sessions and concrete steps, reflections, deterministic review schedules, and structured help requests without duplicating existing attempts, routes, mastery, watch events, or unit progress.
 - Build a deterministic session planner around four intent modes: `Continue my path`, `Learn something new`, `Strengthen weak areas`, and `Review what I learned`. Recommend one from the learner's current concept, prerequisites, recent attempts, confidence mismatch, last route, due review, and exact reviewed artifacts; explain disabled modes honestly. Starting or changing a mode/focus must change real activity navigation, and each session ends after one evidence loop plus reflection rather than a time budget.
-- Redesign the desktop in-course workspace as one calm continuous session with one primary activity, compact active plan, retained mastery trail, an on-demand Course Director-style Learning Guide conversation dock, and an in-course mastery/review drawer. `/learn` remains a course portfolio.
-- Persist Learning Guide messages per learner/course/revision. Free-text input is classified into an allowlisted intent, while learner-visible replies come only from deterministic platform guidance, persisted learner evidence, or instructor-reviewed artifacts; the Guide must never become a runtime generative tutor.
+- Redesign the desktop in-course workspace as one calm continuous session with one primary activity, compact active plan, an on-demand Course Director-style Learning Assistant conversation dock, and an in-course mastery/review prerequisite map. The read-only map uses true prerequisite branches and merges, adds subtle course-sequence context only where needed for orientation, and keeps evidence/actions behind node selection. `/learn` remains a course portfolio.
+- Persist Learning Assistant messages per learner/course/revision. Free-text input is classified into an allowlisted intent, while learner-visible replies come only from deterministic platform guidance, persisted learner evidence, or instructor-reviewed artifacts; the Assistant must never become a runtime generative tutor.
 - Give every Guide conversation action a real reviewed-artifact, persisted-evidence, plan, reflection, or help-request result. Internal identifiers and instructor-only/unpublished evidence never appear.
 - Surface `I’m stuck` requests in Teacher Command Center and course evidence/attention views. Any AI-proposed repair remains private and independently `Accept / Edit / Dismiss` reviewed before publication.
 
 **Automated tests**
 
 - Migration/backward-compatibility, session create/resume/idempotency/completion/revision isolation, placement reviewed-question policy and insufficient coverage, deterministic planning, content readiness, authenticated atomic grading, hint review/publication, reflection/mastery separation, review cadence, help-request attention, privacy/ownership, and historical-record preservation.
-- Frontend tests for orientation, placement, recommended/selectable/disabled learning modes, real plan navigation, mode/focus changes, absence of learner-facing time, persisted Learning Guide conversation/status/action effects, all session stages and routing outcomes, mastery/review, missing content, help evidence disclosure, transcript timing, reload resume, loading/empty/error/retry states, and no duplicated recommendation/navigation.
+- Frontend tests for orientation, placement, recommended/selectable/disabled learning modes, real plan navigation, mode/focus changes, absence of learner-facing time, persisted Learning Assistant conversation/status/action effects, all session stages and routing outcomes, branched mastery/review mapping, missing content, help evidence disclosure, transcript timing, reload resume, loading/empty/error/retry states, and no duplicated recommendation/navigation.
 - Real Chromium journeys for first placement, all four learning modes, synchronized clip transcript, recommendation evidence, remediation, advancement, alternative eligible concept, disabled-mode and blocked-concept inspection, `I’m stuck`, persisted reload resume, keyboard-only completion, WCAG 2.2 A/AA, supported-desktop overflow, and unpublished/instructor-only isolation.
 - Complete repository verification: Ruff, strict MyPy, full Pytest, ESLint, strict TypeScript, all frontend/shared tests, production Next build, full Playwright, migration-bearing Docker rebuild, container health, and HTTP health checks.
 
 **Human test checklist**
 
-- [ ] Open a course for the first time and confirm the Learning Guide offers the recommended path, placement, and foundations without becoming a generic chat screen.
+- [ ] Open a course for the first time and confirm the Learning Assistant offers the recommended path, placement, and foundations without becoming a generic chat screen.
 - [ ] Complete and reload midway through a valid reviewed placement check; confirm it resumes exactly once and the final summary explains every skipped, retained, and recommended concept.
 - [ ] Open a course without sufficient reviewed placement coverage and confirm Manifold explains the limitation honestly and continues with the reviewed path.
 - [ ] Confirm Manifold recommends one of the four learning modes with a reason grounded in the learner’s evidence, keeps other valid modes selectable, and explains why unavailable modes cannot yet be used.
 - [ ] Start each available mode and confirm it produces a distinct real evidence loop with no learner-facing budget, minute estimate, clock framing, or endless activity feed.
 - [ ] Watch local/source-range and, when configured, Mux clips; seek, pause, and change playback speed while confirming transcript words follow the actual spoken audio.
-- [ ] Open the floating Learning Guide, ask in your own words about current progress, what to do next, why the route changed, how the platform works, and a course-content question; confirm the persisted conversation uses the correct learner/course context, every offered action is real, and no unreviewed teaching answer is generated.
+- [ ] Open the floating Learning Assistant, confirm its compact current-concept strip and left/right conversation layout match the Course Director interaction pattern, then ask in your own words about current progress, what to do next, why the route changed, how the platform works, and a course-content question; confirm the persisted conversation uses the correct learner/course context, every offered action is real, and no unreviewed teaching answer is generated.
 - [ ] Change mode or select an eligible alternative concept and confirm only pending work replans without breaking prerequisites; inspect a blocked concept and confirm it cannot be opened as eligible.
 - [ ] Submit an incorrect answer and confirm approved remediation updates the session plan and route explanation; submit a confident-correct answer and confirm advancement plus review scheduling.
-- [ ] Open mastery/review and verify mastered, practiced, struggling, ready, blocked, due, mismatch, and recent-route states agree with the learner’s actual evidence.
+- [ ] Open mastery/review and verify the prerequisite map makes real branches, merges, and the recommended route understandable; then verify mastered, practiced, struggling, ready, blocked, due, mismatch, and recent-route states agree with the learner’s actual evidence.
 - [ ] Complete a session reflection and confirm it appears after reload but does not independently change mastery.
 - [ ] Create an `I’m stuck` request, verify the learner disclosure, then open David’s Teacher Command Center/course evidence and confirm the structured request appears without learner access to instructor-only information.
 - [ ] Resume an active session after a full reload and confirm completed steps, current activity, remaining plan, transcript context, and next recommendation are preserved.

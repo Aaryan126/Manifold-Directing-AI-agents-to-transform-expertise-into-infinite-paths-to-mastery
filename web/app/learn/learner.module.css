@@ -163,31 +163,6 @@
 .masteryHeading small { color: #a15a20; font-size: 10px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
 .masteryHeading em { color: #66636a; font-size: 11px; font-style: normal; }
 .masteryHeading h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 22px; font-weight: 520; letter-spacing: -.025em; margin: 0; }
-.masteryTrail { display: grid; padding: 0 12px 14px; }
-.masteryTrail > article { padding-left: 8px; position: relative; }
-.masteryTrail > article::before { background: #d2cfc7; content: ""; left: 25px; position: absolute; top: 0; bottom: 0; width: 2px; }
-.masteryTrail > article:first-child::before { top: 24px; }
-.masteryTrail > article:last-child::before { bottom: calc(100% - 24px); }
-.masteryTrail > article > button { align-items: center; background: transparent; border: 1px solid transparent; border-radius: 11px; color: #414047; cursor: pointer; display: grid; font: inherit; gap: 11px; grid-template-columns: 34px minmax(0, 1fr); min-height: 54px; padding: 8px 10px; position: relative; text-align: left; width: 100%; z-index: 1; }
-.masteryTrail > article > button:hover { background: rgb(255 255 255 / 65%); }
-.masteryTrail > article[data-expanded] > button,.masteryTrail > article > button[aria-current="step"] { background: #fff; border-color: #d8d4cb; box-shadow: 0 4px 12px rgb(38 39 44 / 5%); }
-.masteryNodeMarker { align-items: center; background: #e4e1da; border: 3px solid #f2f0eb; border-radius: 50%; color: #65636a; display: flex; font-size: 11px; font-weight: 720; height: 34px; justify-content: center; position: relative; width: 34px; z-index: 2; }
-.masteryNodeMarker svg { height: 14px; width: 14px; }
-.masteryNodeCopy { display: grid; gap: 2px; min-width: 0; }
-.masteryNodeCopy small { color: #66636a; font-size: 10px; font-weight: 760; letter-spacing: .07em; text-transform: uppercase; }
-.masteryNodeCopy strong { display: -webkit-box; font-size: 13px; line-height: 1.3; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.masteryTrail > article[data-state="recommended"] .masteryNodeMarker { background: #c96a24; color: #fff; }
-.masteryTrail > article[data-state="recommended"] .masteryNodeCopy small { color: #a65318; }
-.masteryTrail > article[data-state="review"] .masteryNodeMarker { background: #e69b50; color: #fff; }
-.masteryTrail > article[data-state="review"] .masteryNodeCopy small { color: #a65318; }
-.masteryTrail > article[data-state="ready"] .masteryNodeMarker { background: #fff; border-color: #e5e1d9; color: #4f4e55; }
-.masteryTrail > article[data-state="mastered"] .masteryNodeMarker { background: #dcebd7; color: #46713e; }
-.masteryTrail > article[data-state="mastered"] .masteryNodeCopy small { color: #52764a; }
-.masteryTrail > article[data-state="blocked"] .masteryNodeMarker { color: #8c8990; }
-.masteryTrail > article[data-state="blocked"] .masteryNodeCopy { color: #656269; }
-.masteryNodeDetail { background: #fffaf4; border: 1px solid #ead8c9; border-radius: 0 0 10px 10px; margin: -6px 8px 7px 45px; padding: 11px 12px; position: relative; z-index: 0; }
-.masteryNodeDetail > strong { color: #8e4919; display: block; font-size: 11px; margin-bottom: 4px; }
-.masteryNodeDetail p { color: #5f5d64; font-size: 12px; line-height: 1.45; margin: 0; }
 .courseResources { border-top: 1px solid #dedbd3; }
 .courseResources > summary { align-items: center; color: #66636a; cursor: pointer; display: flex; font-size: 12px; font-weight: 680; gap: 8px; list-style: none; min-height: 48px; padding: 0 20px; }
 .courseResources > summary::-webkit-details-marker { display: none; }
@@ -337,18 +312,50 @@
 .modeChooser h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 34px; font-weight: 500; letter-spacing: -.035em; margin: 9px 0 0; }
 .modeChooser > header > button { align-items: center; background: #fff; border: 1px solid #d8d5ce; border-radius: 50%; cursor: pointer; display: flex; height: 38px; justify-content: center; width: 38px; }
 .modeChooser > header > button svg { height: 17px; width: 17px; }
-.masteryDrawer { background: #fbfaf7; box-shadow: -20px 0 50px rgb(30 28 25 / 14%); height: 100%; max-width: 92vw; overflow: auto; width: 430px; }
+.masteryDrawer { background: #fbfaf7; box-shadow: -20px 0 50px rgb(30 28 25 / 14%); display: grid; grid-template-rows: auto auto minmax(360px, 1fr) auto auto; height: 100%; max-width: calc(100vw - 72px); overflow: hidden; width: min(1040px, calc(100vw - 72px)); }
 .masteryDrawer > header { align-items: center; border-bottom: 1px solid #dedbd3; display: flex; justify-content: space-between; min-height: 76px; padding: 15px 20px; }
 .masteryDrawer > header div { display: grid; gap: 2px; }
-.masteryDrawer > header small { color: #77747b; font-size: 10px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }
-.masteryDrawer h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 24px; font-weight: 520; letter-spacing: -.025em; margin: 0; }
+.masteryDrawer > header small { color: #6c6a71; font-size: 10px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }
+.masteryDrawer h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 28px; font-weight: 520; letter-spacing: -.025em; margin: 0; }
 .masteryDrawer > header button { align-items: center; background: transparent; border: 0; color: #66636a; cursor: pointer; display: flex; height: 36px; justify-content: center; width: 36px; }
 .masteryDrawer > header button svg { height: 18px; width: 18px; }
-.masteryDrawer .masteryTrail { padding: 14px 12px; }
-.masteryNodeDetail > button { align-items: center; background: transparent; border: 0; color: #8e4919; cursor: pointer; display: flex; font: inherit; font-size: 11px; font-weight: 700; gap: 6px; margin-top: 9px; padding: 0; }
-.masteryNodeDetail > button svg { height: 13px; width: 13px; }
-.masteryNodeDetail > small { color: #77747b; display: block; font-size: 10px; margin-top: 6px; }
-.routeHistory { border-top: 1px solid #dedbd3; padding: 15px 20px; }
+.masteryMapLegend { align-items: center; border-bottom: 1px solid #e2dfd8; display: flex; gap: 10px; min-height: 46px; padding: 8px 20px; }
+.masteryMapLegend > span { align-items: center; color: #65636a; display: inline-flex; font-size: 10px; font-weight: 700; gap: 6px; }
+.masteryMapLegend > span::before { background: #fff; border: 2px solid #d6d2ca; border-radius: 50%; content: ""; height: 10px; width: 10px; }
+.masteryMapLegend > span[data-tone="recommended"]::before { background: #c86622; border-color: #c86622; }
+.masteryMapLegend > span[data-tone="mastered"]::before { background: #dcebd7; border-color: #75a16b; }
+.masteryMapLegend > span[data-tone="blocked"]::before { background: #e9e6df; border-color: #d7d3cb; }
+.masteryMapLegend > i { background: #77747b; display: block; height: 2px; margin-left: auto; width: 22px; }
+.masteryMapLegend > i[data-kind="sequence"] { background: repeating-linear-gradient(90deg, #aaa69e 0 5px, transparent 5px 9px); }
+.masteryMapLegend > small { color: #6c6a71; font-size: 9px; }
+.masteryMapCanvas { background: #f7f5f0; min-height: 0; position: relative; }
+.masteryMapLoading { align-items: center; background: rgb(247 245 240 / 86%); color: #6e6b72; display: flex; font-size: 12px; gap: 8px; inset: 0; justify-content: center; position: absolute; z-index: 4; }
+.masteryMapLoading svg { height: 16px; width: 16px; }
+.masteryMapNode { background: #fff; border: 1px solid #d9d5cd; border-radius: 13px; box-shadow: 0 6px 18px rgb(32 31 29 / 7%); height: 94px; overflow: hidden; width: 238px; }
+.masteryMapNode[data-selected] { border-color: #b25d20; box-shadow: 0 0 0 3px rgb(200 102 34 / 14%), 0 8px 22px rgb(32 31 29 / 8%); }
+.masteryMapNode > button { align-items: center; background: transparent; border: 0; color: #3f3e44; cursor: pointer; display: grid; font: inherit; gap: 2px 10px; grid-template-columns: 32px minmax(0, 1fr); height: 100%; padding: 12px 13px; text-align: left; width: 100%; }
+.masteryMapNode > button > span { align-items: center; background: #f0eee9; border: 2px solid #e4e0d8; border-radius: 50%; display: flex; font-size: 10px; font-weight: 760; grid-row: 1 / span 2; height: 32px; justify-content: center; width: 32px; }
+.masteryMapNode > button > span svg { height: 14px; width: 14px; }
+.masteryMapNode > button > small { color: #68666d; font-size: 9px; font-weight: 760; letter-spacing: .065em; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.masteryMapNode > button > strong { display: -webkit-box; font-size: 12px; line-height: 1.3; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.masteryMapNode[data-state="recommended"] > button > span,.masteryMapNode[data-state="review"] > button > span { background: #c86622; border-color: #e7c1a5; color: #fff; }
+.masteryMapNode[data-state="recommended"] > button > small,.masteryMapNode[data-state="review"] > button > small { color: #a65318; }
+.masteryMapNode[data-state="mastered"] > button > span { background: #dcebd7; border-color: #c9dfc3; color: #46713e; }
+.masteryMapNode[data-state="mastered"] > button > small { color: #52764a; }
+.masteryMapNode[data-state="blocked"] { background: #f4f2ed; border-color: #e2dfd7; box-shadow: none; }
+.masteryMapNode[data-state="blocked"] > button { color: #69666d; }
+.masteryMapHandle { height: 1px !important; opacity: 0; pointer-events: none; width: 1px !important; }
+.masteryMapInspector { align-items: center; background: #fff; border-top: 1px solid #dedbd3; display: flex; gap: 20px; justify-content: space-between; min-height: 108px; padding: 15px 20px; }
+.masteryMapInspector > div:first-child { min-width: 0; }
+.masteryMapInspector small { color: #a65318; display: block; font-size: 9px; font-weight: 760; letter-spacing: .07em; margin-bottom: 3px; text-transform: uppercase; }
+.masteryMapInspector strong { font-size: 14px; }
+.masteryMapInspector p { color: #66636a; font-size: 11px; line-height: 1.45; margin: 4px 0 0; max-width: 660px; }
+.masteryMapInspector > div:last-child { align-items: flex-end; display: flex; flex: none; flex-direction: column; gap: 6px; }
+.masteryMapInspector span { color: #77747b; font-size: 10px; }
+.masteryMapInspector button { align-items: center; background: #24252a; border: 0; border-radius: 8px; color: #fff; cursor: pointer; display: flex; font: inherit; font-size: 11px; font-weight: 700; gap: 7px; min-height: 36px; padding: 0 12px; }
+.masteryMapInspector button svg { height: 13px; width: 13px; }
+.masteryMapHint { background: #fff; border-top: 1px solid #dedbd3; color: #77747b; font-size: 11px; margin: 0; min-height: 48px; padding: 15px 20px; }
+.routeHistory { background: #fff; border-top: 1px solid #dedbd3; max-height: 180px; overflow: auto; padding: 15px 20px; }
 .routeHistory summary { align-items: center; color: #55535a; cursor: pointer; display: flex; font-size: 12px; font-weight: 700; justify-content: space-between; list-style: none; }
 .routeHistory summary svg { height: 14px; width: 14px; }
 .routeHistory ol { display: grid; gap: 10px; list-style: none; padding: 8px 0 0; }
@@ -363,38 +370,44 @@
 .guideDockClose:hover { background: #f1efe9; color: #202126; }
 .guideDockClose svg { height: 17px; width: 17px; }
 .guideConversation { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; height: 100%; }
-.guideConversation > header { border-bottom: 1px solid #e2dfd8; min-height: 76px; padding: 16px 62px 14px 20px; }
-.guideConversation > header small { color: #77747b; font-size: 10px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }
-.guideConversation > header h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 24px; font-weight: 520; letter-spacing: -.025em; margin: 2px 0 0; }
-.guideStatus { background: #f6f4ef; border-bottom: 1px solid #dfdcd5; display: grid; gap: 3px; padding: 15px 20px; }
-.guideStatus small { color: #9a4f1b; font-size: 10px; font-weight: 760; letter-spacing: .07em; text-transform: uppercase; }
-.guideStatus strong { font-size: 14px; line-height: 1.35; padding-right: 18px; }
-.guideStatus p { color: #66636a; font-size: 12px; line-height: 1.4; margin: 0; }
-.guideStatus span { color: #656269; font-size: 10px; margin-top: 3px; }
-.guideMessageList { display: flex; flex-direction: column; gap: 16px; overflow: auto; padding: 20px; }
+.guideConversation > header { align-items: center; border-bottom: 1px solid #e2dfd8; display: flex; min-height: 72px; padding: 14px 62px 14px 20px; }
+.guideDockIdentity { align-items: center; display: flex; gap: 11px; min-width: 0; }
+.guideDockIdentity > svg { color: #292a30; flex: none; height: 19px; width: 19px; }
+.guideDockIdentity > div { display: grid; gap: 1px; min-width: 0; }
+.guideConversation > header h2 { font-size: 15px; font-weight: 720; letter-spacing: -.015em; margin: 0; }
+.guideConversation > header small { color: #6c6a71; font-size: 10px; }
+.guideStatus { background: #f7f5f0; border-bottom: 1px solid #dfdcd5; min-height: 44px; padding: 13px 20px; }
+.guideStatus strong { display: block; font-size: 12px; line-height: 1.45; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.guideStatus strong span { color: #a65318; font-size: inherit; font-weight: 760; }
+.guideMessageList { display: flex; flex-direction: column; gap: 20px; overflow: auto; padding: 24px 20px 30px; }
 .guideWelcome { color: #55535a; display: grid; gap: 14px; }
 .guideWelcome > p { font-size: 13px; line-height: 1.55; margin: 0; }
 .guideWelcome > div { display: flex; flex-wrap: wrap; gap: 7px; }
 .guideWelcome button { background: #fff; border: 1px solid #d9d6cf; border-radius: 999px; color: #55535a; cursor: pointer; font: inherit; font-size: 11px; min-height: 32px; padding: 6px 10px; }
 .guideWelcome button:hover { background: #faf7f2; border-color: #c9aa90; }
-.guideMessage { align-items: start; display: grid; gap: 5px; grid-template-columns: 34px minmax(0, 1fr); }
-.guideMessage::before { align-items: center; background: #efede8; border-radius: 9px; color: #393a40; content: "M"; display: flex; font-size: 11px; font-weight: 760; grid-row: 1 / span 3; height: 34px; justify-content: center; width: 34px; }
-.guideMessage[data-role="learner"]::before { background: #24252a; color: #fff; content: "You"; font-size: 8px; }
-.guideMessage > span { color: #68656c; font-size: 10px; font-weight: 700; }
-.guideMessage > p { color: #29292f; font-size: 13px; line-height: 1.55; margin: 0; white-space: pre-wrap; }
-.guideMessage > button { align-items: center; background: transparent; border: 0; color: #8d4818; cursor: pointer; display: flex; font: inherit; font-size: 11px; font-weight: 700; gap: 6px; justify-self: start; margin-top: 3px; padding: 0; }
-.guideMessage > button:disabled { color: #8b888e; cursor: not-allowed; }
-.guideMessage > button svg { height: 13px; width: 13px; }
+.guideMessage { align-items: flex-start; display: flex; gap: 10px; }
+.guideMessage > i { align-items: center; background: #efede8; border-radius: 9px; color: #393a40; display: flex; flex: none; height: 34px; justify-content: center; width: 34px; }
+.guideMessage > i svg { height: 15px; width: 15px; }
+.guideMessage > div { max-width: calc(100% - 44px); min-width: 0; }
+.guideMessage[data-role="learner"] { justify-content: flex-end; }
+.guideMessage[data-role="learner"] > div { background: #26272d; border-radius: 14px 14px 4px 14px; color: #fff; max-width: 82%; padding: 10px 13px; }
+.guideMessage span { color: #6c6a71; display: block; font-size: 10px; font-weight: 700; margin-bottom: 4px; }
+.guideMessage[data-role="learner"] span { color: #bcbec6; text-align: right; }
+.guideMessage p { color: #29292f; font-size: 13px; line-height: 1.55; margin: 0; white-space: pre-wrap; }
+.guideMessage[data-role="learner"] p { color: #fff; }
+.guideMessage button { align-items: center; background: transparent; border: 0; color: #8d4818; cursor: pointer; display: flex; font: inherit; font-size: 11px; font-weight: 700; gap: 6px; margin-top: 6px; padding: 0; }
+.guideMessage button:disabled { color: #8b888e; cursor: not-allowed; }
+.guideMessage button svg { height: 13px; width: 13px; }
 .guideThinking { align-items: center; color: #77757c; display: flex; font-size: 12px; gap: 5px; min-height: 30px; padding-left: 44px; }
 .guideThinking span { margin-right: 3px; }
 .guideThinking i { animation: guideTyping 1.1s ease-in-out infinite; background: #97949b; border-radius: 50%; height: 5px; width: 5px; }
 .guideThinking i:nth-child(3) { animation-delay: .15s; }
 .guideThinking i:nth-child(4) { animation-delay: .3s; }
-.guideComposer { border-top: 1px solid #dedbd5; padding: 14px 16px 16px; }
-.guideComposer textarea { border: 1px solid #d7d4cd; border-radius: 10px; color: inherit; font: inherit; font-size: 13px; line-height: 1.45; min-height: 78px; padding: 11px 12px; resize: none; width: 100%; }
-.guideComposer > div { align-items: center; display: flex; justify-content: space-between; margin-top: 8px; }
-.guideComposer > div span { color: #68656c; font-size: 10px; }
-.guideComposer > div button { align-items: center; background: #24252a; border: 0; border-radius: 8px; color: #fff; cursor: pointer; display: flex; height: 34px; justify-content: center; width: 34px; }
+.guideComposer { background: #fff; border: 1px solid #d9d7d0; border-radius: 13px; box-shadow: 0 9px 30px rgb(35 35 40 / 8%); margin: 0 16px 16px; padding: 9px 10px; }
+.guideComposer textarea { background: transparent; border: 0; color: inherit; font: inherit; font-size: 13px; line-height: 1.5; min-height: 48px; outline: 0; padding: 5px 6px; resize: none; width: 100%; }
+.guideComposer > div { align-items: center; display: flex; gap: 8px; justify-content: space-between; }
+.guideComposer > div span { color: #6c6a71; flex: 1; font-size: 10px; }
+.guideComposer > div button { align-items: center; background: #24252a; border: 0; border-radius: 7px; color: #fff; cursor: pointer; display: flex; height: 30px; justify-content: center; width: 30px; }
 .guideComposer > div button:disabled { cursor: not-allowed; opacity: .45; }
 .guideComposer > div button svg { height: 15px; width: 15px; }
 .guideResult,.helpRequest { margin: 0; }

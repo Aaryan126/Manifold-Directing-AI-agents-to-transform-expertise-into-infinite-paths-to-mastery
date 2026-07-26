@@ -24,7 +24,6 @@ import {
   Lightbulb,
   ListChecks,
   LoaderCircle,
-  LockKeyhole,
   MessageSquareText,
   Play,
   RotateCcw,
@@ -40,14 +39,13 @@ import {
   type DevelopmentSession,
 } from "../../../developmentSession";
 import { LearnerSidebar } from "../../learner-sidebar";
+import { LearnerMasteryMap } from "../../learner-mastery-map";
 import {
   activeTranscriptWordIndex,
-  learnerPathVisualState,
   type LearnerCourseExperience,
   type LearnerGuideMessage,
   type LearnerPath,
   type LearnerPathItem,
-  type LearnerPathVisualState,
   type LearnerModeKey,
   type LearnerPlacement,
   type LearnerSessionStep,
@@ -679,7 +677,7 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
       setError(
         caught instanceof Error
           ? caught.message
-          : "The Learning Guide could not answer that.",
+          : "The Learning Assistant could not answer that.",
       );
     } finally {
       setGuideSending(false);
@@ -996,13 +994,13 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
 
         <button
           aria-expanded={guideOpen}
-          aria-label="Open Learning Guide"
+          aria-label="Open Learning Assistant"
           className={styles.guideLauncher}
           onClick={() => setGuideOpen((open) => !open)}
           type="button"
         >
           <MessageSquareText />
-          <span>Learning Guide</span>
+          <span>Learning Assistant</span>
         </button>
 
         {guideOpen ? (
@@ -1014,7 +1012,6 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
             helpNote={helpNote}
             helpPreview={helpPreview}
             helpSent={helpSent}
-            mastery={workspace.mastery}
             messages={guideMessages}
             messageListRef={guideMessageListRef}
             onAction={(action) => void runGuideAction(action)}
@@ -1030,7 +1027,6 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
             onSubmit={sendGuideMessage}
             path={path}
             sending={guideSending}
-            session={studySession}
           />
         ) : null}
 
@@ -1067,7 +1063,7 @@ function Orientation({
   return (
     <section className={styles.orientation}>
       <span className={styles.guideIdentity}>
-        Manifold Learning Guide
+        Learning Assistant
       </span>
       <h1>Start {courseTitle} with the right path.</h1>
       <p>
@@ -1161,7 +1157,7 @@ function ModeChooser({
         <header>
           <div>
             <span className={styles.guideIdentity}>
-              Manifold Learning Guide
+              Learning Assistant
             </span>
             <h2>Choose how you want to learn</h2>
           </div>
@@ -1270,7 +1266,7 @@ function SessionPlanner({
   return (
     <section className={styles.sessionPlanner}>
       <span className={styles.guideIdentity}>
-        Manifold Learning Guide
+        Learning Assistant
       </span>
       <h1>How would you like to learn?</h1>
       <p>
@@ -1314,7 +1310,7 @@ function SessionPlan({
     <section className={styles.planStage}>
       <header>
         <span className={styles.guideIdentity}>
-          Manifold Learning Guide
+          Learning Assistant
         </span>
         <h1>{modeTitle(session.mode)}</h1>
         <p>
@@ -1753,6 +1749,12 @@ function MasteryDrawer({
   onSelect: (conceptId: string) => void;
   path: LearnerPath;
 }) {
+  const inspectedItem = path.items.find(
+    (item) => item.concept_id === inspectedConceptId,
+  );
+  const inspectedEvidence = mastery.concepts.find(
+    (concept) => concept.concept_id === inspectedConceptId,
+  );
   return (
     <div className={styles.drawerBackdrop} onMouseDown={onClose}>
       <aside
@@ -1769,51 +1771,57 @@ function MasteryDrawer({
             <X />
           </button>
         </header>
-        <nav aria-label="Adaptive mastery trail" className={styles.masteryTrail}>
-          {path.items.map((item, index) => {
-            const state = learnerPathVisualState(item, path.current_concept_id);
-            const evidence = mastery.concepts.find(
-              (concept) => concept.concept_id === item.concept_id,
-            );
-            const expanded = inspectedConceptId === item.concept_id;
-            return (
-              <article data-expanded={expanded || undefined} data-state={state} key={item.concept_id}>
+        <div aria-label="Mastery map legend" className={styles.masteryMapLegend}>
+          <span data-tone="recommended">Recommended</span>
+          <span data-tone="mastered">Mastered</span>
+          <span data-tone="ready">Ready</span>
+          <span data-tone="blocked">Blocked</span>
+          <i />
+          <small>Solid = prerequisite</small>
+          <i data-kind="sequence" />
+          <small>Dashed = course order</small>
+        </div>
+        <LearnerMasteryMap
+          inspectedConceptId={inspectedConceptId}
+          mastery={mastery}
+          onInspect={(conceptId) =>
+            onInspect(inspectedConceptId === conceptId ? null : conceptId)
+          }
+          path={path}
+        />
+        {inspectedItem ? (
+          <section className={styles.masteryMapInspector}>
+            <div>
+              <small>Selected concept</small>
+              <strong>{inspectedItem.name}</strong>
+              <p>{masteryExplanation(inspectedItem, inspectedEvidence)}</p>
+            </div>
+            <div>
+              {inspectedEvidence?.mismatch ? (
+                <span>{inspectedEvidence.mismatch}</span>
+              ) : null}
+              {inspectedEvidence?.due_at ? (
+                <span>
+                  Review due{" "}
+                  {new Date(inspectedEvidence.due_at).toLocaleDateString()}
+                </span>
+              ) : null}
+              {inspectedItem.eligible && inspectedItem.actionable !== false ? (
                 <button
-                  aria-expanded={expanded}
-                  onClick={() =>
-                    onInspect(expanded ? null : item.concept_id)
-                  }
+                  onClick={() => onSelect(inspectedItem.concept_id)}
                   type="button"
                 >
-                  <span className={styles.masteryNodeMarker}>
-                    {masteryNodeIcon(state, index)}
-                  </span>
-                  <span className={styles.masteryNodeCopy}>
-                    <small>{masteryStateLabel(state, evidence?.access_state)}</small>
-                    <strong>{item.name}</strong>
-                  </span>
+                  Choose this concept
+                  <ArrowRight />
                 </button>
-                {expanded ? (
-                  <div className={styles.masteryNodeDetail}>
-                    <p>{masteryExplanation(item, evidence)}</p>
-                    {evidence?.mismatch ? <strong>{evidence.mismatch}</strong> : null}
-                    {evidence?.due_at ? (
-                      <small>
-                        Review due {new Date(evidence.due_at).toLocaleDateString()}
-                      </small>
-                    ) : null}
-                    {item.eligible && item.actionable !== false ? (
-                      <button onClick={() => onSelect(item.concept_id)} type="button">
-                        Choose this concept
-                        <ArrowRight />
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
-              </article>
-            );
-          })}
-        </nav>
+              ) : null}
+            </div>
+          </section>
+        ) : (
+          <p className={styles.masteryMapHint}>
+            Select a concept to inspect its evidence and available next action.
+          </p>
+        )}
         {mastery.recent_routes.length ? (
           <details className={styles.routeHistory}>
             <summary>
@@ -1843,7 +1851,6 @@ function LearningGuideDock({
   helpNote,
   helpPreview,
   helpSent,
-  mastery,
   messages,
   messageListRef,
   onAction,
@@ -1855,7 +1862,6 @@ function LearningGuideDock({
   onSubmit,
   path,
   sending,
-  session,
 }: {
   actions: string[];
   busy: boolean;
@@ -1864,7 +1870,6 @@ function LearningGuideDock({
   helpNote: string;
   helpPreview: Record<string, unknown> | null;
   helpSent: boolean;
-  mastery: LearnerWorkspace["mastery"];
   messages: LearnerGuideMessage[];
   messageListRef: { current: HTMLDivElement | null };
   onAction: (action: string) => void;
@@ -1876,14 +1881,8 @@ function LearningGuideDock({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   path: LearnerPath;
   sending: boolean;
-  session: LearnerStudySession | null;
 }) {
   const current = path.items.find((item) => item.current);
-  const activeStep = session?.steps.find((step) => step.status === "active")
-    ?? session?.steps.find((step) => step.status === "pending");
-  const mastered = mastery.concepts.filter(
-    (concept) => concept.state === "mastered",
-  ).length;
   const quickPrompts = [
     "What should I do next?",
     "How am I doing?",
@@ -1891,9 +1890,9 @@ function LearningGuideDock({
     "How does mastery work?",
   ];
   return (
-    <aside aria-label="Manifold Learning Guide" className={styles.guideDock}>
+    <aside aria-label="Learning Assistant" className={styles.guideDock}>
       <button
-        aria-label="Close Learning Guide"
+        aria-label="Close Learning Assistant"
         className={styles.guideDockClose}
         onClick={onClose}
         type="button"
@@ -1902,21 +1901,20 @@ function LearningGuideDock({
       </button>
       <section className={styles.guideConversation}>
         <header>
-          <div>
-            <small>Course-aware copilot</small>
-            <h2>Manifold Learning Guide</h2>
+          <div className={styles.guideDockIdentity}>
+            <MessageSquareText />
+            <div>
+              <h2>Learning Assistant</h2>
+              <small>Course-aware support</small>
+            </div>
           </div>
         </header>
 
         <div className={styles.guideStatus}>
-          <small>Right now</small>
-          <strong>{current?.name ?? "No actionable concept"}</strong>
-          <p>
-            {activeStep
-              ? `${stageName(activeStep)} · ${activeStep.title}`
-              : "Choose a learning mode to prepare your next evidence loop."}
-          </p>
-          <span>{mastered} of {mastery.concepts.length} concepts mastered</span>
+          <strong>
+            <span>Right now:</span>{" "}
+            {current?.name ?? "No actionable concept"}
+          </strong>
         </div>
 
         <div className={styles.guideMessageList} ref={messageListRef}>
@@ -1947,20 +1945,25 @@ function LearningGuideDock({
               data-role={message.role}
               key={message.id}
             >
-              <span>
-                {message.role === "guide" ? "Learning Guide" : "You"}
-              </span>
-              <p>{message.content}</p>
-              {message.role === "guide" && message.action ? (
-                <button
-                  disabled={busy || !actions.includes(message.action)}
-                  onClick={() => onAction(message.action as string)}
-                  type="button"
-                >
-                  {guideActionLabel(message.action)}
-                  <ArrowRight />
-                </button>
+              {message.role === "guide" ? (
+                <i aria-hidden="true"><MessageSquareText /></i>
               ) : null}
+              <div>
+                <span>
+                  {message.role === "guide" ? "Learning Assistant" : "You"}
+                </span>
+                <p>{message.content}</p>
+                {message.role === "guide" && message.action ? (
+                  <button
+                    disabled={busy || !actions.includes(message.action)}
+                    onClick={() => onAction(message.action as string)}
+                    type="button"
+                  >
+                    {guideActionLabel(message.action)}
+                    <ArrowRight />
+                  </button>
+                ) : null}
+              </div>
             </article>
           ))}
           {sending ? (
@@ -1974,7 +1977,7 @@ function LearningGuideDock({
           {guideResult ? (
             <article className={styles.guideResult}>
               <small>Grounded in this course</small>
-              <h3>{guideResult.title ?? "Learning Guide result"}</h3>
+              <h3>{guideResult.title ?? "Learning Assistant result"}</h3>
               <p>{guideResult.message ?? guideResult.excerpt}</p>
               {guideResult.page_number ? <span>Page {guideResult.page_number}</span> : null}
             </article>
@@ -2022,7 +2025,7 @@ function LearningGuideDock({
 
         <form className={styles.guideComposer} onSubmit={onSubmit}>
           <textarea
-            aria-label="Message Learning Guide"
+            aria-label="Message Learning Assistant"
             onChange={(event) => onComposer(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
@@ -2031,7 +2034,7 @@ function LearningGuideDock({
               }
             }}
             placeholder="Ask about your progress, path, or course help…"
-            rows={3}
+            rows={2}
             value={composer}
           />
           <div>
@@ -2092,25 +2095,6 @@ function modeIcon(mode: LearnerModeKey) {
     strengthen_weak_areas: <RotateCcw />,
     review_learned: <ListChecks />,
   }[mode];
-}
-
-function masteryNodeIcon(state: LearnerPathVisualState, index: number) {
-  if (state === "mastered") return <CheckCircle2 />;
-  if (state === "blocked") return <LockKeyhole />;
-  if (state === "recommended" || state === "review") return <Route />;
-  return index + 1;
-}
-
-function masteryStateLabel(
-  state: LearnerPathVisualState,
-  accessState?: string,
-) {
-  if (accessState === "content_unavailable") return "Needs reviewed content";
-  if (state === "mastered") return "Mastered";
-  if (state === "recommended") return "Recommended next";
-  if (state === "review") return "Review recommended";
-  if (state === "ready") return "Ready";
-  return "Blocked";
 }
 
 function masteryExplanation(

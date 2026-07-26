@@ -1490,7 +1490,7 @@ class PostgresLearningRepository:
                 )
             ).fetchone()
         if learner_row is None or guide_row is None:
-            raise RuntimeError("Failed to persist the Learning Guide conversation.")
+            raise RuntimeError("Failed to persist the Learning Assistant conversation.")
         return (
             _guide_message_from_row(learner_row),
             _guide_message_from_row(guide_row),

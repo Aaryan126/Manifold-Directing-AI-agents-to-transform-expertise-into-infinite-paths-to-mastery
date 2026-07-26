@@ -253,6 +253,13 @@ export type LearnerPathVisualState =
   | "ready"
   | "blocked";
 
+export type LearnerMasteryConnection = {
+  id: string;
+  source: string;
+  target: string;
+  kind: "prerequisite" | "sequence";
+};
+
 export function courseProgressPercent(course: LearnerCourseSummary) {
   if (!course.concept_count) return 0;
   return Math.round((course.mastered_concept_count / course.concept_count) * 100);
@@ -276,6 +283,63 @@ export function learnerPathVisualState(
     return item.state === "struggling" ? "review" : "recommended";
   }
   return item.eligible && item.actionable !== false ? "ready" : "blocked";
+}
+
+export function learnerMasteryConnections(
+  items: LearnerPathItem[],
+): LearnerMasteryConnection[] {
+  const sorted = [...items].sort(
+    (left, right) =>
+      left.sequence_rank - right.sequence_rank
+      || left.name.localeCompare(right.name),
+  );
+  const ids = new Set(sorted.map((item) => item.concept_id));
+  const prerequisiteConnections = sorted.flatMap((item) =>
+    item.prerequisite_ids
+      .filter((prerequisiteId) => ids.has(prerequisiteId))
+      .map((prerequisiteId) => ({
+        id: `prerequisite:${prerequisiteId}:${item.concept_id}`,
+        source: prerequisiteId,
+        target: item.concept_id,
+        kind: "prerequisite" as const,
+      })),
+  );
+  const prerequisiteTargets = new Map<string, string[]>();
+  prerequisiteConnections.forEach((connection) => {
+    prerequisiteTargets.set(connection.source, [
+      ...(prerequisiteTargets.get(connection.source) ?? []),
+      connection.target,
+    ]);
+  });
+  const hasPrerequisitePath = (source: string, target: string) => {
+    const pending = [...(prerequisiteTargets.get(source) ?? [])];
+    const visited = new Set<string>();
+    while (pending.length) {
+      const candidate = pending.shift();
+      if (!candidate || visited.has(candidate)) continue;
+      if (candidate === target) return true;
+      visited.add(candidate);
+      pending.push(...(prerequisiteTargets.get(candidate) ?? []));
+    }
+    return false;
+  };
+  const sequenceConnections = sorted.slice(1).flatMap((item, index) => {
+    const previous = sorted[index];
+    if (
+      item.prerequisite_ids.some((prerequisiteId) => ids.has(prerequisiteId))
+      || hasPrerequisitePath(previous.concept_id, item.concept_id)
+      || hasPrerequisitePath(item.concept_id, previous.concept_id)
+    ) {
+      return [];
+    }
+    return [{
+      id: `sequence:${previous.concept_id}:${item.concept_id}`,
+      source: previous.concept_id,
+      target: item.concept_id,
+      kind: "sequence" as const,
+    }];
+  });
+  return [...prerequisiteConnections, ...sequenceConnections];
 }
 
 export function clipTranscriptWords(

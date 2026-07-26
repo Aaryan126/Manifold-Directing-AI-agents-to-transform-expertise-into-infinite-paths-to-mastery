@@ -5,6 +5,7 @@ import {
   clipTranscriptWords,
   courseCompositionLabels,
   courseProgressPercent,
+  learnerMasteryConnections,
   learnerPathVisualState,
   nextTopicId,
   topicForDecision,
@@ -108,6 +109,116 @@ describe("learner course routing presentation", () => {
       eligible: false,
       state: "mastered",
     }, "concept-2")).toBe("mastered");
+  });
+
+  it("builds true prerequisite branches and merges without inventing topic links", () => {
+    const item = (conceptId: string, rank: number, prerequisiteIds: string[]) => ({
+      concept_id: conceptId,
+      name: conceptId,
+      description: "",
+      sequence_rank: rank,
+      state: "not_started" as const,
+      topic_id: "topic-1",
+      topic_title: "Topic",
+      prerequisite_ids: prerequisiteIds,
+      clip_ids: ["clip-1"],
+      question_ids: ["question-1"],
+      aids: [],
+      eligible: true,
+      actionable: true,
+      coverage_state: "complete" as const,
+      current: false,
+    });
+    expect(learnerMasteryConnections([
+      item("foundation", 1, []),
+      item("branch-a", 2, ["foundation"]),
+      item("branch-b", 3, ["foundation"]),
+      item("merge", 4, ["branch-a", "branch-b"]),
+    ])).toEqual([
+      {
+        id: "prerequisite:foundation:branch-a",
+        source: "foundation",
+        target: "branch-a",
+        kind: "prerequisite",
+      },
+      {
+        id: "prerequisite:foundation:branch-b",
+        source: "foundation",
+        target: "branch-b",
+        kind: "prerequisite",
+      },
+      {
+        id: "prerequisite:branch-a:merge",
+        source: "branch-a",
+        target: "merge",
+        kind: "prerequisite",
+      },
+      {
+        id: "prerequisite:branch-b:merge",
+        source: "branch-b",
+        target: "merge",
+        kind: "prerequisite",
+      },
+    ]);
+  });
+
+  it("uses a dashed sequence connector only for a disconnected course step", () => {
+    const disconnected = ["one", "two"].map((conceptId, index) => ({
+      concept_id: conceptId,
+      name: conceptId,
+      description: "",
+      sequence_rank: index + 1,
+      state: "not_started" as const,
+      topic_id: "topic-1",
+      topic_title: "Topic",
+      prerequisite_ids: [],
+      clip_ids: [],
+      question_ids: [],
+      aids: [],
+      eligible: true,
+      current: false,
+    }));
+    expect(learnerMasteryConnections(disconnected)).toEqual([{
+      id: "sequence:one:two",
+      source: "one",
+      target: "two",
+      kind: "sequence",
+    }]);
+  });
+
+  it("does not add course-order context that would cycle against prerequisites", () => {
+    const base = {
+      description: "",
+      state: "not_started" as const,
+      topic_id: "topic-1",
+      topic_title: "Topic",
+      clip_ids: [],
+      question_ids: [],
+      aids: [],
+      eligible: true,
+      current: false,
+    };
+    expect(learnerMasteryConnections([
+      {
+        ...base,
+        concept_id: "dependent",
+        name: "Dependent",
+        sequence_rank: 1,
+        prerequisite_ids: ["foundation"],
+      },
+      {
+        ...base,
+        concept_id: "foundation",
+        name: "Foundation",
+        sequence_rank: 2,
+        prerequisite_ids: [],
+      },
+    ])).toEqual([{
+      id: "prerequisite:foundation:dependent",
+      source: "foundation",
+      target: "dependent",
+      kind: "prerequisite",
+    }]);
   });
 
   it("rebases a clip transcript and finds the word active at playback time", () => {

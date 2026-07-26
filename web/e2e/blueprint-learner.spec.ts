@@ -288,14 +288,31 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   await expect(page.getByText("Practice with an approved question")).toBeVisible();
 
   await expect(page.locator(".lucide-sparkles")).toHaveCount(0);
-  await page.getByRole("button", { name: "Open Learning Guide" }).click();
-  await expect(page.getByText("Right now")).toBeVisible();
-  await expect(page.getByText("0 of 2 concepts mastered")).toBeVisible();
+  await page.getByRole("button", { name: "Open Learning Assistant" }).click();
+  const assistant = page.getByLabel("Learning Assistant");
+  await expect(assistant.getByText("Right now:")).toBeVisible();
+  await expect(assistant.getByText("Vector direction")).toBeVisible();
+  const statusBounds = await assistant.locator("[class*='guideStatus']").boundingBox();
+  expect(statusBounds?.height).toBeLessThanOrEqual(48);
+  await expect(assistant.getByText("Learning Guide", { exact: false })).toHaveCount(0);
   await page
     .getByRole("button", { name: /Why is this my next lesson/ })
     .click();
   await expect(page.getByText("prerequisites and reviewed coverage")).toBeVisible();
-  await page.getByRole("button", { name: "Close Learning Guide" }).click();
+  const learnerMessageBounds = await assistant
+    .locator("[data-role='learner']")
+    .last()
+    .locator("> div")
+    .boundingBox();
+  const assistantMessageBounds = await assistant
+    .locator("[data-role='guide']")
+    .last()
+    .locator("> div")
+    .boundingBox();
+  expect(learnerMessageBounds).not.toBeNull();
+  expect(assistantMessageBounds).not.toBeNull();
+  expect(learnerMessageBounds!.x).toBeGreaterThan(assistantMessageBounds!.x);
+  await page.getByRole("button", { name: "Close Learning Assistant" }).click();
 
   await page.getByText("Transcript", { exact: true }).click();
   await expect(page.getByLabel("Clip transcript")).toContainText(
@@ -343,6 +360,32 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
 
   await page.getByRole("button", { name: "Mastery" }).click();
   const mastery = page.getByLabel("Course mastery and review");
+  await expect(mastery.getByTestId("mastery-map")).toBeVisible();
+  await expect(mastery.locator(".react-flow__node")).toHaveCount(4);
+  await expect(mastery.locator(".react-flow__edge")).toHaveCount(4);
+  await expect.poll(async () => {
+    const canvasBounds = await mastery.getByTestId("mastery-map").boundingBox();
+    const nodeBounds = await mastery.locator(".react-flow__node").evaluateAll(
+      (nodes) => nodes.map((node) => {
+        const bounds = node.getBoundingClientRect();
+        return {
+          bottom: bounds.bottom,
+          left: bounds.left,
+          right: bounds.right,
+          top: bounds.top,
+        };
+      }),
+    );
+    return Boolean(
+      canvasBounds
+      && nodeBounds.every((bounds) => (
+        bounds.left >= canvasBounds.x
+        && bounds.right <= canvasBounds.x + canvasBounds.width
+        && bounds.top >= canvasBounds.y
+        && bounds.bottom <= canvasBounds.y + canvasBounds.height
+      )),
+    );
+  }).toBe(true);
   await expect(
     mastery.getByRole("button", { name: /Review recommended.*Vector direction/ }),
   ).toBeVisible();
@@ -353,10 +396,15 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   await expect(
     mastery.getByText(/will not substitute another topic’s content/),
   ).toBeVisible();
+  const masteryAccessibility = await new AxeBuilder({ page })
+    .include("[aria-label='Course mastery and review']")
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(masteryAccessibility.violations).toEqual([]);
   await page.getByRole("button", { name: "Close mastery" }).click();
 
-  await page.getByRole("button", { name: "Open Learning Guide" }).click();
-  await page.getByLabel("Message Learning Guide").fill("I’m stuck.");
+  await page.getByRole("button", { name: "Open Learning Assistant" }).click();
+  await page.getByLabel("Message Learning Assistant").fill("I’m stuck.");
   await page.getByRole("button", { name: "Send message" }).click();
   await page.getByRole("button", { name: "Review help request" }).click();
   await expect(page.getByText("Here’s what will be shared")).toBeVisible();
@@ -430,6 +478,40 @@ function learnerPath(state: "not_started" | "struggling") {
         coverage_state: "missing_both",
         current: false,
       },
+      {
+        concept_id: "concept-3",
+        name: "Vector components",
+        description: "Resolve vectors across axes",
+        sequence_rank: 3,
+        state: "not_started",
+        topic_id: "topic-1",
+        topic_title: "Vector direction",
+        prerequisite_ids: ["concept-1"],
+        clip_ids: ["clip-1"],
+        question_ids: ["question-1"],
+        aids: [],
+        eligible: true,
+        actionable: true,
+        coverage_state: "complete",
+        current: false,
+      },
+      {
+        concept_id: "concept-4",
+        name: "Resultant motion",
+        description: "Combine force and component evidence",
+        sequence_rank: 4,
+        state: "not_started",
+        topic_id: "topic-1",
+        topic_title: "Vector direction",
+        prerequisite_ids: ["concept-2", "concept-3"],
+        clip_ids: ["clip-1"],
+        question_ids: ["question-1"],
+        aids: [],
+        eligible: false,
+        actionable: true,
+        coverage_state: "complete",
+        current: false,
+      },
     ],
   };
 }
@@ -474,6 +556,24 @@ function workspace(
           state: "not_started",
           access_state: "blocked",
           coverage_state: "missing_both",
+          due_at: null,
+          mismatch: null,
+        },
+        {
+          concept_id: "concept-3",
+          name: "Vector components",
+          state: "not_started",
+          access_state: "ready",
+          coverage_state: "complete",
+          due_at: null,
+          mismatch: null,
+        },
+        {
+          concept_id: "concept-4",
+          name: "Resultant motion",
+          state: "not_started",
+          access_state: "blocked",
+          coverage_state: "complete",
           due_at: null,
           mismatch: null,
         },
