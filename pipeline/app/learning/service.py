@@ -198,7 +198,14 @@ class LearningService:
             (
                 step.concept_id
                 for step in current.steps
-                if step.status in {"active", "completed"} and step.concept_id is not None
+                if step.status == "active" and step.concept_id is not None
+            ),
+            None,
+        ) or next(
+            (
+                step.concept_id
+                for step in reversed(current.steps)
+                if step.status == "completed" and step.concept_id is not None
             ),
             None,
         )
@@ -807,7 +814,12 @@ class LearningService:
                 ),
                 recommended=key == recommended,
                 reason=recommendation_reason if key == recommended else None,
-                disabled_reason=None if candidates[key] is not None else disabled[key],
+                disabled_reason=(
+                    None
+                    if candidates[key] is not None
+                    or (session is not None and session.mode == key)
+                    else disabled[key]
+                ),
             )
             for key, title, description in definitions
         )

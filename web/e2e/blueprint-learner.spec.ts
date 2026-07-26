@@ -112,6 +112,9 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
       });
     }
     if (path === "/learn/courses/course-1/sessions") {
+      const request = route.request().postDataJSON() as Record<string, unknown>;
+      expect(request.mode).toBe("continue_path");
+      expect(request).not.toHaveProperty("budget_minutes");
       phase = "planned";
       return route.fulfill({ json: studySession("planned", "pending") });
     }
