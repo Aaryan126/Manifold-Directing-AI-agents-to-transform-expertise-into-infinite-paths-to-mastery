@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, ChevronDown, ClipboardCheck, Download, FilePenLine, FileText, LockKeyhole, LoaderCircle, PlayCircle, Route } from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, BookOpenText, CheckCircle2, ChevronDown, ClipboardCheck, Download, FilePenLine, FileText, LockKeyhole, LoaderCircle, PlayCircle, Route } from "lucide-react";
 
 import { ProviderVideo } from "../../../ProviderVideo";
 import { readDevelopmentSession, type DevelopmentSession } from "../../../developmentSession";
 import { LearnerSidebar } from "../../learner-sidebar";
 import {
+  activeTranscriptWordIndex,
+  clipTranscriptWords,
   learnerPathVisualState,
   nextTopicId,
   topicForDecision,
@@ -18,10 +20,18 @@ import {
   type LearnerPathVisualState,
   type LearnerProgress,
   type LearnerRouteDecision,
+  type LearnerTranscriptWord,
 } from "../../learner-course";
 import styles from "../../learner.module.css";
 
 const pipelineBase = process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localhost:8000";
+
+type LearningStep = "clip" | "assessment";
+
+type TranscriptResponse = {
+  text: string;
+  words: LearnerTranscriptWord[];
+};
 
 export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
   const router = useRouter();
@@ -31,11 +41,17 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
   const [path, setPath] = useState<LearnerPath | null>(null);
   const [activeTopicId, setActiveTopicId] = useState<string | null>(null);
   const [preferredClipId, setPreferredClipId] = useState<string | null>(null);
+  const [learningStep, setLearningStep] = useState<LearningStep>("clip");
+  const [playbackSeconds, setPlaybackSeconds] = useState(0);
+  const [transcript, setTranscript] = useState<TranscriptResponse | null>(null);
+  const [transcriptLoading, setTranscriptLoading] = useState(false);
+  const [transcriptError, setTranscriptError] = useState<string | null>(null);
   const [answer, setAnswer] = useState("");
   const [confidence, setConfidence] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [decision, setDecision] = useState<LearnerRouteDecision | null>(null);
+  const [routedTopicId, setRoutedTopicId] = useState<string | null>(null);
   const [inspectedConceptId, setInspectedConceptId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,7 +101,7 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
       const currentPathItem = nextPath.items.find((item) => item.current)
         ?? nextPath.items.find((item) => item.concept_id === nextPath.current_concept_id);
       setActiveTopicId((current) => current ?? currentPathItem?.topic_id ?? nextTopicId(nextCourse, nextProgress));
-      setInspectedConceptId((current) => current ?? currentPathItem?.concept_id ?? null);
+      setInspectedConceptId(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not open this course.");
     } finally {
@@ -96,10 +112,13 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
+    setLearningStep("clip");
+    setPlaybackSeconds(0);
     setAnswer("");
     setConfidence(null);
     setFeedback(null);
     setDecision(null);
+    setRoutedTopicId(null);
     setPreferredClipId(null);
   }, [activeTopicId]);
 
@@ -118,11 +137,6 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
   const question = course?.questions.find((item) => activePathItem?.question_ids.includes(item.id))
     ?? course?.questions.find((item) => item.topic_id === activeTopic?.id)
     ?? null;
-  const lectureUnits = course?.units.filter((unit) => unit.kind === "lecture") ?? [];
-  const activeLecture = lectureUnits.find((unit) => unit.topic_ids.includes(activeTopic?.id ?? "")) ?? null;
-  const activeLectureIndex = activeLecture
-    ? lectureUnits.findIndex((unit) => unit.id === activeLecture.id)
-    : -1;
   const activeUnit = course?.units.find((unit) => unit.topic_ids.includes(activeTopic?.id ?? "")) ?? null;
   const activeUnitIndex = activeUnit
     ? course?.units.findIndex((unit) => unit.id === activeUnit.id) ?? -1
@@ -134,6 +148,49 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
   const courseMasteryPercent = path?.items.length
     ? Math.round((mastered / path.items.length) * 100)
     : 0;
+  const transcriptWords = useMemo(() => (
+    activeClip && transcript
+      ? clipTranscriptWords(
+          transcript.words,
+          activeClip.start_seconds,
+          activeClip.end_seconds,
+        )
+      : []
+  ), [activeClip, transcript]);
+  const activeTranscriptIndex = activeTranscriptWordIndex(
+    transcriptWords,
+    playbackSeconds,
+  );
+
+  useEffect(() => {
+    if (!activeClip) {
+      setTranscript(null);
+      setTranscriptError(null);
+      return;
+    }
+    const controller = new AbortController();
+    setTranscript(null);
+    setTranscriptError(null);
+    setTranscriptLoading(true);
+    void fetch(`${pipelineBase}/videos/${activeClip.video_id}/transcript`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Transcript is not available for this clip.");
+        return (await response.json()) as TranscriptResponse;
+      })
+      .then((nextTranscript) => setTranscript(nextTranscript))
+      .catch((caught: unknown) => {
+        if (caught instanceof DOMException && caught.name === "AbortError") return;
+        setTranscriptError(
+          caught instanceof Error ? caught.message : "Transcript is not available for this clip.",
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setTranscriptLoading(false);
+      });
+    return () => controller.abort();
+  }, [activeClip]);
 
   async function recordWatch(watchedSeconds: number) {
     if (!session || !activeClip) return;
@@ -193,20 +250,34 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
       setFeedback(grade.feedback ?? (grade.is_correct ? "Correct." : "Review the focused clip and try again."));
       setDecision(nextDecision);
       setPreferredClipId(nextDecision.target_clip_id);
-      setInspectedConceptId(
-        nextPath.items.find((item) => item.current)?.concept_id
-          ?? nextPath.current_concept_id
-          ?? null,
-      );
-      const targetTopic = topicForDecision(nextDecision, course, nextProgress, activeTopic.id);
-      if (targetTopic !== activeTopic.id) {
-        window.setTimeout(() => setActiveTopicId(targetTopic), 900);
-      }
+      setRoutedTopicId(topicForDecision(nextDecision, course, nextProgress, activeTopic.id));
+      setInspectedConceptId(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not submit your answer.");
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function continueAfterAssessment() {
+    if (!decision || !activeTopic) return;
+    if (routedTopicId && routedTopicId !== activeTopic.id) {
+      setActiveTopicId(routedTopicId);
+      return;
+    }
+    setLearningStep("clip");
+    setPlaybackSeconds(0);
+  }
+
+  function openAssessment() {
+    if (decision) {
+      setDecision(null);
+      setRoutedTopicId(null);
+      setFeedback(null);
+      setAnswer("");
+      setConfidence(null);
+    }
+    setLearningStep("assessment");
   }
 
   async function downloadResource(resource: LearnerCourseExperience["resources"][number]) {
@@ -242,78 +313,94 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
 
         <div className={styles.courseLayout}>
           <section className={styles.lesson}>
-            <div className={styles.lessonInner}>
+            <div className={styles.lessonInner} data-step={learningStep}>
               <header className={styles.lessonHeader}>
-                <div>
-                  <small>{activeLecture
-                    ? `Lecture ${activeLectureIndex + 1} of ${lectureUnits.length} · ${activeLecture.title}`
-                    : "Current teaching moment"}</small>
-                  <h1>{activeTopic.title}</h1>
-                  <p>{activeTopic.summary || "Watch the focused explanation, then check your understanding."}</p>
+                <div className={styles.lessonMeta}>
+                  <span>{learningStep === "clip" ? "Watch" : "Practice"}</span>
+                  {question ? <span>Step {learningStep === "clip" ? 1 : 2} of 2</span> : null}
                 </div>
-              </header>
-
-              {activePathItem ? <section className={styles.adaptiveFocus} data-tone={decisionTone(decision)}>
-                <span className={styles.adaptiveFocusIcon}><Route /></span>
-                <div>
-                  <small>{focusLabel(activePathItem, recommendedConceptId, decision)}</small>
-                  <strong>{activePathItem.name}</strong>
+                <h1>{activeTopic.title}</h1>
+                {learningStep === "clip" ? <p>{activeTopic.summary || "Watch the focused explanation, then check your understanding."}</p> : null}
+                {learningStep === "clip" && activePathItem ? <details className={styles.routeReason}>
+                  <summary><Route />Why this lesson?<ChevronDown /></summary>
                   <p>{decision?.why
                     ?? (activePathItem.concept_id === recommendedConceptId ? path?.last_route_why : null)
                     ?? focusReason(activePathItem, path?.items ?? [])}</p>
+                </details> : null}
+              </header>
+
+              {learningStep === "clip" ? <>
+                <div className={styles.player}>
+                  {activeClip ? <ProviderVideo
+                    clipId={activeClip.id}
+                    clipMaterializationStatus={activeClip.materialization_status}
+                    endSeconds={activeClip.end_seconds}
+                    onClipComplete={(watchedSeconds) => void recordWatch(watchedSeconds)}
+                    onPlaybackTimeUpdate={setPlaybackSeconds}
+                    pipelineBaseUrl={pipelineBase}
+                    playback={{
+                      provider: activeClip.playback_provider,
+                      playback_id: activeClip.playback_id,
+                      playback_url: activeClip.playback_url,
+                      delivery_asset_id: activeClip.delivery_asset_id,
+                    }}
+                    startSeconds={activeClip.start_seconds}
+                    title={activeClip.title}
+                    videoId={activeClip.video_id}
+                    viewerId={session.id}
+                  /> : <div className={styles.noMedia}>No reviewed teaching clip is available for this topic.</div>}
                 </div>
-                <span className={styles.adaptiveFocusStatus}>Current lesson</span>
+
+                {activeClip ? <SynchronizedTranscript
+                  activeWordIndex={activeTranscriptIndex}
+                  error={transcriptError}
+                  loading={transcriptLoading}
+                  words={transcriptWords}
+                /> : null}
+
+                {activePathItem?.aids.length ? <details className={styles.lessonExtras}>
+                  <summary><FileText />Course materials<ChevronDown /></summary>
+                  <div>{activePathItem.aids.map((aid) => <article key={`${aid.source_id}:${aid.page_number}`}><span>{aid.title} · page {aid.page_number}</span><p>{aid.excerpt}</p></article>)}</div>
+                </details> : null}
+
+                {question ? <footer className={styles.lessonStepFooter}>
+                  <span><small>Up next</small><strong>Check your understanding</strong></span>
+                  <button onClick={openAssessment} type="button">{decision ? "Try the check again" : "Continue"}<ArrowRight /></button>
+                </footer> : null}
+              </> : question ? <section className={styles.assessmentStage}>
+                <button className={styles.backToClip} onClick={() => setLearningStep("clip")} type="button"><ArrowLeft />Back to lesson</button>
+                <form className={styles.assessment} onSubmit={submit}>
+                  <span>Check your understanding</span>
+                  <h2>{question.body}</h2>
+                  {!decision ? <>
+                    {question.choices.length ? <fieldset className={styles.choices}>
+                      <legend>Your answer</legend>
+                      {question.choices.map((choice) => <label key={choice}><input checked={answer === choice} disabled={submitting} name="answer" onChange={() => setAnswer(choice)} type="radio" /><span>{choice}</span></label>)}
+                    </fieldset> : <textarea aria-label="Your answer" className={styles.answerInput} disabled={submitting} onChange={(event) => setAnswer(event.target.value)} placeholder="Write your answer" value={answer} />}
+                    <div className={styles.confidence}><span>{question.confidence_prompt}</span>{[
+                      [2, "Unsure"], [3, "Fairly sure"], [4, "Confident"],
+                    ].map(([value, label]) => <button aria-pressed={confidence === value} disabled={submitting} key={value} onClick={() => setConfidence(value as number)} type="button">{label}</button>)}</div>
+                    <button className={styles.assessmentSubmit} disabled={!answer.trim() || confidence === null || submitting} type="submit">{submitting ? <LoaderCircle className={styles.spin} /> : <CheckCircle2 />}{submitting ? "Checking answer" : "Submit answer"}</button>
+                  </> : <div className={styles.assessmentResult} data-tone={decision.action === "advance" || decision.action === "complete" ? "success" : "support"}>
+                    <CheckCircle2 />
+                    <div><strong>{decision.action === "advance" || decision.action === "complete" ? "Check complete" : "A focused review will help"}</strong><p role="status">{feedback}</p><span>{decision.why}</span></div>
+                    <button onClick={continueAfterAssessment} type="button">{routedTopicId && routedTopicId !== activeTopic.id ? "Continue to next lesson" : "Review lesson"}<ArrowRight /></button>
+                  </div>}
+                  {error ? <p className={styles.feedback} role="alert">{error}</p> : null}
+                </form>
               </section> : null}
-
-              <div className={styles.player}>
-                {activeClip ? <ProviderVideo
-                  clipId={activeClip.id}
-                  clipMaterializationStatus={activeClip.materialization_status}
-                  endSeconds={activeClip.end_seconds}
-                  onClipComplete={(watchedSeconds) => void recordWatch(watchedSeconds)}
-                  pipelineBaseUrl={pipelineBase}
-                  playback={{
-                    provider: activeClip.playback_provider,
-                    playback_id: activeClip.playback_id,
-                    playback_url: activeClip.playback_url,
-                    delivery_asset_id: activeClip.delivery_asset_id,
-                  }}
-                  startSeconds={activeClip.start_seconds}
-                  title={activeClip.title}
-                  videoId={activeClip.video_id}
-                  viewerId={session.id}
-                /> : <div className={styles.noMedia}>No reviewed teaching clip is available for this topic.</div>}
-              </div>
-
-              {activePathItem?.aids.length ? <section className={styles.pathAids}><header><FileText /><div><small>Instructor-approved evidence</small><strong>Helpful course materials</strong></div></header>{activePathItem.aids.map((aid) => <article key={`${aid.source_id}:${aid.page_number}`}><span>{aid.title} · page {aid.page_number}</span><p>{aid.excerpt}</p></article>)}</section> : null}
-
-              {question ? <form className={styles.assessment} onSubmit={submit}>
-                <span>Check your understanding</span>
-                <h2>{question.body}</h2>
-                {question.choices.length ? <fieldset className={styles.choices}>
-                  <legend>Your answer</legend>
-                  {question.choices.map((choice) => <label key={choice}><input checked={answer === choice} disabled={submitting} name="answer" onChange={() => setAnswer(choice)} type="radio" /><span>{choice}</span></label>)}
-                </fieldset> : <textarea aria-label="Your answer" className={styles.answerInput} disabled={submitting} onChange={(event) => setAnswer(event.target.value)} placeholder="Write your answer" value={answer} />}
-                <div className={styles.confidence}><span>{question.confidence_prompt}</span>{[
-                  [2, "Unsure"], [3, "Fairly sure"], [4, "Confident"],
-                ].map(([value, label]) => <button aria-pressed={confidence === value} disabled={submitting} key={value} onClick={() => setConfidence(value as number)} type="button">{label}</button>)}</div>
-                <button className={styles.assessmentSubmit} disabled={!answer.trim() || confidence === null || submitting} type="submit">{submitting ? <LoaderCircle className={styles.spin} /> : <CheckCircle2 />}{submitting ? "Checking answer" : "Submit answer"}</button>
-                {feedback ? <p className={styles.feedback} role="status">{feedback}</p> : null}
-                {error ? <p className={styles.feedback} role="alert">{error}</p> : null}
-              </form> : null}
             </div>
           </section>
 
           <aside className={styles.outline} aria-labelledby="course-outline-title">
             <header className={styles.pathSidebarHeader}>
-              <small>Your progress</small>
-              <div><h2 id="course-outline-title">{mastered} of {path?.items.length ?? progress.length} mastered</h2><strong>{courseMasteryPercent}%</strong></div>
+              <div><span><small>Course progress</small><strong>{mastered} of {path?.items.length ?? progress.length} mastered</strong></span><b>{courseMasteryPercent}%</b></div>
               <span><i style={{ width: `${courseMasteryPercent}%` }} /></span>
             </header>
             {(course.units ?? []).length && activeUnit ? <details className={styles.unitSwitcher}>
               <summary>
                 <span data-kind={activeUnit.kind}>{activeUnit.kind === "lecture" ? <PlayCircle /> : activeUnit.kind === "quiz" ? <ClipboardCheck /> : <FilePenLine />}</span>
-                <span><small>{activeUnit.kind} {activeUnitIndex + 1} of {course.units.length}</small><strong>{activeUnit.title}</strong></span>
+                <span><small>Course journey · {activeUnitIndex + 1} of {course.units.length}</small><strong>{activeUnit.title}</strong></span>
                 <ChevronDown />
               </summary>
               <nav aria-label="Course learning journey">{course.units.map((unit, index) => {
@@ -324,32 +411,65 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
                   if (nextTopicId) setActiveTopicId(nextTopicId);
                 }} type="button">
                   <span data-kind={unit.kind}>{unit.kind === "lecture" ? <PlayCircle /> : unit.kind === "quiz" ? <ClipboardCheck /> : <FilePenLine />}</span>
-                  <span><small>{String(index + 1).padStart(2, "0")} · {unit.kind}</small><strong>{unit.title}</strong></span>
+                  <span><small>{index + 1}. {unit.kind}</small><strong>{unit.title}</strong></span>
                 </button>;
               })}</nav>
             </details> : null}
-            <div className={styles.masteryHeading}><small>Adaptive mastery</small><h3>Your learning path</h3><p>One recommended step, with every alternative and prerequisite explained.</p></div>
+            <div className={styles.masteryHeading}><span><small>Adaptive path</small><em>{path?.items.length ?? 0} concepts</em></span><h2 id="course-outline-title">Learning path</h2></div>
             {path ? <AdaptiveMasteryTrail
               inspectedConceptId={inspectedConceptId}
               items={path.items}
               onSelect={(item, state) => {
-                setInspectedConceptId(item.concept_id);
+                setInspectedConceptId((current) => current === item.concept_id ? null : item.concept_id);
                 if (state !== "blocked" && item.topic_id) setActiveTopicId(item.topic_id);
               }}
               recommendedConceptId={recommendedConceptId}
               viewingConceptId={activePathItem?.concept_id ?? null}
             /> : null}
-            <details className={styles.topicDisclosure}><summary>Lecture outline <ChevronDown /></summary>
-            <nav aria-label="Course topics">{course.topics.map((topic, index) => {
-              const state = topicState(topic.id, progress);
-              return <button aria-current={topic.id === activeTopic.id ? "true" : undefined} key={topic.id} onClick={() => setActiveTopicId(topic.id)} type="button"><span>{String(index + 1).padStart(2, "0")}</span><span><strong>{topic.title}</strong><em>{state.replace("_", " ")}</em></span></button>;
-            })}</nav></details>
-            {course.resources.length ? <section className={styles.learnerResources}><header><small>From your instructor</small><h3>Course resources</h3></header>{course.resources.map((resource) => <button key={resource.id} onClick={() => void downloadResource(resource)} type="button"><FileText /><span><strong>{resource.filename}</strong><small>{resource.source_type.toUpperCase()}</small></span><Download /></button>)}</section> : null}
+            {course.resources.length ? <details className={styles.courseResources}><summary><BookOpenText />Course resources<ChevronDown /></summary><div>{course.resources.map((resource) => <button key={resource.id} onClick={() => void downloadResource(resource)} type="button"><FileText /><span><strong>{resource.filename}</strong><small>{resource.source_type.toUpperCase()}</small></span><Download /></button>)}</div></details> : null}
           </aside>
         </div>
       </main>
     </div>
   );
+}
+
+function SynchronizedTranscript({
+  activeWordIndex,
+  error,
+  loading,
+  words,
+}: {
+  activeWordIndex: number;
+  error: string | null;
+  loading: boolean;
+  words: LearnerTranscriptWord[];
+}) {
+  const activeWordRef = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    activeWordRef.current?.scrollIntoView({ block: "nearest" });
+  }, [activeWordIndex]);
+
+  return <details className={styles.transcript}>
+    <summary><span><BookOpenText /><strong>Transcript</strong></span><span>Follow along<ChevronDown /></span></summary>
+    <div className={styles.transcriptBody}>
+      {loading ? <p className={styles.transcriptStatus}>Loading transcript…</p> : null}
+      {!loading && error ? <p className={styles.transcriptStatus}>{error}</p> : null}
+      {!loading && !error && !words.length ? <p className={styles.transcriptStatus}>No timestamped transcript is available for this clip.</p> : null}
+      {!loading && !error && words.length ? <p aria-label="Clip transcript">
+        {words.map((word, index) => {
+          const active = index === activeWordIndex;
+          return <span
+            aria-current={active ? "true" : undefined}
+            data-active={active || undefined}
+            key={`${word.start_seconds}:${index}`}
+            ref={active ? activeWordRef : undefined}
+          >{word.text}{" "}</span>;
+        })}
+      </p> : null}
+    </div>
+  </details>;
 }
 
 function AdaptiveMasteryTrail({
@@ -381,44 +501,15 @@ function AdaptiveMasteryTrail({
           <span className={styles.masteryNodeCopy}>
             <small>{masteryStateLabel(state)}</small>
             <strong>{item.name}</strong>
-            <em>{masteryStateSummary(state, unmet)}</em>
           </span>
         </button>
         {expanded ? <div className={styles.masteryNodeDetail}>
+          <strong>{masteryStateSummary(state, unmet)}</strong>
           <p>{masteryNodeExplanation(state, unmet)}</p>
-          <span>{state === "blocked"
-            ? "Select any locked topic to understand its prerequisites."
-            : item.concept_id === viewingConceptId ? "Open in the current lesson" : "Select to open this teaching moment"}</span>
         </div> : null}
       </article>;
     })}
   </nav>;
-}
-
-function topicState(topicId: string, progress: LearnerProgress[]) {
-  const states = progress.filter((item) => item.topic_id === topicId).map((item) => item.state);
-  if (states.length && states.every((state) => state === "mastered")) return "mastered";
-  if (states.includes("struggling")) return "needs_review";
-  if (states.includes("practiced")) return "in_progress";
-  return "not_started";
-}
-
-function decisionTone(decision: LearnerRouteDecision | null) {
-  if (!decision) return "neutral";
-  if (decision.action === "advance" || decision.action === "complete") return "advance";
-  if (decision.action === "flag_instructor") return "attention";
-  return "support";
-}
-
-function focusLabel(
-  item: LearnerPathItem,
-  recommendedConceptId: string | null,
-  decision: LearnerRouteDecision | null,
-) {
-  if (decision?.action === "remediate" || decision?.action === "reinforce") {
-    return "Review recommended";
-  }
-  return item.concept_id === recommendedConceptId ? "Recommended next" : "Ready to learn";
 }
 
 function focusReason(item: LearnerPathItem, items: LearnerPathItem[]) {
@@ -451,7 +542,7 @@ function masteryStateLabel(state: LearnerPathVisualState) {
   if (state === "mastered") return "Mastered";
   if (state === "recommended") return "Recommended next";
   if (state === "review") return "Review recommended";
-  if (state === "ready") return "Ready too";
+  if (state === "ready") return "Ready";
   return "Coming later";
 }
 

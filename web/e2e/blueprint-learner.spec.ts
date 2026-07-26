@@ -49,6 +49,19 @@ test("learner Blueprint path explains remediation, advancement, and locked prere
         resources: [{ id: "resource-1", filename: "Vector notes.pdf", source_type: "pdf", size_bytes: 2400 }],
       } });
     }
+    if (path === "/videos/video-1/transcript") {
+      return route.fulfill({ json: {
+        text: "Vector direction combines magnitude with direction.",
+        words: [
+          { text: "Vector", start_seconds: 10, end_seconds: 10.8 },
+          { text: "direction", start_seconds: 10.8, end_seconds: 11.7 },
+          { text: "combines", start_seconds: 11.7, end_seconds: 12.4 },
+          { text: "magnitude", start_seconds: 12.4, end_seconds: 13.2 },
+          { text: "with", start_seconds: 13.2, end_seconds: 13.6 },
+          { text: "direction.", start_seconds: 13.6, end_seconds: 14.5 },
+        ],
+      } });
+    }
     if (path === `/learners/${learner.id}/courses/course-1/progress`) {
       return route.fulfill({ json: [
         { concept_id: "concept-1", name: "Vector direction", state: firstState, topic_id: "topic-1" },
@@ -93,36 +106,59 @@ test("learner Blueprint path explains remediation, advancement, and locked prere
 
   await page.goto("/learn/courses/course-1");
   await expect(page.getByRole("heading", { name: "Vector direction", level: 1 })).toBeVisible();
-  await expect(page.getByText("Lecture 1 of 2 · Vector language")).toBeVisible();
+  await expect(page.getByText("Lecture 1 of 2 · Vector language")).toHaveCount(0);
+  await expect(page.getByText("Current lesson", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Course learning journey")).toContainText("Vector language");
   await expect(page.getByLabel("Course learning journey")).toContainText("Forces in motion");
   await expect(page.getByText("Recommended next", { exact: true }).first()).toBeVisible();
   await expect(page.getByLabel("Adaptive learning path")).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Your learning path" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Learning path" })).toBeVisible();
   const masteryTrail = page.getByLabel("Adaptive mastery trail");
   await expect(masteryTrail.getByRole("button", { name: /Recommended next.*Vector direction/ })).toBeVisible();
-  await expect(masteryTrail.getByRole("button", { name: /Ready too.*Vector components/ })).toBeEnabled();
+  await expect(masteryTrail.getByRole("button", { name: /Ready.*Vector components/ })).toBeEnabled();
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true);
   const lockedNetForce = masteryTrail.getByRole("button", { name: /Coming later.*Net force/ });
   await expect(lockedNetForce).toBeEnabled();
   await lockedNetForce.click();
   await expect(masteryTrail.getByText("Complete Vector direction to unlock this topic.")).toBeVisible();
+  await page.getByText("Course materials", { exact: true }).click();
   await expect(page.getByText("Vector notes · page 2")).toBeVisible();
 
+  await expect(page.getByRole("heading", { name: "What makes a vector different from a scalar?" })).toHaveCount(0);
+  await page.getByText("Transcript", { exact: true }).click();
+  await expect(page.getByLabel("Clip transcript")).toContainText("Vector direction combines");
+  await page.locator("video").evaluate((video) => {
+    Object.defineProperty(video, "currentTime", { configurable: true, value: 10.4 });
+    video.dispatchEvent(new Event("timeupdate"));
+  });
+  await expect(page.getByLabel("Clip transcript").locator("[data-active]")).toHaveText("Vector");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.locator("video")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "What makes a vector different from a scalar?" })).toBeVisible();
+  const assessmentViewport = await page.evaluate(() => ({
+    innerHeight,
+    scrollHeight: document.documentElement.scrollHeight,
+  }));
+  expect(assessmentViewport.scrollHeight).toBeLessThanOrEqual(assessmentViewport.innerHeight);
   await page.getByLabel("Your answer").fill("It has magnitude");
   await page.getByRole("button", { name: "Unsure" }).click();
   await page.getByRole("button", { name: "Submit answer" }).click();
-  await expect(page.getByText("The answer missed direction, so the reviewed recovery clip is next.")).toBeVisible();
+  await expect(page.locator("form").getByText("The answer missed direction, so the reviewed recovery clip is next.")).toBeVisible();
   await expect(masteryTrail.getByRole("button", { name: /Review recommended.*Vector direction/ })).toBeVisible();
 
+  await page.getByRole("button", { name: "Review lesson" }).click();
+  await expect(page.locator("video")).toBeVisible();
+  await page.getByRole("button", { name: "Try the check again" }).click();
   await page.getByLabel("Your answer").fill("It has direction");
   await page.getByRole("button", { name: "Confident" }).click();
   await page.getByRole("button", { name: "Submit answer" }).click();
-  await expect(page.getByText(
+  await expect(page.locator("form").getByText(
     "Correct and confident; net force is now the next eligible concept.",
-  ).first()).toBeVisible();
+  )).toBeVisible();
+  await page.getByRole("button", { name: "Continue to next lesson" }).click();
   await expect(page.getByRole("heading", { name: "Net force", level: 1 })).toBeVisible();
-  await expect(page.getByText("Lecture 2 of 2 · Forces in motion")).toBeVisible();
-  await expect(masteryTrail.getByRole("button", { name: /Mastered.*Vector direction.*Review anytime/ })).toBeEnabled();
+  await expect(page.getByText("Lecture 2 of 2 · Forces in motion")).toHaveCount(0);
+  await expect(masteryTrail.getByRole("button", { name: /Mastered.*Vector direction/ })).toBeEnabled();
   await expect(masteryTrail.getByRole("button", { name: /Recommended next.*Net force/ })).toBeVisible();
   expect(enrollmentRequests).toBe(0);
 

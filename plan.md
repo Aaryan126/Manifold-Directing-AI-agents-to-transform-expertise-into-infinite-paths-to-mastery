@@ -338,7 +338,7 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 - Course Director context and typed proposals spanning both Course Flow and detailed Blueprint, using the same manual mutation services and independent `Accept / Edit / Dismiss` review.
 - Published learner course outline and progression driven by Course Flow, with lecture adaptive paths, standalone quizzes, assignments, prerequisites, and persisted unit progress.
 - One learner enrollment per published course—not per lecture—with portfolio cards that expose lecture/activity composition and a player that keeps the ordered multi-lecture Course Flow visible while routing within the active lecture.
-- One desktop adaptive mastery trail as the primary concept navigator: a single recommended-next step, visibly secondary ready alternatives, inspectable prerequisite-blocked concepts, reviewable mastered concepts, an above-lesson route rationale, and no duplicated horizontal concept order. Mobile-specific trail redesign is deferred.
+- One minimal desktop adaptive mastery trail as the primary concept navigator: a single recommended-next step, visibly secondary ready alternatives, inspectable prerequisite-blocked concepts, reviewable mastered concepts, a collapsed route-rationale disclosure, and no duplicated horizontal concept order. Clip and comprehension check are sequential one-screen activities, not simultaneous page sections; every clip exposes an optional playback-synchronized word transcript, and assessment results wait for an explicit continue/review action. Mobile-specific trail redesign is deferred.
 
 **Automated tests**
 
@@ -352,7 +352,7 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 - UI tests cover title-first course creation, named empty-container portfolio visibility, explicit lecture intake, contextual navigation, the settings popover, and source → meaning → target Course Flow relationships.
 - API/repository tests prove repeated use of one course-creation idempotency key returns the original course and creates no duplicate revision or conversation.
 - API and browser regressions prove one enrolled course payload can contain multiple ordered lecture units and that changing the active topic identifies the corresponding lecture without creating another enrollment.
-- Learner presentation and browser regressions prove mastery/access/recommendation states do not collapse into one lock flag, a mastered concept never renders as locked, ready alternatives are distinguishable from the recommendation, blocked nodes explain unmet prerequisites, and assessment results update the trail without a duplicate concept strip.
+- Learner presentation and browser regressions prove mastery/access/recommendation states do not collapse into one lock flag, a mastered concept never renders as locked, ready alternatives are distinguishable from the recommendation, blocked nodes explain unmet prerequisites, and assessment results update the trail without a duplicate concept strip. They also prove clip and assessment are mutually exclusive steps, timestamped transcript words track normalized clip playback, learner-controlled review/continue routing works, and both closed-transcript clip view and assessment view fit a supported 720px-tall desktop viewport without page scrolling.
 
 **Human test checklist**
 
@@ -367,7 +367,7 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 - [ ] Reject or edit an AI proposal and confirm no unintended artifact changes.
 - [ ] Confirm published learners continue seeing the previous revision while private edits are underway.
 - [ ] Confirm no empty, duplicated, disconnected, or stale nodes appear after generation, mutation, reload, or publication.
-- [ ] On desktop as a learner, confirm there is one concept path rather than duplicate horizontal/sidebar orders; inspect a recommended, ready, blocked, and mastered concept; confirm each state is understandable, blocked prerequisites are named, mastered concepts remain reviewable, and an assessment visibly changes the recommendation.
+- [ ] On desktop as a learner, confirm there is one minimal concept path rather than duplicate horizontal/sidebar orders; inspect a recommended, ready, blocked, and mastered concept; confirm each state is understandable, blocked prerequisites are named, and mastered concepts remain reviewable. Watch a clip, expand its transcript and confirm words follow playback, continue into the separate assessment without scrolling, submit one remediation and one advancement result, and confirm each waits for an explicit review/continue action while visibly updating the recommendation.
 
 ---
 

@@ -122,6 +122,12 @@ export type LearnerPath = {
   last_route_why: string | null;
 };
 
+export type LearnerTranscriptWord = {
+  text: string;
+  start_seconds: number;
+  end_seconds: number;
+};
+
 export type LearnerPathVisualState =
   | "mastered"
   | "recommended"
@@ -152,6 +158,34 @@ export function learnerPathVisualState(
     return item.state === "struggling" ? "review" : "recommended";
   }
   return item.eligible ? "ready" : "blocked";
+}
+
+export function clipTranscriptWords(
+  words: LearnerTranscriptWord[],
+  clipStartSeconds: number,
+  clipEndSeconds: number,
+) {
+  return words
+    .filter((word) => (
+      word.end_seconds > clipStartSeconds && word.start_seconds < clipEndSeconds
+    ))
+    .map((word) => ({
+      ...word,
+      start_seconds: Math.max(0, word.start_seconds - clipStartSeconds),
+      end_seconds: Math.min(
+        Math.max(0, clipEndSeconds - clipStartSeconds),
+        Math.max(0, word.end_seconds - clipStartSeconds),
+      ),
+    }));
+}
+
+export function activeTranscriptWordIndex(
+  words: LearnerTranscriptWord[],
+  playbackSeconds: number,
+) {
+  return words.findIndex((word) => (
+    playbackSeconds >= word.start_seconds && playbackSeconds < word.end_seconds
+  ));
 }
 
 export function nextTopicId(

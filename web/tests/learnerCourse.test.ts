@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  activeTranscriptWordIndex,
+  clipTranscriptWords,
   courseCompositionLabels,
   courseProgressPercent,
   learnerPathVisualState,
@@ -106,5 +108,23 @@ describe("learner course routing presentation", () => {
       eligible: false,
       state: "mastered",
     }, "concept-2")).toBe("mastered");
+  });
+
+  it("rebases a clip transcript and finds the word active at playback time", () => {
+    const words = clipTranscriptWords([
+      { text: "before", start_seconds: 8, end_seconds: 9 },
+      { text: "Learning", start_seconds: 10, end_seconds: 10.8 },
+      { text: "adapts", start_seconds: 10.8, end_seconds: 12 },
+      { text: "after", start_seconds: 13, end_seconds: 14 },
+    ], 10, 12);
+
+    expect(words.map((word) => word.text)).toEqual(["Learning", "adapts"]);
+    expect(words[0]?.start_seconds).toBe(0);
+    expect(words[0]?.end_seconds).toBeCloseTo(0.8);
+    expect(words[1]?.start_seconds).toBeCloseTo(0.8);
+    expect(words[1]?.end_seconds).toBe(2);
+    expect(activeTranscriptWordIndex(words, 0.4)).toBe(0);
+    expect(activeTranscriptWordIndex(words, 1.2)).toBe(1);
+    expect(activeTranscriptWordIndex(words, 2.1)).toBe(-1);
   });
 });

@@ -24,6 +24,7 @@ type ProviderVideoProps = {
   endSeconds: number;
   viewerId?: string | null;
   onClipComplete?: (watchedSeconds: number) => void;
+  onPlaybackTimeUpdate?: (elapsedSeconds: number) => void;
   clipId?: string;
   clipMaterializationStatus?: "source_reference" | "processing" | "ready" | "failed";
 };
@@ -37,6 +38,7 @@ export function ProviderVideo({
   endSeconds,
   viewerId,
   onClipComplete,
+  onPlaybackTimeUpdate,
   clipId,
   clipMaterializationStatus = "source_reference",
 }: ProviderVideoProps) {
@@ -58,6 +60,17 @@ export function ProviderVideo({
     if (player.currentTime < effectiveEndSeconds) return;
     player.pause();
     onClipComplete?.(Math.max(0, endSeconds - startSeconds));
+  };
+  const reportPlaybackTime = (currentTime: number) => {
+    const elapsed = usesMaterializedClip
+      ? currentTime
+      : currentTime - startSeconds;
+    onPlaybackTimeUpdate?.(
+      Math.min(
+        Math.max(0, endSeconds - startSeconds),
+        Math.max(0, elapsed),
+      ),
+    );
   };
 
   if (usesMuxClip && playback.playback_id) {
@@ -81,6 +94,10 @@ export function ProviderVideo({
         playbackId={playback.playback_id}
         streamType="on-demand"
         onEnded={() => onClipComplete?.(bounds.defaultDuration)}
+        onTimeUpdate={(event) => {
+          const currentTime = (event.target as { currentTime?: number } | null)?.currentTime;
+          if (typeof currentTime === "number") reportPlaybackTime(currentTime);
+        }}
       >
         <track default kind="captions" label="English" src={captions} srcLang="en" />
       </MuxPlayer>
@@ -101,7 +118,10 @@ export function ProviderVideo({
             start_seconds: effectiveStartSeconds,
             end_seconds: effectiveEndSeconds,
           })}
-      onTimeUpdate={(event) => stopAtBoundary(event.currentTarget)}
+      onTimeUpdate={(event) => {
+        reportPlaybackTime(event.currentTarget.currentTime);
+        stopAtBoundary(event.currentTarget);
+      }}
     >
       <track default kind="captions" label="English" src={captions} srcLang="en" />
     </video>
