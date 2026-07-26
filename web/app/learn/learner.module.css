@@ -60,7 +60,7 @@
 .routeReason[open] summary svg:last-child { transform: rotate(180deg); }
 .routeReason > p { background: #f3f1ec; border-radius: 8px; color: #5f5c63; font-size: 13px; line-height: 1.5; margin: 8px 0 0; max-width: 720px; padding: 10px 12px; }
 .player { background: #111; border-radius: 12px; line-height: 0; margin-inline: auto; overflow: hidden; width: 100%; }
-.player > :global(.clipPreview) { aspect-ratio: 16 / 9; display: block; height: auto; object-fit: contain; width: 100%; }
+.player > :global(.clipPreview) { aspect-ratio: 16 / 9; display: block; height: auto; max-height: none; object-fit: contain; width: 100%; }
 .noMedia { align-items: center; color: rgb(255 255 255 / 68%); display: flex; justify-content: center; min-height: 420px; }
 .transcript { background: #fff; border: 1px solid #dedbd3; border-radius: 10px; margin-top: 12px; overflow: hidden; }
 .transcript > summary { align-items: center; cursor: pointer; display: flex; justify-content: space-between; list-style: none; min-height: 48px; padding: 0 15px; }

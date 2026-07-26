@@ -302,6 +302,8 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
     .boundingBox();
   expect(mediaBounds).not.toBeNull();
   expect(Math.abs(mediaBounds!.height - playerBounds!.height)).toBeLessThanOrEqual(2);
+  expect(mediaBounds!.width / mediaBounds!.height).toBeCloseTo(16 / 9, 2);
+  expect(mediaBounds!.height).toBeGreaterThan(mediaBounds!.width / 2);
   await expect(page.getByText("Practice with an approved question")).toBeVisible();
 
   await expect(page.locator(".lucide-sparkles")).toHaveCount(0);
