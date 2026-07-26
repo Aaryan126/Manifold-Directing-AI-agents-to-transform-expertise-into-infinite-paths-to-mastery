@@ -57,6 +57,22 @@ async def test_review_mode_starts_with_retrieval_instead_of_passive_rewatch() ->
 
 
 @pytest.mark.anyio
+async def test_learn_new_prefers_an_eligible_alternative_to_the_current_path() -> None:
+    fixture = LearningFixture(two_concepts=True)
+    alternative = fixture.path.items[1]
+
+    await fixture.service.create_session(
+        fixture.learner_id,
+        fixture.course_id,
+        mode="learn_new",
+        idempotency_key="new-concept-session",
+    )
+
+    assert fixture.repository.created_steps[0]["concept_id"] == alternative.concept_id
+    assert fixture.repository.created_steps[0]["clip_id"] == alternative.clip_ids[0]
+
+
+@pytest.mark.anyio
 async def test_strengthen_mode_requires_real_difficulty_evidence() -> None:
     fixture = LearningFixture()
     with pytest.raises(LearningValidationError, match="learning mode is unavailable"):

@@ -705,7 +705,11 @@ class LearningService:
                 )
             return preferred
         if mode == "learn_new":
-            return next((item for item in actionable if item.state.value == "not_started"), None)
+            new_items = [item for item in actionable if item.state.value == "not_started"]
+            return next(
+                (item for item in new_items if not item.current),
+                new_items[0] if new_items else None,
+            )
         if mode == "strengthen_weak_areas":
             return next(
                 (
