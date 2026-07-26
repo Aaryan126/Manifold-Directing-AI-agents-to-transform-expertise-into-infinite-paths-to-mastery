@@ -59,8 +59,7 @@ class PostgresLearningRepository:
             row = await (
                 await conn.execute(
                     """
-                    select orientation_status, entry_choice,
-                           default_time_budget_minutes, immediate_goal
+                    select orientation_status, entry_choice
                     from learner_course_preferences
                     where learner_id = %s and course_id = %s and revision_id = %s
                     """,
@@ -68,16 +67,10 @@ class PostgresLearningRepository:
                 )
             ).fetchone()
         if row is None:
-            return Orientation(False, None, None, None)
+            return Orientation(False, None)
         return Orientation(
             completed=str(row["orientation_status"]) == "completed",
             entry_choice=str(row["entry_choice"]) if row["entry_choice"] else None,
-            default_time_budget_minutes=(
-                int(row["default_time_budget_minutes"])
-                if row["default_time_budget_minutes"] is not None
-                else None
-            ),
-            immediate_goal=str(row["immediate_goal"]) if row["immediate_goal"] else None,
         )
 
     async def complete_orientation(
@@ -85,22 +78,17 @@ class PostgresLearningRepository:
         context: LearnerRevision,
         *,
         entry_choice: str,
-        time_budget_minutes: int | None,
-        immediate_goal: str | None,
     ) -> Orientation:
         async with pooled_connection(self._database_url) as conn:
             await conn.execute(
                 """
                 insert into learner_course_preferences (
                   learner_id, course_id, revision_id, orientation_status,
-                  entry_choice, default_time_budget_minutes, immediate_goal,
-                  orientation_completed_at
-                ) values (%s, %s, %s, 'completed', %s, %s, %s, now())
+                  entry_choice, orientation_completed_at
+                ) values (%s, %s, %s, 'completed', %s, now())
                 on conflict (learner_id, course_id, revision_id) do update
                 set orientation_status = 'completed',
                     entry_choice = excluded.entry_choice,
-                    default_time_budget_minutes = excluded.default_time_budget_minutes,
-                    immediate_goal = excluded.immediate_goal,
                     orientation_completed_at = coalesce(
                       learner_course_preferences.orientation_completed_at, now()
                     ),
@@ -111,8 +99,6 @@ class PostgresLearningRepository:
                     context.course_id,
                     context.revision_id,
                     entry_choice,
-                    time_budget_minutes,
-                    immediate_goal,
                 ),
             )
         return await self.orientation(context)
@@ -220,9 +206,7 @@ class PostgresLearningRepository:
         self,
         context: LearnerRevision,
         *,
-        goal: str,
-        goal_note: str | None,
-        budget_minutes: int,
+        mode: str,
         idempotency_key: str,
         steps: tuple[dict[str, object], ...],
     ) -> StudySession:
@@ -259,18 +243,16 @@ class PostgresLearningRepository:
                     await conn.execute(
                         """
                         insert into learner_study_sessions (
-                          learner_id, course_id, revision_id, status, goal,
-                          goal_note, budget_minutes, idempotency_key
-                        ) values (%s, %s, %s, 'planned', %s, %s, %s, %s)
+                          learner_id, course_id, revision_id, status, mode,
+                          idempotency_key
+                        ) values (%s, %s, %s, 'planned', %s, %s)
                         returning *
                         """,
                         (
                             context.learner_id,
                             context.course_id,
                             context.revision_id,
-                            goal,
-                            goal_note,
-                            budget_minutes,
+                            mode,
                             idempotency_key,
                         ),
                     )
@@ -329,8 +311,9 @@ class PostgresLearningRepository:
         context: LearnerRevision,
         session_id: UUID,
         *,
-        budget_minutes: int,
+        mode: str,
         steps: tuple[dict[str, object], ...],
+        finish_requested: bool = False,
     ) -> StudySession | None:
         async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
             row = await (
@@ -365,10 +348,12 @@ class PostgresLearningRepository:
                 await conn.execute(
                     """
                     update learner_study_sessions
-                    set plan_version = %s, budget_minutes = %s, updated_at = now()
+                    set plan_version = %s, mode = %s,
+                        finish_requested = finish_requested or %s,
+                        updated_at = now()
                     where id = %s returning *
                     """,
-                    (next_version, budget_minutes, session_id),
+                    (next_version, mode, finish_requested, session_id),
                 )
             ).fetchone()
             if updated is None:
@@ -397,7 +382,7 @@ class PostgresLearningRepository:
             row = await (
                 await conn.execute(
                     """
-                    select step.*, session.goal, session.budget_minutes
+                    select step.*, session.mode
                     from learner_session_steps step
                     join learner_study_sessions session on session.id = step.session_id
                     where step.id = %s and session.id = %s
@@ -415,32 +400,6 @@ class PostgresLearningRepository:
                 )
             ).fetchone()
         return dict(row) if row else None
-
-    async def completed_session_minutes(
-        self,
-        context: LearnerRevision,
-        session_id: UUID,
-    ) -> int:
-        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
-            row = await (
-                await conn.execute(
-                    """
-                    select coalesce(sum(step.estimated_minutes), 0) as minutes
-                    from learner_session_steps step
-                    join learner_study_sessions session on session.id = step.session_id
-                    where session.id = %s and session.learner_id = %s
-                      and session.course_id = %s and session.revision_id = %s
-                      and step.status = 'completed'
-                    """,
-                    (
-                        session_id,
-                        context.learner_id,
-                        context.course_id,
-                        context.revision_id,
-                    ),
-                )
-            ).fetchone()
-        return int(row["minutes"]) if row else 0
 
     async def complete_step(
         self,
@@ -1473,8 +1432,8 @@ class PostgresLearningRepository:
                 insert into learner_session_steps (
                   session_id, plan_version, ordinal, kind, purpose,
                   concept_id, clip_id, question_id, source_id,
-                  estimated_minutes, reason_code, evidence_snapshot
-                ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                  reason_code, evidence_snapshot
+                ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                 """,
                 (
                     session_id,
@@ -1486,7 +1445,6 @@ class PostgresLearningRepository:
                     step.get("clip_id"),
                     step.get("question_id"),
                     step.get("source_id"),
-                    step["estimated_minutes"],
                     step["reason_code"],
                     Jsonb(step.get("evidence_snapshot", {})),
                 ),
@@ -1532,7 +1490,6 @@ class PostgresLearningRepository:
                 question_id=UUID(str(row["question_id"])) if row["question_id"] else None,
                 source_id=UUID(str(row["source_id"])) if row["source_id"] else None,
                 title=str(row["title"]),
-                estimated_minutes=int(row["estimated_minutes"]),
                 reason_code=str(row["reason_code"]),
                 reason=_reason(str(row["reason_code"]), str(row["concept_name"] or "")),
                 status=str(row["status"]),
@@ -1589,9 +1546,8 @@ def _session_from_row(row: dict[str, Any], steps: tuple[SessionStep, ...]) -> St
         course_id=UUID(str(row["course_id"])),
         revision_id=UUID(str(row["revision_id"])),
         status=str(row["status"]),
-        goal=str(row["goal"]),
-        goal_note=str(row["goal_note"]) if row["goal_note"] else None,
-        budget_minutes=int(row["budget_minutes"]),
+        mode=str(row["mode"]),
+        finish_requested=bool(row["finish_requested"]),
         plan_version=int(row["plan_version"]),
         steps=steps,
     )
@@ -1623,9 +1579,16 @@ def _help_from_row(row: dict[str, Any]) -> HelpRequest:
 def _reason(code: str, concept_name: str) -> str:
     return {
         "recommended_current": f"Continue with {concept_name}, your strongest reviewed next step.",
+        "learn_new": f"Learn {concept_name}, an eligible concept you have not started.",
+        "strengthen_weak_area": (
+            f"Strengthen {concept_name} because your evidence still shows uncertainty."
+        ),
         "repair_prerequisite": f"Repair the reviewed foundation for {concept_name}.",
         "reinforce_confidence": f"Reinforce {concept_name} before advancing.",
         "due_review": f"Review {concept_name} because its evidence is due for retrieval.",
+        "review_retrieval": (
+            f"Retrieve {concept_name} from memory before reopening the explanation."
+        ),
         "practice_after_watch": (
             f"Check your understanding of {concept_name} with an approved question."
         ),

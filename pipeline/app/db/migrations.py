@@ -55,6 +55,7 @@ _POST_BASELINE_MIGRATIONS = frozenset(
         "021_multi_lecture_course_flow.sql",
         "022_course_creation_idempotency.sql",
         "023_agentic_learner_experience.sql",
+        "024_intent_driven_learning_modes.sql",
     }
 )
 

@@ -23,20 +23,16 @@ UserContext = Annotated[UUID, Header(alias="X-User-ID")]
 
 class OrientationRequest(BaseModel):
     entry_choice: str
-    time_budget_minutes: int | None = Field(default=None, ge=5, le=120)
-    immediate_goal: str | None = Field(default=None, max_length=1000)
 
 
 class SessionRequest(BaseModel):
-    goal: str = "continue"
-    goal_note: str | None = Field(default=None, max_length=1000)
-    budget_minutes: int = Field(default=20, ge=5, le=120)
+    mode: str = "continue_path"
     idempotency_key: str = Field(min_length=1, max_length=200)
     concept_id: UUID | None = None
 
 
-class BudgetRequest(BaseModel):
-    budget_minutes: int = Field(ge=5, le=120)
+class PlanUpdateRequest(BaseModel):
+    mode: str | None = None
     concept_id: UUID | None = None
 
 
@@ -82,8 +78,17 @@ class OrientationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     completed: bool
     entry_choice: str | None
-    default_time_budget_minutes: int | None
-    immediate_goal: str | None
+
+
+class LearningModeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    key: str
+    title: str
+    description: str
+    available: bool
+    recommended: bool
+    reason: str | None
+    disabled_reason: str | None
 
 
 class SessionStepResponse(BaseModel):
@@ -98,7 +103,6 @@ class SessionStepResponse(BaseModel):
     question_id: UUID | None
     source_id: UUID | None
     title: str
-    estimated_minutes: int
     reason_code: str
     reason: str
     status: str
@@ -110,9 +114,8 @@ class StudySessionResponse(BaseModel):
     course_id: UUID
     revision_id: UUID
     status: str
-    goal: str
-    goal_note: str | None
-    budget_minutes: int
+    mode: str
+    finish_requested: bool
     plan_version: int
     steps: list[SessionStepResponse]
 
@@ -190,6 +193,7 @@ class HelpResponse(BaseModel):
 class WorkspaceResponse(BaseModel):
     revision_id: UUID
     orientation: OrientationResponse
+    modes: list[LearningModeResponse]
     session: StudySessionResponse | None
     placement: PlacementResponse | None
     mastery: MasteryResponse
@@ -237,8 +241,6 @@ async def complete_orientation(
             user_id,
             course_id,
             entry_choice=request.entry_choice,
-            time_budget_minutes=request.time_budget_minutes,
-            immediate_goal=request.immediate_goal,
         )
     except LearningValidationError as exc:
         _raise(exc)
@@ -255,9 +257,7 @@ async def create_session(
         return await service.create_session(
             user_id,
             course_id,
-            goal=request.goal,
-            goal_note=request.goal_note,
-            budget_minutes=request.budget_minutes,
+            mode=request.mode,
             idempotency_key=request.idempotency_key,
             concept_id=request.concept_id,
         )
@@ -282,13 +282,13 @@ async def start_session(
 
 
 @router.put(
-    "/learn/courses/{course_id}/sessions/{session_id}/budget",
+    "/learn/courses/{course_id}/sessions/{session_id}/plan",
     response_model=StudySessionResponse,
 )
 async def adjust_session(
     course_id: UUID,
     session_id: UUID,
-    request: BudgetRequest,
+    request: PlanUpdateRequest,
     user_id: UserContext,
     service: LearningServiceDependency,
 ) -> StudySession:
@@ -297,9 +297,25 @@ async def adjust_session(
             user_id,
             course_id,
             session_id,
-            budget_minutes=request.budget_minutes,
+            mode=request.mode,
             concept_id=request.concept_id,
         )
+    except LearningValidationError as exc:
+        _raise(exc)
+
+
+@router.post(
+    "/learn/courses/{course_id}/sessions/{session_id}/finish",
+    response_model=StudySessionResponse,
+)
+async def finish_session(
+    course_id: UUID,
+    session_id: UUID,
+    user_id: UserContext,
+    service: LearningServiceDependency,
+) -> StudySession:
+    try:
+        return await service.finish_session(user_id, course_id, session_id)
     except LearningValidationError as exc:
         _raise(exc)
 

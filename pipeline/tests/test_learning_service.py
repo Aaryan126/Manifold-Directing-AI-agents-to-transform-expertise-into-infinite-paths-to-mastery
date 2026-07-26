@@ -3,7 +3,13 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.assessments.models import AnswerGrade
-from app.learning.models import LearnerRevision, PlacementCheck, StudySession
+from app.learning.models import (
+    LearnerRevision,
+    MasteryReview,
+    PlacementCheck,
+    ReviewConcept,
+    StudySession,
+)
 from app.learning.service import LearningService, LearningValidationError
 from app.routing.models import (
     LearnerPath,
@@ -22,15 +28,77 @@ async def test_session_plan_uses_only_exact_concept_reviewed_artifacts() -> None
     session = await fixture.service.create_session(
         fixture.learner_id,
         fixture.course_id,
-        goal="continue",
-        goal_note=None,
-        budget_minutes=20,
+        mode="continue_path",
         idempotency_key="session-1",
     )
 
     assert [step["clip_id"] for step in fixture.repository.created_steps[:1]] == [fixture.clip_id]
     assert fixture.repository.created_steps[1]["question_id"] == fixture.question_id
-    assert session.budget_minutes == 20
+    assert session.mode == "continue_path"
+    assert all("estimated_minutes" not in step for step in fixture.repository.created_steps)
+
+
+@pytest.mark.anyio
+async def test_review_mode_starts_with_retrieval_instead_of_passive_rewatch() -> None:
+    fixture = LearningFixture(state=MasteryState.PRACTICED)
+
+    await fixture.service.create_session(
+        fixture.learner_id,
+        fixture.course_id,
+        mode="review_learned",
+        idempotency_key="review-session",
+    )
+
+    assert [step["kind"] for step in fixture.repository.created_steps] == [
+        "question",
+        "reflect",
+    ]
+    assert fixture.repository.created_steps[0]["reason_code"] == "review_retrieval"
+
+
+@pytest.mark.anyio
+async def test_strengthen_mode_requires_real_difficulty_evidence() -> None:
+    fixture = LearningFixture()
+    with pytest.raises(LearningValidationError, match="learning mode is unavailable"):
+        await fixture.service.create_session(
+            fixture.learner_id,
+            fixture.course_id,
+            mode="strengthen_weak_areas",
+            idempotency_key="no-weak-evidence",
+        )
+
+    struggling = LearningFixture(state=MasteryState.STRUGGLING)
+    session = await struggling.service.create_session(
+        struggling.learner_id,
+        struggling.course_id,
+        mode="strengthen_weak_areas",
+        idempotency_key="weak-evidence",
+    )
+
+    assert session.mode == "strengthen_weak_areas"
+    assert struggling.repository.created_steps[0]["reason_code"] == "strengthen_weak_area"
+
+
+@pytest.mark.anyio
+async def test_mode_recommendation_prioritizes_struggling_evidence() -> None:
+    fixture = LearningFixture(state=MasteryState.STRUGGLING)
+    mastery = await fixture.repository.mastery_review(
+        LearnerRevision(fixture.learner_id, fixture.course_id, fixture.revision_id),
+        (
+            {
+                "concept_id": fixture.concept_id,
+                "name": "Vector direction",
+                "state": "struggling",
+                "coverage_state": "complete",
+            },
+        ),
+    )
+
+    modes = fixture.service._mode_options(fixture.path, mastery, None)
+
+    recommended = next(mode for mode in modes if mode.recommended)
+    assert recommended.key == "strengthen_weak_areas"
+    assert next(mode for mode in modes if mode.key == "review_learned").available
 
 
 @pytest.mark.anyio
@@ -41,9 +109,7 @@ async def test_content_incomplete_or_blocked_concept_is_not_actionable() -> None
         await fixture.service.create_session(
             fixture.learner_id,
             fixture.course_id,
-            goal="continue",
-            goal_note=None,
-            budget_minutes=20,
+            mode="continue_path",
             idempotency_key="session-incomplete",
         )
 
@@ -52,9 +118,7 @@ async def test_content_incomplete_or_blocked_concept_is_not_actionable() -> None
         await fixture.service.create_session(
             fixture.learner_id,
             fixture.course_id,
-            goal="continue",
-            goal_note=None,
-            budget_minutes=20,
+            mode="continue_path",
             idempotency_key="session-blocked",
             concept_id=fixture.concept_id,
         )
@@ -129,6 +193,7 @@ class LearningFixture:
         actionable: bool = True,
         eligible: bool = True,
         two_concepts: bool = False,
+        state: MasteryState = MasteryState.NOT_STARTED,
     ) -> None:
         self.learner_id = uuid4()
         self.course_id = uuid4()
@@ -146,6 +211,7 @@ class LearningFixture:
                 actionable=actionable,
                 eligible=eligible,
                 current=actionable and eligible,
+                state=state,
             )
         ]
         if two_concepts:
@@ -206,22 +272,19 @@ class MemoryLearningRepository:
         self,
         context: LearnerRevision,
         *,
-        goal: str,
-        goal_note: str | None,
-        budget_minutes: int,
+        mode: str,
         idempotency_key: str,
         steps: tuple[dict[str, object], ...],
     ) -> StudySession:
-        del context, goal_note, idempotency_key
+        del context, idempotency_key
         self.created_steps = list(steps)
         return StudySession(
             id=self.fixture.session_id,
             course_id=self.fixture.course_id,
             revision_id=self.fixture.revision_id,
             status="planned",
-            goal=goal,
-            goal_note=None,
-            budget_minutes=budget_minutes,
+            mode=mode,
+            finish_requested=False,
             plan_version=1,
             steps=(),
         )
@@ -278,9 +341,8 @@ class MemoryLearningRepository:
             course_id=self.fixture.course_id,
             revision_id=self.fixture.revision_id,
             status="active",
-            goal="continue",
-            goal_note=None,
-            budget_minutes=20,
+            mode="continue_path",
+            finish_requested=False,
             plan_version=1,
             steps=(),
         )
@@ -288,6 +350,28 @@ class MemoryLearningRepository:
     async def replace_pending_steps(self, *args: object, **kwargs: object) -> None:
         del args, kwargs
         return None
+
+    async def mastery_review(
+        self,
+        context: LearnerRevision,
+        path_rows: tuple[dict[str, object], ...],
+    ) -> MasteryReview:
+        del context
+        return MasteryReview(
+            concepts=tuple(
+                ReviewConcept(
+                    concept_id=row["concept_id"],
+                    name=str(row["name"]),
+                    state=str(row["state"]),
+                    access_state="ready",
+                    coverage_state=str(row["coverage_state"]),
+                    due_at=None,
+                    mismatch=None,
+                )
+                for row in path_rows
+            ),
+            recent_routes=(),
+        )
 
 
 class MemoryRoutingService:
@@ -344,13 +428,14 @@ def _path_item(
     actionable: bool = True,
     eligible: bool = True,
     current: bool = False,
+    state: MasteryState = MasteryState.NOT_STARTED,
 ) -> LearnerPathItem:
     return LearnerPathItem(
         concept_id=concept_id,
         name=f"Concept {str(concept_id)[:4]}",
         description="Reviewed concept",
         sequence_rank=1,
-        state=MasteryState.NOT_STARTED,
+        state=state,
         topic_id=uuid4(),
         topic_title="Reviewed topic",
         prerequisite_ids=(),

@@ -382,7 +382,7 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 - Replace client-supplied correctness with authenticated server-side grading and atomic attempt/mastery/route persistence.
 - Add revisioned instructor-reviewed hint ladders with independent `Accept / Edit / Dismiss`; expose them to learners only after publication.
 - Add persisted learner orientation, one resumable policy-aligned placement check per revision, study sessions and concrete steps, reflections, deterministic review schedules, and structured help requests without duplicating existing attempts, routes, mastery, watch events, or unit progress.
-- Build a deterministic session planner from the learner's goal, soft time budget, current concept, prerequisites, recent attempts, confidence mismatch, last route, due review, and exact reviewed artifacts. Starting/replanning the plan must change real activity navigation.
+- Build a deterministic session planner around four intent modes: `Continue my path`, `Learn something new`, `Strengthen weak areas`, and `Review what I learned`. Recommend one from the learner's current concept, prerequisites, recent attempts, confidence mismatch, last route, due review, and exact reviewed artifacts; explain disabled modes honestly. Starting or changing a mode/focus must change real activity navigation, and each session ends after one evidence loop plus reflection rather than a time budget.
 - Redesign the desktop in-course workspace as one calm continuous session with one primary activity, compact active plan, retained mastery trail, on-demand Learning Guide, and an in-course mastery/review drawer. `/learn` remains a course portfolio.
 - Give every Guide action a real reviewed-artifact, persisted-evidence, plan, reflection, or help-request result. Internal identifiers and instructor-only/unpublished evidence never appear.
 - Surface `I’m stuck` requests in Teacher Command Center and course evidence/attention views. Any AI-proposed repair remains private and independently `Accept / Edit / Dismiss` reviewed before publication.
@@ -390,8 +390,8 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 **Automated tests**
 
 - Migration/backward-compatibility, session create/resume/idempotency/completion/revision isolation, placement reviewed-question policy and insufficient coverage, deterministic planning, content readiness, authenticated atomic grading, hint review/publication, reflection/mastery separation, review cadence, help-request attention, privacy/ownership, and historical-record preservation.
-- Frontend tests for orientation, placement, real plan navigation, time adjustment, Guide action availability/effects, all session stages and routing outcomes, mastery/review, missing content, help evidence disclosure, transcript timing, reload resume, loading/empty/error/retry states, and no duplicated recommendation/navigation.
-- Real Chromium journeys for first placement, a 20-minute session, synchronized clip transcript, recommendation evidence, remediation, advancement, alternative eligible concept, blocked concept inspection, `I’m stuck`, persisted reload resume, keyboard-only completion, WCAG 2.2 A/AA, supported-desktop overflow, and unpublished/instructor-only isolation.
+- Frontend tests for orientation, placement, recommended/selectable/disabled learning modes, real plan navigation, mode/focus changes, absence of learner-facing time, Guide action availability/effects, all session stages and routing outcomes, mastery/review, missing content, help evidence disclosure, transcript timing, reload resume, loading/empty/error/retry states, and no duplicated recommendation/navigation.
+- Real Chromium journeys for first placement, all four learning modes, synchronized clip transcript, recommendation evidence, remediation, advancement, alternative eligible concept, disabled-mode and blocked-concept inspection, `I’m stuck`, persisted reload resume, keyboard-only completion, WCAG 2.2 A/AA, supported-desktop overflow, and unpublished/instructor-only isolation.
 - Complete repository verification: Ruff, strict MyPy, full Pytest, ESLint, strict TypeScript, all frontend/shared tests, production Next build, full Playwright, migration-bearing Docker rebuild, container health, and HTTP health checks.
 
 **Human test checklist**
@@ -399,10 +399,11 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 - [ ] Open a course for the first time and confirm the Learning Guide offers the recommended path, placement, and foundations without becoming a generic chat screen.
 - [ ] Complete and reload midway through a valid reviewed placement check; confirm it resumes exactly once and the final summary explains every skipped, retained, and recommended concept.
 - [ ] Open a course without sufficient reviewed placement coverage and confirm Manifold explains the limitation honestly and continues with the reviewed path.
-- [ ] Start a 20-minute session and confirm every planned step has a real duration, reason, and destination; adjust the remaining time and confirm only pending steps change.
+- [ ] Confirm Manifold recommends one of the four learning modes with a reason grounded in the learner’s evidence, keeps other valid modes selectable, and explains why unavailable modes cannot yet be used.
+- [ ] Start each available mode and confirm it produces a distinct real evidence loop with no learner-facing budget, minute estimate, clock framing, or endless activity feed.
 - [ ] Watch local/source-range and, when configured, Mux clips; seek, pause, and change playback speed while confirming transcript words follow the actual spoken audio.
 - [ ] Use every available Learning Guide action and confirm each opens an approved artifact, persisted evidence explanation, hint, question, plan change, reflection, or help flow—never placeholder text.
-- [ ] Select an eligible alternative concept and confirm the active session replans without breaking prerequisites; inspect a blocked concept and confirm it cannot be opened as eligible.
+- [ ] Change mode or select an eligible alternative concept and confirm only pending work replans without breaking prerequisites; inspect a blocked concept and confirm it cannot be opened as eligible.
 - [ ] Submit an incorrect answer and confirm approved remediation updates the session plan and route explanation; submit a confident-correct answer and confirm advancement plus review scheduling.
 - [ ] Open mastery/review and verify mastered, practiced, struggling, ready, blocked, due, mismatch, and recent-route states agree with the learner’s actual evidence.
 - [ ] Complete a session reflection and confirm it appears after reload but does not independently change mastery.

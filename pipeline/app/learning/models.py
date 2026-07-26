@@ -14,8 +14,17 @@ class LearnerRevision:
 class Orientation:
     completed: bool
     entry_choice: str | None
-    default_time_budget_minutes: int | None
-    immediate_goal: str | None
+
+
+@dataclass(frozen=True)
+class LearningMode:
+    key: str
+    title: str
+    description: str
+    available: bool
+    recommended: bool
+    reason: str | None
+    disabled_reason: str | None
 
 
 @dataclass(frozen=True)
@@ -30,7 +39,6 @@ class SessionStep:
     question_id: UUID | None
     source_id: UUID | None
     title: str
-    estimated_minutes: int
     reason_code: str
     reason: str
     status: str
@@ -42,9 +50,8 @@ class StudySession:
     course_id: UUID
     revision_id: UUID
     status: str
-    goal: str
-    goal_note: str | None
-    budget_minutes: int
+    mode: str
+    finish_requested: bool
     plan_version: int
     steps: tuple[SessionStep, ...]
 

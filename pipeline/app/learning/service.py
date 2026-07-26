@@ -1,4 +1,4 @@
-import math
+from datetime import UTC, datetime
 from uuid import UUID
 
 from app.assessments.service import AssessmentService, AssessmentValidationError
@@ -6,6 +6,7 @@ from app.learning.models import (
     ClipTranscript,
     HelpRequest,
     LearnerRevision,
+    LearningMode,
     MasteryReview,
     Orientation,
     PlacementCheck,
@@ -46,6 +47,7 @@ class LearningService:
         session = await self._repository.active_session(context)
         placement = await self._repository.placement(context)
         mastery = await self._repository.mastery_review(context, _path_rows(path))
+        modes = self._mode_options(path, mastery, session)
         guide_actions = list(self._guide_actions(path, session))
         active_step = (
             next((step for step in session.steps if step.status == "active"), None)
@@ -66,6 +68,7 @@ class LearningService:
         return {
             "revision_id": context.revision_id,
             "orientation": orientation,
+            "modes": modes,
             "session": session,
             "placement": placement,
             "mastery": mastery,
@@ -86,19 +89,13 @@ class LearningService:
         course_id: UUID,
         *,
         entry_choice: str,
-        time_budget_minutes: int | None,
-        immediate_goal: str | None,
     ) -> Orientation:
         if entry_choice not in {"recommended", "placement", "foundations"}:
             raise LearningValidationError("Choose recommended, placement, or foundations.")
-        if time_budget_minutes is not None and not 5 <= time_budget_minutes <= 120:
-            raise LearningValidationError("Time budget must be between 5 and 120 minutes.")
         context = await self.context(learner_id, course_id)
         return await self._repository.complete_orientation(
             context,
             entry_choice=entry_choice,
-            time_budget_minutes=time_budget_minutes,
-            immediate_goal=_clean_note(immediate_goal),
         )
 
     async def create_session(
@@ -106,37 +103,31 @@ class LearningService:
         learner_id: UUID,
         course_id: UUID,
         *,
-        goal: str,
-        goal_note: str | None,
-        budget_minutes: int,
+        mode: str,
         idempotency_key: str,
         concept_id: UUID | None = None,
     ) -> StudySession:
-        if goal not in {"continue", "review", "get_unstuck", "custom"}:
-            raise LearningValidationError("Unsupported study-session goal.")
-        if not 5 <= budget_minutes <= 120:
-            raise LearningValidationError("Time budget must be between 5 and 120 minutes.")
+        self._validate_mode(mode)
         if not idempotency_key.strip():
             raise LearningValidationError("An idempotency key is required.")
         context = await self.context(learner_id, course_id)
         path = await self._path(learner_id, course_id)
+        mastery = await self._repository.mastery_review(context, _path_rows(path))
         steps = await self._plan(
             context,
             path,
-            goal=goal,
-            budget_minutes=budget_minutes,
+            mastery,
+            mode=mode,
             preferred_concept_id=concept_id,
         )
         if not steps:
             raise LearningValidationError(
-                "A session cannot be assembled because no eligible concept has "
-                "complete reviewed content.",
+                "That learning mode is unavailable because no eligible concept has "
+                "the required reviewed evidence and content.",
             )
         return await self._repository.create_session(
             context,
-            goal=goal,
-            goal_note=_clean_note(goal_note),
-            budget_minutes=budget_minutes,
+            mode=mode,
             idempotency_key=idempotency_key.strip(),
             steps=steps,
         )
@@ -159,31 +150,71 @@ class LearningService:
         course_id: UUID,
         session_id: UUID,
         *,
-        budget_minutes: int,
+        mode: str | None = None,
         concept_id: UUID | None = None,
     ) -> StudySession:
-        if not 5 <= budget_minutes <= 120:
-            raise LearningValidationError("Time budget must be between 5 and 120 minutes.")
         context = await self.context(learner_id, course_id)
         path = await self._path(learner_id, course_id)
+        mastery = await self._repository.mastery_review(context, _path_rows(path))
         current = await self._repository.active_session(context)
         if current is None or current.id != session_id:
             raise LearningValidationError("Active study session was not found.")
+        selected_mode = mode or current.mode
+        self._validate_mode(selected_mode)
         steps = await self._plan(
             context,
             path,
-            goal=current.goal,
-            budget_minutes=budget_minutes,
+            mastery,
+            mode=selected_mode,
             preferred_concept_id=concept_id,
         )
+        if not steps:
+            raise LearningValidationError(
+                "That learning mode is unavailable for the current reviewed evidence.",
+            )
         updated = await self._repository.replace_pending_steps(
             context,
             session_id,
-            budget_minutes=budget_minutes,
+            mode=selected_mode,
             steps=steps,
         )
         if updated is None:
             raise LearningValidationError("Study session could not be adjusted.")
+        return updated
+
+    async def finish_session(
+        self,
+        learner_id: UUID,
+        course_id: UUID,
+        session_id: UUID,
+    ) -> StudySession:
+        context = await self.context(learner_id, course_id)
+        current = await self._repository.active_session(context)
+        if current is None or current.id != session_id:
+            raise LearningValidationError("Active study session was not found.")
+        if current.status == "reflecting":
+            return current
+        concept_id = next(
+            (
+                step.concept_id
+                for step in current.steps
+                if step.status in {"active", "completed"} and step.concept_id is not None
+            ),
+            None,
+        )
+        path = await self._path(learner_id, course_id)
+        target = next((item for item in path.items if item.concept_id == concept_id), None)
+        if target is None:
+            raise LearningValidationError("The current session focus is no longer available.")
+        updated = await self._repository.replace_pending_steps(
+            context,
+            session_id,
+            mode=current.mode,
+            steps=(_step("reflect", "reflect", target, "session_reflection"),),
+            finish_requested=True,
+        )
+        if updated is None:
+            raise LearningValidationError("The study session could not be finished.")
         return updated
 
     async def complete_watch(
@@ -538,6 +569,8 @@ class LearningService:
         action: str,
     ) -> dict[str, object]:
         path = await self._path(learner_id, course_id)
+        if action == "change_mode":
+            return {"kind": "modes", "title": "Choose a learning mode"}
         current = next((item for item in path.items if item.current), None)
         if current is None:
             raise LearningValidationError("There is no actionable current concept.")
@@ -572,6 +605,8 @@ class LearningService:
                 "question_id": current.question_ids[0],
                 "concept_id": current.concept_id,
             }
+        if action == "finish_session":
+            return {"kind": "session_control", "action": "finish"}
         if action == "prerequisite" and current.prerequisite_ids:
             prerequisite = next(
                 (item for item in path.items if item.concept_id == current.prerequisite_ids[-1]),
@@ -596,74 +631,196 @@ class LearningService:
         self,
         context: LearnerRevision,
         path: LearnerPath,
+        mastery: MasteryReview,
         *,
-        goal: str,
-        budget_minutes: int,
+        mode: str,
         preferred_concept_id: UUID | None = None,
     ) -> tuple[dict[str, object], ...]:
-        candidate = self._select_candidate(path, goal, preferred_concept_id)
+        candidate = self._select_candidate(path, mastery, mode, preferred_concept_id)
         if candidate is None:
             return ()
         artifacts = await self._repository.concept_artifacts(context, (candidate.concept_id,))
         artifact = artifacts.get(candidate.concept_id)
         if not artifact or not artifact["clip_id"] or not artifact["question_id"]:
             return ()
-        watch_minutes = max(
-            1,
-            math.ceil(_number(artifact["clip_duration_seconds"]) / 60),
-        )
-        steps: list[dict[str, object]] = [
-            _step(
-                "watch",
-                "review" if goal == "review" else "learn",
-                candidate,
-                watch_minutes,
-                "due_review" if goal == "review" else "recommended_current",
-                clip_id=artifact["clip_id"],
-            ),
+        if mode == "review_learned":
+            return (
+                _step(
+                    "question",
+                    "review",
+                    candidate,
+                    "review_retrieval",
+                    question_id=artifact["question_id"],
+                ),
+                _step("reflect", "reflect", candidate, "session_reflection"),
+            )
+        reason = {
+            "continue_path": "recommended_current",
+            "learn_new": "learn_new",
+            "strengthen_weak_areas": "strengthen_weak_area",
+        }[mode]
+        purpose = {
+            "continue_path": "learn",
+            "learn_new": "learn",
+            "strengthen_weak_areas": "reinforcement",
+        }[mode]
+        return (
+            _step("watch", purpose, candidate, reason, clip_id=artifact["clip_id"]),
             _step(
                 "question",
-                "review" if goal == "review" else "practice",
+                "practice" if mode != "strengthen_weak_areas" else "reinforcement",
                 candidate,
-                2,
                 "practice_after_watch",
                 question_id=artifact["question_id"],
             ),
-            _step("reflect", "reflect", candidate, 1, "session_reflection"),
-        ]
-        # The budget is intentionally soft: keep one complete evidence loop and show its real cost.
-        return tuple(steps)
+            _step("reflect", "reflect", candidate, "session_reflection"),
+        )
 
     def _select_candidate(
         self,
         path: LearnerPath,
-        goal: str,
+        mastery: MasteryReview,
+        mode: str,
         preferred_concept_id: UUID | None = None,
     ) -> LearnerPathItem | None:
-        actionable = [
-            item
-            for item in path.items
-            if item.eligible and item.actionable and item.state.value != "mastered"
-        ]
+        actionable = [item for item in path.items if item.eligible and item.actionable]
+        mastery_by_id = {item.concept_id: item for item in mastery.concepts}
         if preferred_concept_id is not None:
             preferred = next(
                 (item for item in actionable if item.concept_id == preferred_concept_id),
                 None,
             )
-            if preferred is None:
+            if preferred is None or (
+                mode != "review_learned" and preferred.state.value == "mastered"
+            ):
                 raise LearningValidationError(
                     "That concept is blocked or does not have complete reviewed content.",
                 )
             return preferred
-        if goal == "review":
-            practiced = [
-                item for item in actionable if item.state.value in {"practiced", "struggling"}
-            ]
-            if practiced:
-                return practiced[0]
-        return next(
-            (item for item in actionable if item.current), actionable[0] if actionable else None
+        if mode == "learn_new":
+            return next((item for item in actionable if item.state.value == "not_started"), None)
+        if mode == "strengthen_weak_areas":
+            return next(
+                (
+                    item
+                    for item in actionable
+                    if item.state.value == "struggling"
+                    or mastery_by_id.get(item.concept_id, None)
+                    and mastery_by_id[item.concept_id].mismatch is not None
+                ),
+                None,
+            )
+        if mode == "review_learned":
+            due: list[LearnerPathItem] = []
+            for item in actionable:
+                review = mastery_by_id.get(item.concept_id)
+                if (
+                    review is not None
+                    and review.due_at is not None
+                    and review.due_at <= datetime.now(UTC)
+                ):
+                    due.append(item)
+            if due:
+                return due[0]
+            return next(
+                (
+                    item
+                    for item in actionable
+                    if item.state.value in {"practiced", "mastered", "struggling"}
+                ),
+                None,
+            )
+        forward = [item for item in actionable if item.state.value != "mastered"]
+        return next((item for item in forward if item.current), forward[0] if forward else None)
+
+    def _mode_options(
+        self,
+        path: LearnerPath,
+        mastery: MasteryReview,
+        session: StudySession | None,
+    ) -> tuple[LearningMode, ...]:
+        definitions = (
+            (
+                "continue_path",
+                "Continue my path",
+                "Resume Manifold’s strongest reviewed next step.",
+            ),
+            (
+                "learn_new",
+                "Learn something new",
+                "Begin an eligible concept you have not studied yet.",
+            ),
+            (
+                "strengthen_weak_areas",
+                "Strengthen weak areas",
+                "Repair uncertainty, a confidence mismatch, or recent difficulty.",
+            ),
+            (
+                "review_learned",
+                "Review what I learned",
+                "Retrieve practiced material and reinforce what should be revisited.",
+            ),
         )
+        candidates = {
+            key: self._select_candidate(path, mastery, key)
+            for key, _, _ in definitions
+        }
+        due_review = any(
+            item.due_at is not None and item.due_at <= datetime.now(UTC)
+            for item in mastery.concepts
+        )
+        if session:
+            recommended = session.mode
+            recommendation_reason = "Resume the learning loop already in progress."
+        elif candidates["strengthen_weak_areas"] is not None:
+            recommended = "strengthen_weak_areas"
+            recommendation_reason = (
+                "Recent correctness, confidence, or routing evidence shows uncertainty."
+            )
+        elif due_review and candidates["review_learned"] is not None:
+            recommended = "review_learned"
+            recommendation_reason = "A practiced concept is due for evidence-based review."
+        elif candidates["continue_path"] is not None:
+            recommended = "continue_path"
+            recommendation_reason = "This is the strongest reviewed next step in your path."
+        else:
+            recommended = "learn_new"
+            recommendation_reason = "An eligible new concept is ready."
+        disabled = {
+            "continue_path": "No routed concept currently has complete reviewed coverage.",
+            "learn_new": "No new prerequisite-ready concept has complete reviewed coverage.",
+            "strengthen_weak_areas": (
+                "This becomes available when attempts show difficulty or a confidence mismatch."
+            ),
+            "review_learned": (
+                "This becomes available after you have practiced reviewed course material."
+            ),
+        }
+        return tuple(
+            LearningMode(
+                key=key,
+                title=title,
+                description=description,
+                available=(
+                    candidates[key] is not None
+                    or (session is not None and session.mode == key)
+                ),
+                recommended=key == recommended,
+                reason=recommendation_reason if key == recommended else None,
+                disabled_reason=None if candidates[key] is not None else disabled[key],
+            )
+            for key, title, description in definitions
+        )
+
+    @staticmethod
+    def _validate_mode(mode: str) -> None:
+        if mode not in {
+            "continue_path",
+            "learn_new",
+            "strengthen_weak_areas",
+            "review_learned",
+        }:
+            raise LearningValidationError("Unsupported learning mode.")
 
     async def _adapt_after_answer(
         self,
@@ -676,7 +833,7 @@ class LearningService:
         target_id = decision.target_concept_id
         target = next((item for item in path.items if item.concept_id == target_id), None)
         if (
-            decision.action.value in {"advance", "reinforce", "remediate"}
+            decision.action.value in {"reinforce", "remediate"}
             and target
             and target.eligible
             and target.actionable
@@ -685,55 +842,32 @@ class LearningService:
             artifact = artifacts.get(target.concept_id)
             if artifact and artifact["clip_id"] and artifact["question_id"]:
                 purpose = {
-                    "advance": "learn",
                     "reinforce": "reinforcement",
                     "remediate": "remediation",
                 }[decision.action.value]
                 reason = {
-                    "advance": "recommended_current",
                     "reinforce": "reinforce_confidence",
                     "remediate": "repair_prerequisite",
                 }[decision.action.value]
-                watch_minutes = max(
-                    1,
-                    math.ceil(_number(artifact["clip_duration_seconds"]) / 60),
+                steps = (
+                    _step("watch", purpose, target, reason, clip_id=artifact["clip_id"]),
+                    _step(
+                        "question",
+                        purpose,
+                        target,
+                        "practice_after_watch",
+                        question_id=artifact["question_id"],
+                    ),
+                    _step("reflect", "reflect", target, "session_reflection"),
                 )
-                spent_minutes = await self._repository.completed_session_minutes(
+                adjusted = await self._repository.replace_pending_steps(
                     context,
                     session.id,
+                    mode=session.mode,
+                    steps=steps,
                 )
-                can_add_next_loop = not (
-                    decision.action.value == "advance"
-                    and spent_minutes + watch_minutes + 3 > session.budget_minutes
-                )
-                if can_add_next_loop:
-                    steps = (
-                        _step(
-                            "watch",
-                            purpose,
-                            target,
-                            watch_minutes,
-                            reason,
-                            clip_id=artifact["clip_id"],
-                        ),
-                        _step(
-                            "question",
-                            purpose,
-                            target,
-                            2,
-                            "practice_after_watch",
-                            question_id=artifact["question_id"],
-                        ),
-                        _step("reflect", "reflect", target, 1, "session_reflection"),
-                    )
-                    adjusted = await self._repository.replace_pending_steps(
-                        context,
-                        session.id,
-                        budget_minutes=session.budget_minutes,
-                        steps=steps,
-                    )
-                    if adjusted:
-                        return adjusted
+                if adjusted:
+                    return adjusted
         reflection_target = next(
             (item for item in path.items if item.concept_id == answered_concept_id),
             None,
@@ -742,8 +876,8 @@ class LearningService:
             adjusted = await self._repository.replace_pending_steps(
                 context,
                 session.id,
-                budget_minutes=session.budget_minutes,
-                steps=(_step("reflect", "reflect", reflection_target, 1, "session_reflection"),),
+                mode=session.mode,
+                steps=(_step("reflect", "reflect", reflection_target, "session_reflection"),),
             )
             if adjusted:
                 return adjusted
@@ -757,7 +891,9 @@ class LearningService:
         current = next((item for item in path.items if item.current), None)
         if current is None:
             return ()
-        actions = ["why_next", "replay", "quiz", "stuck"]
+        actions = ["why_next", "replay", "quiz", "stuck", "change_mode"]
+        if session is not None:
+            actions.append("finish_session")
         if current.prerequisite_ids:
             actions.append("prerequisite")
         if current.aids:
@@ -769,7 +905,6 @@ def _step(
     kind: str,
     purpose: str,
     item: LearnerPathItem,
-    estimated_minutes: int,
     reason_code: str,
     *,
     clip_id: object | None = None,
@@ -781,7 +916,6 @@ def _step(
         "concept_id": item.concept_id,
         "clip_id": clip_id,
         "question_id": question_id,
-        "estimated_minutes": estimated_minutes,
         "reason_code": reason_code,
         "evidence_snapshot": {
             "concept_name": item.name,
@@ -810,9 +944,3 @@ def _clean_note(value: str | None) -> str | None:
         return None
     cleaned = value.strip()
     return cleaned[:1000] if cleaned else None
-
-
-def _number(value: object) -> float:
-    if isinstance(value, int | float | str):
-        return float(value)
-    raise LearningValidationError("Reviewed clip duration is invalid.")
