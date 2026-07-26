@@ -15,6 +15,7 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   let phase: "none" | "planned" | "watch" | "question" | "remediation" = "none";
   let masteryState: "not_started" | "struggling" = "not_started";
   let helpCreated = false;
+  const guideMessages: Array<Record<string, unknown>> = [];
 
   await page.addInitScript((identity) => {
     window.localStorage.setItem(
@@ -101,6 +102,34 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
       return route.fulfill({
         json: workspace(orientationComplete, phase, masteryState),
       });
+    }
+    if (path === "/learn/courses/course-1/guide/messages") {
+      if (route.request().method() === "GET") {
+        return route.fulfill({ json: guideMessages });
+      }
+      const request = route.request().postDataJSON() as { content: string };
+      const createdAt = "2026-07-26T00:00:00Z";
+      const learnerMessage = {
+        id: `guide-${guideMessages.length + 1}`,
+        role: "learner",
+        content: request.content,
+        intent: null,
+        action: null,
+        created_at: createdAt,
+      };
+      const stuck = request.content.toLowerCase().includes("stuck");
+      const guideMessage = {
+        id: `guide-${guideMessages.length + 2}`,
+        role: "guide",
+        content: stuck
+          ? "I can prepare an evidence-backed help request for your course team."
+          : "Vector direction is recommended because its prerequisites and reviewed coverage are complete.",
+        intent: stuck ? "stuck" : "why_next",
+        action: stuck ? "stuck" : null,
+        created_at: createdAt,
+      };
+      guideMessages.push(learnerMessage, guideMessage);
+      return route.fulfill({ json: [learnerMessage, guideMessage] });
     }
     if (path === "/learn/courses/course-1/orientation") {
       orientationComplete = true;
@@ -258,7 +287,10 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   await expect(page.locator("video")).toBeVisible();
   await expect(page.getByText("Practice with an approved question")).toBeVisible();
 
-  await page.getByRole("button", { name: "Learning Guide" }).click();
+  await expect(page.locator(".lucide-sparkles")).toHaveCount(0);
+  await page.getByRole("button", { name: "Open Learning Guide" }).click();
+  await expect(page.getByText("Right now")).toBeVisible();
+  await expect(page.getByText("0 of 2 concepts mastered")).toBeVisible();
   await page
     .getByRole("button", { name: /Why is this my next lesson/ })
     .click();
@@ -323,8 +355,10 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   ).toBeVisible();
   await page.getByRole("button", { name: "Close mastery" }).click();
 
-  await page.getByRole("button", { name: "Learning Guide" }).click();
-  await page.getByRole("button", { name: "I’m stuck" }).click();
+  await page.getByRole("button", { name: "Open Learning Guide" }).click();
+  await page.getByLabel("Message Learning Guide").fill("I’m stuck.");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await page.getByRole("button", { name: "Review help request" }).click();
   await expect(page.getByText("Here’s what will be shared")).toBeVisible();
   await page
     .getByLabel("Optional note for your course team")

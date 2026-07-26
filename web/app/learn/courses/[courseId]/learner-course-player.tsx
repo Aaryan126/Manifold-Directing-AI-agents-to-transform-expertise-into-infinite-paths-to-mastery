@@ -25,12 +25,12 @@ import {
   ListChecks,
   LoaderCircle,
   LockKeyhole,
-  MessageCircleQuestion,
+  MessageSquareText,
   Play,
   RotateCcw,
   Route,
   Send,
-  Sparkles,
+  ArrowUp,
   X,
 } from "lucide-react";
 
@@ -44,6 +44,7 @@ import {
   activeTranscriptWordIndex,
   learnerPathVisualState,
   type LearnerCourseExperience,
+  type LearnerGuideMessage,
   type LearnerPath,
   type LearnerPathItem,
   type LearnerPathVisualState,
@@ -112,6 +113,10 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
   const [transcriptError, setTranscriptError] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
   const [guideResult, setGuideResult] = useState<GuideResult | null>(null);
+  const [guideMessages, setGuideMessages] = useState<LearnerGuideMessage[]>([]);
+  const [guideComposer, setGuideComposer] = useState("");
+  const [guideSending, setGuideSending] = useState(false);
+  const guideMessageListRef = useRef<HTMLDivElement | null>(null);
   const [masteryOpen, setMasteryOpen] = useState(false);
   const [inspectedConceptId, setInspectedConceptId] = useState<string | null>(null);
   const [helpPreview, setHelpPreview] =
@@ -144,7 +149,8 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
     setError(null);
     try {
       const requestHeaders = { "X-User-ID": nextIdentity.id };
-      const [courseResponse, pathResponse, workspaceResponse] = await Promise.all([
+      const [courseResponse, pathResponse, workspaceResponse, guideResponse] =
+        await Promise.all([
         fetch(`${pipelineBase}/learners/me/courses/${courseId}`, {
           headers: requestHeaders,
         }),
@@ -154,23 +160,34 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
         fetch(`${pipelineBase}/learn/courses/${courseId}/workspace`, {
           headers: requestHeaders,
         }),
+        fetch(`${pipelineBase}/learn/courses/${courseId}/guide/messages`, {
+          headers: requestHeaders,
+        }),
       ]);
-      if ([courseResponse, pathResponse, workspaceResponse].some(
+      if ([courseResponse, pathResponse, workspaceResponse, guideResponse].some(
         (response) => response.status === 403,
       )) {
         router.replace("/learn");
         return;
       }
-      if (!courseResponse.ok || !pathResponse.ok || !workspaceResponse.ok) {
+      if (
+        !courseResponse.ok
+        || !pathResponse.ok
+        || !workspaceResponse.ok
+        || !guideResponse.ok
+      ) {
         throw new Error("Could not prepare this course workspace.");
       }
       const nextCourse =
         (await courseResponse.json()) as LearnerCourseExperience;
       const nextPath = (await pathResponse.json()) as LearnerPath;
       const nextWorkspace = (await workspaceResponse.json()) as LearnerWorkspace;
+      const nextGuideMessages =
+        (await guideResponse.json()) as LearnerGuideMessage[];
       setCourse(nextCourse);
       setPath(nextPath);
       setWorkspace(nextWorkspace);
+      setGuideMessages(nextGuideMessages);
       setStudySession(nextWorkspace.session);
       setSelectedMode(
         nextWorkspace.session?.mode
@@ -247,6 +264,13 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
       });
     return () => controller.abort();
   }, [activeClip, courseId, identity]);
+
+  useEffect(() => {
+    if (!guideOpen) return;
+    const list = guideMessageListRef.current;
+    if (!list) return;
+    list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
+  }, [guideMessages, guideOpen, guideResult, helpPreview]);
 
   async function mutate<T>(url: string, method: string, body?: object): Promise<T> {
     const response = await fetch(`${pipelineBase}${url}`, {
@@ -616,6 +640,52 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
     }
   }
 
+  async function sendGuideMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await submitGuideContent(guideComposer);
+  }
+
+  async function submitGuideContent(value: string) {
+    const content = value.trim();
+    if (!content || guideSending) return;
+    const optimistic: LearnerGuideMessage = {
+      id: `optimistic-${Date.now()}`,
+      role: "learner",
+      content,
+      intent: null,
+      action: null,
+      created_at: new Date().toISOString(),
+    };
+    setGuideComposer("");
+    setGuideResult(null);
+    setHelpPreview(null);
+    setGuideMessages((current) => [...current, optimistic]);
+    setGuideSending(true);
+    try {
+      const exchange = await mutate<LearnerGuideMessage[]>(
+        `/learn/courses/${courseId}/guide/messages`,
+        "POST",
+        { content },
+      );
+      setGuideMessages((current) => [
+        ...current.filter((message) => message.id !== optimistic.id),
+        ...exchange,
+      ]);
+    } catch (caught) {
+      setGuideMessages((current) =>
+        current.filter((message) => message.id !== optimistic.id),
+      );
+      setGuideComposer(content);
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "The Learning Guide could not answer that.",
+      );
+    } finally {
+      setGuideSending(false);
+    }
+  }
+
   async function previewHelp() {
     setBusy(true);
     try {
@@ -737,10 +807,6 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
             <button onClick={() => setMasteryOpen((open) => !open)} type="button">
               <ListChecks />
               Mastery
-            </button>
-            <button onClick={() => setGuideOpen(true)} type="button">
-              <Sparkles />
-              Learning Guide
             </button>
           </nav>
         </header>
@@ -928,22 +994,43 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
           />
         ) : null}
 
+        <button
+          aria-expanded={guideOpen}
+          aria-label="Open Learning Guide"
+          className={styles.guideLauncher}
+          onClick={() => setGuideOpen((open) => !open)}
+          type="button"
+        >
+          <MessageSquareText />
+          <span>Learning Guide</span>
+        </button>
+
         {guideOpen ? (
-          <GuideDrawer
+          <LearningGuideDock
             actions={workspace.guide_actions}
             busy={busy}
+            composer={guideComposer}
             guideResult={guideResult}
             helpNote={helpNote}
             helpPreview={helpPreview}
             helpSent={helpSent}
+            mastery={workspace.mastery}
+            messages={guideMessages}
+            messageListRef={guideMessageListRef}
             onAction={(action) => void runGuideAction(action)}
             onClose={() => {
               setGuideOpen(false);
               setGuideResult(null);
               setHelpPreview(null);
             }}
+            onComposer={setGuideComposer}
             onHelpNote={setHelpNote}
+            onPrompt={(prompt) => void submitGuideContent(prompt)}
             onSendHelp={() => void sendHelp()}
+            onSubmit={sendGuideMessage}
+            path={path}
+            sending={guideSending}
+            session={studySession}
           />
         ) : null}
 
@@ -980,7 +1067,6 @@ function Orientation({
   return (
     <section className={styles.orientation}>
       <span className={styles.guideIdentity}>
-        <Sparkles />
         Manifold Learning Guide
       </span>
       <h1>Start {courseTitle} with the right path.</h1>
@@ -1075,7 +1161,6 @@ function ModeChooser({
         <header>
           <div>
             <span className={styles.guideIdentity}>
-              <Sparkles />
               Manifold Learning Guide
             </span>
             <h2>Choose how you want to learn</h2>
@@ -1185,7 +1270,6 @@ function SessionPlanner({
   return (
     <section className={styles.sessionPlanner}>
       <span className={styles.guideIdentity}>
-        <Sparkles />
         Manifold Learning Guide
       </span>
       <h1>How would you like to learn?</h1>
@@ -1207,7 +1291,7 @@ function SessionPlanner({
           onClick={() => onCreate(selectedMode)}
           type="button"
         >
-          {busy ? <LoaderCircle className={styles.spin} /> : <Sparkles />}
+          {busy ? <LoaderCircle className={styles.spin} /> : <ArrowRight />}
           Prepare this learning loop
         </button>
       </div>
@@ -1230,7 +1314,6 @@ function SessionPlan({
     <section className={styles.planStage}>
       <header>
         <span className={styles.guideIdentity}>
-          <Sparkles />
           Manifold Learning Guide
         </span>
         <h1>{modeTitle(session.mode)}</h1>
@@ -1515,7 +1598,6 @@ function ReflectStage({
   return (
     <section className={styles.reflectStage}>
       <span className={styles.guideIdentity}>
-        <Sparkles />
         Session reflection
       </span>
       <h2>What feels true right now?</h2>
@@ -1753,117 +1835,218 @@ function MasteryDrawer({
   );
 }
 
-function GuideDrawer({
+function LearningGuideDock({
   actions,
   busy,
+  composer,
   guideResult,
   helpNote,
   helpPreview,
   helpSent,
+  mastery,
+  messages,
+  messageListRef,
   onAction,
   onClose,
+  onComposer,
   onHelpNote,
+  onPrompt,
   onSendHelp,
+  onSubmit,
+  path,
+  sending,
+  session,
 }: {
   actions: string[];
   busy: boolean;
+  composer: string;
   guideResult: GuideResult | null;
   helpNote: string;
   helpPreview: Record<string, unknown> | null;
   helpSent: boolean;
+  mastery: LearnerWorkspace["mastery"];
+  messages: LearnerGuideMessage[];
+  messageListRef: { current: HTMLDivElement | null };
   onAction: (action: string) => void;
   onClose: () => void;
+  onComposer: (value: string) => void;
   onHelpNote: (note: string) => void;
+  onPrompt: (prompt: string) => void;
   onSendHelp: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  path: LearnerPath;
+  sending: boolean;
+  session: LearnerStudySession | null;
 }) {
+  const current = path.items.find((item) => item.current);
+  const activeStep = session?.steps.find((step) => step.status === "active")
+    ?? session?.steps.find((step) => step.status === "pending");
+  const mastered = mastery.concepts.filter(
+    (concept) => concept.state === "mastered",
+  ).length;
+  const quickPrompts = [
+    "What should I do next?",
+    "How am I doing?",
+    "Why is this my next lesson?",
+    "How does mastery work?",
+  ];
   return (
-    <div className={styles.drawerBackdrop} onMouseDown={onClose}>
-      <aside
-        aria-label="Manifold Learning Guide"
-        className={styles.guideDrawer}
-        onMouseDown={(event) => event.stopPropagation()}
+    <aside aria-label="Manifold Learning Guide" className={styles.guideDock}>
+      <button
+        aria-label="Close Learning Guide"
+        className={styles.guideDockClose}
+        onClick={onClose}
+        type="button"
       >
+        <X />
+      </button>
+      <section className={styles.guideConversation}>
         <header>
           <div>
-            <span>
-              <Sparkles />
-            </span>
-            <div>
-              <small>Course-aware support</small>
-              <h2>Manifold Learning Guide</h2>
-            </div>
+            <small>Course-aware copilot</small>
+            <h2>Manifold Learning Guide</h2>
           </div>
-          <button aria-label="Close Learning Guide" onClick={onClose} type="button">
-            <X />
-          </button>
         </header>
-        <p>
-          I can act on reviewed course material and your persisted evidence. I won’t
-          invent an explanation or question.
-        </p>
-        {!helpPreview && !guideResult ? (
-          <div className={styles.guideActions}>
-            {actions.map((action) => (
-              <button disabled={busy} key={action} onClick={() => onAction(action)}>
-                {guideIcon(action)}
-                <span>{guideLabel(action)}</span>
-                <ArrowRight />
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {guideResult ? (
-          <article className={styles.guideResult}>
-            <small>Grounded in this course</small>
-            <h3>{guideResult.title ?? "Learning Guide result"}</h3>
-            <p>{guideResult.message ?? guideResult.excerpt}</p>
-            {guideResult.page_number ? <span>Page {guideResult.page_number}</span> : null}
-            <button onClick={() => onAction("why_next")} type="button">
-              Back to actions
-            </button>
-          </article>
-        ) : null}
-        {helpPreview ? (
-          <section className={styles.helpRequest}>
-            {helpSent ? (
-              <>
-                <CheckCircle2 />
-                <h3>Your course team has been notified in Manifold.</h3>
-                <p>
-                  While you wait, you can replay the approved explanation or review
-                  the prerequisite from this Guide.
-                </p>
-              </>
-            ) : (
-              <>
-                <h3>Here’s what will be shared</h3>
-                <p>
-                  Your current course, concept, active activity, three recent
-                  attempts, and three recent route decisions. Instructor-only data is
-                  never shown or shared from your workspace.
-                </p>
-                <pre>{JSON.stringify(helpPreview, null, 2)}</pre>
-                <textarea
-                  aria-label="Optional note for your course team"
-                  onChange={(event) => onHelpNote(event.target.value)}
-                  placeholder="What feels stuck? (optional)"
-                  value={helpNote}
-                />
+
+        <div className={styles.guideStatus}>
+          <small>Right now</small>
+          <strong>{current?.name ?? "No actionable concept"}</strong>
+          <p>
+            {activeStep
+              ? `${stageName(activeStep)} · ${activeStep.title}`
+              : "Choose a learning mode to prepare your next evidence loop."}
+          </p>
+          <span>{mastered} of {mastery.concepts.length} concepts mastered</span>
+        </div>
+
+        <div className={styles.guideMessageList} ref={messageListRef}>
+          {!messages.length ? (
+            <div className={styles.guideWelcome}>
+              <p>
+                Ask about your progress, what comes next, or how Manifold works. For
+                course questions, I’ll take you to reviewed material instead of
+                inventing an explanation.
+              </p>
+              <div>
+                {quickPrompts.map((prompt) => (
+                  <button
+                    disabled={sending}
+                    key={prompt}
+                    onClick={() => onPrompt(prompt)}
+                    type="button"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {messages.map((message) => (
+            <article
+              className={styles.guideMessage}
+              data-role={message.role}
+              key={message.id}
+            >
+              <span>
+                {message.role === "guide" ? "Learning Guide" : "You"}
+              </span>
+              <p>{message.content}</p>
+              {message.role === "guide" && message.action ? (
                 <button
-                  className={styles.primaryAction}
-                  disabled={busy}
-                  onClick={onSendHelp}
+                  disabled={busy || !actions.includes(message.action)}
+                  onClick={() => onAction(message.action as string)}
                   type="button"
                 >
-                  <Send />
-                  Send to course team
+                  {guideActionLabel(message.action)}
+                  <ArrowRight />
                 </button>
-              </>
-            )}
-          </section>
-        ) : null}
-      </aside>
-    </div>
+              ) : null}
+            </article>
+          ))}
+          {sending ? (
+            <div className={styles.guideThinking} aria-live="polite">
+              <span>Reading your course evidence</span>
+              <i />
+              <i />
+              <i />
+            </div>
+          ) : null}
+          {guideResult ? (
+            <article className={styles.guideResult}>
+              <small>Grounded in this course</small>
+              <h3>{guideResult.title ?? "Learning Guide result"}</h3>
+              <p>{guideResult.message ?? guideResult.excerpt}</p>
+              {guideResult.page_number ? <span>Page {guideResult.page_number}</span> : null}
+            </article>
+          ) : null}
+          {helpPreview ? (
+            <section className={styles.helpRequest}>
+              {helpSent ? (
+                <>
+                  <CheckCircle2 />
+                  <h3>Your course team has been notified in Manifold.</h3>
+                  <p>
+                    While you wait, ask me to replay the reviewed explanation or open
+                    a prerequisite.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h3>Here’s what will be shared</h3>
+                  <p>
+                    Your current course, concept, active activity, three recent
+                    attempts, and three recent route decisions. Instructor-only data
+                    is never shown or shared from your workspace.
+                  </p>
+                  <pre>{JSON.stringify(helpPreview, null, 2)}</pre>
+                  <textarea
+                    aria-label="Optional note for your course team"
+                    onChange={(event) => onHelpNote(event.target.value)}
+                    placeholder="What feels stuck? (optional)"
+                    value={helpNote}
+                  />
+                  <button
+                    className={styles.primaryAction}
+                    disabled={busy}
+                    onClick={onSendHelp}
+                    type="button"
+                  >
+                    <Send />
+                    Send to course team
+                  </button>
+                </>
+              )}
+            </section>
+          ) : null}
+        </div>
+
+        <form className={styles.guideComposer} onSubmit={onSubmit}>
+          <textarea
+            aria-label="Message Learning Guide"
+            onChange={(event) => onComposer(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
+            placeholder="Ask about your progress, path, or course help…"
+            rows={3}
+            value={composer}
+          />
+          <div>
+            <span>Enter to send · Shift + Enter for a new line</span>
+            <button
+              aria-label="Send message"
+              disabled={!composer.trim() || sending}
+              type="submit"
+            >
+              {sending ? <LoaderCircle className={styles.spin} /> : <ArrowUp />}
+            </button>
+          </div>
+        </form>
+      </section>
+    </aside>
   );
 }
 
@@ -1958,27 +2141,15 @@ function friendlyRoute(action: string) {
   }[action] ?? "Path updated";
 }
 
-function guideLabel(action: string) {
+function guideActionLabel(action: string) {
   return {
-    why_next: "Why is this my next lesson?",
-    replay: "Replay the relevant explanation",
-    prerequisite: "Review the prerequisite",
-    approved_source: "Show the instructor-approved source",
-    approved_hint: "Give me an approved hint",
-    quiz: "Quiz me with an approved question",
-    change_mode: "Change how I’m learning",
-    finish_session: "Finish this session",
-    stuck: "I’m stuck",
-  }[action] ?? action;
-}
-
-function guideIcon(action: string) {
-  if (action === "stuck") return <MessageCircleQuestion />;
-  if (action === "approved_hint") return <Lightbulb />;
-  if (action === "replay") return <RotateCcw />;
-  if (action === "approved_source") return <FileText />;
-  if (action === "quiz") return <ListChecks />;
-  if (action === "change_mode") return <Route />;
-  if (action === "finish_session") return <CheckCircle2 />;
-  return <Compass />;
+    replay: "Open reviewed explanation",
+    prerequisite: "Open prerequisite",
+    approved_source: "Open approved source",
+    approved_hint: "Show approved hint",
+    quiz: "Open approved check",
+    change_mode: "Choose learning mode",
+    finish_session: "Finish session",
+    stuck: "Review help request",
+  }[action] ?? "Open";
 }

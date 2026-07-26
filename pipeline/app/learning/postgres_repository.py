@@ -11,6 +11,7 @@ from app.learning.models import (
     ClipTranscriptWord,
     HelpRequest,
     LearnerRevision,
+    LearningGuideMessage,
     MasteryReview,
     Orientation,
     PlacementCheck,
@@ -1419,6 +1420,82 @@ class PostgresLearningRepository:
                 )
         return _help_from_row(row) if row else None
 
+    async def guide_messages(
+        self,
+        context: LearnerRevision,
+    ) -> tuple[LearningGuideMessage, ...]:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            rows = await (
+                await conn.execute(
+                    """
+                    select id, role, content, intent, action, created_at
+                    from learner_guide_messages
+                    where learner_id = %s and course_id = %s and revision_id = %s
+                    order by created_at, id
+                    """,
+                    (
+                        context.learner_id,
+                        context.course_id,
+                        context.revision_id,
+                    ),
+                )
+            ).fetchall()
+        return tuple(_guide_message_from_row(row) for row in rows)
+
+    async def append_guide_exchange(
+        self,
+        context: LearnerRevision,
+        *,
+        learner_content: str,
+        guide_content: str,
+        intent: str,
+        action: str | None,
+        evidence: dict[str, object],
+    ) -> tuple[LearningGuideMessage, LearningGuideMessage]:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            learner_row = await (
+                await conn.execute(
+                    """
+                    insert into learner_guide_messages (
+                      learner_id, course_id, revision_id, role, content
+                    ) values (%s, %s, %s, 'learner', %s)
+                    returning id, role, content, intent, action, created_at
+                    """,
+                    (
+                        context.learner_id,
+                        context.course_id,
+                        context.revision_id,
+                        learner_content,
+                    ),
+                )
+            ).fetchone()
+            guide_row = await (
+                await conn.execute(
+                    """
+                    insert into learner_guide_messages (
+                      learner_id, course_id, revision_id, role, content,
+                      intent, action, evidence_snapshot
+                    ) values (%s, %s, %s, 'guide', %s, %s, %s, %s::jsonb)
+                    returning id, role, content, intent, action, created_at
+                    """,
+                    (
+                        context.learner_id,
+                        context.course_id,
+                        context.revision_id,
+                        guide_content,
+                        intent,
+                        action,
+                        Jsonb(evidence),
+                    ),
+                )
+            ).fetchone()
+        if learner_row is None or guide_row is None:
+            raise RuntimeError("Failed to persist the Learning Guide conversation.")
+        return (
+            _guide_message_from_row(learner_row),
+            _guide_message_from_row(guide_row),
+        )
+
     async def _insert_steps(
         self,
         conn: Any,
@@ -1572,6 +1649,17 @@ def _help_from_row(row: dict[str, Any]) -> HelpRequest:
         status=str(row["status"]),
         learner_note=str(row["learner_note"]) if row["learner_note"] else None,
         evidence=dict(evidence) if isinstance(evidence, dict) else {},
+        created_at=row["created_at"],
+    )
+
+
+def _guide_message_from_row(row: dict[str, Any]) -> LearningGuideMessage:
+    return LearningGuideMessage(
+        id=UUID(str(row["id"])),
+        role=str(row["role"]),
+        content=str(row["content"]),
+        intent=str(row["intent"]) if row["intent"] else None,
+        action=str(row["action"]) if row["action"] else None,
         created_at=row["created_at"],
     )
 

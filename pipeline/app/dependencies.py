@@ -33,6 +33,10 @@ from app.intelligence.postgres_repository import PostgresIntelligenceRepository
 from app.intelligence.service import CourseIntelligenceService
 from app.intelligence.storage import SupplementalSourceStorage
 from app.intelligence.worker import CourseIntelligenceWorker
+from app.learning.guide import (
+    LocalLearningGuideInterpreter,
+    OpenAILearningGuideInterpreter,
+)
 from app.learning.postgres_repository import PostgresLearningRepository
 from app.learning.service import LearningService
 from app.routing.postgres_repository import PostgresRoutingRepository
@@ -216,10 +220,16 @@ def build_routing_service(settings: Settings) -> RoutingService:
 @lru_cache
 def get_learning_service() -> LearningService:
     settings = get_settings()
+    guide = (
+        OpenAILearningGuideInterpreter(settings.openai_api_key, settings.llm_model)
+        if settings.openai_api_key
+        else LocalLearningGuideInterpreter()
+    )
     return LearningService(
         repository=PostgresLearningRepository(settings.database_url),
         routing=build_routing_service(settings),
         assessments=build_assessment_service(settings),
+        guide=guide,
     )
 
 

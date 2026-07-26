@@ -124,3 +124,13 @@ class HelpRequest:
     learner_note: str | None
     evidence: dict[str, object]
     created_at: datetime
+
+
+@dataclass(frozen=True)
+class LearningGuideMessage:
+    id: UUID
+    role: str
+    content: str
+    intent: str | None
+    action: str | None
+    created_at: datetime

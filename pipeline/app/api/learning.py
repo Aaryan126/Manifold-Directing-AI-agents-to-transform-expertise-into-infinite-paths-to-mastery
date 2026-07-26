@@ -9,6 +9,7 @@ from app.dependencies import get_learning_service
 from app.learning.models import (
     ClipTranscript,
     HelpRequest,
+    LearningGuideMessage,
     MasteryReview,
     Orientation,
     PlacementCheck,
@@ -59,6 +60,10 @@ class HelpRequestBody(BaseModel):
 
 class HelpStatusRequest(BaseModel):
     status: str
+
+
+class GuideMessageRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=2000)
 
 
 class HintLadderEditRequest(BaseModel):
@@ -187,6 +192,16 @@ class HelpResponse(BaseModel):
     status: str
     learner_note: str | None
     evidence: dict[str, object]
+    created_at: datetime
+
+
+class GuideMessageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    role: str
+    content: str
+    intent: str | None
+    action: str | None
     created_at: datetime
 
 
@@ -520,6 +535,37 @@ async def create_help(
             concept_id=request.concept_id,
             learner_note=request.learner_note,
         )
+    except LearningValidationError as exc:
+        _raise(exc)
+
+
+@router.get(
+    "/learn/courses/{course_id}/guide/messages",
+    response_model=list[GuideMessageResponse],
+)
+async def guide_messages(
+    course_id: UUID,
+    user_id: UserContext,
+    service: LearningServiceDependency,
+) -> tuple[LearningGuideMessage, ...]:
+    try:
+        return await service.guide_messages(user_id, course_id)
+    except LearningValidationError as exc:
+        _raise(exc)
+
+
+@router.post(
+    "/learn/courses/{course_id}/guide/messages",
+    response_model=list[GuideMessageResponse],
+)
+async def message_guide(
+    course_id: UUID,
+    request: GuideMessageRequest,
+    user_id: UserContext,
+    service: LearningServiceDependency,
+) -> tuple[LearningGuideMessage, LearningGuideMessage]:
+    try:
+        return await service.message_guide(user_id, course_id, request.content)
     except LearningValidationError as exc:
         _raise(exc)
 

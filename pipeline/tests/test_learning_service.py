@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -5,6 +6,7 @@ import pytest
 from app.assessments.models import AnswerGrade
 from app.learning.models import (
     LearnerRevision,
+    LearningGuideMessage,
     MasteryReview,
     PlacementCheck,
     ReviewConcept,
@@ -202,6 +204,57 @@ async def test_answer_is_server_graded_and_records_session_purpose() -> None:
     assert session.status == "active"
 
 
+@pytest.mark.anyio
+async def test_learning_guide_reports_persisted_status_without_generating_content() -> None:
+    fixture = LearningFixture(state=MasteryState.PRACTICED)
+
+    learner_message, guide_message = await fixture.service.message_guide(
+        fixture.learner_id,
+        fixture.course_id,
+        "How am I doing?",
+    )
+
+    assert learner_message.role == "learner"
+    assert guide_message.role == "guide"
+    assert guide_message.intent == "status"
+    assert "mastered 0 of 1 concepts" in guide_message.content
+    assert "currently working on" in guide_message.content
+    assert fixture.repository.guide_messages_saved == (
+        learner_message,
+        guide_message,
+    )
+
+
+@pytest.mark.anyio
+async def test_learning_guide_routes_content_questions_to_reviewed_material() -> None:
+    fixture = LearningFixture()
+
+    _, guide_message = await fixture.service.message_guide(
+        fixture.learner_id,
+        fixture.course_id,
+        "Explain vector direction to me.",
+    )
+
+    assert guide_message.intent == "content_question"
+    assert guide_message.action == "replay"
+    assert "won’t invent a new teaching explanation" in guide_message.content
+
+
+@pytest.mark.anyio
+async def test_learning_guide_stuck_message_offers_real_help_handoff() -> None:
+    fixture = LearningFixture()
+
+    _, guide_message = await fixture.service.message_guide(
+        fixture.learner_id,
+        fixture.course_id,
+        "I am confused and stuck.",
+    )
+
+    assert guide_message.intent == "stuck"
+    assert guide_message.action == "stuck"
+    assert "review exactly what is shared" in guide_message.content
+
+
 class LearningFixture:
     def __init__(
         self,
@@ -258,6 +311,7 @@ class MemoryLearningRepository:
         self.placement_policy: dict[str, object] = {}
         self.step: dict[str, object] | None = None
         self.review_schedule: dict[str, object] = {}
+        self.guide_messages_saved: tuple[LearningGuideMessage, ...] = ()
 
     async def learner_revision(
         self,
@@ -283,6 +337,59 @@ class MemoryLearningRepository:
             for item in self.fixture.path.items
             if item.concept_id in concept_ids
         }
+
+    async def active_session(self, context: LearnerRevision) -> None:
+        del context
+        return None
+
+    async def has_approved_hint(
+        self,
+        context: LearnerRevision,
+        session_id: UUID,
+        step_id: UUID,
+    ) -> bool:
+        del context, session_id, step_id
+        return False
+
+    async def guide_messages(
+        self,
+        context: LearnerRevision,
+    ) -> tuple[LearningGuideMessage, ...]:
+        del context
+        return self.guide_messages_saved
+
+    async def append_guide_exchange(
+        self,
+        context: LearnerRevision,
+        *,
+        learner_content: str,
+        guide_content: str,
+        intent: str,
+        action: str | None,
+        evidence: dict[str, object],
+    ) -> tuple[LearningGuideMessage, LearningGuideMessage]:
+        del context, evidence
+        created_at = datetime.now(UTC)
+        result = (
+            LearningGuideMessage(
+                id=uuid4(),
+                role="learner",
+                content=learner_content,
+                intent=None,
+                action=None,
+                created_at=created_at,
+            ),
+            LearningGuideMessage(
+                id=uuid4(),
+                role="guide",
+                content=guide_content,
+                intent=intent,
+                action=action,
+                created_at=created_at,
+            ),
+        )
+        self.guide_messages_saved = result
+        return result
 
     async def create_session(
         self,

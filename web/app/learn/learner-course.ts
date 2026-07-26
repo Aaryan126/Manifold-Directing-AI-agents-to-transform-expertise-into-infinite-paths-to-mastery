@@ -226,6 +226,15 @@ export type LearnerMasteryReview = {
   }>;
 };
 
+export type LearnerGuideMessage = {
+  id: string;
+  role: "learner" | "guide";
+  content: string;
+  intent: string | null;
+  action: string | null;
+  created_at: string;
+};
+
 export type LearnerWorkspace = {
   revision_id: string;
   orientation: LearnerOrientation;

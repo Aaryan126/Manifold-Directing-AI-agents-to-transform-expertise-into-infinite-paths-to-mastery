@@ -58,6 +58,9 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     mode_migration = Path("migrations/024_intent_driven_learning_modes.sql").read_text(
         encoding="utf-8"
     )
+    guide_migration = Path("migrations/025_learner_guide_conversation.sql").read_text(
+        encoding="utf-8"
+    )
 
     for table_name in [
         "users",
@@ -164,6 +167,8 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     assert "strengthen_weak_areas" in mode_migration
     assert "alter column budget_minutes drop not null" in mode_migration
     assert "alter column estimated_minutes drop not null" in mode_migration
+    assert "create table learner_guide_messages" in guide_migration
+    assert "learner_guide_messages_conversation_idx" in guide_migration
 
 
 def test_legacy_schema_baseline_covers_every_migration() -> None:

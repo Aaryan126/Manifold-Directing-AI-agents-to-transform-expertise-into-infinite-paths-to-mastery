@@ -2,10 +2,16 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from app.assessments.service import AssessmentService, AssessmentValidationError
+from app.learning.guide import (
+    LearningGuideIntent,
+    LearningGuideInterpreter,
+    LocalLearningGuideInterpreter,
+)
 from app.learning.models import (
     ClipTranscript,
     HelpRequest,
     LearnerRevision,
+    LearningGuideMessage,
     LearningMode,
     MasteryReview,
     Orientation,
@@ -27,10 +33,12 @@ class LearningService:
         repository: PostgresLearningRepository,
         routing: RoutingService,
         assessments: AssessmentService,
+        guide: LearningGuideInterpreter | None = None,
     ) -> None:
         self._repository = repository
         self._routing = routing
         self._assessments = assessments
+        self._guide = guide or LocalLearningGuideInterpreter()
 
     async def context(self, learner_id: UUID, course_id: UUID) -> LearnerRevision:
         context = await self._repository.learner_revision(learner_id, course_id)
@@ -628,6 +636,248 @@ class LearningService:
                 }
         raise LearningValidationError("That Learning Guide action is unavailable in this context.")
 
+    async def guide_messages(
+        self,
+        learner_id: UUID,
+        course_id: UUID,
+    ) -> tuple[LearningGuideMessage, ...]:
+        context = await self.context(learner_id, course_id)
+        return await self._repository.guide_messages(context)
+
+    async def message_guide(
+        self,
+        learner_id: UUID,
+        course_id: UUID,
+        content: str,
+    ) -> tuple[LearningGuideMessage, LearningGuideMessage]:
+        cleaned = content.strip()
+        if not cleaned:
+            raise LearningValidationError("Write a message for the Learning Guide.")
+        context = await self.context(learner_id, course_id)
+        path = await self._path(learner_id, course_id)
+        session = await self._repository.active_session(context)
+        mastery = await self._repository.mastery_review(context, _path_rows(path))
+        actions = list(self._guide_actions(path, session))
+        active_step = (
+            next((step for step in session.steps if step.status == "active"), None)
+            if session
+            else None
+        )
+        if (
+            session
+            and active_step
+            and active_step.kind == "question"
+            and await self._repository.has_approved_hint(
+                context,
+                session.id,
+                active_step.id,
+            )
+        ):
+            actions.append("approved_hint")
+        intent = await self._guide.classify(cleaned, tuple(actions))
+        reply, action, evidence = self._guide_reply(
+            intent,
+            path,
+            mastery,
+            session,
+            tuple(actions),
+        )
+        return await self._repository.append_guide_exchange(
+            context,
+            learner_content=cleaned,
+            guide_content=reply,
+            intent=intent,
+            action=action,
+            evidence=evidence,
+        )
+
+    def _guide_reply(
+        self,
+        intent: LearningGuideIntent,
+        path: LearnerPath,
+        mastery: MasteryReview,
+        session: StudySession | None,
+        available_actions: tuple[str, ...],
+    ) -> tuple[str, str | None, dict[str, object]]:
+        current = next((item for item in path.items if item.current), None)
+        active_step = (
+            next((step for step in session.steps if step.status == "active"), None)
+            if session
+            else None
+        )
+        counts = {
+            state: sum(1 for concept in mastery.concepts if concept.state == state)
+            for state in ("mastered", "practiced", "struggling", "not_started")
+        }
+        evidence: dict[str, object] = {
+            "current_concept": current.name if current else None,
+            "session_mode": session.mode if session else None,
+            "active_step": active_step.kind if active_step else None,
+            "mastery_counts": counts,
+            "last_route": path.last_route_action,
+        }
+
+        if intent == "next":
+            if active_step:
+                next_step = _learner_step_phrase(active_step.kind, active_step.title)
+                return (
+                    f"Your next active step is {next_step} because {active_step.reason}",
+                    None,
+                    evidence,
+                )
+            if current:
+                return (
+                    f"Your strongest reviewed next concept is {current.name}. It is eligible, "
+                    "has concept-linked teaching and assessment coverage, and can be started "
+                    "from your current learning mode.",
+                    "replay" if "replay" in available_actions else None,
+                    evidence,
+                )
+            return (
+                "There is no actionable next concept with complete reviewed teaching and "
+                "assessment coverage right now.",
+                None,
+                evidence,
+            )
+        if intent == "why_next":
+            message = path.last_route_why
+            if not message and current:
+                message = (
+                    f"{current.name} is recommended because its prerequisites are satisfied "
+                    "and it has reviewed concept-linked teaching and assessment coverage."
+                )
+            return (
+                message or "There is no current recommendation to explain.",
+                None,
+                evidence,
+            )
+        if intent == "status":
+            focus = (
+                f" You are currently working on {current.name}."
+                if current
+                else " No reviewed concept is currently actionable."
+            )
+            session_status = (
+                f" Your active mode is {_mode_label(session.mode)}."
+                if session
+                else " You have not started a learning loop yet."
+            )
+            return (
+                f"You have mastered {counts['mastered']} of {len(mastery.concepts)} concepts; "
+                f"{counts['practiced']} are practiced and {counts['struggling']} need support."
+                f"{focus}{session_status}",
+                None,
+                evidence,
+            )
+        if intent == "stuck":
+            return (
+                "I can prepare an evidence-backed help request for your course team. You will "
+                "review exactly what is shared before it is sent.",
+                "stuck" if "stuck" in available_actions else None,
+                evidence,
+            )
+        if intent == "replay":
+            return _action_reply(
+                "replay",
+                available_actions,
+                "I can reopen the instructor-reviewed explanation for your current concept.",
+                "There is no reviewed explanation available for the current concept.",
+                evidence,
+            )
+        if intent == "prerequisite":
+            return _action_reply(
+                "prerequisite",
+                available_actions,
+                "I can take you to the reviewed prerequisite that supports this concept.",
+                "The current concept has no eligible reviewed prerequisite to open.",
+                evidence,
+            )
+        if intent in {"approved_source", "platform_resources"}:
+            return _action_reply(
+                "approved_source",
+                available_actions,
+                "I found an instructor-approved learner source connected to this concept.",
+                "No instructor-approved learner source is linked to this concept. Private or "
+                "unpublished sources are never exposed here.",
+                evidence,
+            )
+        if intent == "approved_hint":
+            return _action_reply(
+                "approved_hint",
+                available_actions,
+                "An instructor-approved hint is available for your active question.",
+                "No instructor-approved hint is available for the current activity.",
+                evidence,
+            )
+        if intent == "quiz":
+            return _action_reply(
+                "quiz",
+                available_actions,
+                "I can open the approved concept-linked check for your current lesson.",
+                "No approved concept-linked question is actionable right now.",
+                evidence,
+            )
+        if intent == "change_mode":
+            return (
+                "You can change how this learning loop is focused. Manifold will keep "
+                "prerequisites and reviewed-content coverage as hard constraints.",
+                "change_mode",
+                evidence,
+            )
+        if intent == "finish_session":
+            return _action_reply(
+                "finish_session",
+                available_actions,
+                "You can finish after the current meaningful evidence loop and record a "
+                "reflection.",
+                "There is no active learning session to finish.",
+                evidence,
+            )
+        if intent == "platform_transcript":
+            return (
+                "Open Transcript beneath a video to follow the instructor’s words. The active "
+                "word tracks playback, including pauses, seeks, and playback-speed changes.",
+                None,
+                evidence,
+            )
+        if intent == "platform_mastery":
+            return (
+                "Mastery is based on assessment evidence, not watch time or self-report. Ready "
+                "concepts have satisfied prerequisites; blocked concepts do not. Practiced and "
+                "struggling states keep evidence visible without treating difficulty as failure.",
+                None,
+                evidence,
+            )
+        if intent == "platform_placement":
+            return (
+                "Placement uses only instructor-reviewed questions to avoid repeating material. "
+                "It never invents confidence, and it stays unavailable when reviewed coverage "
+                "is insufficient.",
+                None,
+                evidence,
+            )
+        if intent == "content_question":
+            action = (
+                "approved_source"
+                if "approved_source" in available_actions
+                else "replay"
+                if "replay" in available_actions
+                else None
+            )
+            return (
+                "I won’t invent a new teaching explanation. I can instead open the instructor’s "
+                "reviewed explanation or an approved source connected to this concept.",
+                action,
+                evidence,
+            )
+        return (
+            "Ask me what to do next, why your route changed, how your progress looks, how a "
+            "Manifold feature works, or where to find reviewed course help. If you are stuck, "
+            "I can also prepare an evidence-backed message for your course team.",
+            None,
+            evidence,
+        )
+
     async def _path(self, learner_id: UUID, course_id: UUID) -> LearnerPath:
         try:
             return await self._routing.learner_path(learner_id, course_id)
@@ -915,6 +1165,39 @@ class LearningService:
         if current.aids:
             actions.append("approved_source")
         return tuple(actions)
+
+
+def _action_reply(
+    action: str,
+    available_actions: tuple[str, ...],
+    available_message: str,
+    unavailable_message: str,
+    evidence: dict[str, object],
+) -> tuple[str, str | None, dict[str, object]]:
+    return (
+        available_message if action in available_actions else unavailable_message,
+        action if action in available_actions else None,
+        evidence,
+    )
+
+
+def _learner_step_phrase(kind: str, title: str) -> str:
+    prefix = {
+        "watch": "to watch",
+        "question": "to answer",
+        "resource": "to review",
+        "reflect": "to reflect on",
+    }.get(kind, "to continue")
+    return f"{prefix} “{title}”"
+
+
+def _mode_label(mode: str) -> str:
+    return {
+        "continue_path": "Continue my path",
+        "learn_new": "Learn something new",
+        "strengthen_weak_areas": "Strengthen weak areas",
+        "review_learned": "Review what I learned",
+    }.get(mode, mode.replace("_", " "))
 
 
 def _step(
