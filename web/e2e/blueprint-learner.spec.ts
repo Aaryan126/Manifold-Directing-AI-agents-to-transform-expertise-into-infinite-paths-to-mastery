@@ -108,8 +108,6 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
         json: {
           completed: true,
           entry_choice: "recommended",
-          default_time_budget_minutes: 20,
-          immediate_goal: "Continue efficiently",
         },
       });
     }
@@ -120,6 +118,16 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
     if (path === "/learn/courses/course-1/sessions/session-1/start") {
       phase = "watch";
       return route.fulfill({ json: studySession("active", "watch") });
+    }
+    if (path === "/learn/courses/course-1/sessions/session-1/plan") {
+      const request = route.request().postDataJSON() as { mode?: string };
+      return route.fulfill({
+        json: remediationSession(
+          request.mode === "strengthen_weak_areas"
+            ? "strengthen_weak_areas"
+            : "continue_path",
+        ),
+      });
     }
     if (path.endsWith("/steps/watch-1/watch")) {
       phase = "question";
@@ -214,19 +222,28 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   await page.goto("/learn/courses/course-1");
   await expect(
     page.getByRole("heading", {
-      name: "Start Vector Foundations without wasting time.",
+      name: "Start Vector Foundations with the right path.",
     }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "20 minutes" }).click();
   await page
     .getByRole("button", { name: /Continue with the recommended path/ })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Let’s make this session count." }),
+    page.getByRole("heading", { name: "How would you like to learn?" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Prepare my session" }).click();
   await expect(
-    page.getByRole("heading", { name: "Your 20-minute study session" }),
+    page.getByRole("button", { name: /Review what I learned/ }),
+  ).toBeDisabled();
+  await expect(page.getByText(/available after you have practiced/)).toBeVisible();
+  await expect(page.getByText(/minute/i)).toHaveCount(0);
+  await page.getByRole("button", { name: /Learn something new/ }).click();
+  await expect(
+    page.getByRole("button", { name: /Learn something new/ }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: /Continue my path/ }).click();
+  await page.getByRole("button", { name: "Prepare this learning loop" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Continue my path" }),
   ).toBeVisible();
   await expect(page.getByText("Learn: Vector direction")).toBeVisible();
   await expect(page.getByText("Practice: Vector direction")).toBeVisible();
@@ -277,6 +294,17 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
     ),
   ).toBeVisible();
   await expect(page.locator("video")).toBeVisible();
+  await page.getByRole("button", { name: "Change learning mode" }).click();
+  const modeChooser = page.getByLabel("Change learning mode");
+  await expect(
+    modeChooser.getByRole("button", { name: /Strengthen weak areas/ }),
+  ).toBeEnabled();
+  await modeChooser
+    .getByRole("button", { name: /Strengthen weak areas/ })
+    .click();
+  await expect(
+    page.getByLabel("Active study plan").getByText("Strengthen weak areas"),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Mastery" }).click();
   const mastery = page.getByLabel("Course mastery and review");
@@ -379,9 +407,8 @@ function workspace(
     orientation: {
       completed: oriented,
       entry_choice: oriented ? "recommended" : null,
-      default_time_budget_minutes: oriented ? 20 : null,
-      immediate_goal: oriented ? "Continue efficiently" : null,
     },
+    modes: learningModes(state),
     session:
       currentPhase === "none"
         ? null
@@ -431,9 +458,62 @@ function workspace(
       "approved_source",
       "quiz",
       "stuck",
+      "change_mode",
+      "finish_session",
     ],
     content_message: null,
   };
+}
+
+function learningModes(state: "not_started" | "struggling") {
+  return [
+    {
+      key: "continue_path",
+      title: "Continue my path",
+      description: "Resume Manifold’s strongest reviewed next step.",
+      available: true,
+      recommended: state === "not_started",
+      reason:
+        state === "not_started"
+          ? "This is the strongest reviewed next step in your path."
+          : null,
+      disabled_reason: null,
+    },
+    {
+      key: "learn_new",
+      title: "Learn something new",
+      description: "Begin an eligible concept you have not studied yet.",
+      available: true,
+      recommended: false,
+      reason: null,
+      disabled_reason: null,
+    },
+    {
+      key: "strengthen_weak_areas",
+      title: "Strengthen weak areas",
+      description: "Repair uncertainty or recent difficulty.",
+      available: state === "struggling",
+      recommended: state === "struggling",
+      reason:
+        state === "struggling"
+          ? "Recent correctness, confidence, or routing evidence shows uncertainty."
+          : null,
+      disabled_reason:
+        state === "struggling"
+          ? null
+          : "This becomes available when attempts show difficulty.",
+    },
+    {
+      key: "review_learned",
+      title: "Review what I learned",
+      description: "Retrieve practiced material.",
+      available: false,
+      recommended: false,
+      reason: null,
+      disabled_reason:
+        "This becomes available after you have practiced reviewed course material.",
+    },
+  ];
 }
 
 function studySession(status: "planned" | "active", active: "pending" | "watch" | "question") {
@@ -442,9 +522,8 @@ function studySession(status: "planned" | "active", active: "pending" | "watch" 
     course_id: "course-1",
     revision_id: "revision-1",
     status,
-    goal: "continue",
-    goal_note: null,
-    budget_minutes: 20,
+    mode: "continue_path",
+    finish_requested: false,
     plan_version: 1,
     steps: [
       sessionStep("watch-1", 0, "watch", active === "watch" ? "active" : active === "question" ? "completed" : "pending"),
@@ -454,15 +533,16 @@ function studySession(status: "planned" | "active", active: "pending" | "watch" 
   };
 }
 
-function remediationSession() {
+function remediationSession(
+  mode: "continue_path" | "strengthen_weak_areas" = "continue_path",
+) {
   return {
     id: "session-1",
     course_id: "course-1",
     revision_id: "revision-1",
     status: "active",
-    goal: "continue",
-    goal_note: null,
-    budget_minutes: 20,
+    mode,
+    finish_requested: false,
     plan_version: 2,
     steps: [
       {
@@ -502,7 +582,6 @@ function sessionStep(
         : kind === "question"
           ? "What makes a vector different from a scalar?"
           : "Reflect on this session",
-    estimated_minutes: kind === "watch" ? 2 : 1,
     reason_code:
       kind === "watch"
         ? "recommended_current"

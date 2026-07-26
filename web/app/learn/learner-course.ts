@@ -152,7 +152,6 @@ export type LearnerSessionStep = {
   question_id: string | null;
   source_id: string | null;
   title: string;
-  estimated_minutes: number;
   reason_code: string;
   reason: string;
   status: "pending" | "active" | "completed" | "skipped" | "replaced" | "unavailable";
@@ -163,9 +162,8 @@ export type LearnerStudySession = {
   course_id: string;
   revision_id: string;
   status: "planned" | "active" | "reflecting" | "completed" | "superseded";
-  goal: "continue" | "review" | "get_unstuck" | "custom";
-  goal_note: string | null;
-  budget_minutes: number;
+  mode: LearnerModeKey;
+  finish_requested: boolean;
   plan_version: number;
   steps: LearnerSessionStep[];
 };
@@ -173,8 +171,22 @@ export type LearnerStudySession = {
 export type LearnerOrientation = {
   completed: boolean;
   entry_choice: "recommended" | "placement" | "foundations" | null;
-  default_time_budget_minutes: number | null;
-  immediate_goal: string | null;
+};
+
+export type LearnerModeKey =
+  | "continue_path"
+  | "learn_new"
+  | "strengthen_weak_areas"
+  | "review_learned";
+
+export type LearnerMode = {
+  key: LearnerModeKey;
+  title: string;
+  description: string;
+  available: boolean;
+  recommended: boolean;
+  reason: string | null;
+  disabled_reason: string | null;
 };
 
 export type LearnerPlacementItem = {
@@ -217,6 +229,7 @@ export type LearnerMasteryReview = {
 export type LearnerWorkspace = {
   revision_id: string;
   orientation: LearnerOrientation;
+  modes: LearnerMode[];
   session: LearnerStudySession | null;
   placement: LearnerPlacement | null;
   mastery: LearnerMasteryReview;

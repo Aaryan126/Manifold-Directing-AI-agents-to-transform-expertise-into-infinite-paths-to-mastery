@@ -18,7 +18,6 @@ import {
   CheckCircle2,
   ChevronDown,
   CircleHelp,
-  Clock3,
   Compass,
   Download,
   FileText,
@@ -48,6 +47,7 @@ import {
   type LearnerPath,
   type LearnerPathItem,
   type LearnerPathVisualState,
+  type LearnerModeKey,
   type LearnerPlacement,
   type LearnerSessionStep,
   type LearnerStudySession,
@@ -100,7 +100,9 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
   const [studySession, setStudySession] = useState<LearnerStudySession | null>(null);
   const [completedSession, setCompletedSession] =
     useState<LearnerStudySession | null>(null);
-  const [budget, setBudget] = useState(20);
+  const [selectedMode, setSelectedMode] =
+    useState<LearnerModeKey>("continue_path");
+  const [modeChooserOpen, setModeChooserOpen] = useState(false);
   const [answer, setAnswer] = useState("");
   const [confidence, setConfidence] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<AnswerResponse | null>(null);
@@ -170,10 +172,10 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
       setPath(nextPath);
       setWorkspace(nextWorkspace);
       setStudySession(nextWorkspace.session);
-      setBudget(
-        nextWorkspace.session?.budget_minutes ??
-          nextWorkspace.orientation.default_time_budget_minutes ??
-          20,
+      setSelectedMode(
+        nextWorkspace.session?.mode
+          ?? nextWorkspace.modes.find((mode) => mode.recommended)?.key
+          ?? "continue_path",
       );
     } catch (caught) {
       setError(
@@ -208,8 +210,6 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
     : null;
   const completedSteps =
     studySession?.steps.filter((step) => step.status === "completed").length ?? 0;
-  const totalMinutes =
-    studySession?.steps.reduce((sum, step) => sum + step.estimated_minutes, 0) ?? 0;
   const activeTranscriptIndex = activeTranscriptWordIndex(
     transcript?.words ?? [],
     playbackSeconds,
@@ -274,11 +274,6 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
         "PUT",
         {
           entry_choice: choice,
-          time_budget_minutes: budget,
-          immediate_goal:
-            choice === "foundations"
-              ? "Review foundations before advancing"
-              : "Continue efficiently",
         },
       );
       if (choice === "placement") {
@@ -351,7 +346,10 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
     }
   }
 
-  async function createPlan(conceptId?: string) {
+  async function createPlan(
+    conceptId?: string,
+    mode: LearnerModeKey = selectedMode,
+  ) {
     setBusy(true);
     setError(null);
     try {
@@ -359,16 +357,13 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
         `/learn/courses/${courseId}/sessions`,
         "POST",
         {
-          goal:
-            workspace?.orientation.entry_choice === "foundations"
-              ? "review"
-              : "continue",
-          budget_minutes: budget,
+          mode,
           idempotency_key: `session:${identity?.id}:${courseId}:${Date.now()}`,
           concept_id: conceptId ?? null,
         },
       );
       setStudySession(nextSession);
+      setSelectedMode(nextSession.mode);
       setCompletedSession(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Plan could not be created.");
@@ -395,21 +390,45 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
     }
   }
 
-  async function adjustPlan(nextBudget: number, conceptId?: string) {
-    setBudget(nextBudget);
+  async function adjustPlan(
+    mode: LearnerModeKey = studySession?.mode ?? selectedMode,
+    conceptId?: string,
+  ) {
+    setSelectedMode(mode);
     if (!studySession) return;
     setBusy(true);
     setError(null);
     try {
       setStudySession(
         await mutate<LearnerStudySession>(
-          `/learn/courses/${courseId}/sessions/${studySession.id}/budget`,
+          `/learn/courses/${courseId}/sessions/${studySession.id}/plan`,
           "PUT",
-          { budget_minutes: nextBudget, concept_id: conceptId ?? null },
+          { mode, concept_id: conceptId ?? null },
         ),
       );
+      setModeChooserOpen(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Plan could not adjust.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function finishSession() {
+    if (!studySession) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setStudySession(
+        await mutate<LearnerStudySession>(
+          `/learn/courses/${courseId}/sessions/${studySession.id}/finish`,
+          "POST",
+        ),
+      );
+      setGuideOpen(false);
+      setModeChooserOpen(false);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Session could not finish.");
     } finally {
       setBusy(false);
     }
@@ -515,6 +534,11 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
     if (workspaceResponse.ok) {
       const next = (await workspaceResponse.json()) as LearnerWorkspace;
       setWorkspace(next);
+      if (!next.session) {
+        setSelectedMode(
+          next.modes.find((mode) => mode.recommended)?.key ?? "continue_path",
+        );
+      }
     }
   }
 
@@ -524,6 +548,10 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
     setError(null);
     if (action === "stuck") {
       await previewHelp();
+      return;
+    }
+    if (action === "finish_session") {
+      await finishSession();
       return;
     }
     if (action === "approved_hint" && studySession && activeStep) {
@@ -557,13 +585,18 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
         `/learn/courses/${courseId}/guide/${action}`,
         "POST",
       );
+      if (result.kind === "modes") {
+        setGuideOpen(false);
+        setModeChooserOpen(true);
+        return;
+      }
       if (
         ["clip", "question", "concept"].includes(result.kind)
         && result.concept_id
         && result.eligible !== false
       ) {
         if (studySession) {
-          await adjustPlan(studySession.budget_minutes, result.concept_id);
+          await adjustPlan(studySession.mode, result.concept_id);
         } else {
           await createPlan(result.concept_id);
         }
@@ -714,10 +747,8 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
 
         {!workspace.orientation.completed ? (
           <Orientation
-            budget={budget}
             busy={busy}
             courseTitle={course.title}
-            onBudget={setBudget}
             onChoose={(choice) => void completeOrientation(choice)}
           />
         ) : showPlacement ? (
@@ -740,28 +771,31 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
             mastery={workspace.mastery}
             onNext={() => {
               setCompletedSession(null);
-              void createPlan();
+              const recommended =
+                workspace.modes.find((mode) => mode.recommended)?.key
+                ?? "continue_path";
+              void createPlan(undefined, recommended);
             }}
             session={completedSession}
           />
         ) : !studySession ? (
           <SessionPlanner
-            budget={budget}
             busy={busy}
             contentMessage={
               placement?.status === "unavailable"
                 ? placement.unavailable_reason
                 : workspace.content_message
             }
-            onBudget={setBudget}
-            onCreate={() => void createPlan()}
+            modes={workspace.modes}
+            onCreate={(mode) => void createPlan(undefined, mode)}
+            onSelect={setSelectedMode}
             path={path}
+            selectedMode={selectedMode}
           />
         ) : studySession.status === "planned" ? (
           <SessionPlan
-            budget={budget}
             busy={busy}
-            onAdjust={(minutes) => void adjustPlan(minutes)}
+            onChangeMode={() => setModeChooserOpen(true)}
             onStart={() => void startPlan()}
             session={studySession}
           />
@@ -834,11 +868,8 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
 
             <aside aria-label="Active study plan" className={styles.sessionRail}>
               <header>
-                <span>
-                  <Clock3 />
-                  {studySession.budget_minutes} minute session
-                </span>
-                <strong>{totalMinutes} min of reviewed work</strong>
+                <span>{modeTitle(studySession.mode)}</span>
+                <strong>One focused evidence loop</strong>
               </header>
               <ol>
                 {studySession.steps.map((step) => (
@@ -854,29 +885,23 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
                     </span>
                     <div>
                       <strong>{stepLabel(step)}</strong>
-                      <small>{step.estimated_minutes} min · {step.reason}</small>
+                      <small>{step.reason}</small>
                     </div>
                   </li>
                 ))}
               </ol>
-              <details>
-                <summary>
-                  Adjust remaining time
-                  <ChevronDown />
-                </summary>
-                <div>
-                  {[10, 20, 30].map((minutes) => (
-                    <button
-                      disabled={busy}
-                      key={minutes}
-                      onClick={() => void adjustPlan(minutes)}
-                      type="button"
-                    >
-                      {minutes} min
-                    </button>
-                  ))}
-                </div>
-              </details>
+              <div className={styles.sessionRailActions}>
+                <button
+                  disabled={busy}
+                  onClick={() => setModeChooserOpen(true)}
+                  type="button"
+                >
+                  Change learning mode
+                </button>
+                <button disabled={busy} onClick={() => void finishSession()} type="button">
+                  Finish this session
+                </button>
+              </div>
             </aside>
           </div>
         )}
@@ -894,7 +919,7 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
               if (!item?.eligible || item.actionable === false) return;
               setMasteryOpen(false);
               if (studySession) {
-                void adjustPlan(studySession.budget_minutes, conceptId);
+                void adjustPlan(studySession.mode, conceptId);
               } else {
                 void createPlan(conceptId);
               }
@@ -921,22 +946,35 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
             onSendHelp={() => void sendHelp()}
           />
         ) : null}
+
+        {modeChooserOpen ? (
+          <ModeChooser
+            busy={busy}
+            modes={workspace.modes}
+            onChoose={(mode) => {
+              if (studySession) {
+                void adjustPlan(mode);
+              } else {
+                setSelectedMode(mode);
+                setModeChooserOpen(false);
+              }
+            }}
+            onClose={() => setModeChooserOpen(false)}
+            selectedMode={studySession?.mode ?? selectedMode}
+          />
+        ) : null}
       </main>
     </div>
   );
 }
 
 function Orientation({
-  budget,
   busy,
   courseTitle,
-  onBudget,
   onChoose,
 }: {
-  budget: number;
   busy: boolean;
   courseTitle: string;
-  onBudget: (minutes: number) => void;
   onChoose: (choice: "recommended" | "placement" | "foundations") => void;
 }) {
   return (
@@ -945,26 +983,11 @@ function Orientation({
         <Sparkles />
         Manifold Learning Guide
       </span>
-      <h1>Start {courseTitle} without wasting time.</h1>
+      <h1>Start {courseTitle} with the right path.</h1>
       <p>
         I’ll use only instructor-reviewed lessons and questions, then explain every
         adjustment I make.
       </p>
-      <div className={styles.timeChoice}>
-        <strong>How much time do you have today?</strong>
-        <div>
-          {[10, 20, 30].map((minutes) => (
-            <button
-              aria-pressed={budget === minutes}
-              key={minutes}
-              onClick={() => onBudget(minutes)}
-              type="button"
-            >
-              {minutes} minutes
-            </button>
-          ))}
-        </div>
-      </div>
       <div className={styles.orientationChoices}>
         <button disabled={busy} onClick={() => onChoose("recommended")} type="button">
           <Route />
@@ -992,6 +1015,84 @@ function Orientation({
         </button>
       </div>
     </section>
+  );
+}
+
+function ModeCards({
+  modes,
+  onChoose,
+  selectedMode,
+}: {
+  modes: LearnerWorkspace["modes"];
+  onChoose: (mode: LearnerModeKey) => void;
+  selectedMode: LearnerModeKey;
+}) {
+  return (
+    <div aria-label="Learning modes" className={styles.modeGrid} role="group">
+      {modes.map((mode) => (
+        <button
+          aria-pressed={selectedMode === mode.key}
+          className={styles.modeCard}
+          data-recommended={mode.recommended || undefined}
+          disabled={!mode.available}
+          key={mode.key}
+          onClick={() => onChoose(mode.key)}
+          type="button"
+        >
+          <span>
+            {modeIcon(mode.key)}
+            {mode.recommended ? <small>Recommended</small> : null}
+          </span>
+          <strong>{mode.title}</strong>
+          <p>{mode.available ? mode.description : mode.disabled_reason}</p>
+          {mode.recommended && mode.reason ? <em>{mode.reason}</em> : null}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ModeChooser({
+  busy,
+  modes,
+  onChoose,
+  onClose,
+  selectedMode,
+}: {
+  busy: boolean;
+  modes: LearnerWorkspace["modes"];
+  onChoose: (mode: LearnerModeKey) => void;
+  onClose: () => void;
+  selectedMode: LearnerModeKey;
+}) {
+  return (
+    <div className={styles.drawerBackdrop} onMouseDown={onClose}>
+      <section
+        aria-label="Change learning mode"
+        className={styles.modeChooser}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header>
+          <div>
+            <span className={styles.guideIdentity}>
+              <Sparkles />
+              Manifold Learning Guide
+            </span>
+            <h2>Choose how you want to learn</h2>
+          </div>
+          <button aria-label="Close mode chooser" onClick={onClose} type="button">
+            <X />
+          </button>
+        </header>
+        <ModeCards
+          modes={modes}
+          onChoose={(mode) => {
+            if (!busy) onChoose(mode);
+          }}
+          selectedMode={selectedMode}
+        />
+      </section>
+    </div>
   );
 }
 
@@ -1063,65 +1164,51 @@ function PlacementStage({
 }
 
 function SessionPlanner({
-  budget,
   busy,
   contentMessage,
-  onBudget,
+  modes,
   onCreate,
+  onSelect,
   path,
+  selectedMode,
 }: {
-  budget: number;
   busy: boolean;
   contentMessage: string | null;
-  onBudget: (minutes: number) => void;
-  onCreate: () => void;
+  modes: LearnerWorkspace["modes"];
+  onCreate: (mode: LearnerModeKey) => void;
+  onSelect: (mode: LearnerModeKey) => void;
   path: LearnerPath;
+  selectedMode: LearnerModeKey;
 }) {
   const current = path.items.find((item) => item.current);
+  const selected = modes.find((mode) => mode.key === selectedMode);
   return (
     <section className={styles.sessionPlanner}>
       <span className={styles.guideIdentity}>
         <Sparkles />
         Manifold Learning Guide
       </span>
-      <h1>Let’s make this session count.</h1>
+      <h1>How would you like to learn?</h1>
       <p>
-        I’ll assemble one complete learning loop from reviewed course material and
-        adjust it when your evidence changes.
+        Manifold recommends one mode from your course evidence. You stay in control
+        and can choose any mode that is ready.
       </p>
+      <ModeCards modes={modes} onChoose={onSelect} selectedMode={selectedMode} />
       <div className={styles.plannerCard}>
         <div>
-          <small>Recommended focus</small>
-          <strong>{current?.name ?? "Reviewed course path"}</strong>
-          <p>
-            {current
-              ? "Ready now, with reviewed teaching and a concept-linked check."
-              : contentMessage}
-          </p>
-        </div>
-        <div className={styles.timeChoice}>
-          <strong>Available time</strong>
-          <div>
-            {[10, 20, 30].map((minutes) => (
-              <button
-                aria-pressed={budget === minutes}
-                key={minutes}
-                onClick={() => onBudget(minutes)}
-                type="button"
-              >
-                {minutes} min
-              </button>
-            ))}
-          </div>
+          <small>{selected?.recommended ? "Recommended by Manifold" : "Selected mode"}</small>
+          <strong>{selected?.title ?? "Reviewed course path"}</strong>
+          <p>{selected?.reason ?? selected?.description ?? contentMessage}</p>
+          {current ? <span>Current focus: {current.name}</span> : null}
         </div>
         <button
           className={styles.primaryAction}
-          disabled={busy || !current}
-          onClick={onCreate}
+          disabled={busy || !selected?.available}
+          onClick={() => onCreate(selectedMode)}
           type="button"
         >
           {busy ? <LoaderCircle className={styles.spin} /> : <Sparkles />}
-          Prepare my session
+          Prepare this learning loop
         </button>
       </div>
     </section>
@@ -1129,22 +1216,16 @@ function SessionPlanner({
 }
 
 function SessionPlan({
-  budget,
   busy,
-  onAdjust,
+  onChangeMode,
   onStart,
   session,
 }: {
-  budget: number;
   busy: boolean;
-  onAdjust: (minutes: number) => void;
+  onChangeMode: () => void;
   onStart: () => void;
   session: LearnerStudySession;
 }) {
-  const estimate = session.steps.reduce(
-    (sum, step) => sum + step.estimated_minutes,
-    0,
-  );
   return (
     <section className={styles.planStage}>
       <header>
@@ -1152,10 +1233,10 @@ function SessionPlan({
           <Sparkles />
           Manifold Learning Guide
         </span>
-        <h1>Your {budget}-minute study session</h1>
+        <h1>{modeTitle(session.mode)}</h1>
         <p>
-          {estimate} minutes of reviewed activity. Your time budget is a soft guide,
-          so I’ll preserve one complete Learn → Practice → Reflect loop.
+          One focused evidence loop using only reviewed course material. Each step
+          changes what Manifold recommends next.
         </p>
       </header>
       <ol className={styles.planSteps}>
@@ -1167,27 +1248,13 @@ function SessionPlan({
               <strong>{stepLabel(step)}</strong>
               <p>{step.reason}</p>
             </div>
-            <em>{step.estimated_minutes} min</em>
           </li>
         ))}
       </ol>
       <footer>
-        <div className={styles.timeChoice}>
-          <strong>Adjust time</strong>
-          <div>
-            {[10, 20, 30].map((minutes) => (
-              <button
-                aria-pressed={budget === minutes}
-                disabled={busy}
-                key={minutes}
-                onClick={() => onAdjust(minutes)}
-                type="button"
-              >
-                {minutes} min
-              </button>
-            ))}
-          </div>
-        </div>
+        <button disabled={busy} onClick={onChangeMode} type="button">
+          Choose another mode
+        </button>
         <button className={styles.primaryAction} disabled={busy} onClick={onStart}>
           {busy ? <LoaderCircle className={styles.spin} /> : <Play />}
           Start session
@@ -1213,7 +1280,7 @@ function SessionHeader({
       <div>
         <span>{activeStep ? stageName(activeStep) : "Session"}</span>
         <span>{completed + 1} of {session.steps.length}</span>
-        {activeStep ? <span>{activeStep.estimated_minutes} min</span> : null}
+        <span>{modeTitle(session.mode)}</span>
       </div>
       <h1>{activeStep?.concept_name ?? activeTopic}</h1>
       <p>{activeStep?.reason}</p>
@@ -1826,6 +1893,24 @@ function stageName(step: LearnerSessionStep) {
   return "Review";
 }
 
+function modeTitle(mode: LearnerModeKey) {
+  return {
+    continue_path: "Continue my path",
+    learn_new: "Learn something new",
+    strengthen_weak_areas: "Strengthen weak areas",
+    review_learned: "Review what I learned",
+  }[mode];
+}
+
+function modeIcon(mode: LearnerModeKey) {
+  return {
+    continue_path: <Route />,
+    learn_new: <BookOpenText />,
+    strengthen_weak_areas: <RotateCcw />,
+    review_learned: <ListChecks />,
+  }[mode];
+}
+
 function masteryNodeIcon(state: LearnerPathVisualState, index: number) {
   if (state === "mastered") return <CheckCircle2 />;
   if (state === "blocked") return <LockKeyhole />;
@@ -1881,6 +1966,8 @@ function guideLabel(action: string) {
     approved_source: "Show the instructor-approved source",
     approved_hint: "Give me an approved hint",
     quiz: "Quiz me with an approved question",
+    change_mode: "Change how I’m learning",
+    finish_session: "Finish this session",
     stuck: "I’m stuck",
   }[action] ?? action;
 }
@@ -1891,5 +1978,7 @@ function guideIcon(action: string) {
   if (action === "replay") return <RotateCcw />;
   if (action === "approved_source") return <FileText />;
   if (action === "quiz") return <ListChecks />;
+  if (action === "change_mode") return <Route />;
+  if (action === "finish_session") return <CheckCircle2 />;
   return <Compass />;
 }
