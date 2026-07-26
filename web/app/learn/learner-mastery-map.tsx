@@ -37,13 +37,15 @@ import styles from "./learner.module.css";
 type MasteryNodeData = {
   evidence: LearnerMasteryReview["concepts"][number] | null;
   item: LearnerPathItem;
-  onInspect: (conceptId: string) => void;
+  onInspect: (conceptId: string | null) => void;
+  routeChange: LearnerMasteryReview["recent_routes"][number] | null;
   selected: boolean;
   state: LearnerPathVisualState;
 };
 type MasteryNode = Node<MasteryNodeData, "learnerMastery">;
 type MasteryEdgeData = {
-  kind: LearnerMasteryConnection["kind"];
+  action?: string;
+  kind: LearnerMasteryConnection["kind"] | "adaptive_route";
 };
 type MasteryEdge = Edge<MasteryEdgeData>;
 
@@ -59,7 +61,7 @@ export function LearnerMasteryMap({
 }: {
   inspectedConceptId: string | null;
   mastery: LearnerMasteryReview;
-  onInspect: (conceptId: string) => void;
+  onInspect: (conceptId: string | null) => void;
   path: LearnerPath;
 }) {
   const [positions, setPositions] = useState<
@@ -155,6 +157,17 @@ export function LearnerMasteryMap({
     ),
     [mastery.concepts],
   );
+  const routeByConcept = useMemo(() => {
+    const routes = new Map<
+      string,
+      LearnerMasteryReview["recent_routes"][number]
+    >();
+    mastery.recent_routes.forEach((route) => {
+      const conceptId = route.target_concept_id ?? route.concept_id;
+      if (conceptId && !routes.has(conceptId)) routes.set(conceptId, route);
+    });
+    return routes;
+  }, [mastery.recent_routes]);
   const nodes = useMemo<MasteryNode[]>(() => path.items.map((item) => ({
     id: item.concept_id,
     type: "learnerMastery",
@@ -163,6 +176,7 @@ export function LearnerMasteryMap({
       evidence: evidenceByConcept.get(item.concept_id) ?? null,
       item,
       onInspect,
+      routeChange: routeByConcept.get(item.concept_id) ?? null,
       selected: inspectedConceptId === item.concept_id,
       state: learnerPathVisualState(item, path.current_concept_id),
     },
@@ -174,29 +188,76 @@ export function LearnerMasteryMap({
     path.current_concept_id,
     path.items,
     positions,
+    routeByConcept,
   ]);
-  const edges = useMemo<MasteryEdge[]>(() => connections.map((connection) => {
-    const entersCurrent = connection.target === path.current_concept_id;
-    const prerequisite = connection.kind === "prerequisite";
-    return {
-      id: connection.id,
-      source: connection.source,
-      target: connection.target,
-      data: { kind: connection.kind },
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        color: entersCurrent ? "#c86622" : prerequisite ? "#77747b" : "#b8b4ac",
-        height: 15,
-        width: 15,
-      },
-      style: {
-        stroke: entersCurrent ? "#c86622" : prerequisite ? "#77747b" : "#b8b4ac",
-        strokeDasharray: prerequisite ? undefined : "5 6",
-        strokeWidth: entersCurrent ? 2.4 : prerequisite ? 1.7 : 1.25,
-      },
-      type: "smoothstep",
-    };
-  }), [connections, path.current_concept_id]);
+  const edges = useMemo<MasteryEdge[]>(() => {
+    const structuralEdges = connections.map((connection) => {
+      const entersCurrent = connection.target === path.current_concept_id;
+      const prerequisite = connection.kind === "prerequisite";
+      return {
+        id: connection.id,
+        source: connection.source,
+        target: connection.target,
+        data: { kind: connection.kind },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: entersCurrent ? "#c86622" : prerequisite ? "#77747b" : "#b8b4ac",
+          height: 15,
+          width: 15,
+        },
+        style: {
+          stroke: entersCurrent ? "#c86622" : prerequisite ? "#77747b" : "#b8b4ac",
+          strokeDasharray: prerequisite ? undefined : "5 6",
+          strokeWidth: entersCurrent ? 2.4 : prerequisite ? 1.7 : 1.25,
+        },
+        type: "smoothstep",
+      } satisfies MasteryEdge;
+    });
+    const itemIds = new Set(path.items.map((item) => item.concept_id));
+    const seenTransitions = new Set<string>();
+    const adaptiveEdges = mastery.recent_routes.flatMap((route) => {
+      const source = route.concept_id;
+      const target = route.target_concept_id;
+      if (
+        !source
+        || !target
+        || source === target
+        || !itemIds.has(source)
+        || !itemIds.has(target)
+      ) {
+        return [];
+      }
+      const transitionKey = `${source}:${target}`;
+      if (seenTransitions.has(transitionKey)) return [];
+      seenTransitions.add(transitionKey);
+      const color = routeChangeColor(route.action);
+      return [{
+        id: `adaptive:${route.created_at}:${transitionKey}`,
+        source,
+        target,
+        data: { action: route.action, kind: "adaptive_route" },
+        label: routeChangeLabel(route.action),
+        labelBgBorderRadius: 6,
+        labelBgPadding: [5, 3] as [number, number],
+        labelBgStyle: { fill: "#fbfaf7", fillOpacity: 0.96 },
+        labelStyle: { fill: color, fontSize: 9, fontWeight: 700 },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color,
+          height: 16,
+          width: 16,
+        },
+        style: {
+          stroke: color,
+          strokeDasharray: "4 4",
+          strokeWidth: 2.4,
+        },
+        type: "smoothstep",
+        zIndex: 3,
+      } satisfies MasteryEdge];
+    });
+    return [...structuralEdges, ...adaptiveEdges];
+  }, [connections, mastery.recent_routes, path.current_concept_id, path.items]);
   const ready = layoutKey === requestedLayoutKey;
 
   useEffect(() => {
@@ -234,6 +295,7 @@ export function LearnerMasteryMap({
         nodesConnectable={false}
         nodesDraggable={false}
         onInit={setInstance}
+        onPaneClick={() => onInspect(null)}
         panOnScroll
         proOptions={{ hideAttribution: true }}
         zoomOnDoubleClick={false}
@@ -246,10 +308,11 @@ export function LearnerMasteryMap({
 }
 
 function MasteryMapNode({ data }: NodeProps<MasteryNode>) {
-  const { evidence, item, onInspect, selected, state } = data;
+  const { evidence, item, onInspect, routeChange, selected, state } = data;
   return (
     <article
       className={styles.masteryMapNode}
+      data-route-change={routeChange?.action || undefined}
       data-selected={selected || undefined}
       data-state={state}
     >
@@ -259,13 +322,22 @@ function MasteryMapNode({ data }: NodeProps<MasteryNode>) {
         type="target"
       />
       <button
-        aria-label={`${masteryStateLabel(state, evidence?.access_state)}: ${item.name}`}
+        aria-label={[
+          `${masteryStateLabel(state, evidence?.access_state)}: ${item.name}`,
+          routeChange ? `Route changed: ${routeChangeLabel(routeChange.action)}` : null,
+        ].filter(Boolean).join(". ")}
         onClick={() => onInspect(item.concept_id)}
         type="button"
       >
         <span>{masteryNodeIcon(state, item.sequence_rank)}</span>
         <small>{masteryStateLabel(state, evidence?.access_state)}</small>
         <strong>{item.name}</strong>
+        {routeChange ? (
+          <i
+            aria-hidden="true"
+            title={routeChangeLabel(routeChange.action)}
+          />
+        ) : null}
       </button>
       <Handle
         className={styles.masteryMapHandle}
@@ -274,6 +346,32 @@ function MasteryMapNode({ data }: NodeProps<MasteryNode>) {
       />
     </article>
   );
+}
+
+function routeChangeColor(action: string) {
+  return {
+    advance: "#26778a",
+    reinforce: "#28796f",
+    remediate: "#8556a3",
+    flag_instructor: "#9b5d25",
+    complete: "#4f7b46",
+    content_unavailable: "#77747b",
+    placement_skip: "#4f7b46",
+    placement_retain: "#9b5d25",
+  }[action] ?? "#9b5d25";
+}
+
+function routeChangeLabel(action: string) {
+  return {
+    advance: "Advanced route",
+    reinforce: "Reinforcement route",
+    remediate: "Support route",
+    flag_instructor: "Course-team support",
+    complete: "Completed route",
+    content_unavailable: "Reviewed content unavailable",
+    placement_skip: "Skipped by placement",
+    placement_retain: "Retained by placement",
+  }[action] ?? "Route changed";
 }
 
 function masteryNodeIcon(state: LearnerPathVisualState, sequenceRank: number) {

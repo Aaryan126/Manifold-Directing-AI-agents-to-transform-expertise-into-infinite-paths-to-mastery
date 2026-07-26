@@ -163,6 +163,10 @@ class RouteHistoryResponse(BaseModel):
     action: str
     explanation: str
     created_at: datetime
+    concept_id: UUID | None
+    target_concept_id: UUID | None
+    mastery_before: str
+    mastery_after: str
 
 
 class MasteryResponse(BaseModel):

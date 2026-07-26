@@ -59,8 +59,8 @@
 .routeReason summary svg:last-child { transition: transform 150ms ease; }
 .routeReason[open] summary svg:last-child { transform: rotate(180deg); }
 .routeReason > p { background: #f3f1ec; border-radius: 8px; color: #5f5c63; font-size: 13px; line-height: 1.5; margin: 8px 0 0; max-width: 720px; padding: 10px 12px; }
-.player { aspect-ratio: 16 / 9; background: #111; border-radius: 12px; margin-inline: auto; overflow: hidden; width: 100%; }
-.player > :global(.clipPreview) { display: block; height: 100%; object-fit: contain; width: 100%; }
+.player { background: #111; border-radius: 12px; line-height: 0; margin-inline: auto; overflow: hidden; width: 100%; }
+.player > :global(.clipPreview) { aspect-ratio: 16 / 9; display: block; height: auto; object-fit: contain; width: 100%; }
 .noMedia { align-items: center; color: rgb(255 255 255 / 68%); display: flex; justify-content: center; min-height: 420px; }
 .transcript { background: #fff; border: 1px solid #dedbd3; border-radius: 10px; margin-top: 12px; overflow: hidden; }
 .transcript > summary { align-items: center; cursor: pointer; display: flex; justify-content: space-between; list-style: none; min-height: 48px; padding: 0 15px; }
@@ -302,15 +302,17 @@
 .modeChooser h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 34px; font-weight: 500; letter-spacing: -.035em; margin: 0; }
 .modeChooser > header > button { align-items: center; background: #fff; border: 1px solid #d8d5ce; border-radius: 50%; cursor: pointer; display: flex; height: 38px; justify-content: center; width: 38px; }
 .modeChooser > header > button svg { height: 17px; width: 17px; }
-.masteryDrawer { background: #fbfaf7; box-shadow: -20px 0 50px rgb(30 28 25 / 14%); display: grid; grid-template-rows: auto minmax(360px, 1fr) auto auto; height: 100%; max-width: calc(100vw - 72px); overflow: hidden; width: min(700px, calc(100vw - 72px)); }
+.masteryDrawer { background: #fbfaf7; box-shadow: -20px 0 50px rgb(30 28 25 / 14%); display: grid; grid-template-rows: auto minmax(360px, 1fr) auto; height: 100%; max-width: calc(100vw - 72px); overflow: hidden; width: min(700px, calc(100vw - 72px)); }
 .masteryDrawer > header { align-items: center; border-bottom: 1px solid #dedbd3; display: flex; justify-content: space-between; min-height: 76px; padding: 15px 20px; }
-.masteryDrawer h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 28px; font-weight: 520; letter-spacing: -.025em; margin: 0; }
+.masteryDrawer h2 { align-items: center; display: flex; font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 28px; font-weight: 520; gap: 10px; letter-spacing: -.025em; margin: 0; }
+.masteryDrawer h2 svg { color: #a65318; height: 22px; stroke-width: 1.8; width: 22px; }
 .masteryDrawer > header button { align-items: center; background: transparent; border: 0; color: #66636a; cursor: pointer; display: flex; height: 36px; justify-content: center; width: 36px; }
 .masteryDrawer > header button svg { height: 18px; width: 18px; }
-.masteryMapCanvas { background: #f7f5f0; min-height: 0; position: relative; }
+.masteryMapStage { min-height: 0; position: relative; }
+.masteryMapCanvas { background: #f7f5f0; height: 100%; min-height: 0; position: relative; }
 .masteryMapLoading { align-items: center; background: rgb(247 245 240 / 86%); color: #6e6b72; display: flex; font-size: 12px; gap: 8px; inset: 0; justify-content: center; position: absolute; z-index: 4; }
 .masteryMapLoading svg { height: 16px; width: 16px; }
-.masteryMapNode { background: #fff; border: 1px solid #d9d5cd; border-radius: 13px; box-shadow: 0 6px 18px rgb(32 31 29 / 7%); height: 94px; overflow: hidden; width: 238px; }
+.masteryMapNode { background: #fff; border: 1px solid #d9d5cd; border-radius: 13px; box-shadow: 0 6px 18px rgb(32 31 29 / 7%); height: 94px; overflow: hidden; position: relative; width: 238px; }
 .masteryMapNode[data-selected] { border-color: #b25d20; box-shadow: 0 0 0 3px rgb(200 102 34 / 14%), 0 8px 22px rgb(32 31 29 / 8%); }
 .masteryMapNode > button { align-items: center; background: transparent; border: 0; color: #3f3e44; cursor: pointer; display: grid; font: inherit; gap: 2px 10px; grid-template-columns: 32px minmax(0, 1fr); height: 100%; padding: 12px 13px; text-align: left; width: 100%; }
 .masteryMapNode > button > span { align-items: center; background: #f0eee9; border: 2px solid #e4e0d8; border-radius: 50%; display: flex; font-size: 10px; font-weight: 760; grid-row: 1 / span 2; height: 32px; justify-content: center; width: 32px; }
@@ -323,6 +325,14 @@
 .masteryMapNode[data-state="mastered"] > button > small { color: #52764a; }
 .masteryMapNode[data-state="blocked"] { background: #f4f2ed; border-color: #e2dfd7; box-shadow: none; }
 .masteryMapNode[data-state="blocked"] > button { color: #69666d; }
+.masteryMapNode[data-route-change] { border-left: 3px solid var(--mastery-route-color, #9b5d25); }
+.masteryMapNode[data-route-change="advance"] { --mastery-route-color: #26778a; }
+.masteryMapNode[data-route-change="reinforce"] { --mastery-route-color: #28796f; }
+.masteryMapNode[data-route-change="remediate"] { --mastery-route-color: #8556a3; }
+.masteryMapNode[data-route-change="complete"],.masteryMapNode[data-route-change="placement_skip"] { --mastery-route-color: #4f7b46; }
+.masteryMapNode[data-route-change="content_unavailable"] { --mastery-route-color: #77747b; }
+.masteryMapNode[data-route-change] > button > i { background: var(--mastery-route-color); border: 2px solid #fbfaf7; border-radius: 50%; box-shadow: 0 0 0 1px rgb(35 34 39 / 10%); height: 10px; position: absolute; right: 10px; top: 10px; width: 10px; }
+.masteryMapNode[data-selected],.masteryMapNode[data-selected][data-state="blocked"] { border-color: #b25d20; box-shadow: 0 0 0 3px rgb(200 102 34 / 14%), 0 8px 22px rgb(32 31 29 / 8%); }
 .masteryMapHandle { height: 1px !important; opacity: 0; pointer-events: none; width: 1px !important; }
 .masteryMapInspector { align-items: center; background: #fff; border-top: 1px solid #dedbd3; display: flex; gap: 20px; justify-content: space-between; min-height: 108px; padding: 15px 20px; }
 .masteryMapInspector > div:first-child { min-width: 0; }
@@ -333,14 +343,15 @@
 .masteryMapInspector span { color: #77747b; font-size: 10px; }
 .masteryMapInspector button { align-items: center; background: #24252a; border: 0; border-radius: 8px; color: #fff; cursor: pointer; display: flex; font: inherit; font-size: 11px; font-weight: 700; gap: 7px; min-height: 36px; padding: 0 12px; }
 .masteryMapInspector button svg { height: 13px; width: 13px; }
-.masteryMapHint { background: #fff; border-top: 1px solid #dedbd3; color: #77747b; font-size: 11px; margin: 0; min-height: 48px; padding: 15px 20px; }
-.routeHistory { background: #fff; border-top: 1px solid #dedbd3; max-height: 180px; overflow: auto; padding: 15px 20px; }
-.routeHistory summary { align-items: center; color: #55535a; cursor: pointer; display: flex; font-size: 12px; font-weight: 700; justify-content: space-between; list-style: none; }
-.routeHistory summary svg { height: 14px; width: 14px; }
-.routeHistory ol { display: grid; gap: 10px; list-style: none; padding: 8px 0 0; }
-.routeHistory li { border-left: 2px solid #d5a27a; padding-left: 10px; }
-.routeHistory strong { font-size: 11px; }
-.routeHistory p { color: #6b686f; font-size: 11px; line-height: 1.45; margin: 3px 0 0; }
+.masteryMapHint { background: rgb(251 250 247 / 90%); border: 1px solid rgb(216 213 206 / 82%); border-radius: 999px; bottom: 14px; color: #706d74; font-size: 10px; left: 16px; margin: 0; padding: 7px 11px; pointer-events: none; position: absolute; z-index: 3; }
+.masteryRouteChange { border-left: 3px solid #8556a3; margin-top: 11px; max-width: 480px; padding: 2px 0 2px 10px; }
+.masteryRouteChange[data-action="advance"] { border-left-color: #26778a; }
+.masteryRouteChange[data-action="reinforce"] { border-left-color: #28796f; }
+.masteryRouteChange[data-action="complete"],.masteryRouteChange[data-action="placement_skip"] { border-left-color: #4f7b46; }
+.masteryRouteChange > small { color: #6d6970; margin-bottom: 2px; }
+.masteryRouteChange > strong { display: block; font-size: 11px; }
+.masteryRouteChange > p { margin-top: 2px; }
+.masteryRouteChange > span { display: block; margin-top: 3px; }
 .guideLauncher { align-items: center; background: #24252a; border: 1px solid #24252a; border-radius: 999px; bottom: 24px; box-shadow: 0 12px 32px rgb(31 31 35 / 18%); color: #fff; cursor: pointer; display: flex; font: inherit; font-size: 13px; font-weight: 680; gap: 9px; min-height: 48px; padding: 0 17px; position: fixed; right: 24px; z-index: 45; }
 .guideLauncher:hover,.guideLauncher[aria-expanded="true"] { background: #393a40; }
 .guideLauncher svg { height: 18px; width: 18px; }

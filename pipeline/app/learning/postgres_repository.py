@@ -926,7 +926,8 @@ class PostgresLearningRepository:
             route_rows = await (
                 await conn.execute(
                     """
-                    select action, why, created_at
+                    select action, why, created_at, concept_id, target_concept_id,
+                           mastery_before, mastery_after
                     from learner_route_events
                     where learner_id = %s and course_id = %s and revision_id = %s
                     order by created_at desc limit 8
@@ -967,6 +968,18 @@ class PostgresLearningRepository:
                     action=str(row["action"]),
                     explanation=str(row["why"]),
                     created_at=row["created_at"],
+                    concept_id=(
+                        UUID(str(row["concept_id"]))
+                        if row["concept_id"] is not None
+                        else None
+                    ),
+                    target_concept_id=(
+                        UUID(str(row["target_concept_id"]))
+                        if row["target_concept_id"] is not None
+                        else None
+                    ),
+                    mastery_before=str(row["mastery_before"]),
+                    mastery_after=str(row["mastery_after"]),
                 )
                 for row in route_rows
             ),

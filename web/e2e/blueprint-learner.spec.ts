@@ -297,6 +297,11 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   expect(sessionHeaderBounds).not.toBeNull();
   expect(playerBounds).not.toBeNull();
   expect(Math.abs(sessionHeaderBounds!.width - playerBounds!.width)).toBeLessThanOrEqual(2);
+  const mediaBounds = await page
+    .locator("[class*='player'] > .clipPreview")
+    .boundingBox();
+  expect(mediaBounds).not.toBeNull();
+  expect(Math.abs(mediaBounds!.height - playerBounds!.height)).toBeLessThanOrEqual(2);
   await expect(page.getByText("Practice with an approved question")).toBeVisible();
 
   await expect(page.locator(".lucide-sparkles")).toHaveCount(0);
@@ -373,19 +378,26 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
     page.getByLabel("Active study plan").getByText("Strengthen weak areas"),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Mastery" }).click();
+  const masteryButton = page.getByRole("button", { name: "Mastery" });
+  await expect(masteryButton.locator(".lucide-book-open")).toBeVisible();
+  await masteryButton.click();
   const mastery = page.getByLabel("Course mastery and review");
   await expect(
     mastery.getByRole("heading", { name: "Mastery Map", exact: true }),
   ).toBeVisible();
   await expect(mastery.getByText("Recommended", { exact: true })).toHaveCount(0);
   await expect(mastery.getByText("Solid = prerequisite")).toHaveCount(0);
+  await expect(mastery.getByText("Recent path changes")).toHaveCount(0);
+  await expect(mastery.locator("header .lucide-book-open")).toBeVisible();
   const masteryBounds = await mastery.boundingBox();
   expect(masteryBounds).not.toBeNull();
   expect(masteryBounds!.width / page.viewportSize()!.width).toBeLessThanOrEqual(0.6);
   await expect(mastery.getByTestId("mastery-map")).toBeVisible();
   await expect(mastery.locator(".react-flow__node")).toHaveCount(4);
-  await expect(mastery.locator(".react-flow__edge")).toHaveCount(4);
+  await expect(mastery.locator(".react-flow__edge")).toHaveCount(5);
+  await expect(
+    mastery.locator(".react-flow__edge").filter({ hasText: "Support route" }),
+  ).toHaveCount(1);
   await expect.poll(async () => {
     const canvasBounds = await mastery.getByTestId("mastery-map").boundingBox();
     const nodeBounds = await mastery.locator(".react-flow__node").evaluateAll(
@@ -413,6 +425,30 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   await expect(
     mastery.getByRole("button", { name: /Review recommended.*Vector direction/ }),
   ).toBeVisible();
+  await mastery.getByRole("button", {
+    name: /Review recommended.*Vector direction.*Route changed.*Support route/,
+  }).click();
+  await expect(mastery.getByText("Why this route changed")).toBeVisible();
+  await expect(mastery.getByText("A reviewed recovery clip is next.")).toBeVisible();
+  await expect(
+    mastery.getByText("Evidence moved from Practiced to Struggling."),
+  ).toBeVisible();
+  await mastery.locator(".react-flow__pane").click({ position: { x: 20, y: 20 } });
+  await expect(mastery.getByText("Why this route changed")).toHaveCount(0);
+  await expect(
+    mastery.getByText(
+      "Select a concept to inspect its evidence and available next action.",
+    ),
+  ).toBeVisible();
+  const mapHintBounds = await mastery.getByText(
+    "Select a concept to inspect its evidence and available next action.",
+  ).boundingBox();
+  const mapCanvasBounds = await mastery.getByTestId("mastery-map").boundingBox();
+  expect(mapHintBounds).not.toBeNull();
+  expect(mapCanvasBounds).not.toBeNull();
+  expect(mapHintBounds!.y + mapHintBounds!.height).toBeLessThanOrEqual(
+    mapCanvasBounds!.y + mapCanvasBounds!.height,
+  );
   const blocked = mastery.getByRole("button", {
     name: /Blocked.*Net force/,
   });
@@ -420,6 +456,14 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   await expect(
     mastery.getByText(/will not substitute another topic’s content/),
   ).toBeVisible();
+  const blockedNode = blocked.locator("xpath=ancestor::article");
+  await expect(blockedNode).toHaveAttribute("data-selected", "true");
+  expect(await blockedNode.evaluate((node) => getComputedStyle(node).boxShadow))
+    .not.toBe("none");
+  await mastery.locator(".react-flow__pane").click({ position: { x: 20, y: 20 } });
+  await expect(
+    mastery.getByText(/will not substitute another topic’s content/),
+  ).toHaveCount(0);
   const masteryAccessibility = await new AxeBuilder({ page })
     .include("[aria-label='Course mastery and review']")
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
@@ -609,6 +653,10 @@ function workspace(
                 action: "remediate",
                 explanation: "A reviewed recovery clip is next.",
                 created_at: "2026-07-26T00:00:00Z",
+                concept_id: "concept-3",
+                target_concept_id: "concept-1",
+                mastery_before: "practiced",
+                mastery_after: "struggling",
               },
             ]
           : [],

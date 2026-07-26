@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  clipPlaybackElapsedSeconds,
   clipPreviewUrl,
   materializedClipCaptionsUrl,
   materializedClipUrl,
@@ -31,5 +32,13 @@ describe("clipPreviewUrl", () => {
       assetEndTime: 180,
       defaultDuration: 60,
     });
+  });
+
+  it("uses clip-relative time for materialized and Mux instant clips", () => {
+    const clip = { start_seconds: 309.58, end_seconds: 430.08 };
+    expect(clipPlaybackElapsedSeconds(4.2, clip, "clip_relative")).toBe(4.2);
+    expect(clipPlaybackElapsedSeconds(309.58, clip, "asset_relative")).toBe(0);
+    expect(clipPlaybackElapsedSeconds(313.78, clip, "asset_relative")).toBeCloseTo(4.2);
+    expect(clipPlaybackElapsedSeconds(999, clip, "clip_relative")).toBe(120.5);
   });
 });

@@ -13,6 +13,7 @@ import {
 import {
   ArrowLeft,
   ArrowRight,
+  BookOpen,
   BookOpenText,
   Check,
   CheckCircle2,
@@ -105,7 +106,9 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
   const [answer, setAnswer] = useState("");
   const [confidence, setConfidence] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<AnswerResponse | null>(null);
-  const [playbackSeconds, setPlaybackSeconds] = useState(0);
+  const playbackSecondsRef = useRef(0);
+  const activeTranscriptIndexRef = useRef(-1);
+  const [activeTranscriptIndex, setActiveTranscriptIndex] = useState(-1);
   const [transcript, setTranscript] = useState<TranscriptResponse | null>(null);
   const [transcriptLoading, setTranscriptLoading] = useState(false);
   const [transcriptError, setTranscriptError] = useState<string | null>(null);
@@ -225,13 +228,21 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
     : null;
   const completedSteps =
     studySession?.steps.filter((step) => step.status === "completed").length ?? 0;
-  const activeTranscriptIndex = activeTranscriptWordIndex(
-    transcript?.words ?? [],
-    playbackSeconds,
+  const updateTranscriptPlayback = useCallback(
+    (seconds: number) => {
+      playbackSecondsRef.current = seconds;
+      const nextIndex = activeTranscriptWordIndex(transcript?.words ?? [], seconds);
+      if (nextIndex === activeTranscriptIndexRef.current) return;
+      activeTranscriptIndexRef.current = nextIndex;
+      setActiveTranscriptIndex(nextIndex);
+    },
+    [transcript?.words],
   );
 
   useEffect(() => {
-    setPlaybackSeconds(0);
+    playbackSecondsRef.current = 0;
+    activeTranscriptIndexRef.current = -1;
+    setActiveTranscriptIndex(-1);
     setTranscript(null);
     setTranscriptError(null);
     if (!identity || !activeClip) return;
@@ -248,7 +259,15 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
         if (!response.ok) throw new Error("Transcript is unavailable for this clip.");
         return (await response.json()) as TranscriptResponse;
       })
-      .then(setTranscript)
+      .then((nextTranscript) => {
+        setTranscript(nextTranscript);
+        const nextIndex = activeTranscriptWordIndex(
+          nextTranscript.words,
+          playbackSecondsRef.current,
+        );
+        activeTranscriptIndexRef.current = nextIndex;
+        setActiveTranscriptIndex(nextIndex);
+      })
       .catch((caught: unknown) => {
         if (caught instanceof DOMException && caught.name === "AbortError") return;
         setTranscriptError(
@@ -803,7 +822,7 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
               </details>
             ) : null}
             <button onClick={() => setMasteryOpen((open) => !open)} type="button">
-              <ListChecks />
+              <BookOpen />
               Mastery
             </button>
           </nav>
@@ -892,7 +911,7 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
                   identity={identity}
                   loading={transcriptLoading}
                   onContinue={() => void continueFromWatch()}
-                  onPlayback={setPlaybackSeconds}
+                  onPlayback={updateTranscriptPlayback}
                   onWatch={recordWatch}
                   transcript={transcript}
                   transcriptIndex={activeTranscriptIndex}
@@ -974,7 +993,10 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
           <MasteryDrawer
             inspectedConceptId={inspectedConceptId}
             mastery={workspace.mastery}
-            onClose={() => setMasteryOpen(false)}
+            onClose={() => {
+              setInspectedConceptId(null);
+              setMasteryOpen(false);
+            }}
             onInspect={setInspectedConceptId}
             onSelect={(conceptId) => {
               const item = path.items.find(
@@ -1747,6 +1769,12 @@ function MasteryDrawer({
   const inspectedEvidence = mastery.concepts.find(
     (concept) => concept.concept_id === inspectedConceptId,
   );
+  const inspectedRoute = mastery.recent_routes.find(
+    (route) => (
+      route.target_concept_id === inspectedConceptId
+      || route.concept_id === inspectedConceptId
+    ),
+  );
   return (
     <div className={styles.drawerBackdrop} onMouseDown={onClose}>
       <aside
@@ -1755,25 +1783,52 @@ function MasteryDrawer({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header>
-          <h2>Mastery Map</h2>
+          <h2>
+            <BookOpen />
+            Mastery Map
+          </h2>
           <button aria-label="Close mastery" onClick={onClose} type="button">
             <X />
           </button>
         </header>
-        <LearnerMasteryMap
-          inspectedConceptId={inspectedConceptId}
-          mastery={mastery}
-          onInspect={(conceptId) =>
-            onInspect(inspectedConceptId === conceptId ? null : conceptId)
-          }
-          path={path}
-        />
+        <div className={styles.masteryMapStage}>
+          <LearnerMasteryMap
+            inspectedConceptId={inspectedConceptId}
+            mastery={mastery}
+            onInspect={(conceptId) =>
+              onInspect(inspectedConceptId === conceptId ? null : conceptId)
+            }
+            path={path}
+          />
+          {!inspectedItem ? (
+            <p className={styles.masteryMapHint}>
+              Select a concept to inspect its evidence and available next action.
+            </p>
+          ) : null}
+        </div>
         {inspectedItem ? (
           <section className={styles.masteryMapInspector}>
             <div>
               <small>Selected concept</small>
               <strong>{inspectedItem.name}</strong>
               <p>{masteryExplanation(inspectedItem, inspectedEvidence)}</p>
+              {inspectedRoute ? (
+                <aside
+                  className={styles.masteryRouteChange}
+                  data-action={inspectedRoute.action}
+                >
+                  <small>Why this route changed</small>
+                  <strong>{friendlyRoute(inspectedRoute.action)}</strong>
+                  <p>{inspectedRoute.explanation}</p>
+                  {inspectedRoute.mastery_before !== inspectedRoute.mastery_after ? (
+                    <span>
+                      Evidence moved from{" "}
+                      {friendlyMasteryState(inspectedRoute.mastery_before)} to{" "}
+                      {friendlyMasteryState(inspectedRoute.mastery_after)}.
+                    </span>
+                  ) : null}
+                </aside>
+              ) : null}
             </div>
             <div>
               {inspectedEvidence?.mismatch ? (
@@ -1796,26 +1851,6 @@ function MasteryDrawer({
               ) : null}
             </div>
           </section>
-        ) : (
-          <p className={styles.masteryMapHint}>
-            Select a concept to inspect its evidence and available next action.
-          </p>
-        )}
-        {mastery.recent_routes.length ? (
-          <details className={styles.routeHistory}>
-            <summary>
-              Recent path changes
-              <ChevronDown />
-            </summary>
-            <ol>
-              {mastery.recent_routes.map((route) => (
-                <li key={`${route.created_at}:${route.action}`}>
-                  <strong>{friendlyRoute(route.action)}</strong>
-                  <p>{route.explanation}</p>
-                </li>
-              ))}
-            </ol>
-          </details>
         ) : null}
       </aside>
     </div>
@@ -2101,7 +2136,12 @@ function friendlyRoute(action: string) {
     complete: "Course path completed",
     placement_skip: "Placement shortened the path",
     placement_retain: "Concept retained after placement",
+    content_unavailable: "Reviewed content became unavailable",
   }[action] ?? "Path updated";
+}
+
+function friendlyMasteryState(state: string) {
+  return state.replaceAll("_", " ").replace(/^\w/, (letter) => letter.toUpperCase());
 }
 
 function guideActionLabel(action: string) {

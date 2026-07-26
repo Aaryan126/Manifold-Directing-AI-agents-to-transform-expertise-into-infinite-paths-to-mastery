@@ -3,6 +3,8 @@ export type ClipPreviewRange = {
   end_seconds: number;
 };
 
+export type ClipPlaybackTimeline = "asset_relative" | "clip_relative";
+
 export function clipPreviewUrl(
   pipelineBaseUrl: string,
   videoId: string,
@@ -30,6 +32,18 @@ export function muxClipPlaybackBounds(clip: ClipPreviewRange) {
     assetEndTime: Math.max(clip.start_seconds, clip.end_seconds),
     defaultDuration: Math.max(0, clip.end_seconds - clip.start_seconds),
   };
+}
+
+export function clipPlaybackElapsedSeconds(
+  currentTime: number,
+  clip: ClipPreviewRange,
+  timeline: ClipPlaybackTimeline,
+) {
+  const duration = Math.max(0, clip.end_seconds - clip.start_seconds);
+  const elapsed = timeline === "clip_relative"
+    ? currentTime
+    : currentTime - clip.start_seconds;
+  return Math.min(duration, Math.max(0, elapsed));
 }
 
 function formatSeconds(seconds: number): string {

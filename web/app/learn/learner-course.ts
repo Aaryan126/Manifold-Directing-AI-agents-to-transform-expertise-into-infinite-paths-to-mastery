@@ -223,6 +223,10 @@ export type LearnerMasteryReview = {
     action: string;
     explanation: string;
     created_at: string;
+    concept_id: string | null;
+    target_concept_id: string | null;
+    mastery_before: LearnerProgress["state"];
+    mastery_after: LearnerProgress["state"];
   }>;
 };
 
@@ -429,9 +433,25 @@ export function activeTranscriptWordIndex(
   words: LearnerTranscriptWord[],
   playbackSeconds: number,
 ) {
-  return words.findIndex((word) => (
-    playbackSeconds >= word.start_seconds && playbackSeconds < word.end_seconds
-  ));
+  let low = 0;
+  let high = words.length - 1;
+  let candidate = -1;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    if (words[middle].start_seconds <= playbackSeconds) {
+      candidate = middle;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  if (
+    candidate >= 0
+    && playbackSeconds < words[candidate].end_seconds
+  ) {
+    return candidate;
+  }
+  return -1;
 }
 
 export function nextTopicId(

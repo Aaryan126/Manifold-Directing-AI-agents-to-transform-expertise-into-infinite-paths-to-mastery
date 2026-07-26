@@ -3,6 +3,7 @@
 import MuxPlayer from "@mux/mux-player-react";
 import { useEffect, useRef } from "react";
 import {
+  clipPlaybackElapsedSeconds,
   clipPreviewUrl,
   materializedClipCaptionsUrl,
   materializedClipUrl,
@@ -56,6 +57,8 @@ export function ProviderVideo({
     ? Math.max(0, endSeconds - startSeconds)
     : endSeconds;
   const usesMuxClip = playback.provider === "mux" && Boolean(playback.playback_id);
+  const playbackTimeline =
+    usesMaterializedClip || usesMuxClip ? "clip_relative" : "asset_relative";
   const captionClipId = materializedClipId ?? (usesMuxClip ? clipId : null);
   const captions = captionClipId
     ? materializedClipCaptionsUrl(pipelineBaseUrl, captionClipId)
@@ -130,15 +133,11 @@ export function ProviderVideo({
     };
   }, [clipId, videoId, startSeconds, endSeconds]);
   const reportPlaybackTime = (currentTime: number) => {
-    const elapsed = usesMaterializedClip
-      ? currentTime
-      : currentTime - startSeconds;
-    onPlaybackTimeUpdate?.(
-      Math.min(
-        Math.max(0, endSeconds - startSeconds),
-        Math.max(0, elapsed),
-      ),
-    );
+    onPlaybackTimeUpdate?.(clipPlaybackElapsedSeconds(
+      currentTime,
+      { start_seconds: startSeconds, end_seconds: endSeconds },
+      playbackTimeline,
+    ));
   };
 
   if (usesMuxClip && playback.playback_id) {
@@ -176,6 +175,10 @@ export function ProviderVideo({
           });
         }}
         onTimeUpdate={(event) => {
+          const currentTime = (event.target as { currentTime?: number } | null)?.currentTime;
+          if (typeof currentTime === "number") reportPlaybackTime(currentTime);
+        }}
+        onSeeked={(event) => {
           const currentTime = (event.target as { currentTime?: number } | null)?.currentTime;
           if (typeof currentTime === "number") reportPlaybackTime(currentTime);
         }}
