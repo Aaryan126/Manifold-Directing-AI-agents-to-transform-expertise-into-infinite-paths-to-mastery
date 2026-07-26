@@ -4,7 +4,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
-from app.dependencies import get_routing_service
+from app.assessments.service import AssessmentService, AssessmentValidationError
+from app.dependencies import get_assessment_service, get_routing_service
 from app.routing.models import (
     AdvancementMode,
     AttemptSubmission,
@@ -16,14 +17,13 @@ from app.routing.service import RoutingService, RoutingValidationError
 
 router = APIRouter(tags=["routing"])
 RoutingServiceDependency = Annotated[RoutingService, Depends(get_routing_service)]
+AssessmentServiceDependency = Annotated[AssessmentService, Depends(get_assessment_service)]
 UserContext = Annotated[UUID, Header(alias="X-User-ID")]
 
 
 class AttemptRequest(BaseModel):
     answer: dict[str, object]
-    correctness: bool
     confidence: int = Field(ge=1, le=4)
-    wrong_answer_pattern: str | None = None
 
 
 class RouteDecisionResponse(BaseModel):
@@ -82,6 +82,8 @@ class LearnerPathItemResponse(BaseModel):
     question_ids: list[UUID]
     aids: list[LearnerPathAidResponse]
     eligible: bool
+    actionable: bool
+    coverage_state: str
     current: bool
 
 
@@ -102,20 +104,30 @@ async def submit_attempt(
     learner_id: UUID,
     question_id: UUID,
     request: AttemptRequest,
+    user_id: UserContext,
     service: RoutingServiceDependency,
+    assessments: AssessmentServiceDependency,
 ) -> RouteDecisionResponse:
+    if user_id != learner_id:
+        raise HTTPException(status_code=403, detail="Learner identity does not match this attempt.")
+    learner_answer = str(request.answer.get("answer", "")).strip()
+    if not learner_answer:
+        raise HTTPException(status_code=400, detail="Answer is required.")
     try:
+        grade = await assessments.grade_answer(question_id, learner_answer)
+        if grade is None:
+            raise HTTPException(status_code=404, detail="Reviewed question not found.")
         decision = await service.submit_attempt(
             AttemptSubmission(
                 learner_id=learner_id,
                 question_id=question_id,
                 answer=request.answer,
-                correctness=request.correctness,
+                correctness=grade.is_correct,
                 confidence=request.confidence,
-                wrong_answer_pattern=request.wrong_answer_pattern,
+                wrong_answer_pattern=grade.wrong_answer_pattern,
             ),
         )
-    except RoutingValidationError as exc:
+    except (RoutingValidationError, AssessmentValidationError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _decision_response(decision)
 
@@ -150,8 +162,13 @@ async def create_demo_learner(
 async def learner_progress(
     learner_id: UUID,
     course_id: UUID,
+    user_id: UserContext,
     service: RoutingServiceDependency,
 ) -> list[LearnerConceptProgressResponse]:
+    if user_id != learner_id:
+        raise HTTPException(
+            status_code=403, detail="Learner identity does not match this progress."
+        )
     try:
         progress = await service.learner_progress(learner_id, course_id)
     except RoutingValidationError as exc:
@@ -271,6 +288,8 @@ def _path_response(path: LearnerPath) -> LearnerPathResponse:
                 question_ids=list(item.question_ids),
                 aids=[LearnerPathAidResponse(**aid.__dict__) for aid in item.aids],
                 eligible=item.eligible,
+                actionable=item.actionable,
+                coverage_state=item.coverage_state,
                 current=item.current,
             )
             for item in path.items

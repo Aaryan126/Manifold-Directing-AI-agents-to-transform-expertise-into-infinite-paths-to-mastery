@@ -39,4 +39,8 @@ class LocalAssessmentAgent(AssessmentAgent):
             ),
             rationale="Local deterministic assessment generated from reviewed topic inputs.",
             confidence=0.7,
+            hints=(
+                f"Return to the reviewed explanation of {concept.name}.",
+                f"Separate what {concept.name} means from unrelated background material.",
+            ),
         )

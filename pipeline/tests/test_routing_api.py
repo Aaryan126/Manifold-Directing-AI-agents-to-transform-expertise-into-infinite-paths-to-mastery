@@ -4,7 +4,8 @@ from contextlib import asynccontextmanager
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.dependencies import get_routing_service
+from app.assessments.models import AnswerGrade
+from app.dependencies import get_assessment_service, get_routing_service
 from app.main import app
 from app.routing.models import RoutingPolicy
 from app.routing.service import RoutingService
@@ -16,6 +17,7 @@ async def test_routing_api_attempt_and_policy_flow() -> None:
     repository = MemoryRoutingRepository()
     service = RoutingService(repository)
     app.dependency_overrides[get_routing_service] = lambda: service
+    app.dependency_overrides[get_assessment_service] = lambda: StubAssessmentService(True)
 
     try:
         async with _client() as client:
@@ -45,9 +47,9 @@ async def test_routing_api_attempt_and_policy_flow() -> None:
                 f"/learners/{learner_id}/questions/{repository.question_id}/attempt",
                 json={
                     "answer": {"answer": "x"},
-                    "correctness": True,
                     "confidence": 4,
                 },
+                headers={"X-User-ID": str(learner_id)},
             )
             assert attempt_response.status_code == 200
             assert attempt_response.json()["action"] == "advance"
@@ -55,6 +57,7 @@ async def test_routing_api_attempt_and_policy_flow() -> None:
 
             progress = await client.get(
                 f"/learners/{learner_id}/courses/{repository.course_id}/progress",
+                headers={"X-User-ID": str(learner_id)},
             )
             assert progress.status_code == 200
             assert progress.json()[0]["state"] == "mastered"
@@ -67,6 +70,7 @@ async def test_routing_api_returns_stuck_signal_when_loop_limit_is_hit() -> None
     repository = MemoryRoutingRepository(policy=RoutingPolicy(max_remediation_attempts=0))
     service = RoutingService(repository)
     app.dependency_overrides[get_routing_service] = lambda: service
+    app.dependency_overrides[get_assessment_service] = lambda: StubAssessmentService(False)
 
     try:
         async with _client() as client:
@@ -74,9 +78,9 @@ async def test_routing_api_returns_stuck_signal_when_loop_limit_is_hit() -> None
                 f"/learners/{repository.learner_id}/questions/{repository.question_id}/attempt",
                 json={
                     "answer": {"answer": "x"},
-                    "correctness": False,
                     "confidence": 1,
                 },
+                headers={"X-User-ID": str(repository.learner_id)},
             )
             assert response.status_code == 200
             body = response.json()
@@ -115,3 +119,16 @@ async def _client() -> AsyncIterator[AsyncClient]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
+
+
+class StubAssessmentService:
+    def __init__(self, correct: bool) -> None:
+        self.correct = correct
+
+    async def grade_answer(self, question_id: object, learner_answer: str) -> AnswerGrade:
+        del question_id, learner_answer
+        return AnswerGrade(
+            is_correct=self.correct,
+            feedback="Reviewed answer feedback.",
+            wrong_answer_pattern=None if self.correct else "misconception",
+        )

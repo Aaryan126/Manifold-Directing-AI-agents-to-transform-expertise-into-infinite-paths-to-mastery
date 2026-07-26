@@ -89,9 +89,10 @@ class PostgresRoutingRepository(RoutingRepository):
                 await conn.execute(
                     """
                     insert into attempts (
-                      learner_id, question_id, answer, correctness, confidence
+                      learner_id, question_id, answer, correctness, confidence,
+                      purpose, study_session_id
                     )
-                    values (%s, %s, %s::jsonb, %s, %s)
+                    values (%s, %s, %s::jsonb, %s, %s, %s, %s)
                     returning id
                     """,
                     (
@@ -105,6 +106,8 @@ class PostgresRoutingRepository(RoutingRepository):
                         ),
                         submission.correctness,
                         submission.confidence,
+                        submission.purpose,
+                        submission.study_session_id,
                     ),
                 )
             ).fetchone()
@@ -135,9 +138,10 @@ class PostgresRoutingRepository(RoutingRepository):
                 await conn.execute(
                     """
                     insert into attempts (
-                      learner_id, question_id, answer, correctness, confidence
+                      learner_id, question_id, answer, correctness, confidence,
+                      purpose, study_session_id
                     )
-                    values (%s, %s, %s::jsonb, %s, %s)
+                    values (%s, %s, %s::jsonb, %s, %s, %s, %s)
                     returning id
                     """,
                     (
@@ -151,6 +155,8 @@ class PostgresRoutingRepository(RoutingRepository):
                         ),
                         submission.correctness,
                         submission.confidence,
+                        submission.purpose,
+                        submission.study_session_id,
                     ),
                 )
             ).fetchone()
@@ -284,6 +290,23 @@ class PostgresRoutingRepository(RoutingRepository):
                           and e.review_status in ('accepted', 'edited')
                           and prereq.review_status in ('accepted', 'edited')
                           and not (e.from_concept_id = any(%s::uuid[]))
+                      )
+                      and exists (
+                        select 1
+                        from clip_concepts ready_cc
+                        join clips ready_clip on ready_clip.id = ready_cc.clip_id
+                        where ready_cc.concept_id = c.id
+                          and ready_clip.revision_id = c.revision_id
+                          and ready_clip.status = 'active'
+                      )
+                      and exists (
+                        select 1
+                        from question_concepts ready_qc
+                        join questions ready_q on ready_q.id = ready_qc.question_id
+                        where ready_qc.concept_id = c.id
+                          and ready_qc.revision_id = c.revision_id
+                          and ready_qc.is_primary
+                          and ready_q.review_status in ('accepted', 'edited')
                       )
                     group by c.id, c.name, c.sequence_rank
                     order by c.sequence_rank, c.name
@@ -535,13 +558,17 @@ class PostgresRoutingRepository(RoutingRepository):
                              select array_agg(distinct clip.id order by clip.id)
                              from clip_concepts cc
                              join clips clip on clip.id = cc.clip_id
-                             where cc.concept_id = c.id and clip.status = 'active'
+                             where cc.concept_id = c.id
+                               and clip.revision_id = c.revision_id
+                               and clip.status = 'active'
                            ), '{}') as clip_ids,
                            coalesce((
                              select array_agg(distinct q.id order by q.id)
                              from question_concepts qc
                              join questions q on q.id = qc.question_id
                              where qc.concept_id = c.id
+                               and qc.revision_id = c.revision_id
+                               and qc.is_primary
                                and q.review_status in ('accepted', 'edited')
                            ), '{}') as question_ids
                     from concepts c
@@ -607,6 +634,9 @@ class PostgresRoutingRepository(RoutingRepository):
             for concept_id, required in prerequisites.items()
             if all(value in mastered for value in required)
         }
+        actionable = {
+            UUID(str(row["id"])) for row in rows if row["clip_ids"] and row["question_ids"]
+        }
         current_row = next(
             (
                 row
@@ -617,6 +647,7 @@ class PostgresRoutingRepository(RoutingRepository):
                     MasteryState.PRACTICED.value,
                 }
                 and UUID(str(row["id"])) in eligible
+                and UUID(str(row["id"])) in actionable
             ),
             None,
         )
@@ -625,7 +656,9 @@ class PostgresRoutingRepository(RoutingRepository):
                 (
                     row
                     for row in rows
-                    if UUID(str(row["id"])) in eligible and UUID(str(row["id"])) not in mastered
+                    if UUID(str(row["id"])) in eligible
+                    and UUID(str(row["id"])) in actionable
+                    and UUID(str(row["id"])) not in mastered
                 ),
                 None,
             )
@@ -659,6 +692,16 @@ class PostgresRoutingRepository(RoutingRepository):
                     question_ids=tuple(UUID(str(value)) for value in row["question_ids"]),
                     aids=tuple(aids_by_logical.get(UUID(str(row["logical_id"])), [])),
                     eligible=UUID(str(row["id"])) in eligible,
+                    actionable=UUID(str(row["id"])) in actionable,
+                    coverage_state=(
+                        "complete"
+                        if row["clip_ids"] and row["question_ids"]
+                        else "missing_teaching"
+                        if not row["clip_ids"] and row["question_ids"]
+                        else "missing_assessment"
+                        if row["clip_ids"] and not row["question_ids"]
+                        else "missing_both"
+                    ),
                     current=UUID(str(row["id"])) == current_id,
                 )
                 for row in rows

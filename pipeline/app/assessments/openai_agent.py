@@ -44,9 +44,7 @@ class OpenAIAssessmentAgent(AssessmentAgent):
         return AnswerGrade(
             is_correct=is_correct,
             feedback=str(payload.get("feedback", fallback_feedback)),
-            wrong_answer_pattern=(
-                None if is_correct else str(wrong_answer_pattern)
-            ),
+            wrong_answer_pattern=(None if is_correct else str(wrong_answer_pattern)),
         )
 
 
@@ -108,6 +106,10 @@ Return JSON only:
       "rationale": "..."
     }}
   ],
+  "hints": [
+    "A bounded hint grounded only in the reviewed concept and clip.",
+    "A more specific hint that does not reveal the answer."
+  ],
   "rationale": "...",
   "confidence": 0.0
 }}
@@ -146,4 +148,5 @@ def _parse_response(text: str) -> QuestionProposal:
         ),
         rationale=str(payload.get("rationale", "")),
         confidence=float(payload.get("confidence", 0.5)),
+        hints=tuple(str(value).strip() for value in payload.get("hints", []) if str(value).strip()),
     )

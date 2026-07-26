@@ -33,6 +33,8 @@ from app.intelligence.postgres_repository import PostgresIntelligenceRepository
 from app.intelligence.service import CourseIntelligenceService
 from app.intelligence.storage import SupplementalSourceStorage
 from app.intelligence.worker import CourseIntelligenceWorker
+from app.learning.postgres_repository import PostgresLearningRepository
+from app.learning.service import LearningService
 from app.routing.postgres_repository import PostgresRoutingRepository
 from app.routing.service import RoutingService
 from app.segmentation.factory import build_segmentation_agent
@@ -209,6 +211,16 @@ def get_routing_service() -> RoutingService:
 
 def build_routing_service(settings: Settings) -> RoutingService:
     return RoutingService(repository=PostgresRoutingRepository(settings.database_url))
+
+
+@lru_cache
+def get_learning_service() -> LearningService:
+    settings = get_settings()
+    return LearningService(
+        repository=PostgresLearningRepository(settings.database_url),
+        routing=build_routing_service(settings),
+        assessments=build_assessment_service(settings),
+    )
 
 
 @lru_cache

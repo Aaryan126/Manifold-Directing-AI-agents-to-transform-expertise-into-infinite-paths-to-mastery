@@ -553,6 +553,25 @@ class PostgresCourseOSRepository(CourseOSRepository):
             )
             await conn.execute(
                 """
+                insert into question_hint_ladders (
+                  logical_id, question_id, revision_id, hints, review_status,
+                  ai_proposal, instructor_revision, approved_at, dismissed_at
+                )
+                select old_ladder.logical_id, new_question.id, %s,
+                       old_ladder.hints, old_ladder.review_status,
+                       old_ladder.ai_proposal, old_ladder.instructor_revision,
+                       old_ladder.approved_at, old_ladder.dismissed_at
+                from question_hint_ladders old_ladder
+                join questions old_question on old_question.id = old_ladder.question_id
+                join questions new_question
+                  on new_question.revision_id = %s
+                 and new_question.logical_id = old_question.logical_id
+                where old_ladder.revision_id = %s
+                """,
+                (working_revision_id, working_revision_id, active_revision_id),
+            )
+            await conn.execute(
+                """
                 insert into question_concepts (
                   question_id, concept_id, revision_id, is_primary
                 )

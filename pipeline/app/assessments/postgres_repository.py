@@ -292,6 +292,26 @@ class PostgresAssessmentRepository(AssessmentRepository):
             proposal.remediation_rules,
             "proposed",
         )
+        if proposal.hints:
+            await conn.execute(
+                """
+                insert into question_hint_ladders (
+                  question_id, revision_id, hints, review_status, ai_proposal
+                )
+                values (%s, %s, %s::jsonb, 'proposed', %s::jsonb)
+                """,
+                (
+                    question_id,
+                    row["revision_id"],
+                    Jsonb(list(proposal.hints)),
+                    Jsonb(
+                        {
+                            "hints": list(proposal.hints),
+                            "rationale": proposal.rationale,
+                        }
+                    ),
+                ),
+            )
         return cast(dict[str, Any], row)
 
     async def _replace_rules(
@@ -380,6 +400,7 @@ def _proposal_json(proposal: QuestionProposal) -> dict[str, object]:
         "remediation_rules": [_rule_json(rule) for rule in proposal.remediation_rules],
         "rationale": proposal.rationale,
         "confidence": proposal.confidence,
+        "hints": list(proposal.hints),
     }
 
 

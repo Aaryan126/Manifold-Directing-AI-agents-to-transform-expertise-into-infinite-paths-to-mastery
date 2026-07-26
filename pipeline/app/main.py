@@ -15,6 +15,7 @@ from app.api.graph import router as graph_router
 from app.api.health import router as health_router
 from app.api.ingestion import router as ingestion_router
 from app.api.intelligence import router as intelligence_router
+from app.api.learning import router as learning_router
 from app.api.routing import router as routing_router
 from app.api.topics import router as topics_router
 from app.config import get_settings
@@ -71,5 +72,6 @@ app.include_router(graph_router)
 app.include_router(clips_router)
 app.include_router(assessments_router)
 app.include_router(routing_router)
+app.include_router(learning_router)
 app.include_router(dashboard_router)
 app.include_router(audit_router)

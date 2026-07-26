@@ -64,6 +64,7 @@ class QuestionProposal:
     remediation_rules: tuple[RemediationProposal, ...]
     rationale: str
     confidence: float
+    hints: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

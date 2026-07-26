@@ -52,6 +52,9 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     course_creation_migration = Path("migrations/022_course_creation_idempotency.sql").read_text(
         encoding="utf-8"
     )
+    learner_migration = Path("migrations/023_agentic_learner_experience.sql").read_text(
+        encoding="utf-8"
+    )
 
     for table_name in [
         "users",
@@ -139,6 +142,21 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     assert "evidence_snapshot jsonb" in blueprint_migration
     assert "courses_instructor_creation_request_unique" in course_creation_migration
     assert "brief->>'creation_request_id'" in course_creation_migration
+    for table_name in [
+        "question_hint_ladders",
+        "learner_course_preferences",
+        "learner_placement_checks",
+        "learner_placement_items",
+        "learner_study_sessions",
+        "learner_session_steps",
+        "learner_reflections",
+        "learner_review_schedules",
+        "learner_help_requests",
+    ]:
+        assert f"create table {table_name}" in learner_migration
+    assert "purpose in ('lesson', 'placement', 'review')" in learner_migration
+    assert "learner_study_sessions_one_open_idx" in learner_migration
+    assert "question_hint_ladders_array" in learner_migration
 
 
 def test_legacy_schema_baseline_covers_every_migration() -> None:

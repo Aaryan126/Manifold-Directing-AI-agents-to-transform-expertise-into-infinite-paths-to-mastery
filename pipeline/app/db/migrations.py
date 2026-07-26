@@ -54,6 +54,7 @@ _POST_BASELINE_MIGRATIONS = frozenset(
         "020_unified_adaptive_blueprint.sql",
         "021_multi_lecture_course_flow.sql",
         "022_course_creation_idempotency.sql",
+        "023_agentic_learner_experience.sql",
     }
 )
 

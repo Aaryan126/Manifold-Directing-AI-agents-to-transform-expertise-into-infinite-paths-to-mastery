@@ -21,6 +21,9 @@ class RouteAction(StrEnum):
     REMEDIATE = "remediate"
     FLAG_INSTRUCTOR = "flag_instructor"
     COMPLETE = "complete"
+    CONTENT_UNAVAILABLE = "content_unavailable"
+    PLACEMENT_SKIP = "placement_skip"
+    PLACEMENT_RETAIN = "placement_retain"
 
 
 @dataclass(frozen=True)
@@ -77,7 +80,9 @@ class LearnerPathItem:
     question_ids: tuple[UUID, ...]
     aids: tuple[LearnerPathAid, ...]
     eligible: bool
-    current: bool
+    actionable: bool = True
+    coverage_state: str = "complete"
+    current: bool = False
 
 
 @dataclass(frozen=True)
@@ -130,6 +135,8 @@ class AttemptSubmission:
     correctness: bool
     confidence: int
     wrong_answer_pattern: str | None = None
+    purpose: str = "lesson"
+    study_session_id: UUID | None = None
 
 
 @dataclass(frozen=True)
