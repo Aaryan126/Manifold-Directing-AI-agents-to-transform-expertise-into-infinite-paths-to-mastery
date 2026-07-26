@@ -6,6 +6,7 @@ import {
   courseCompositionLabels,
   courseProgressPercent,
   learnerMasteryConnections,
+  learnerMasteryFocusIds,
   learnerPathVisualState,
   nextTopicId,
   topicForDecision,
@@ -219,6 +220,41 @@ describe("learner course routing presentation", () => {
       target: "dependent",
       kind: "prerequisite",
     }]);
+  });
+
+  it("focuses mastery on the current concept and its nearest graph neighborhood", () => {
+    const item = (conceptId: string, rank: number, prerequisiteIds: string[]) => ({
+      concept_id: conceptId,
+      name: conceptId,
+      description: "",
+      sequence_rank: rank,
+      state: "not_started" as const,
+      topic_id: "topic-1",
+      topic_title: "Topic",
+      prerequisite_ids: prerequisiteIds,
+      clip_ids: ["clip-1"],
+      question_ids: ["question-1"],
+      aids: [],
+      eligible: true,
+      actionable: true,
+      coverage_state: "complete" as const,
+      current: conceptId === "current",
+    });
+    const items = [
+      item("foundation", 1, []),
+      item("current", 2, ["foundation"]),
+      item("branch-a", 3, ["current"]),
+      item("branch-b", 4, ["current"]),
+      item("later", 5, ["branch-a", "branch-b"]),
+      item("much-later", 6, ["later"]),
+    ];
+    expect(learnerMasteryFocusIds(items, "current")).toEqual([
+      "current",
+      "foundation",
+      "branch-a",
+      "branch-b",
+      "later",
+    ]);
   });
 
   it("rebases a clip transcript and finds the word active at playback time", () => {

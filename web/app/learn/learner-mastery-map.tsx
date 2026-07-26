@@ -24,6 +24,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   learnerMasteryConnections,
+  learnerMasteryFocusIds,
   learnerPathVisualState,
   type LearnerMasteryConnection,
   type LearnerMasteryReview,
@@ -69,6 +70,14 @@ export function LearnerMasteryMap({
   const connections = useMemo(
     () => learnerMasteryConnections(path.items),
     [path.items],
+  );
+  const focusIds = useMemo(
+    () => learnerMasteryFocusIds(path.items, path.current_concept_id),
+    [path.current_concept_id, path.items],
+  );
+  const focusNodeRefs = useMemo(
+    () => focusIds.map((id) => ({ id })),
+    [focusIds],
   );
   const requestedLayoutKey = useMemo(
     () => [
@@ -193,10 +202,16 @@ export function LearnerMasteryMap({
   useEffect(() => {
     if (!instance || !ready || !nodes.length) return;
     const frame = window.requestAnimationFrame(() => {
-      void instance.fitView({ duration: 280, maxZoom: 1, padding: 0.18 });
+      void instance.fitView({
+        duration: 280,
+        maxZoom: 1.08,
+        minZoom: 0.78,
+        nodes: focusNodeRefs,
+        padding: 0.24,
+      });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [instance, nodes.length, ready, requestedLayoutKey]);
+  }, [focusNodeRefs, instance, nodes.length, ready, requestedLayoutKey]);
 
   return (
     <div
@@ -212,7 +227,6 @@ export function LearnerMasteryMap({
       ) : null}
       <ReactFlow
         edges={edges}
-        fitView
         maxZoom={1.25}
         minZoom={0.35}
         nodeTypes={masteryNodeTypes}

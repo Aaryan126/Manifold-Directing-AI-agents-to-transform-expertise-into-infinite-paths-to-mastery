@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, BookOpen, CheckCircle2, LibraryBig, LoaderCircle, Play } from "lucide-react";
+import { ArrowRight, BookOpen, LoaderCircle, Play } from "lucide-react";
 
 import { readDevelopmentSession, type DevelopmentSession } from "../developmentSession";
 import shellStyles from "../app/course-os.module.css";
@@ -86,12 +86,6 @@ export function LearnerDashboard() {
 
         {loading ? <div className={styles.fullLoader}><LoaderCircle /><span>Loading courses</span></div> : (
           <>
-            <section className={styles.learnerSummary} aria-label="Learning summary">
-              <article><span><BookOpen /></span><div><small>Courses in progress</small><strong>{enrolled.length}</strong><p>Adaptive paths ready to continue</p></div></article>
-              <article><span><CheckCircle2 /></span><div><small>Concepts mastered</small><strong>{enrolled.reduce((total, course) => total + course.mastered_concept_count, 0)}</strong><p>Across your enrolled courses</p></div></article>
-              <article><span><LibraryBig /></span><div><small>Courses available</small><strong>{available.length}</strong><p>Published by your instructor</p></div></article>
-            </section>
-
             <section className={styles.courseSection} id="courses" aria-labelledby="continue-title">
               <header><div><h2 id="continue-title">Continue learning</h2><p>Your next teaching moment is ready when you are.</p></div></header>
               {enrolled.length ? <div className={styles.courseGrid}>{enrolled.map((course) => (

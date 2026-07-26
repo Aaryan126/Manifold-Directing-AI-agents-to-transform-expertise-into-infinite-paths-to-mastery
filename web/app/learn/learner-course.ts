@@ -342,6 +342,70 @@ export function learnerMasteryConnections(
   return [...prerequisiteConnections, ...sequenceConnections];
 }
 
+export function learnerMasteryFocusIds(
+  items: LearnerPathItem[],
+  recommendedConceptId: string | null,
+  limit = 5,
+) {
+  if (!items.length || limit <= 0) return [];
+  const sorted = [...items].sort(
+    (left, right) =>
+      left.sequence_rank - right.sequence_rank
+      || left.name.localeCompare(right.name),
+  );
+  const start = sorted.find(
+    (item) => item.concept_id === recommendedConceptId || item.current,
+  ) ?? sorted.find((item) => item.eligible && item.actionable !== false)
+    ?? sorted[0];
+  const itemById = new Map(sorted.map((item) => [item.concept_id, item]));
+  const adjacency = new Map<string, Set<string>>();
+  learnerMasteryConnections(sorted).forEach((connection) => {
+    adjacency.set(connection.source, new Set([
+      ...(adjacency.get(connection.source) ?? []),
+      connection.target,
+    ]));
+    adjacency.set(connection.target, new Set([
+      ...(adjacency.get(connection.target) ?? []),
+      connection.source,
+    ]));
+  });
+  const selected: string[] = [];
+  const queued = new Set([start.concept_id]);
+  const pending = [start.concept_id];
+  while (pending.length && selected.length < limit) {
+    const conceptId = pending.shift();
+    if (!conceptId) continue;
+    selected.push(conceptId);
+    const currentRank = itemById.get(conceptId)?.sequence_rank ?? 0;
+    const neighbors = [...(adjacency.get(conceptId) ?? [])].sort((left, right) => {
+      const leftRank = itemById.get(left)?.sequence_rank ?? 0;
+      const rightRank = itemById.get(right)?.sequence_rank ?? 0;
+      return Math.abs(leftRank - currentRank) - Math.abs(rightRank - currentRank)
+        || leftRank - rightRank;
+    });
+    neighbors.forEach((neighbor) => {
+      if (!queued.has(neighbor)) {
+        queued.add(neighbor);
+        pending.push(neighbor);
+      }
+    });
+  }
+  if (selected.length < Math.min(3, sorted.length, limit)) {
+    const nearestSequenceItems = sorted
+      .filter((item) => !queued.has(item.concept_id))
+      .sort(
+        (left, right) =>
+          Math.abs(left.sequence_rank - start.sequence_rank)
+          - Math.abs(right.sequence_rank - start.sequence_rank),
+      );
+    for (const item of nearestSequenceItems) {
+      selected.push(item.concept_id);
+      if (selected.length >= Math.min(3, sorted.length, limit)) break;
+    }
+  }
+  return selected;
+}
+
 export function clipTranscriptWords(
   words: LearnerTranscriptWord[],
   clipStartSeconds: number,

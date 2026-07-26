@@ -74,6 +74,8 @@ test("student credentials open Brian's dedicated learner Course OS", async ({ pa
   await expect(
     page.getByRole("heading", { name: /Good (morning|afternoon|evening), Brian\./ }),
   ).toBeVisible();
+  await expect(page.getByLabel("Learning summary")).toHaveCount(0);
+  await expect(page.getByText("Courses in progress")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Continue learning" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Learn Anything in 20 Hours" })).toBeVisible();
   const courseCard = page.getByRole("heading", { name: "Learn Anything in 20 Hours" })

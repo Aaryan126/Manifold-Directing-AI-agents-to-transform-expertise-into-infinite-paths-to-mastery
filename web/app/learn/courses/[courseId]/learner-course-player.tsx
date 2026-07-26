@@ -1155,12 +1155,7 @@ function ModeChooser({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header>
-          <div>
-            <span className={styles.guideIdentity}>
-              Learning Assistant
-            </span>
-            <h2>Choose how you want to learn</h2>
-          </div>
+          <h2>Choose how you want to learn</h2>
           <button aria-label="Close mode chooser" onClick={onClose} type="button">
             <X />
           </button>
@@ -1309,9 +1304,6 @@ function SessionPlan({
   return (
     <section className={styles.planStage}>
       <header>
-        <span className={styles.guideIdentity}>
-          Learning Assistant
-        </span>
         <h1>{modeTitle(session.mode)}</h1>
         <p>
           One focused evidence loop using only reviewed course material. Each step
@@ -1763,24 +1755,11 @@ function MasteryDrawer({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header>
-          <div>
-            <small>Adaptive course map</small>
-            <h2>Mastery & review</h2>
-          </div>
+          <h2>Mastery Map</h2>
           <button aria-label="Close mastery" onClick={onClose} type="button">
             <X />
           </button>
         </header>
-        <div aria-label="Mastery map legend" className={styles.masteryMapLegend}>
-          <span data-tone="recommended">Recommended</span>
-          <span data-tone="mastered">Mastered</span>
-          <span data-tone="ready">Ready</span>
-          <span data-tone="blocked">Blocked</span>
-          <i />
-          <small>Solid = prerequisite</small>
-          <i data-kind="sequence" />
-          <small>Dashed = course order</small>
-        </div>
         <LearnerMasteryMap
           inspectedConceptId={inspectedConceptId}
           mastery={mastery}

@@ -277,6 +277,11 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   await expect(
     page.getByRole("heading", { name: "Continue my path" }),
   ).toBeVisible();
+  await expect(
+    page.locator("[class*='planStage']").getByText("Learning Assistant", {
+      exact: true,
+    }),
+  ).toHaveCount(0);
   await expect(page.getByText("Learn: Vector direction")).toBeVisible();
   await expect(page.getByText("Practice: Vector direction")).toBeVisible();
   await page.getByRole("button", { name: "Start session" }).click();
@@ -285,6 +290,13 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
     page.getByRole("heading", { name: "Vector direction", level: 1 }),
   ).toBeVisible();
   await expect(page.locator("video")).toBeVisible();
+  const sessionHeaderBounds = await page
+    .locator("[class*='sessionHeader']")
+    .boundingBox();
+  const playerBounds = await page.locator("[class*='player']").boundingBox();
+  expect(sessionHeaderBounds).not.toBeNull();
+  expect(playerBounds).not.toBeNull();
+  expect(Math.abs(sessionHeaderBounds!.width - playerBounds!.width)).toBeLessThanOrEqual(2);
   await expect(page.getByText("Practice with an approved question")).toBeVisible();
 
   await expect(page.locator(".lucide-sparkles")).toHaveCount(0);
@@ -351,6 +363,9 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   await expect(
     modeChooser.getByRole("button", { name: /Strengthen weak areas/ }),
   ).toBeEnabled();
+  await expect(
+    modeChooser.getByText("Learning Assistant", { exact: true }),
+  ).toHaveCount(0);
   await modeChooser
     .getByRole("button", { name: /Strengthen weak areas/ })
     .click();
@@ -360,6 +375,14 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
 
   await page.getByRole("button", { name: "Mastery" }).click();
   const mastery = page.getByLabel("Course mastery and review");
+  await expect(
+    mastery.getByRole("heading", { name: "Mastery Map", exact: true }),
+  ).toBeVisible();
+  await expect(mastery.getByText("Recommended", { exact: true })).toHaveCount(0);
+  await expect(mastery.getByText("Solid = prerequisite")).toHaveCount(0);
+  const masteryBounds = await mastery.boundingBox();
+  expect(masteryBounds).not.toBeNull();
+  expect(masteryBounds!.width / page.viewportSize()!.width).toBeLessThanOrEqual(0.6);
   await expect(mastery.getByTestId("mastery-map")).toBeVisible();
   await expect(mastery.locator(".react-flow__node")).toHaveCount(4);
   await expect(mastery.locator(".react-flow__edge")).toHaveCount(4);
@@ -376,16 +399,17 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
         };
       }),
     );
-    return Boolean(
-      canvasBounds
-      && nodeBounds.every((bounds) => (
-        bounds.left >= canvasBounds.x
-        && bounds.right <= canvasBounds.x + canvasBounds.width
-        && bounds.top >= canvasBounds.y
-        && bounds.bottom <= canvasBounds.y + canvasBounds.height
-      )),
-    );
-  }).toBe(true);
+    if (!canvasBounds) return 0;
+    return nodeBounds.filter((bounds) => (
+      bounds.right > canvasBounds.x
+      && bounds.left < canvasBounds.x + canvasBounds.width
+      && bounds.bottom > canvasBounds.y
+      && bounds.top < canvasBounds.y + canvasBounds.height
+    )).length;
+  }).toBeGreaterThanOrEqual(3);
+  await expect(
+    mastery.getByRole("button", { name: /Review recommended.*Vector direction/ }),
+  ).toBeInViewport();
   await expect(
     mastery.getByRole("button", { name: /Review recommended.*Vector direction/ }),
   ).toBeVisible();
