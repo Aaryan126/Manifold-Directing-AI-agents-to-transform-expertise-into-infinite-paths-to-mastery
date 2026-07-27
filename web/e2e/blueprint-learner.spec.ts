@@ -332,19 +332,11 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   await expect(openAssistant).toBeFocused();
   await openAssistant.click();
   await expect(closeAssistant).toBeFocused();
-  await expect(assistant.getByText("Right now:")).toBeVisible();
-  await expect(
-    assistant.getByText("Right now: Vector direction"),
-  ).toBeVisible();
-  const assistantContext = assistant.locator("[class*='guideStatus']");
-  await expect(assistantContext).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-  await expect(assistantContext).toHaveCSS("border-bottom-width", "0px");
+  await expect(assistant.getByText("Right now:")).toHaveCount(0);
   await expect(
     assistant.getByText(/Welcome back. You’re currently working on Vector direction/),
   ).toBeVisible();
   await expect(page.locator('[data-motion-scope="page-enter"]')).toHaveCSS("opacity", "1");
-  const statusBounds = await assistant.locator("[class*='guideStatus']").boundingBox();
-  expect(statusBounds?.height).toBeLessThanOrEqual(48);
   await expect(assistant.getByText("Learning Guide", { exact: false })).toHaveCount(0);
   await page
     .getByRole("button", { name: /Why is this my next lesson/ })

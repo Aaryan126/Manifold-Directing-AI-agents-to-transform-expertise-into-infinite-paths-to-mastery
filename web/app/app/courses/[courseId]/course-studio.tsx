@@ -1671,12 +1671,6 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     ) ?? null,
     [activeCourseFlow, lectureFocusVideoId, workingCourseFlow],
   );
-  const directorContext = focusedLectureUnit
-    ? `${focusedLectureUnit.title} · ${courseDirectorViewLabel(canvasView)}`
-    : canvasView === "blueprint"
-      ? "Cross-lecture concept map"
-      : `${course?.title ?? "Course"} · Course Flow`;
-
   const courseDirector = (
     <section
       className={`${styles.conversationPanel} ${focusedCreation ? styles.creationConversation : styles.dockedConversation}`}
@@ -1691,12 +1685,6 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         </div>
       ) : null}
       <div className={styles.messageList} ref={messageListRef}>
-        {!focusedCreation ? (
-          <div className={styles.directorContextStatus}>
-            <span>Right now:</span>
-            <strong>{directorContext}</strong>
-          </div>
-        ) : null}
         {!focusedCreation && !messages.length && !directorStream ? (
           <DirectorWelcome
             courseTitle={course?.title ?? "this course"}
@@ -2041,14 +2029,6 @@ function StreamingMessageBubble({ stream }: { stream: DirectorStream }) {
       </div>
     </article>
   );
-}
-
-function courseDirectorViewLabel(view: CanvasView) {
-  if (view === "blueprint") return "Blueprint";
-  if (view === "assessments") return "Assessments";
-  if (view === "preview") return "Preview";
-  if (view === "review") return "Review";
-  return "Course Flow";
 }
 
 function MessageBubble({ message, proposalStates, onResolve }: {

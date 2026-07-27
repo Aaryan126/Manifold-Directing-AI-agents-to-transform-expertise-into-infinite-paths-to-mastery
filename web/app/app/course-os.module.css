@@ -912,9 +912,6 @@
 .creationGreeting h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: clamp(31px, 3.1vw, 44px); font-weight: 430; letter-spacing: -0.04em; line-height: 1; margin: 0; }
 .messageList { flex: 1; min-height: 0; overflow: auto; padding: 28px 24px 38px; scroll-behavior: smooth; }
 .creationConversation .messageList { padding: 38px clamp(36px, 12vw, 220px) 190px; }
-.directorContextStatus { align-items: baseline; background: transparent; border: 0; border-radius: 0; display: flex; gap: 6px; margin: 0 0 18px; min-height: 0; overflow: hidden; padding: 0; }
-.directorContextStatus span { color: #a65318; flex: none; font-size: 10px; font-weight: 730; }
-.directorContextStatus strong { color: #5f5d64; font-size: 11px; font-weight: 630; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .messageBubble { display: flex; gap: 10px; margin: 0 0 24px; }
 .messageBubble[data-role="instructor"] { justify-content: flex-end; }
 .messageBubble[data-role="instructor"] > div { background: #26272d; border-radius: 14px 14px 4px 14px; color: #fff; max-width: 82%; padding: 11px 13px; }

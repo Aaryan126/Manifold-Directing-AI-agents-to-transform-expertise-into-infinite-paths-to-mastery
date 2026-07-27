@@ -865,11 +865,7 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(page.getByRole("button", { name: "Open Course Director" })).toBeVisible();
   await page.getByRole("button", { name: "Open Course Director" }).click();
   await expect(page.getByText("Your complete private draft is ready for review.")).toHaveCount(0);
-  await expect(page.getByText("Right now:")).toBeVisible();
-  await expect(page.getByText("Forces and motion · Course Flow")).toBeVisible();
-  const directorContext = page.locator("[class*='directorContextStatus']");
-  await expect(directorContext).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-  await expect(directorContext).toHaveCSS("border-top-width", "0px");
+  await expect(page.getByText("Right now:")).toHaveCount(0);
   await expect(page.getByText(/Welcome back, Ada/)).toBeVisible();
   await expect(page.locator('[data-motion-scope="page-enter"]')).toHaveCSS("opacity", "1");
   await expect(page.locator('[data-motion-state="ready"]')).toBeVisible();

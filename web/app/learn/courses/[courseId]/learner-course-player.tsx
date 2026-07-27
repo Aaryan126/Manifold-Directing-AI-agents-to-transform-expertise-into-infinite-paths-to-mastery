@@ -2030,13 +2030,6 @@ function LearningGuideDock({
   ];
   return (
     <section aria-label="Learning Assistant conversation" className={styles.guideConversation}>
-        <div className={styles.guideStatus}>
-          <strong>
-            <span>Right now:</span>{" "}
-            {current?.name ?? "No actionable concept"}
-          </strong>
-        </div>
-
         <div className={styles.guideMessageList} ref={messageListRef}>
           {!messages.length ? (
             <div className={styles.guideWelcome}>
