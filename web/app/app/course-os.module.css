@@ -19,12 +19,6 @@
   transition: grid-template-columns 180ms ease;
 }
 
-.dashboardShell {
-  background:
-    radial-gradient(circle at 94% 4%, rgb(217 122 43 / 10%), transparent 25rem),
-    linear-gradient(180deg, var(--os-paper) 0%, #f7f2ed 100%);
-}
-
 .sidebarCollapsedShell { grid-template-columns: 76px minmax(0, 1fr); }
 .appShell:has(> .dashboardSidebar[data-collapsed]) { grid-template-columns: 76px minmax(0, 1fr); }
 
@@ -319,47 +313,30 @@
 .primaryButton:disabled { cursor: wait; opacity: 0.6; }
 .primaryButton svg { height: 17px; width: 17px; }
 
-.dashboardMain .primaryButton { background: var(--dashboard-brown); border-color: var(--dashboard-brown); }
-.dashboardMain .primaryButton:hover { background: #50352c; border-color: #50352c; }
-
 .intelligenceBrief {
-  background: linear-gradient(120deg, #ffffff 0%, #ffffff 66%, #f4e7df 100%);
-  border: 1px solid #dfd2c9;
+  background: #fff;
+  border: 1px solid var(--os-line);
   border-radius: 13px;
-  box-shadow: 0 14px 34px rgb(99 68 56 / 6%);
   container-type: inline-size;
   margin-bottom: 24px;
-  overflow: hidden;
   padding: clamp(22px, 2.4vw, 30px);
-  position: relative;
-}
-
-.intelligenceBrief::before {
-  background: linear-gradient(90deg, var(--dashboard-orange) 0 43%, var(--dashboard-clay) 43% 72%, var(--dashboard-stone) 72% 100%);
-  content: "";
-  height: 6px;
-  inset: 0 0 auto;
-  position: absolute;
 }
 
 .briefHeading { width: 100%; }
-.briefHeading h2 { color: #3f2b23; font-family: "Source Serif 4 Variable", Georgia, serif; font-size: clamp(23px, 2.05cqi, 35px); font-weight: 470; letter-spacing: -.035em; line-height: 1.12; margin: 0 0 7px; white-space: nowrap; }
+.briefHeading h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: clamp(23px, 2.05cqi, 35px); font-weight: 470; letter-spacing: -.035em; line-height: 1.12; margin: 0 0 7px; white-space: nowrap; }
 .briefHeading p { color: var(--os-subtle); font-size: 13px; line-height: 1.5; margin: 0; max-width: 880px; }
 
 .dashboardCommand { margin: 20px 0 0; max-width: 1120px; }
-.dashboardCommand > div:first-of-type { align-items: center; background: rgb(255 255 255 / 92%); border: 1px solid #d8c4b8; border-radius: 11px; display: flex; min-height: 56px; padding: 5px; transition: border-color 140ms ease, box-shadow 140ms ease; }
-.dashboardCommand > div:first-of-type:focus-within { border-color: var(--dashboard-orange); box-shadow: 0 0 0 3px rgb(217 122 43 / 12%); }
+.dashboardCommand > div:first-of-type { align-items: center; background: #fbfaf7; border: 1px solid #d7d4cd; border-radius: 11px; display: flex; min-height: 56px; padding: 5px; transition: border-color 140ms ease, box-shadow 140ms ease; }
+.dashboardCommand > div:first-of-type:focus-within { border-color: #a9a59c; box-shadow: 0 0 0 3px rgb(41 41 45 / 6%); }
 .dashboardCommand input { background: transparent; border: 0; color: #222228; flex: 1; font: inherit; font-size: 16px; min-width: 0; outline: 0; padding: 0 14px; }
 .dashboardCommand input::placeholder { color: #929097; }
-.dashboardCommand > div:first-of-type > button { align-items: center; background: var(--dashboard-brown); border: 0; border-radius: 8px; color: white; cursor: pointer; display: flex; height: 44px; justify-content: center; width: 44px; }
-.dashboardCommand > div:first-of-type > button:disabled { background: var(--dashboard-stone); cursor: default; opacity: 1; }
+.dashboardCommand > div:first-of-type > button { align-items: center; background: #202127; border: 0; border-radius: 8px; color: white; cursor: pointer; display: flex; height: 44px; justify-content: center; width: 44px; }
+.dashboardCommand > div:first-of-type > button:disabled { cursor: default; opacity: .35; }
 .dashboardCommand svg { height: 18px; width: 18px; }
 .commandSuggestions { display: grid; gap: 7px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 10px; }
-.commandSuggestions button { background: #fff3e7; border: 1px solid #e7c29e; border-radius: 999px; color: #50352c; cursor: pointer; font: inherit; font-size: 11px; overflow: hidden; padding: 7px 11px; text-overflow: ellipsis; white-space: nowrap; }
-.commandSuggestions button:nth-child(2) { background: #f1e6e0; border-color: #dac4b8; }
-.commandSuggestions button:nth-child(3) { background: #efede8; border-color: #d4d1ca; }
-.commandSuggestions button:nth-child(4) { background: #eee1da; border-color: #d6bdb1; }
-.commandSuggestions button:hover { border-color: var(--dashboard-brown); color: #241a15; filter: saturate(1.08); }
+.commandSuggestions button { background: #fff; border: 1px solid #e1ded7; border-radius: 999px; color: #65636a; cursor: pointer; font: inherit; font-size: 11px; overflow: hidden; padding: 7px 11px; text-overflow: ellipsis; white-space: nowrap; }
+.commandSuggestions button:hover { background: #f7f5f1; border-color: #c8c4bc; color: #28282e; }
 .commandError { color: var(--manifold-orange-strong); font-size: 13px; margin: 14px 0 0; }
 .commandResult { background: #fbfaf7; border: 1px solid #dedbd4; border-radius: 10px; margin: 14px 0 0; max-width: 1120px; overflow: hidden; }
 .commandResult[data-kind="proposal"] { background: #fffaf4; border-color: #e6d8c7; }
@@ -435,14 +412,10 @@
   background: #fff;
   border: 1px solid var(--os-line);
   border-radius: 13px;
-  box-shadow: 0 12px 28px rgb(99 68 56 / 5%);
   height: 100%;
   min-width: 0;
   overflow: hidden;
 }
-
-.priorityPanel { border-top: 5px solid var(--dashboard-orange); }
-.learnerActivityPanel { border-top: 5px solid var(--dashboard-clay); }
 
 .priorityPanel > header,
 .learnerActivityPanel > header,
@@ -451,16 +424,6 @@
   display: flex;
   justify-content: space-between;
   padding: 25px 28px 18px;
-}
-
-.priorityPanel > header {
-  background: #fff6ed;
-  border-bottom: 1px solid #f0dac5;
-}
-
-.learnerActivityPanel > header {
-  background: #f3eae5;
-  border-bottom: 1px solid #e3d2c9;
 }
 
 .priorityPanel h2,
@@ -482,10 +445,9 @@
 .priorityPanel header button:hover { color: #19191e; }
 .priorityPanel header button svg { height: 14px; width: 14px; }
 
-.priorityList { display: grid; gap: 8px; padding: 18px 20px 22px; }
+.priorityList { display: grid; gap: 8px; padding: 0 20px 22px; }
 .priorityItem {
   align-items: center;
-  background: #fffdfb;
   border: 1px solid #ebe9e3;
   border-radius: 9px;
   color: inherit;
@@ -497,8 +459,7 @@
   text-decoration: none;
   transition: background 140ms ease, border-color 140ms ease;
 }
-.priorityItem[data-kind="learner_insight"] { box-shadow: inset 3px 0 0 var(--dashboard-orange); }
-.priorityItem:hover { background: #fff8f1; border-color: #ddb891; }
+.priorityItem:hover { background: #faf9f6; border-color: #d4d1ca; }
 .priorityIcon { align-items: center; background: #fff3e7; border-radius: 8px; color: #d27325; display: flex; height: 40px; justify-content: center; width: 40px; }
 .priorityItem[data-kind="learner_insight"] .priorityIcon { background: transparent; color: var(--manifold-orange); }
 .priorityItem[data-kind="generation_active"] .priorityIcon { background: #efede8; color: #55565c; }
@@ -536,11 +497,11 @@
 .courseHealth > a svg { height: 14px; width: 14px; }
 
 .learnerActivityPanel { display: flex; flex-direction: column; }
-.learnerActivitySummary { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 18px 28px 4px; }
-.learnerActivitySummary > div { background: #fff0e3; border: 1px solid #efd1b5; border-radius: 9px; display: grid; gap: 2px; min-width: 0; padding: 10px 12px; }
-.learnerActivitySummary > div + div { background: #eee1da; border-color: #dbc5ba; }
+.learnerActivitySummary { display: grid; gap: 1px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0 28px 4px; }
+.learnerActivitySummary > div { display: grid; gap: 2px; min-width: 0; padding: 1px 16px 7px 0; }
+.learnerActivitySummary > div + div { border-left: 1px solid #ebe8e1; padding-left: 18px; }
 .learnerActivitySummary strong { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 25px; font-weight: 510; line-height: 1; }
-.learnerActivitySummary span { color: #55535a; font-size: 10px; }
+.learnerActivitySummary span { color: #68666d; font-size: 10px; }
 .learnerActivityChart { border-bottom: 1px solid #e9e7e1; display: flex; flex: 1; flex-direction: column; justify-content: flex-end; margin: 4px 28px 0; min-height: 144px; padding: 8px 0 0; }
 .learnerActivityPlot { display: block; height: 134px; overflow: visible; width: 100%; }
 .learnerActivityGridLine { stroke: #e2dfd8; stroke-dasharray: 3 5; stroke-width: 1; vector-effect: non-scaling-stroke; }
@@ -554,10 +515,10 @@
 .learnerActivityEmpty > span { display: grid; gap: 3px; }
 .learnerActivityEmpty strong { color: #3d3d43; font-size: 13px; }
 .learnerActivityEmpty small { font-size: 11px; line-height: 1.4; }
-.learnerActivityPanel footer { align-items: center; background: #f5f2ed; display: flex; gap: 14px; justify-content: space-between; min-height: 47px; padding: 10px 28px 12px; }
+.learnerActivityPanel footer { align-items: center; display: flex; gap: 14px; justify-content: space-between; min-height: 47px; padding: 10px 28px 12px; }
 .learnerActivityPanel footer > span { align-items: center; color: #66646b; display: flex; font-size: 9px; gap: 7px; white-space: nowrap; }
 .learnerActivityPanel footer > span i { background: var(--manifold-orange); border-radius: 50%; height: 7px; width: 7px; }
-.learnerActivityPanel footer p { color: #5c5a60; font-size: 9px; margin: 0; text-align: right; }
+.learnerActivityPanel footer p { color: #77757c; font-size: 9px; margin: 0; text-align: right; }
 
 .courseGrid {
   display: grid;

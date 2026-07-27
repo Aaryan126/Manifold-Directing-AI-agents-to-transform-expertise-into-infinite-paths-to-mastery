@@ -188,7 +188,7 @@ export function TeacherDashboard() {
   }
 
   return (
-    <div className={`${styles.appShell} ${styles.dashboardShell} ${sidebarCollapsed ? styles.sidebarCollapsedShell : ""}`}>
+    <div className={`${styles.appShell} ${sidebarCollapsed ? styles.sidebarCollapsedShell : ""}`}>
       <TeacherSidebar collapsed={sidebarCollapsed} identity={identity} onToggle={toggleSidebar} />
       <main className={styles.dashboardMain}>
         <header className={styles.dashboardHeader}>

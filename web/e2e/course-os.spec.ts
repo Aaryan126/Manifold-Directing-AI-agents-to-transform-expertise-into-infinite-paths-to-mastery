@@ -733,19 +733,6 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
     (greetingHeadline!.y + greetingHeadline!.height / 2)
       - (newCourseButton!.y + newCourseButton!.height / 2),
   )).toBeLessThanOrEqual(1);
-  await expect(page.getByRole("button", { name: "New course" })).toHaveCSS("background-color", "rgb(99, 68, 56)");
-  const intelligenceBrief = page.locator("section[class*='intelligenceBrief']");
-  const signatureBackground = await intelligenceBrief.evaluate((element) => (
-    getComputedStyle(element, "::before").backgroundImage
-  ));
-  expect(signatureBackground).toContain("rgb(217, 122, 43)");
-  expect(signatureBackground).toContain("rgb(145, 97, 77)");
-  expect(signatureBackground).toContain("rgb(170, 168, 161)");
-  const suggestedCommands = page.getByLabel("Suggested commands").getByRole("button");
-  await expect(suggestedCommands.nth(0)).toHaveCSS("background-color", "rgb(255, 243, 231)");
-  await expect(suggestedCommands.nth(1)).toHaveCSS("background-color", "rgb(241, 230, 224)");
-  await expect(suggestedCommands.nth(2)).toHaveCSS("background-color", "rgb(239, 237, 232)");
-  await expect(suggestedCommands.nth(3)).toHaveCSS("background-color", "rgb(238, 225, 218)");
   await page.getByRole("button", { name: "New course" }).click();
     await expect(page.getByRole("dialog", { name: "Name the course" })).toBeVisible();
   await expect(page.getByLabel("Course title")).toBeVisible();
@@ -754,6 +741,13 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(page.getByRole("heading", { name: "Needs your judgment", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Learner activity", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Course radar" })).toHaveCount(0);
+  const intelligenceBrief = page.locator("section[class*='intelligenceBrief']");
+  await expect(intelligenceBrief).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(intelligenceBrief).toHaveCSS("background-image", "none");
+  await expect(page.getByLabel("Suggested commands").getByRole("button").first()).toHaveCSS(
+    "background-color",
+    "rgb(255, 255, 255)",
+  );
   const activityChart = page.getByRole("img", { name: /Daily active learners over the last seven days/ });
   await expect(activityChart).toBeVisible();
   await expect(activityChart.locator("svg")).toBeVisible();
@@ -777,10 +771,12 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   const learnerActivityPanel = page.getByRole("article").filter({
     has: page.getByRole("heading", { name: "Learner activity", exact: true }),
   });
-  await expect(priorityPanel).toHaveCSS("border-top-color", "rgb(217, 122, 43)");
-  await expect(learnerActivityPanel).toHaveCSS("border-top-color", "rgb(145, 97, 77)");
-  await expect(priorityPanel.locator("header")).toHaveCSS("background-color", "rgb(255, 246, 237)");
-  await expect(learnerActivityPanel.locator("header")).toHaveCSS("background-color", "rgb(243, 234, 229)");
+  await expect(priorityPanel).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(priorityPanel).toHaveCSS("border-top-width", "1px");
+  await expect(priorityPanel.locator("header")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(learnerActivityPanel).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(learnerActivityPanel).toHaveCSS("border-top-width", "1px");
+  await expect(learnerActivityPanel.locator("header")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(page.locator("[class*='courseCover'][data-tone='review']").first()).toHaveCSS(
     "background-color",
     "rgb(217, 122, 43)",
