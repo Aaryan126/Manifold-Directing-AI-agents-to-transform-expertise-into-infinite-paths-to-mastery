@@ -1,5 +1,13 @@
 .fullLoader { align-items: center; color: #77757c; display: flex; gap: 10px; justify-content: center; min-height: 240px; }
 .fullLoader svg,.spin { animation: spin 900ms linear infinite; height: 18px; width: 18px; }
+.learnerDashboardHandoff,.learnerDashboardMotionContent { width: 100%; }
+.learnerCourseMotionStage { min-height: calc(100dvh - 72px); }
+.learnerDashboardSkeleton { display: grid; gap: 18px; margin-top: 48px; }
+.learnerDashboardSkeleton > span { animation: learnerSkeletonPulse 1.15s ease-in-out infinite alternate; background: #e8e5df; border-radius: 8px; height: 42px; width: min(300px, 45%); }
+.learnerDashboardSkeleton > div { display: grid; gap: 18px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.learnerDashboardSkeleton i { animation: learnerSkeletonPulse 1.15s ease-in-out infinite alternate; background: #e9e6e0; border-radius: 13px; display: block; height: 330px; }
+.learnerDashboardSkeleton i:nth-child(2) { animation-delay: 90ms; }
+.learnerDashboardSkeleton i:nth-child(3) { animation-delay: 180ms; }
 
 .courseSection { margin-top: 48px; }
 .courseSection > header { margin-bottom: 18px; }
@@ -393,9 +401,8 @@
 .guideStatus strong span { color: #a65318; font-size: inherit; font-weight: 760; }
 .guideMessageList { display: flex; flex-direction: column; gap: 20px; overflow: auto; padding: 24px 20px 30px; }
 .guideWelcome { color: #55535a; display: grid; gap: 14px; }
-.guideWelcome > p { font-size: 13px; line-height: 1.55; margin: 0; }
-.guideWelcome > div { display: flex; flex-wrap: wrap; gap: 7px; }
-.guideWelcome button { background: #fff; border: 1px solid #d9d6cf; border-radius: 999px; color: #55535a; cursor: pointer; font: inherit; font-size: 11px; min-height: 32px; padding: 6px 10px; }
+.guideWelcomePrompts { display: flex; flex-wrap: wrap; gap: 7px; }
+.guideWelcomePrompts button { background: #fff; border: 1px solid #d9d6cf; border-radius: 999px; color: #55535a; cursor: pointer; font: inherit; font-size: 11px; min-height: 32px; padding: 6px 10px; }
 .guideWelcome button:hover { background: #faf7f2; border-color: #c9aa90; }
 .guideMessage { align-items: flex-start; display: flex; gap: 10px; }
 .guideMessage > i { align-items: center; background: #efede8; border-radius: 9px; color: #393a40; display: flex; flex: none; height: 34px; justify-content: center; width: 34px; }
@@ -435,11 +442,12 @@
 .honestUnavailable p { color: #615e65; font-size: 13px; line-height: 1.5; margin: 4px 0 0; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes learnerSkeletonPulse { from { opacity: .56; } to { opacity: 1; } }
 @keyframes guideTyping {
   0%, 60%, 100% { opacity: .35; transform: translateY(0); }
   30% { opacity: 1; transform: translateY(-3px); }
 }
-@media (max-width: 1200px) { .courseGrid { grid-template-columns: repeat(2, 1fr); } .courseLayout { grid-template-columns: minmax(0, 1fr) 340px; } .learningWorkspace { grid-template-columns: minmax(0, 1fr) 280px; } }
+@media (max-width: 1200px) { .courseGrid,.learnerDashboardSkeleton > div { grid-template-columns: repeat(2, 1fr); } .learnerDashboardSkeleton i:last-child { display: none; } .courseLayout { grid-template-columns: minmax(0, 1fr) 340px; } .learningWorkspace { grid-template-columns: minmax(0, 1fr) 280px; } }
 @media (max-height: 800px) { .lesson { padding: 18px 28px; } .lessonHeader { margin-bottom: 12px; } .lessonHeader h1 { font-size: 34px; } .sessionActivity { padding: 14px 28px 16px; } .sessionHeader { margin-bottom: 10px; } .sessionHeader > div { font-size: 10px; } .sessionHeader h1 { font-size: 36px; margin: 5px 0 4px; } .sessionHeader p { font-size: 12px; line-height: 1.35; -webkit-line-clamp: 1; } .transcript { margin-top: 8px; } .transcript > summary { min-height: 44px; } .activityFooter { margin-top: 10px; padding-top: 10px; } }
-@media (max-width: 780px) { .courseGrid { grid-template-columns: 1fr; } .courseShell { display: block; } .courseShell > aside { display: none; } .courseLayout { display: block; } .outline { border-left: 0; height: auto; position: static; } }
-@media (prefers-reduced-motion: reduce) { .fullLoader svg,.spin,.guideThinking i { animation: none; } .courseCard { transition: none; } .transcriptBody { scroll-behavior: auto; } }
+@media (max-width: 780px) { .courseGrid,.learnerDashboardSkeleton > div { grid-template-columns: 1fr; } .learnerDashboardSkeleton i:not(:first-child) { display: none; } .courseShell { display: block; } .courseShell > aside { display: none; } .courseLayout { display: block; } .outline { border-left: 0; height: auto; position: static; } }
+@media (prefers-reduced-motion: reduce) { .fullLoader svg,.spin,.guideThinking i,.learnerDashboardSkeleton span,.learnerDashboardSkeleton i { animation: none; } .courseCard { transition: none; } .transcriptBody { scroll-behavior: auto; } }

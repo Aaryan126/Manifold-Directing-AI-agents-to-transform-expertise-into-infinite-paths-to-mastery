@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { motion, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { ArrowLeft, GraduationCap, LoaderCircle, School } from "lucide-react";
@@ -12,12 +13,14 @@ import {
   saveDevelopmentSession,
   type DevelopmentSession,
 } from "../developmentSession";
+import { pageEntranceMotion } from "../interface-motion";
 import styles from "./login.module.css";
 
 const pipelineBase = process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localhost:8000";
 
 export default function LoginPage() {
   const router = useRouter();
+  const reducedMotion = useReducedMotion();
   const [role, setRole] = useState<DevelopmentSession["role"]>("instructor");
   const [username, setUsername] = useState("David");
   const [password, setPassword] = useState("");
@@ -71,7 +74,12 @@ export default function LoginPage() {
         <Link className={styles.brand} href="/" aria-label="Manifold home"><BrandMark />Manifold</Link>
       </header>
 
-      <section className={styles.loginPanel} aria-label="Sign in to Manifold">
+      <motion.section
+        aria-label="Sign in to Manifold"
+        className={styles.loginPanel}
+        data-motion-scope="page-enter"
+        {...pageEntranceMotion(reducedMotion)}
+      >
         <div className={styles.roleSwitch} aria-label="Choose a workspace" role="group">
           <button aria-pressed={role === "instructor"} onClick={() => chooseRole("instructor")} type="button">
             <School aria-hidden="true" />
@@ -100,7 +108,7 @@ export default function LoginPage() {
         </form>
 
         <p className={styles.notice}>This local access gate is for product development and demonstration. It is not production authentication.</p>
-      </section>
+      </motion.section>
     </main>
   );
 }

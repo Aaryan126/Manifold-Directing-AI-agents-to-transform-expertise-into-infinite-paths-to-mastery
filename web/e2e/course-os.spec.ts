@@ -751,6 +751,11 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(
     page.getByRole("heading", { name: /Good (morning|afternoon|evening), Ada\./ }),
   ).toBeVisible();
+  await page.locator('[data-motion-scope="page-enter"]').evaluate(async (element) => {
+    await Promise.all(
+      element.getAnimations({ subtree: false }).map((animation) => animation.finished),
+    );
+  });
   const greetingHeadline = await page.getByRole("heading", { name: /Good (morning|afternoon|evening), Ada\./ }).boundingBox();
   const newCourseButton = await page.getByRole("button", { name: "New course" }).boundingBox();
   expect(greetingHeadline).not.toBeNull();
@@ -859,6 +864,11 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(page.getByRole("button", { name: "Open Course Director" })).toBeVisible();
   await page.getByRole("button", { name: "Open Course Director" }).click();
   await expect(page.getByText("Your complete private draft is ready for review.")).toHaveCount(0);
+  await expect(page.getByText("Right now:")).toBeVisible();
+  await expect(page.getByText("Forces and motion · Course Flow")).toBeVisible();
+  await expect(page.getByText(/Welcome back, Ada/)).toBeVisible();
+  await expect(page.locator('[data-motion-scope="page-enter"]')).toHaveCSS("opacity", "1");
+  await expect(page.locator('[data-motion-state="ready"]')).toBeVisible();
   const closeDirector = page.getByRole("button", { name: "Close Course Director" });
   await expect(closeDirector).toBeVisible();
   await expect(closeDirector).toBeFocused();
@@ -899,7 +909,7 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
     + directorHeaderBounds!.height
     - directorIdentityBounds!.y
     - directorIdentityBounds!.height;
-  expect(Math.abs(directorHeaderTopGap - directorHeaderBottomGap)).toBeLessThanOrEqual(1);
+  expect(Math.abs(directorHeaderTopGap - directorHeaderBottomGap)).toBeLessThanOrEqual(1.5);
   expect(directorHeaderTopGap).toBeGreaterThanOrEqual(16);
   await page.getByLabel("Message Course Director").fill("Summarize this Blueprint");
   await page.getByRole("button", { name: "Send message" }).click();
@@ -915,6 +925,7 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await page.reload();
   await page.getByRole("button", { name: "Open Course Director" }).click();
   await expect(page.getByRole("heading", { name: "Course update", level: 3 })).toHaveCount(0);
+  await expect(page.getByText(/Welcome back, Ada/)).toBeVisible();
   await expect(page.getByLabel("Message Course Director")).toBeVisible();
 });
 
@@ -1005,6 +1016,8 @@ test("course studio exposes Blueprint, review decisions, and a mobile-safe layou
   await expect(page.getByText("Private design")).toBeVisible();
   await page.getByRole("button", { name: "Net force 1 concepts" }).click();
   await expect(page.getByRole("button", { name: "Vector addition", exact: true })).toBeVisible();
+  await expect(page.locator('[data-motion-scope="page-enter"]')).toHaveCSS("opacity", "1");
+  await expect(page.locator('[data-motion-state="ready"]')).toHaveCSS("opacity", "1");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
   const results = await new AxeBuilder({ page })

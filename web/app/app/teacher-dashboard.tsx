@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { motion, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
@@ -28,6 +29,12 @@ import {
 
 import { BrandMark } from "../../components/brand-mark";
 import { clearDevelopmentSession, readDevelopmentSession } from "../developmentSession";
+import {
+  MotionHandoff,
+  pageEntranceMotion,
+  sectionCascadeVariants,
+  sectionItemVariants,
+} from "../interface-motion";
 
 import {
   courseState,
@@ -43,6 +50,7 @@ const sidebarStorageKey = "manifold.sidebar-collapsed";
 
 export function TeacherDashboard() {
   const router = useRouter();
+  const reducedMotion = useReducedMotion();
   const { sidebarCollapsed, toggleSidebar } = useTeacherSidebar();
   const [identity, setIdentity] = useState<DevelopmentIdentity | null>(null);
   const [dashboard, setDashboard] = useState<DashboardSnapshot | null>(null);
@@ -190,7 +198,11 @@ export function TeacherDashboard() {
   return (
     <div className={`${styles.appShell} ${sidebarCollapsed ? styles.sidebarCollapsedShell : ""}`}>
       <TeacherSidebar collapsed={sidebarCollapsed} identity={identity} onToggle={toggleSidebar} />
-      <main className={styles.dashboardMain}>
+      <motion.main
+        className={styles.dashboardMain}
+        data-motion-scope="page-enter"
+        {...pageEntranceMotion(reducedMotion)}
+      >
         <header className={styles.dashboardHeader}>
           <h1>{identity ? `Good ${timeOfDay()}, ${firstName(identity.display_name)}.` : "Your courses"}</h1>
           <p>Build with Manifold, then focus your judgment where it changes learning.</p>
@@ -207,19 +219,36 @@ export function TeacherDashboard() {
           </div>
         ) : null}
 
-        {loading ? <DashboardSkeleton /> : dashboard ? (
-          <>
-            <IntelligenceBrief
-              command={command}
-              commanding={commanding}
-              dashboard={dashboard}
-              error={commandError}
-              onChange={setCommand}
-              onSubmit={runDashboardCommand}
-              result={commandResult}
-            />
+        <MotionHandoff
+          className={styles.dashboardMotionHandoff}
+          loading={loading}
+          skeleton={<DashboardSkeleton />}
+        >
+          {dashboard ? (
+            <motion.div
+              animate="visible"
+              className={styles.dashboardMotionContent}
+              data-motion-scope="section-cascade"
+              initial={reducedMotion ? false : "hidden"}
+              variants={sectionCascadeVariants(reducedMotion)}
+            >
+              <motion.div variants={sectionItemVariants}>
+                <IntelligenceBrief
+                  command={command}
+                  commanding={commanding}
+                  dashboard={dashboard}
+                  error={commandError}
+                  onChange={setCommand}
+                  onSubmit={runDashboardCommand}
+                  result={commandResult}
+                />
+              </motion.div>
 
-            <section className={styles.dashboardOperations} aria-label="Teacher priorities">
+              <motion.section
+                aria-label="Teacher priorities"
+                className={styles.dashboardOperations}
+                variants={sectionItemVariants}
+              >
               <article className={styles.priorityPanel} aria-labelledby="attention-title">
                 <header>
                   <div>
@@ -258,9 +287,13 @@ export function TeacherDashboard() {
                 </div>
               </article>
               <LearnerActivity dashboard={dashboard} />
-            </section>
+              </motion.section>
 
-            <section className={styles.coursesSection} aria-labelledby="courses-title">
+              <motion.section
+                aria-labelledby="courses-title"
+                className={styles.coursesSection}
+                variants={sectionItemVariants}
+              >
               <div className={styles.sectionHeading}>
                 <div>
                   <h2 id="courses-title">Your courses</h2>
@@ -283,10 +316,11 @@ export function TeacherDashboard() {
                   ))}
                 </div>
               )}
-            </section>
-          </>
-        ) : null}
-      </main>
+              </motion.section>
+            </motion.div>
+          ) : null}
+        </MotionHandoff>
+      </motion.main>
       {deleteCandidate ? (
         <ConfirmDeleteDialog
           course={deleteCandidate}

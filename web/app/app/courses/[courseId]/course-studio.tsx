@@ -15,6 +15,7 @@ import {
   type ReactFlowInstance,
 } from "@xyflow/react";
 import ELK from "elkjs/lib/elk.bundled.js";
+import { motion, useReducedMotion } from "motion/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import ReactMarkdown from "react-markdown";
@@ -67,6 +68,10 @@ import {
 } from "lucide-react";
 
 import { AssistantMorph } from "../../../assistant-morph";
+import {
+  MotionHandoff,
+  pageEntranceMotion,
+} from "../../../interface-motion";
 import {
   readRuntimeConversation,
   writeRuntimeConversation,
@@ -192,6 +197,7 @@ const InsightsCharts = dynamic(
 
 export function CourseStudio({ courseId }: { courseId: string }) {
   const router = useRouter();
+  const reducedMotion = useReducedMotion();
   const searchParams = useSearchParams();
   const requestedCanvasView = searchParams.get("view");
   const { sidebarCollapsed, toggleSidebar } = useTeacherSidebar();
@@ -1661,6 +1667,11 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     ) ?? null,
     [activeCourseFlow, lectureFocusVideoId, workingCourseFlow],
   );
+  const directorContext = focusedLectureUnit
+    ? `${focusedLectureUnit.title} · ${courseDirectorViewLabel(canvasView)}`
+    : canvasView === "blueprint"
+      ? "Cross-lecture concept map"
+      : `${course?.title ?? "Course"} · Course Flow`;
 
   const courseDirector = (
     <section
@@ -1676,6 +1687,18 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         </div>
       ) : null}
       <div className={styles.messageList} ref={messageListRef}>
+        {!focusedCreation ? (
+          <div className={styles.directorContextStatus}>
+            <span>Right now:</span>
+            <strong>{directorContext}</strong>
+          </div>
+        ) : null}
+        {!focusedCreation && !messages.length && !directorStream ? (
+          <DirectorWelcome
+            courseTitle={course?.title ?? "this course"}
+            teacherName={teacherFirstName(identity?.display_name)}
+          />
+        ) : null}
         {!focusedCreation ? messages.filter((message) => message.role !== "system").map((message) => (
           <MessageBubble
             key={message.id}
@@ -1739,7 +1762,11 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   return (
     <div className={`${styles.appShell} ${styles.studioApp} ${sidebarCollapsed ? styles.sidebarCollapsedShell : ""}`}>
       <TeacherSidebar collapsed={sidebarCollapsed} compact identity={identity} onToggle={toggleSidebar} />
-      <main className={styles.studioMain}>
+      <motion.main
+        className={styles.studioMain}
+        data-motion-scope="page-enter"
+        {...pageEntranceMotion(reducedMotion)}
+      >
         <input
           accept="application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,.pdf,.pptx"
           className={styles.hiddenInput}
@@ -1810,8 +1837,12 @@ export function CourseStudio({ courseId }: { courseId: string }) {
 
         {error ? <div className={styles.studioError} role="alert"><CircleAlert /><span>{error}</span><button onClick={() => setError(null)} aria-label="Dismiss error"><X /></button></div> : null}
 
-        {loading ? <StudioSkeleton /> : (
-          focusedCreation ? (
+        <MotionHandoff
+          className={styles.studioMotionStage}
+          loading={loading}
+          skeleton={<StudioSkeleton />}
+        >
+          {focusedCreation ? (
             <div className={styles.creationStage}>{courseDirector}</div>
           ) : (
             <div className={styles.workspaceStage}>
@@ -1927,10 +1958,35 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                 />
               ) : null}
             </div>
-          )
-        )}
-      </main>
+          )}
+        </MotionHandoff>
+      </motion.main>
     </div>
+  );
+}
+
+function DirectorWelcome({
+  courseTitle,
+  teacherName,
+}: {
+  courseTitle: string;
+  teacherName: string;
+}) {
+  return (
+    <article
+      className={`${styles.messageBubble} ${styles.directorWelcomeMessage}`}
+      data-role="manifold"
+    >
+      <span className={styles.agentAvatar}><MessageSquareText /></span>
+      <div>
+        <small>Course Director</small>
+        <p>
+          Welcome back, {teacherName}. I’m ready to help with {courseTitle}. Ask me
+          to inspect this workspace, explain learner evidence, or prepare a private
+          change for your review.
+        </p>
+      </div>
+    </article>
   );
 }
 
@@ -1951,6 +2007,14 @@ function StreamingMessageBubble({ stream }: { stream: DirectorStream }) {
       </div>
     </article>
   );
+}
+
+function courseDirectorViewLabel(view: CanvasView) {
+  if (view === "blueprint") return "Blueprint";
+  if (view === "assessments") return "Assessments";
+  if (view === "preview") return "Preview";
+  if (view === "review") return "Review";
+  return "Course Flow";
 }
 
 function MessageBubble({ message, proposalStates, onResolve }: {

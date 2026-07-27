@@ -1,10 +1,17 @@
 "use client";
 
+import { motion, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, BookOpen, LoaderCircle, Play } from "lucide-react";
 
 import { readDevelopmentSession, type DevelopmentSession } from "../developmentSession";
+import {
+  MotionHandoff,
+  pageEntranceMotion,
+  sectionCascadeVariants,
+  sectionItemVariants,
+} from "../interface-motion";
 import shellStyles from "../app/course-os.module.css";
 import {
   courseCompositionLabels,
@@ -18,6 +25,7 @@ const pipelineBase = process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localh
 
 export function LearnerDashboard() {
   const router = useRouter();
+  const reducedMotion = useReducedMotion();
   const [session, setSession] = useState<DevelopmentSession | null>(null);
   const [courses, setCourses] = useState<LearnerCourseSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,7 +82,11 @@ export function LearnerDashboard() {
   return (
     <div className={shellStyles.appShell}>
       <LearnerSidebar active="home" session={session} />
-      <main className={shellStyles.dashboardMain}>
+      <motion.main
+        className={shellStyles.dashboardMain}
+        data-motion-scope="page-enter"
+        {...pageEntranceMotion(reducedMotion)}
+      >
         <header className={shellStyles.dashboardHeader}>
           <div>
             <h1>Good {timeOfDay()}, {session.display_name}.</h1>
@@ -84,24 +96,54 @@ export function LearnerDashboard() {
 
         {error ? <div className={shellStyles.errorBanner} role="alert"><span>{error}</span><button onClick={() => void load()} type="button">Try again</button></div> : null}
 
-        {loading ? <div className={styles.fullLoader}><LoaderCircle /><span>Loading courses</span></div> : (
-          <>
-            <section className={styles.courseSection} id="courses" aria-labelledby="continue-title">
+        <MotionHandoff
+          className={styles.learnerDashboardHandoff}
+          loading={loading}
+          skeleton={<LearnerDashboardSkeleton />}
+        >
+          <motion.div
+            animate="visible"
+            className={styles.learnerDashboardMotionContent}
+            data-motion-scope="section-cascade"
+            initial={reducedMotion ? false : "hidden"}
+            variants={sectionCascadeVariants(reducedMotion)}
+          >
+            <motion.section
+              aria-labelledby="continue-title"
+              className={styles.courseSection}
+              id="courses"
+              variants={sectionItemVariants}
+            >
               <header><div><h2 id="continue-title">Continue learning</h2><p>Your next teaching moment is ready when you are.</p></div></header>
               {enrolled.length ? <div className={styles.courseGrid}>{enrolled.map((course) => (
                 <LearnerCourseCard course={course} key={course.id} loading={openingId === course.id} onOpen={() => void openCourse(course)} />
               ))}</div> : <div className={styles.emptyState}><Play /><h3>Your first course starts below.</h3><p>Choose an available course and Manifold will prepare your path.</p></div>}
-            </section>
+            </motion.section>
 
-            {available.length ? <section className={styles.courseSection} aria-labelledby="available-title">
+            {available.length ? <motion.section
+              aria-labelledby="available-title"
+              className={styles.courseSection}
+              variants={sectionItemVariants}
+            >
               <header><div><h2 id="available-title">Available courses</h2><p>Enroll once to save mastery and progress.</p></div></header>
               <div className={styles.courseGrid}>{available.map((course) => (
                 <LearnerCourseCard course={course} key={course.id} loading={openingId === course.id} onOpen={() => void openCourse(course)} />
               ))}</div>
-            </section> : null}
-          </>
-        )}
-      </main>
+            </motion.section> : null}
+          </motion.div>
+        </MotionHandoff>
+      </motion.main>
+    </div>
+  );
+}
+
+function LearnerDashboardSkeleton() {
+  return (
+    <div aria-label="Loading courses" className={styles.learnerDashboardSkeleton}>
+      <span />
+      <div>
+        <i /><i /><i />
+      </div>
     </div>
   );
 }

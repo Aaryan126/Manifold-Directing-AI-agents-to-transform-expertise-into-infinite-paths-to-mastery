@@ -333,7 +333,13 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   await openAssistant.click();
   await expect(closeAssistant).toBeFocused();
   await expect(assistant.getByText("Right now:")).toBeVisible();
-  await expect(assistant.getByText("Vector direction")).toBeVisible();
+  await expect(
+    assistant.getByText("Right now: Vector direction"),
+  ).toBeVisible();
+  await expect(
+    assistant.getByText(/Welcome back. You’re currently working on Vector direction/),
+  ).toBeVisible();
+  await expect(page.locator('[data-motion-scope="page-enter"]')).toHaveCSS("opacity", "1");
   const statusBounds = await assistant.locator("[class*='guideStatus']").boundingBox();
   expect(statusBounds?.height).toBeLessThanOrEqual(48);
   await expect(assistant.getByText("Learning Guide", { exact: false })).toHaveCount(0);
@@ -538,6 +544,12 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
       hasText: "I’m stuck.",
     }),
   ).toHaveCount(0);
+  await expect(
+    page.getByLabel("Learning Assistant").getByText(
+      /Welcome back. You’re currently working on Vector direction/,
+    ),
+  ).toBeVisible();
+  await expect(page.getByLabel("Active study plan")).toHaveCSS("opacity", "1");
 
   const accessibility = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])

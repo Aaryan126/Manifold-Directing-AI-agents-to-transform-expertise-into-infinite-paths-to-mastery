@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { motion, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import {
   FormEvent,
@@ -35,6 +36,11 @@ import {
 } from "lucide-react";
 
 import { AssistantMorph } from "../../../assistant-morph";
+import {
+  pageEntranceMotion,
+  sectionCascadeVariants,
+  sectionItemVariants,
+} from "../../../interface-motion";
 import { ProviderVideo } from "../../../ProviderVideo";
 import {
   readRuntimeConversation,
@@ -98,6 +104,7 @@ type GuideResult = {
 
 export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
   const router = useRouter();
+  const reducedMotion = useReducedMotion();
   const [identity, setIdentity] = useState<DevelopmentSession | null>(null);
   const [course, setCourse] = useState<LearnerCourseExperience | null>(null);
   const [path, setPath] = useState<LearnerPath | null>(null);
@@ -853,6 +860,11 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
           </nav>
         </header>
 
+        <motion.div
+          className={styles.learnerCourseMotionStage}
+          data-motion-scope="page-enter"
+          {...pageEntranceMotion(reducedMotion)}
+        >
         {!workspace.orientation.completed ? (
           <Orientation
             busy={busy}
@@ -908,8 +920,17 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
             session={studySession}
           />
         ) : (
-          <div className={styles.learningWorkspace}>
-            <section className={styles.sessionActivity}>
+          <motion.div
+            animate="visible"
+            className={styles.learningWorkspace}
+            data-motion-scope="section-cascade"
+            initial={reducedMotion ? false : "hidden"}
+            variants={sectionCascadeVariants(reducedMotion)}
+          >
+            <motion.section
+              className={styles.sessionActivity}
+              variants={sectionItemVariants}
+            >
               <SessionHeader
                 activeStep={activeStep}
                 activeTopic={activeTopic?.title ?? activeConcept?.name ?? "Learning session"}
@@ -972,7 +993,7 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
                   {error}
                 </p>
               ) : null}
-            </section>
+            </motion.section>
 
             <SessionRail
               busy={busy}
@@ -981,8 +1002,9 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
               onFinish={() => void finishSession()}
               session={studySession}
             />
-          </div>
+          </motion.div>
         )}
+        </motion.div>
 
         {masteryOpen ? (
           <MasteryDrawer
@@ -1405,7 +1427,11 @@ function SessionRail({
     : 0;
 
   return (
-    <aside aria-label="Active study plan" className={styles.sessionRail}>
+    <motion.aside
+      aria-label="Active study plan"
+      className={styles.sessionRail}
+      variants={sectionItemVariants}
+    >
       <header>
         <div className={styles.sessionRailHeading}>
           <span>{modeTitle(session.mode)}</span>
@@ -1478,7 +1504,7 @@ function SessionRail({
           Finish this session
         </button>
       </div>
-    </aside>
+    </motion.aside>
   );
 }
 
@@ -2014,12 +2040,19 @@ function LearningGuideDock({
         <div className={styles.guideMessageList} ref={messageListRef}>
           {!messages.length ? (
             <div className={styles.guideWelcome}>
-              <p>
-                Ask about your progress, what comes next, or how Manifold works. For
-                course questions, I’ll take you to reviewed material instead of
-                inventing an explanation.
-              </p>
-              <div>
+              <article className={styles.guideMessage} data-role="guide">
+                <i aria-hidden="true"><MessageSquareText /></i>
+                <div>
+                  <span>Learning Assistant</span>
+                  <p>
+                    Welcome back. {current
+                      ? `You’re currently working on ${current.name}. `
+                      : "I’m ready when your next reviewed concept is available. "}
+                    Ask about your progress, what comes next, or how Manifold works.
+                  </p>
+                </div>
+              </article>
+              <div className={styles.guideWelcomePrompts}>
                 {quickPrompts.map((prompt) => (
                   <button
                     disabled={sending}

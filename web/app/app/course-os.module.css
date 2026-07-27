@@ -253,6 +253,7 @@
   padding: 58px clamp(28px, 5vw, 76px) 80px;
   width: 100%;
 }
+.dashboardMotionHandoff,.dashboardMotionContent { width: 100%; }
 
 .dashboardHeader {
   column-gap: 30px;
@@ -872,8 +873,9 @@
   position: relative;
   width: 100%;
 }
-.workspaceStage { flex: 1; min-height: 0; position: relative; }
+.workspaceStage { flex: 1; min-height: 0; min-width: 0; position: relative; }
 .workspaceStage > .canvasPanel { height: 100%; width: 100%; }
+.studioMotionStage { display: flex; flex: 1; max-width: 100%; min-height: 0; min-width: 0; position: relative; width: 100%; }
 .directorDock { background: #fff; box-shadow: -18px 0 50px rgb(31 31 35 / 14%); display: flex; flex-direction: column; inset: 56px 0 0 auto; max-width: 460px; overflow: hidden; position: absolute; transform-origin: bottom right; width: min(42vw, 460px); z-index: 15; }
 .directorDockClose { align-items: center; background: #fff; border: 1px solid #dcd8d0; border-radius: 8px; color: #5e5c63; cursor: pointer; display: flex; height: 34px; justify-content: center; position: absolute; right: 16px; top: 22px; width: 34px; z-index: 18; }
 .directorDockClose:hover { background: #f1efe9; color: #202126; }
@@ -910,6 +912,9 @@
 .creationGreeting h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: clamp(31px, 3.1vw, 44px); font-weight: 430; letter-spacing: -0.04em; line-height: 1; margin: 0; }
 .messageList { flex: 1; min-height: 0; overflow: auto; padding: 28px 24px 38px; scroll-behavior: smooth; }
 .creationConversation .messageList { padding: 38px clamp(36px, 12vw, 220px) 190px; }
+.directorContextStatus { align-items: center; background: #f7f5f0; border: 1px solid #e2dfd8; border-radius: 9px; display: flex; gap: 6px; margin: 0 0 24px; min-height: 38px; overflow: hidden; padding: 9px 11px; }
+.directorContextStatus span { color: #a65318; flex: none; font-size: 10px; font-weight: 760; }
+.directorContextStatus strong { color: #47464c; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .messageBubble { display: flex; gap: 10px; margin: 0 0 24px; }
 .messageBubble[data-role="instructor"] { justify-content: flex-end; }
 .messageBubble[data-role="instructor"] > div { background: #26272d; border-radius: 14px 14px 4px 14px; color: #fff; max-width: 82%; padding: 11px 13px; }
@@ -919,6 +924,8 @@
 .agentAvatar svg { height: 16px; width: 16px; }
 .messageBubble small { color: #85848b; display: block; font-size: 11px; font-weight: 680; margin-bottom: 5px; }
 .messageBubble p { font-size: 14px; line-height: 1.6; margin: 0; white-space: pre-wrap; }
+.directorWelcomeMessage > div { color: #39383e; }
+.directorWelcomeMessage p { max-width: 340px; }
 .directorMarkdown { color: #28292e; font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
 .directorMarkdown > :first-child { margin-top: 0; }
 .directorMarkdown > :last-child { margin-bottom: 0; }
@@ -1765,7 +1772,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .inspectorRelationships { border-bottom: 1px solid #e3e0d9; padding: 15px 0; }
 .inspectorRelationships h4 { font-size: 12px; margin: 0; }
 .inspectorRelationships > div { align-items: center; background: #f5f3ef; border-radius: 7px; display: grid; gap: 4px 7px; grid-template-columns: minmax(0, 1fr) auto; margin-top: 8px; padding: 8px 9px; }
-.inspectorRelationships > div > span { color: #77747b; font-size: 9px; grid-column: 1; text-transform: uppercase; }
+.inspectorRelationships > div > span { color: #66636a; font-size: 9px; grid-column: 1; text-transform: uppercase; }
 .inspectorRelationships > div > strong { font-size: 10px; grid-column: 1; line-height: 1.35; min-width: 0; overflow-wrap: anywhere; }
 .inspectorRelationships > div > button,.inspectorRemoveButton { align-items: center; background: #fff; border: 1px solid #d8d4cc; border-radius: 7px; color: #59575e; display: flex; font: inherit; font-size: 10px; gap: 6px; grid-column: 2; grid-row: 1 / span 2; justify-content: center; padding: 7px 9px; }
 .inspectorRelationships > div > button svg,.inspectorRemoveButton svg { height: 13px; width: 13px; }
