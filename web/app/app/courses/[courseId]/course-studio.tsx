@@ -3772,6 +3772,7 @@ function BlueprintWorkspace({
   const [flowInstance, setFlowInstance] = useState<
     ReactFlowInstance<BlueprintGraphNode, BlueprintGraphEdge> | null
   >(null);
+  const [settledViewportKey, setSettledViewportKey] = useState<string | null>(null);
   const [enabledRelationships, setEnabledRelationships] = useState<Set<BlueprintEdgeKind>>(
     () => new Set(coreBlueprintEdgeKinds),
   );
@@ -3827,11 +3828,10 @@ function BlueprintWorkspace({
       relationshipDraft,
     },
   );
-  const reactFlowMountKey = useMemo(() => {
-    if (!blueprint) return "empty";
-    return `${mode}:${focusTopicLogicalId ?? "course"}:${autoArrangeVersion}`;
-  }, [autoArrangeVersion, blueprint, focusTopicLogicalId, mode]);
-  const viewportFitKey = `${reactFlowMountKey}:${flow.layoutKey ?? "pending"}`;
+  const viewportContextKey = `${mode}:${focusTopicLogicalId ?? "course"}:${autoArrangeVersion}`;
+  const viewportFitKey = `${viewportContextKey}:${flow.layoutKey ?? "pending"}`;
+  const viewportReady = flow.layoutReady
+    && (!flow.nodes.length || settledViewportKey === viewportFitKey);
   const evidence = selected?.kind === "concept"
     ? blueprintEvidence.find((item) => item.concept_id === selected.id) ?? null
     : null;
@@ -3901,31 +3901,43 @@ function BlueprintWorkspace({
 
   useEffect(() => {
     if (!flowInstance || !flow.layoutReady || !flow.nodes.length) return;
-    // React Flow measures custom nodes after they enter the DOM. Fitting during
-    // that measurement window can cache an off-canvas transform, especially
-    // after undo or auto-arrange remounts the graph. Wait for measurement and
-    // then perform one authoritative fit for the completed layout.
-    const timer = window.setTimeout(() => {
+    let cancelled = false;
+    let frame = 0;
+    let attempts = 0;
+    setSettledViewportKey(null);
+    // Keep intermediate ELK positions invisible, let React Flow measure the
+    // completed nodes, then perform one authoritative fit before revealing the
+    // graph. This prevents the mount fit and completed-layout fit from racing.
+    const fitWhenSynchronized = () => {
+      if (cancelled) return;
+      const renderedNodes = flowInstance.getNodes();
+      const nodesReady = renderedNodes.length === flow.nodes.length
+        && renderedNodes.every((node) => (
+          Boolean(node.measured?.width) && Boolean(node.measured?.height)
+        ));
+      if (!nodesReady && attempts < 60) {
+        attempts += 1;
+        frame = window.requestAnimationFrame(fitWhenSynchronized);
+        return;
+      }
       void flowInstance.fitView({ duration: 0, maxZoom: 1, padding: 0.14 });
-    }, 80);
-    return () => window.clearTimeout(timer);
-  }, [flow.layoutReady, flow.nodes.length, flowInstance, selectedLogicalId, viewportFitKey]);
+      frame = window.requestAnimationFrame(() => {
+        if (!cancelled) setSettledViewportKey(viewportFitKey);
+      });
+    };
+    const timer = window.setTimeout(() => {
+      frame = window.requestAnimationFrame(fitWhenSynchronized);
+    }, 40);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      window.cancelAnimationFrame(frame);
+    };
+  }, [flow.layoutReady, flow.nodes.length, flowInstance, viewportFitKey]);
 
   const closeArtifactInspector = useCallback(() => {
     setSelectedLogicalId(null);
-    // Closing the floating inspector changes the usable canvas bounds. React
-    // Flow's ResizeObserver and React's state update do not always settle in
-    // the same frame, so fit again after both the next paint and the inspector
-    // transition window. This prevents a valid graph being left off-canvas.
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        void flowInstance?.fitView({ duration: 0, maxZoom: 1, padding: 0.14 });
-      });
-    });
-    window.setTimeout(() => {
-      void flowInstance?.fitView({ duration: 0, maxZoom: 1, padding: 0.14 });
-    }, 260);
-  }, [flowInstance]);
+  }, []);
 
   async function chooseRelationshipTarget(target: BlueprintNode) {
     if (!relationshipDraft?.kind || !blueprint) return;
@@ -4275,9 +4287,12 @@ function BlueprintWorkspace({
           })}
         </nav>
 
-        <div className={styles.blueprintCanvas}>
+        <div
+          className={styles.blueprintCanvas}
+          data-viewport-state={viewportReady ? "ready" : "settling"}
+        >
           <AnimatePresence>
-            {!flow.layoutReady ? (
+            {!viewportReady ? (
               <motion.div
                 animate={{ opacity: 1 }}
                 className={styles.blueprintLayoutLoading}
@@ -4292,75 +4307,79 @@ function BlueprintWorkspace({
               </motion.div>
             ) : null}
           </AnimatePresence>
-          <ReactFlow
-            edgeTypes={blueprintEdgeTypes}
-            edges={flow.edges}
-            fitView
-            fitViewOptions={{
-              duration: reducedMotion ? 0 : 460,
-              maxZoom: 1,
-              padding: 0.14,
-            }}
-            key={reactFlowMountKey}
-            nodeTypes={blueprintNodeTypes}
-            nodes={flow.nodes}
-            nodesConnectable={false}
-            nodesDraggable={mode === "design"}
-            onInit={(instance) => {
-              setFlowInstance(instance);
-            }}
-            onNodesChange={(changes) => {
-              changes.forEach((change) => {
-                if (change.type === "position" && change.position) {
-                  flow.setPosition(change.id, change.position);
-                }
-              });
-            }}
-            onNodeDrag={(_, node) => flow.setPosition(node.id, node.position)}
-            onNodeDragStart={(_, node) => {
-              dragStartPositions.current[node.id] = { ...node.position };
-            }}
-            onNodeDragStop={(_, node) => {
-              const artifact = blueprint.nodes.find((item) => item.id === node.id);
-              const previousPosition = dragStartPositions.current[node.id] ?? null;
-              delete dragStartPositions.current[node.id];
-              if (
-                artifact
-                && previousPosition
-                && (previousPosition.x !== node.position.x || previousPosition.y !== node.position.y)
-              ) {
-                void onLayout(artifact, node.position.x, node.position.y, previousPosition);
-              }
-            }}
-            onNodeClick={(_, node) => {
-              const selectedNode = blueprint.nodes.find((item) => item.id === node.id);
-              if (selectedNode && relationshipDraft?.kind) {
-                void chooseRelationshipTarget(selectedNode);
-                return;
-              }
-              setSelectedRelationship(null);
-              setSelectedLogicalId(selectedNode?.logical_id ?? null);
-            }}
-            onEdgeClick={(_, edge) => {
-              if (mode !== "design") return;
-              const relationship = blueprint.edges.find((item) => item.id === edge.id) ?? null;
-              if (relationship?.kind === "next") return;
-              setSelectedLogicalId(null);
-              setRelationshipDraft(null);
-              setSelectedRelationship(relationship);
-            }}
-            onPaneClick={() => {
-              setSelectedLogicalId(null);
-              setSelectedRelationship(null);
-              setRelationshipDraft(null);
-              setRelationshipError(null);
-            }}
-            panOnScroll
-            proOptions={{ hideAttribution: true }}
+          <motion.div
+            animate={{ opacity: viewportReady ? 1 : 0 }}
+            aria-hidden={!viewportReady}
+            className={styles.blueprintGraphStage}
+            initial={false}
+            transition={reducedMotion
+              ? { duration: 0 }
+              : { duration: 0.24, ease: interfaceEase }}
           >
-            <Background color="#e2ded6" gap={22} size={1} />
-            <Controls orientation="horizontal" position="bottom-left" showInteractive={false} />
-          </ReactFlow>
+            <ReactFlow
+              edgeTypes={blueprintEdgeTypes}
+              edges={flow.edges}
+              key={viewportContextKey}
+              nodeTypes={blueprintNodeTypes}
+              nodes={flow.nodes}
+              nodesConnectable={false}
+              nodesDraggable={mode === "design"}
+              onInit={(instance) => {
+                setFlowInstance(instance);
+              }}
+              onNodesChange={(changes) => {
+                changes.forEach((change) => {
+                  if (change.type === "position" && change.position) {
+                    flow.setPosition(change.id, change.position);
+                  }
+                });
+              }}
+              onNodeDrag={(_, node) => flow.setPosition(node.id, node.position)}
+              onNodeDragStart={(_, node) => {
+                dragStartPositions.current[node.id] = { ...node.position };
+              }}
+              onNodeDragStop={(_, node) => {
+                const artifact = blueprint.nodes.find((item) => item.id === node.id);
+                const previousPosition = dragStartPositions.current[node.id] ?? null;
+                delete dragStartPositions.current[node.id];
+                if (
+                  artifact
+                  && previousPosition
+                  && (previousPosition.x !== node.position.x || previousPosition.y !== node.position.y)
+                ) {
+                  void onLayout(artifact, node.position.x, node.position.y, previousPosition);
+                }
+              }}
+              onNodeClick={(_, node) => {
+                const selectedNode = blueprint.nodes.find((item) => item.id === node.id);
+                if (selectedNode && relationshipDraft?.kind) {
+                  void chooseRelationshipTarget(selectedNode);
+                  return;
+                }
+                setSelectedRelationship(null);
+                setSelectedLogicalId(selectedNode?.logical_id ?? null);
+              }}
+              onEdgeClick={(_, edge) => {
+                if (mode !== "design") return;
+                const relationship = blueprint.edges.find((item) => item.id === edge.id) ?? null;
+                if (relationship?.kind === "next") return;
+                setSelectedLogicalId(null);
+                setRelationshipDraft(null);
+                setSelectedRelationship(relationship);
+              }}
+              onPaneClick={() => {
+                setSelectedLogicalId(null);
+                setSelectedRelationship(null);
+                setRelationshipDraft(null);
+                setRelationshipError(null);
+              }}
+              panOnScroll
+              proOptions={{ hideAttribution: true }}
+            >
+              <Background color="#e2ded6" gap={22} size={1} />
+              <Controls orientation="horizontal" position="bottom-left" showInteractive={false} />
+            </ReactFlow>
+          </motion.div>
           {mode === "design" ? <p className={styles.blueprintCanvasHint}><GitFork />Move an artifact, hover a node edge to connect it, or select any relationship to change it.</p> : null}
           {relationshipDraft?.kind ? (
             <section className={styles.blueprintRelationshipGuide} aria-live="polite">
@@ -4665,8 +4684,8 @@ function useBlueprintFlow(
     [enabledRelationships, layoutEdges, selectedId],
   );
   const requestedLayoutKey = useMemo(
-    () => `${mode}:${layoutVersion}:${respectSavedLayout ? "saved" : "arranged"}:${visibleNodes.map((node) => node.id).sort().join(":")}:${layoutEdges.map((edge) => edge.id).sort().join(":")}`,
-    [layoutEdges, layoutVersion, mode, respectSavedLayout, visibleNodes],
+    () => `${layoutVersion}:${respectSavedLayout ? "saved" : "arranged"}:${visibleNodes.map((node) => node.id).sort().join(":")}:${layoutEdges.map((edge) => edge.id).sort().join(":")}`,
+    [layoutEdges, layoutVersion, respectSavedLayout, visibleNodes],
   );
 
   useEffect(() => {

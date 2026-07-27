@@ -1118,6 +1118,24 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   )).toBe(true);
   await expect(page.getByText(/concepts are missing a reviewed assessment or teaching artifact/i)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Design" })).toHaveAttribute("aria-pressed", "true");
+  const blueprintCanvas = page.locator('[data-viewport-state]');
+  const blueprintViewport = blueprintCanvas.locator(".react-flow__viewport");
+  const readBlueprintTransform = () => blueprintViewport.evaluate(
+    (element) => getComputedStyle(element).transform,
+  );
+  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
+  const initialBlueprintTransform = await readBlueprintTransform();
+  await page.waitForTimeout(350);
+  expect(await readBlueprintTransform()).toBe(initialBlueprintTransform);
+  await page.getByRole("button", { name: "Live" }).click();
+  await expect(page.getByText("Published live")).toBeVisible();
+  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
+  const liveBlueprintTransform = await readBlueprintTransform();
+  await page.waitForTimeout(350);
+  expect(await readBlueprintTransform()).toBe(liveBlueprintTransform);
+  await page.getByRole("button", { name: "Design" }).click();
+  await expect(page.getByText("Private design")).toBeVisible();
+  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
   const blueprintMode = page.getByRole("navigation", { name: "Blueprint mode" });
   expect(await blueprintMode.evaluate((element) => element.parentElement?.className.includes("blueprintCommandActions")))
     .toBe(true);
@@ -1203,6 +1221,7 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
 
   await page.getByRole("button", { name: "Design" }).click();
   await page.getByRole("button", { name: "Auto arrange" }).click();
+  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
   const designConceptNode = page.getByTestId("rf__node-concept-working");
   await expect(designConceptNode).toBeVisible();
   await designConceptNode.click();

@@ -1654,7 +1654,9 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintOutline i[data-state="struggling"] { background: #d37626; }
 .blueprintOutline i[data-state="practiced"] { background: #4d68a8; }
 .blueprintCanvas { background: #fff; min-height: 0; overflow: hidden; position: relative; }
-.blueprintCanvas > :global(.react-flow) { inset: 0; position: absolute; }
+.blueprintGraphStage { inset: 0; pointer-events: none; position: absolute; }
+.blueprintCanvas[data-viewport-state="ready"] .blueprintGraphStage { pointer-events: auto; }
+.blueprintGraphStage > :global(.react-flow) { height: 100%; width: 100%; }
 .blueprintLayoutLoading { align-items: center; color: #68666d; display: flex; font-size: 12px; gap: 9px; left: 50%; pointer-events: none; position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 6; }
 .blueprintLayoutLoading svg { height: 17px; width: 17px; }
 .blueprintTypedNode { background: #f0eee9; border: 1px solid #cfcac1; border-radius: 11px; box-shadow: 0 8px 22px rgb(34 35 39 / 7%); box-sizing: border-box; color: #202126; display: grid; gap: 8px; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; padding: 12px 13px 11px; position: relative; text-align: left; transition: border-color 120ms ease, box-shadow 120ms ease, opacity 120ms ease, transform 120ms ease; width: 100%; }
