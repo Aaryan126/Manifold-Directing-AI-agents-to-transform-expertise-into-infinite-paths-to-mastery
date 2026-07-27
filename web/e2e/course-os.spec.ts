@@ -100,14 +100,24 @@ async function mockCourseOS(page: Page) {
       await route.fulfill({
         json: {
           courses: deleted ? [] : [course],
-          attention: deleted ? [] : [{
-            id: `review:${course.id}`,
-            course_id: course.id,
-            kind: "review_ready",
-            title: "Forces and motion is ready for review",
-            detail: "2 decisions remain across the review bundles.",
-            urgency: "normal",
-          }],
+          attention: deleted ? [] : [
+            {
+              id: `review:${course.id}`,
+              course_id: course.id,
+              kind: "review_ready",
+              title: "Forces and motion is ready for review",
+              detail: "2 decisions remain across the review bundles.",
+              urgency: "normal",
+            },
+            {
+              id: `insight:${course.id}`,
+              course_id: course.id,
+              kind: "learner_insight",
+              title: "Learners need attention in Forces and motion",
+              detail: "2 evidence-backed teaching insights are open.",
+              urgency: "normal",
+            },
+          ],
           total_courses: deleted ? 0 : 1,
           published_courses: 0,
           courses_in_review: deleted ? 0 : 1,
@@ -705,6 +715,8 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/app");
 
+  const teacherSidebar = page.locator("aside").first();
+  await expect(teacherSidebar).toHaveCSS("background-color", "rgb(217, 122, 43)");
   await expect(
     page.getByRole("heading", { name: /Good (morning|afternoon|evening), Ada\./ }),
   ).toBeVisible();
@@ -735,6 +747,15 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   const priorityPanel = page.getByRole("article").filter({
     has: page.getByRole("heading", { name: "Needs your judgment", exact: true }),
   });
+  const learnerInsight = priorityPanel.locator("[data-kind='learner_insight']").first();
+  await expect(learnerInsight.locator("[class*='priorityIcon']")).toHaveCSS(
+    "background-color",
+    "rgba(0, 0, 0, 0)",
+  );
+  await expect(learnerInsight.locator("[class*='priorityIcon']")).toHaveCSS(
+    "color",
+    "rgb(217, 122, 43)",
+  );
   const learnerActivityPanel = page.getByRole("article").filter({
     has: page.getByRole("heading", { name: "Learner activity", exact: true }),
   });
@@ -746,6 +767,9 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   expect(Math.abs(priorityBounds!.width - activityBounds!.width)).toBeLessThanOrEqual(2);
   expect(Math.abs(priorityBounds!.height - activityBounds!.height)).toBeLessThanOrEqual(1);
   expect(priorityBounds!.x).toBeLessThan(activityBounds!.x);
+  await page.getByRole("button", { name: "Collapse navigation" }).click();
+  await expect(teacherSidebar).toHaveAttribute("data-collapsed", "true");
+  await expect(teacherSidebar).toHaveCSS("background-color", "rgb(217, 122, 43)");
   const intelligenceHeadline = page.getByRole("heading", { name: /2 of 2 open issues/i });
   await expect(intelligenceHeadline).toBeVisible();
   expect(await intelligenceHeadline.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
