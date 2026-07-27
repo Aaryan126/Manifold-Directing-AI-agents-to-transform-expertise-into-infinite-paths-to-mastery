@@ -949,43 +949,13 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
               ) : null}
             </section>
 
-            <aside aria-label="Active study plan" className={styles.sessionRail}>
-              <header>
-                <span>{modeTitle(studySession.mode)}</span>
-                <strong>One focused evidence loop</strong>
-              </header>
-              <ol>
-                {studySession.steps.map((step) => (
-                  <li data-status={step.status} key={step.id}>
-                    <span>
-                      {step.status === "completed" ? (
-                        <Check />
-                      ) : step.status === "active" ? (
-                        <Play />
-                      ) : (
-                        step.ordinal + 1
-                      )}
-                    </span>
-                    <div>
-                      <strong>{stepLabel(step)}</strong>
-                      <small>{step.reason}</small>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-              <div className={styles.sessionRailActions}>
-                <button
-                  disabled={busy}
-                  onClick={() => setModeChooserOpen(true)}
-                  type="button"
-                >
-                  Change learning mode
-                </button>
-                <button disabled={busy} onClick={() => void finishSession()} type="button">
-                  Finish this session
-                </button>
-              </div>
-            </aside>
+            <SessionRail
+              busy={busy}
+              feedback={feedback}
+              onChangeMode={() => setModeChooserOpen(true)}
+              onFinish={() => void finishSession()}
+              session={studySession}
+            />
           </div>
         )}
 
@@ -1378,6 +1348,108 @@ function SessionHeader({
       <h1>{activeStep?.concept_name ?? activeTopic}</h1>
       <p>{activeStep?.reason}</p>
     </header>
+  );
+}
+
+function SessionRail({
+  busy,
+  feedback,
+  onChangeMode,
+  onFinish,
+  session,
+}: {
+  busy: boolean;
+  feedback: AnswerResponse | null;
+  onChangeMode: () => void;
+  onFinish: () => void;
+  session: LearnerStudySession;
+}) {
+  const activeIndex = session.steps.findIndex(
+    (step) => step.status === "active" || step.status === "pending",
+  );
+  const currentPosition = Math.min(
+    session.steps.length,
+    Math.max(1, activeIndex >= 0 ? activeIndex + 1 : session.steps.length),
+  );
+  const progress = session.steps.length
+    ? (currentPosition / session.steps.length) * 100
+    : 0;
+
+  return (
+    <aside aria-label="Active study plan" className={styles.sessionRail}>
+      <header>
+        <div className={styles.sessionRailHeading}>
+          <span>{modeTitle(session.mode)}</span>
+          <strong>Step {currentPosition} of {session.steps.length}</strong>
+        </div>
+        <div
+          aria-label="Session progress"
+          aria-valuemax={session.steps.length}
+          aria-valuemin={0}
+          aria-valuenow={currentPosition}
+          className={styles.sessionRailProgress}
+          role="progressbar"
+        >
+          <span style={{ width: `${progress}%` }} />
+        </div>
+        <p>One focused evidence loop</p>
+      </header>
+      <ol>
+        {session.steps.map((step, index) => {
+          const stateLabel = railStepStateLabel(step, index, activeIndex);
+          return (
+            <li
+              aria-current={step.status === "active" ? "step" : undefined}
+              data-status={step.status}
+              key={step.id}
+            >
+              <span>
+                {step.status === "completed" ? (
+                  <Check />
+                ) : step.status === "active" ? (
+                  <Play />
+                ) : (
+                  step.ordinal + 1
+                )}
+              </span>
+              <div>
+                <div className={styles.sessionRailStepMeta}>
+                  <span>{stageName(step)}</span>
+                  <em>{stateLabel}</em>
+                </div>
+                <strong>{railStepTitle(step)}</strong>
+                {step.status === "active" ? <small>{step.reason}</small> : null}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+      <section
+        className={styles.sessionRailAdaptive}
+        data-updated={feedback ? "true" : "false"}
+      >
+        <Route />
+        <div>
+          <strong>
+            {feedback ? "Plan updated from your evidence" : "This plan adapts as you learn"}
+          </strong>
+          <p>
+            {feedback?.route.why
+              ?? "Your approved check and confidence determine the next reviewed step."}
+          </p>
+        </div>
+      </section>
+      <div className={styles.sessionRailActions}>
+        <button disabled={busy} onClick={onChangeMode} type="button">
+          <RotateCcw />
+          Change learning mode
+        </button>
+        <button disabled={busy} onClick={onFinish} type="button">
+          <CheckCircle2 />
+          Finish this session
+        </button>
+      </div>
+    </aside>
   );
 }
 
@@ -2091,6 +2163,24 @@ function stageName(step: LearnerSessionStep) {
   if (step.kind === "question") return "Practice";
   if (step.kind === "reflect") return "Reflect";
   return "Review";
+}
+
+function railStepTitle(step: LearnerSessionStep) {
+  if (step.kind === "reflect") return "What changed?";
+  return step.concept_name ?? step.title;
+}
+
+function railStepStateLabel(
+  step: LearnerSessionStep,
+  index: number,
+  activeIndex: number,
+) {
+  if (step.status === "completed") return "Done";
+  if (step.status === "active") return "Now";
+  if (step.status === "skipped") return "Skipped";
+  if (step.status === "replaced") return "Updated";
+  if (step.status === "unavailable") return "Unavailable";
+  return index === activeIndex ? "Up next" : "Later";
 }
 
 function modeTitle(mode: LearnerModeKey) {

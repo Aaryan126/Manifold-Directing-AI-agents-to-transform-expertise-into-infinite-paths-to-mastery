@@ -305,6 +305,21 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   expect(mediaBounds!.width / mediaBounds!.height).toBeCloseTo(16 / 9, 2);
   expect(mediaBounds!.height).toBeGreaterThan(mediaBounds!.width / 2);
   await expect(page.getByText("Practice with an approved question")).toBeVisible();
+  const continueButton = page.getByRole("button", { name: "Continue" });
+  await expect(continueButton).toBeInViewport();
+  const continueBounds = await continueButton.boundingBox();
+  expect(continueBounds).not.toBeNull();
+  expect(continueBounds!.y + continueBounds!.height).toBeLessThanOrEqual(
+    page.viewportSize()!.height,
+  );
+  const sessionRail = page.getByLabel("Active study plan");
+  await expect(sessionRail.getByRole("progressbar", { name: "Session progress" }))
+    .toHaveAttribute("aria-valuenow", "1");
+  await expect(sessionRail.getByRole("progressbar", { name: "Session progress" }))
+    .toHaveAttribute("aria-valuemax", "3");
+  await expect(sessionRail.locator("[aria-current='step']")).toContainText("Learn");
+  await expect(sessionRail.locator("[aria-current='step']")).toContainText("Now");
+  await expect(sessionRail.getByText("This plan adapts as you learn")).toBeVisible();
 
   await expect(page.locator(".lucide-sparkles")).toHaveCount(0);
   await page.getByRole("button", { name: "Open Learning Assistant" }).click();
@@ -350,6 +365,10 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
 
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.locator("video")).toHaveCount(0);
+  await expect(sessionRail.getByRole("progressbar", { name: "Session progress" }))
+    .toHaveAttribute("aria-valuenow", "2");
+  await expect(sessionRail.locator("[aria-current='step']")).toContainText("Practice");
+  await expect(sessionRail.locator("[aria-current='step']")).toContainText("Now");
   await expect(
     page.getByRole("heading", {
       name: "What makes a vector different from a scalar?",
@@ -360,10 +379,14 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   await page.getByRole("button", { name: "Submit answer" }).click();
   await expect(page.getByText("Your plan adjusted")).toBeVisible();
   await expect(
-    page.getByText(
+    page.getByRole("status").getByText(
       "The answer missed direction, so a reviewed recovery clip is next.",
     ),
   ).toBeVisible();
+  await expect(sessionRail.getByText("Plan updated from your evidence")).toBeVisible();
+  await expect(sessionRail).toContainText(
+    "The answer missed direction, so a reviewed recovery clip is next.",
+  );
   await expect(page.locator("video")).toBeVisible();
   await page.getByRole("button", { name: "Change learning mode" }).click();
   const modeChooser = page.getByLabel("Change learning mode");

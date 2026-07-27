@@ -233,37 +233,57 @@
 .planStage > footer { align-items: center; display: flex; gap: 14px; justify-content: flex-end; }
 .planStage > footer > button:not(.primaryAction) { background: transparent; border: 0; color: #5d5a62; cursor: pointer; font: inherit; font-size: 13px; font-weight: 680; padding: 10px 4px; }
 .learningWorkspace { display: grid; grid-template-columns: minmax(0, 1fr) 310px; min-height: calc(100dvh - 72px); }
-.sessionActivity { min-width: 0; padding: clamp(28px, 3vw, 46px); }
+.sessionActivity { min-width: 0; padding: clamp(20px, 2vw, 32px) clamp(28px, 3vw, 46px) 24px; }
 .sessionActivity > * { margin-left: auto; margin-right: auto; max-width: 920px; }
-.sessionHeader { margin-bottom: 20px; }
+.sessionHeader { margin-bottom: 14px; }
 .sessionHeader > div { align-items: center; color: #6b686f; display: flex; font-size: 11px; font-weight: 740; gap: 10px; letter-spacing: .06em; text-transform: uppercase; }
 .sessionHeader > div span + span::before { background: #aaa7ad; border-radius: 50%; content: ""; display: inline-block; height: 3px; margin-right: 10px; vertical-align: middle; width: 3px; }
 .sessionHeader > div span:first-child { color: #a15a20; }
-.sessionHeader h1 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: clamp(34px, 3.4vw, 48px); font-weight: 490; letter-spacing: -.04em; line-height: 1.06; margin: 8px 0 7px; }
-.sessionHeader p { color: #68656c; font-size: 14px; line-height: 1.5; margin: 0; }
-.sessionRail { background: #f2f0eb; border-left: 1px solid #dedbd3; height: calc(100dvh - 72px); overflow: auto; padding: 22px 18px; position: sticky; top: 72px; }
-.sessionRail > header { border-bottom: 1px solid #d8d5ce; display: grid; gap: 5px; padding: 0 4px 18px; }
-.sessionRail > header span { align-items: center; color: #55535a; display: flex; font-size: 13px; font-weight: 700; gap: 8px; }
-.sessionRail > header span svg { height: 15px; width: 15px; }
-.sessionRail > header strong { color: #66636a; font-size: 11px; font-weight: 550; }
-.sessionRail ol { display: grid; list-style: none; margin: 0; padding: 12px 0; }
-.sessionRail li { align-items: start; display: grid; gap: 10px; grid-template-columns: 28px minmax(0, 1fr); padding: 8px 3px; }
-.sessionRail li > span { align-items: center; background: #e2dfd8; border-radius: 50%; color: #716f75; display: flex; font-size: 10px; font-weight: 730; height: 26px; justify-content: center; }
+.sessionHeader h1 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: clamp(32px, 3vw, 44px); font-weight: 490; letter-spacing: -.04em; line-height: 1.03; margin: 6px 0 5px; }
+.sessionHeader p { color: #68656c; display: -webkit-box; font-size: 13px; line-height: 1.4; margin: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.sessionRail { background: #f2f0eb; border-left: 1px solid #dedbd3; height: calc(100dvh - 72px); overflow: auto; padding: 20px 16px; position: sticky; top: 72px; }
+.sessionRail > header { border-bottom: 1px solid #d8d5ce; display: grid; gap: 9px; padding: 0 3px 16px; }
+.sessionRailHeading { align-items: center; display: flex; justify-content: space-between; }
+.sessionRailHeading span { color: #302f34; font-size: 13px; font-weight: 730; }
+.sessionRailHeading strong { color: #625f65; font-size: 10px; font-weight: 680; }
+.sessionRail > header p { color: #6d6a70; font-size: 10px; margin: -2px 0 0; }
+.sessionRailProgress { background: #dedbd4; border-radius: 999px; height: 5px; overflow: hidden; width: 100%; }
+.sessionRailProgress > span { background: #c76a25; border-radius: inherit; display: block; height: 100%; transition: width 220ms ease; }
+.sessionRail ol { display: grid; list-style: none; margin: 0; padding: 10px 0 7px; }
+.sessionRail li { align-items: start; display: grid; gap: 8px; grid-template-columns: 30px minmax(0, 1fr); padding: 4px 0; position: relative; }
+.sessionRail li:not(:last-child)::after { background: #d5d1ca; content: ""; left: 14px; position: absolute; top: 34px; bottom: -4px; width: 2px; }
+.sessionRail li[data-status="completed"]::after { background: #b9d0b2; }
+.sessionRail li > span { align-items: center; background: #e2dfd8; border: 3px solid #f2f0eb; border-radius: 50%; color: #716f75; display: flex; font-size: 10px; font-weight: 730; height: 30px; justify-content: center; position: relative; width: 30px; z-index: 1; }
 .sessionRail li > span svg { height: 12px; width: 12px; }
-.sessionRail li[data-status="active"] > span { background: #c76a25; color: #fff; }
+.sessionRail li[data-status="active"] > span { background: #c76a25; box-shadow: 0 0 0 3px rgb(199 106 37 / 13%); color: #fff; }
 .sessionRail li[data-status="completed"] > span { background: #d9e8d4; color: #4c7144; }
-.sessionRail li > div { display: grid; gap: 3px; min-width: 0; }
-.sessionRail li strong { font-size: 12px; line-height: 1.35; }
-.sessionRail li small { color: #66636a; display: -webkit-box; font-size: 10px; line-height: 1.35; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.sessionRailActions { border-top: 1px solid #d8d5ce; display: grid; gap: 6px; padding: 12px 3px; }
-.sessionRailActions button { background: transparent; border: 1px solid #d3d0c9; border-radius: 9px; color: #55535a; cursor: pointer; font: inherit; font-size: 11px; font-weight: 680; min-height: 34px; padding: 7px 10px; text-align: left; }
-.sessionRailActions button:last-child { border-color: transparent; color: #6b686f; }
+.sessionRail li > div { border: 1px solid transparent; border-radius: 10px; display: grid; gap: 4px; min-width: 0; padding: 7px 9px 8px; }
+.sessionRail li[data-status="active"] > div { background: #fff; border-color: #ddd8cf; box-shadow: 0 7px 18px rgb(38 35 31 / 6%); }
+.sessionRailStepMeta { align-items: center; display: flex; gap: 7px; justify-content: space-between; }
+.sessionRailStepMeta span { color: #8d4c1b; font-size: 9px; font-weight: 760; letter-spacing: .065em; text-transform: uppercase; }
+.sessionRailStepMeta em { background: #e8e5de; border-radius: 999px; color: #5f5c62; font-size: 8px; font-style: normal; font-weight: 720; padding: 3px 6px; text-transform: uppercase; }
+.sessionRail li[data-status="active"] .sessionRailStepMeta em { background: #f7dfcd; color: #8a4617; }
+.sessionRail li[data-status="completed"] .sessionRailStepMeta em { background: #dfeadb; color: #4c7144; }
+.sessionRail li strong { font-size: 12px; line-height: 1.3; }
+.sessionRail li small { color: #66636a; display: -webkit-box; font-size: 9.5px; line-height: 1.35; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.sessionRailAdaptive { align-items: start; background: #e9e6df; border: 1px solid #d8d4cc; border-radius: 11px; display: grid; gap: 9px; grid-template-columns: 24px minmax(0, 1fr); margin: 7px 3px 0; padding: 11px; }
+.sessionRailAdaptive[data-updated="true"] { background: #fff4e9; border-color: #e6c4a8; }
+.sessionRailAdaptive > svg { background: #fff; border-radius: 7px; color: #a55820; height: 24px; padding: 5px; width: 24px; }
+.sessionRailAdaptive strong { font-size: 10.5px; line-height: 1.35; }
+.sessionRailAdaptive p { color: #66636a; display: -webkit-box; font-size: 9.5px; line-height: 1.4; margin: 3px 0 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.sessionRailActions { display: grid; gap: 6px; padding: 11px 3px 0; }
+.sessionRailActions button { align-items: center; background: #fff; border: 1px solid #d3d0c9; border-radius: 9px; color: #55535a; cursor: pointer; display: flex; font: inherit; font-size: 10.5px; font-weight: 680; gap: 8px; min-height: 36px; padding: 7px 10px; text-align: left; }
+.sessionRailActions button svg { height: 13px; width: 13px; }
+.sessionRailActions button:last-child { background: transparent; border-color: transparent; color: #6b686f; }
+.sessionRailActions button:hover:not(:disabled) { border-color: #aaa69e; color: #28272c; }
+.sessionRailActions button:focus-visible { outline: 2px solid #a95d25; outline-offset: 2px; }
+.sessionRailActions button:disabled { cursor: not-allowed; opacity: .55; }
 .sessionRail details { border-top: 1px solid #d8d5ce; padding: 12px 3px; }
 .sessionRail summary { align-items: center; color: #66636a; cursor: pointer; display: flex; font-size: 11px; font-weight: 680; justify-content: space-between; list-style: none; }
 .sessionRail summary svg { height: 13px; width: 13px; }
 .sessionRail details > div { display: flex; gap: 5px; margin-top: 10px; }
 .sessionRail details button { background: #fff; border: 1px solid #d7d4cd; border-radius: 999px; color: #5d5b62; cursor: pointer; font: inherit; font-size: 10px; padding: 6px 9px; }
-.activityFooter { align-items: center; border-top: 1px solid #dedbd3; display: flex; justify-content: space-between; margin-top: 16px; padding-top: 16px; }
+.activityFooter { align-items: center; border-top: 1px solid #dedbd3; display: flex; justify-content: space-between; margin-top: 12px; padding-top: 12px; }
 .activityFooter > span { display: grid; gap: 2px; }
 .activityFooter small { color: #68656c; font-size: 10px; font-weight: 740; letter-spacing: .07em; text-transform: uppercase; }
 .activityFooter strong { font-size: 13px; }
@@ -418,6 +438,6 @@
   30% { opacity: 1; transform: translateY(-3px); }
 }
 @media (max-width: 1200px) { .courseGrid { grid-template-columns: repeat(2, 1fr); } .courseLayout { grid-template-columns: minmax(0, 1fr) 340px; } .learningWorkspace { grid-template-columns: minmax(0, 1fr) 280px; } }
-@media (max-height: 800px) { .lesson { padding: 18px 28px; } .lessonHeader { margin-bottom: 12px; } .lessonHeader h1 { font-size: 34px; } }
+@media (max-height: 800px) { .lesson { padding: 18px 28px; } .lessonHeader { margin-bottom: 12px; } .lessonHeader h1 { font-size: 34px; } .sessionActivity { padding: 14px 28px 16px; } .sessionHeader { margin-bottom: 10px; } .sessionHeader > div { font-size: 10px; } .sessionHeader h1 { font-size: 36px; margin: 5px 0 4px; } .sessionHeader p { font-size: 12px; line-height: 1.35; -webkit-line-clamp: 1; } .transcript { margin-top: 8px; } .transcript > summary { min-height: 44px; } .activityFooter { margin-top: 10px; padding-top: 10px; } }
 @media (max-width: 780px) { .courseGrid { grid-template-columns: 1fr; } .courseShell { display: block; } .courseShell > aside { display: none; } .courseLayout { display: block; } .outline { border-left: 0; height: auto; position: static; } }
 @media (prefers-reduced-motion: reduce) { .fullLoader svg,.spin,.guideThinking i { animation: none; } .courseCard { transition: none; } .transcriptBody { scroll-behavior: auto; } }
