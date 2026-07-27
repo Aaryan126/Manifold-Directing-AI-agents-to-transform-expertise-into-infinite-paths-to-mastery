@@ -62,11 +62,11 @@ type InsightsChartsProps = {
 };
 
 const COLORS = {
-  blue: "#4b4c52",
-  green: "#5f8055",
-  mint: "#a8b89f",
-  amber: "#f59e0b",
-  red: "#bd5a4f",
+  graphite: "#55545b",
+  brown: "#795342",
+  brownSoft: "#b89d8d",
+  orange: "#d97a2b",
+  orangeStrong: "#9f511b",
   gray: "#d9d6cf",
   ink: "#222329",
 };
@@ -92,14 +92,14 @@ export function InsightsCharts({
       .format(new Date(`${point.date}T00:00:00Z`)),
   }));
   const outcomeData = [
-    { name: "Confident correct", value: answerOutcomes.confident_correct, color: COLORS.green },
-    { name: "Unsure correct", value: answerOutcomes.unsure_correct, color: COLORS.amber },
-    { name: "Incorrect", value: answerOutcomes.incorrect, color: COLORS.red },
+    { name: "Confident correct", value: answerOutcomes.confident_correct, color: COLORS.brown },
+    { name: "Unsure correct", value: answerOutcomes.unsure_correct, color: COLORS.orange },
+    { name: "Incorrect", value: answerOutcomes.incorrect, color: COLORS.orangeStrong },
   ].filter((item) => item.value > 0);
   const masteryData = [
-    { name: "Mastered", value: mastery.mastered, color: COLORS.green },
-    { name: "Practiced", value: mastery.practiced, color: COLORS.blue },
-    { name: "Struggling", value: mastery.struggling, color: COLORS.red },
+    { name: "Mastered", value: mastery.mastered, color: COLORS.brown },
+    { name: "Practiced", value: mastery.practiced, color: COLORS.graphite },
+    { name: "Struggling", value: mastery.struggling, color: COLORS.orangeStrong },
     { name: "Not started", value: mastery.not_started, color: COLORS.gray },
   ].filter((item) => item.value > 0);
   const conceptData = conceptReach.slice(0, 6).map((item) => ({
@@ -127,8 +127,8 @@ export function InsightsCharts({
               <YAxis allowDecimals={false} axisLine={false} fontSize={11} tickLine={false} />
               <Tooltip contentStyle={tooltipStyle} />
               <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-              <Line activeDot={{ r: 4 }} dataKey="attempts" dot={false} name="Attempts" stroke={COLORS.blue} strokeWidth={2.5} type="monotone" />
-              <Line dataKey="active_learners" dot={false} name="Active learners" stroke={COLORS.green} strokeDasharray="5 4" strokeWidth={2} type="monotone" />
+              <Line activeDot={{ r: 4 }} dataKey="attempts" dot={false} name="Attempts" stroke={COLORS.graphite} strokeWidth={2.5} type="monotone" />
+              <Line dataKey="active_learners" dot={false} name="Active learners" stroke={COLORS.orange} strokeDasharray="5 4" strokeWidth={2} type="monotone" />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -156,8 +156,8 @@ export function InsightsCharts({
                 <YAxis axisLine={false} dataKey="name" fontSize={11} tickLine={false} type="category" width={190} />
                 <Tooltip contentStyle={tooltipStyle} />
                 <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="reached" fill={COLORS.mint} name="Progressing" stackId="reach" />
-                <Bar dataKey="struggling" fill={COLORS.red} name="Struggling" radius={[0, 3, 3, 0]} stackId="reach" />
+                <Bar dataKey="reached" fill={COLORS.brownSoft} name="Progressing" stackId="reach" />
+                <Bar dataKey="struggling" fill={COLORS.orangeStrong} name="Struggling" radius={[0, 3, 3, 0]} stackId="reach" />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -174,8 +174,8 @@ export function InsightsCharts({
                 <YAxis axisLine={false} dataKey="name" fontSize={10} tickLine={false} type="category" width={125} />
                 <Tooltip contentStyle={tooltipStyle} />
                 <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="unsure" fill={COLORS.amber} name="Unsure" stackId="risk" />
-                <Bar dataKey="incorrect" fill={COLORS.red} name="Incorrect" radius={[0, 3, 3, 0]} stackId="risk" />
+                <Bar dataKey="unsure" fill={COLORS.orange} name="Unsure" stackId="risk" />
+                <Bar dataKey="incorrect" fill={COLORS.orangeStrong} name="Incorrect" radius={[0, 3, 3, 0]} stackId="risk" />
               </BarChart>
             </ResponsiveContainer>
           </div>

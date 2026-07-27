@@ -154,7 +154,7 @@ export function CourseFoundryShell({
               <strong className="truncate text-sm font-semibold">{courseTitle}</strong>
               <Badge
                 aria-label="Course status"
-                className="capitalize data-[status=draft]:border-amber-300 data-[status=draft]:bg-amber-50 data-[status=draft]:text-amber-800 data-[status=published]:border-emerald-300 data-[status=published]:bg-emerald-50 data-[status=published]:text-emerald-800"
+                className="capitalize data-[status=draft]:border-[#e6c6a9] data-[status=draft]:bg-[#fff0e3] data-[status=draft]:text-[#9f511b] data-[status=published]:border-[#d9c7ba] data-[status=published]:bg-[#eee4de] data-[status=published]:text-[#5f4033]"
                 data-status={courseStatus}
                 variant="outline"
               >

@@ -496,11 +496,11 @@ export default function HomePage() {
     const progress = masteryByConcept.get(node.id);
     const state = progress?.state ?? "not_started";
     const borderColor = state === "mastered"
-      ? "#059669"
+      ? "#795342"
       : state === "struggling"
-        ? "#dc2626"
+        ? "#9f511b"
         : state === "practiced"
-          ? "#d97706"
+          ? "#d97a2b"
           : "var(--border)";
     return {
       id: node.id,
@@ -2393,14 +2393,14 @@ export default function HomePage() {
                         </div>
 
                         {needsConcept ? (
-                          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-4 text-amber-950">
+                          <div className="mt-4 rounded-md border border-[#e6c6a9] bg-[#fff0e3] px-4 py-4 text-[#5f4033]">
                             <p className="text-sm font-semibold">Connect a reviewed concept to generate clips</p>
-                            <p className="mt-1 text-sm text-amber-900">This keeps clip tags, routing, and assessment remediation traceable.</p>
+                            <p className="mt-1 text-sm text-[#795342]">This keeps clip tags, routing, and assessment remediation traceable.</p>
                             {conceptCandidates.length ? (
                               <div className="mt-4 flex flex-wrap items-center gap-2">
                                 <select
                                   aria-label={`Concept for ${topic.title}`}
-                                  className="h-9 min-w-64 flex-1 rounded-md border border-amber-300 bg-background px-3 text-sm"
+                                  className="h-9 min-w-64 flex-1 rounded-md border border-[#e6c6a9] bg-background px-3 text-sm"
                                   onChange={(event) => setTopicConceptSelections((current) => ({ ...current, [topic.id]: event.target.value }))}
                                   value={selectedConceptCandidate}
                                 >
@@ -2421,13 +2421,13 @@ export default function HomePage() {
                             )}
                           </div>
                         ) : clipBlockReason ? (
-                          <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{clipBlockReason}</p>
+                          <p className="mt-4 rounded-md border border-[#e6c6a9] bg-[#fff0e3] px-4 py-3 text-sm text-[#795342]">{clipBlockReason}</p>
                         ) : preparationFailures[`clips:${topic.id}`] ? (
-                          <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                          <p className="mt-4 rounded-md border border-[#e6c6a9] bg-[#fff0e3] px-4 py-3 text-sm text-[#9f511b]">
                             Clip preparation failed. Retry when ready.
                           </p>
                         ) : selectedTopicClips.some((clip) => clip.status === "superseded") && selectedTopicActiveClips.length === 0 ? (
-                          <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                          <p className="mt-4 rounded-md border border-[#e6c6a9] bg-[#fff0e3] px-4 py-3 text-sm text-[#795342]">
                             These clips are out of date after a structure change. Regenerate them before learners can use this topic.
                           </p>
                         ) : null}
@@ -2554,7 +2554,7 @@ export default function HomePage() {
           />
 
           {graphBlockReason ? (
-            <div className="border-b border-amber-200 bg-amber-50 px-8 py-3 text-sm text-amber-900" role="alert">
+            <div className="border-b border-[#e6c6a9] bg-[#fff0e3] px-8 py-3 text-sm text-[#795342]" role="alert">
               <strong>Graph generation blocked.</strong> {graphBlockReason} Reviewed topics: {reviewedTopics} of {topics.length}.
             </div>
           ) : null}
@@ -2564,12 +2564,12 @@ export default function HomePage() {
             </div>
           ) : null}
           {graph?.warnings.length ? (
-            <div className="border-b border-amber-200 bg-amber-50 px-8 py-3 text-sm text-amber-900" role="alert">
+            <div className="border-b border-[#e6c6a9] bg-[#fff0e3] px-8 py-3 text-sm text-[#795342]" role="alert">
               <strong>Review warnings:</strong> {graph.warnings.join(" ")}
             </div>
           ) : null}
           {graph && topicsWithoutReviewedConcepts.length ? (
-            <div className="border-b border-amber-200 bg-amber-50 px-8 py-3 text-sm text-amber-900" role="alert">
+            <div className="border-b border-[#e6c6a9] bg-[#fff0e3] px-8 py-3 text-sm text-[#795342]" role="alert">
               <strong>{topicsWithoutReviewedConcepts.length} topic(s) need concept links.</strong>{" "}
               Select an unlinked concept and assign its topic before generating clips.
             </div>
@@ -2583,7 +2583,7 @@ export default function HomePage() {
                   <span aria-hidden="true">·</span>
                   <span><strong className="font-semibold text-foreground">{flowEdges.length}</strong> {flowEdges.length === 1 ? "prerequisite" : "prerequisites"}</span>
                   {graphTopicFocus !== "all" ? <><span aria-hidden="true">·</span><span className="font-medium text-primary">Focused view</span></> : null}
-                  <span aria-label="Node colors identify topics" className="ml-1 flex gap-1" role="img" title="Node colors identify topics"><span className="size-2 rounded-full bg-blue-600" /><span className="size-2 rounded-full bg-emerald-600" /><span className="size-2 rounded-full bg-amber-600" /></span>
+                  <span aria-label="Node colors identify topics" className="ml-1 flex gap-1" role="img" title="Node colors identify topics"><span className="size-2 rounded-full bg-[#55545b]" /><span className="size-2 rounded-full bg-[#795342]" /><span className="size-2 rounded-full bg-[#d97a2b]" /></span>
                 </div>
                 <div className="h-[700px] min-w-0">
                   <ReactFlow
@@ -2816,11 +2816,11 @@ export default function HomePage() {
                           </div>
                           <div className="space-y-2">
                             {answerChoices.map((choice, choiceIndex) => (
-                              <div className={`grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border bg-background p-2 ${draft.correct_answer === choice && choice ? "border-emerald-500/60 ring-1 ring-emerald-500/15" : "border-border"}`} key={`${question.id}-choice-${choiceIndex}`}>
+                              <div className={`grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border bg-background p-2 ${draft.correct_answer === choice && choice ? "border-[#795342]/60 ring-1 ring-[#795342]/15" : "border-border"}`} key={`${question.id}-choice-${choiceIndex}`}>
                                 <input
                                   aria-label={`Mark answer choice ${choiceIndex + 1} as correct`}
                                   checked={Boolean(choice) && draft.correct_answer === choice}
-                                  className="size-4 accent-emerald-600"
+                                  className="size-4 accent-[#795342]"
                                   name={`correct-answer-${question.id}`}
                                   onChange={() => setQuestionDrafts((current) => ({ ...current, [question.id]: { ...draft, correct_answer: choice } }))}
                                   type="radio"
@@ -2991,7 +2991,7 @@ export default function HomePage() {
               {routeDecision ? (
                 <div
                   aria-live="polite"
-                  className={`mt-4 border-l-2 px-4 py-3 text-sm ${routeTone(routeDecision.action) === "advance" ? "border-emerald-600 bg-emerald-50 text-emerald-950" : routeTone(routeDecision.action) === "support" ? "border-amber-500 bg-amber-50 text-amber-950" : "border-destructive bg-destructive/5"}`}
+                  className={`mt-4 border-l-2 px-4 py-3 text-sm ${routeTone(routeDecision.action) === "advance" ? "border-[#795342] bg-[#eee4de] text-[#5f4033]" : routeTone(routeDecision.action) === "support" ? "border-[#d97a2b] bg-[#fff0e3] text-[#5f4033]" : "border-destructive bg-destructive/5"}`}
                   role="status"
                 >
                   <strong className="font-semibold">Why this is next</strong>
@@ -3031,7 +3031,7 @@ export default function HomePage() {
                   </fieldset>
                   <fieldset className="mt-5 border-0 p-0" data-slot="learner-confidence">
                     <legend className="text-sm text-muted-foreground">{activeLearnerQuestion.confidence_prompt}</legend>
-                    {isLearnerContext && !isEnrolled ? <p className="mt-2 text-sm text-amber-700">Enroll and start the published course to submit an answer.</p> : null}
+                    {isLearnerContext && !isEnrolled ? <p className="mt-2 text-sm text-[#9f511b]">Enroll and start the published course to submit an answer.</p> : null}
                     <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Answer confidence">
                       <Button disabled={!learnerCanAttempt || isGradingAnswer} onClick={() => setLearnerConfidence(4)} type="button" variant={learnerConfidence === 4 ? "default" : "outline"}>Confident</Button>
                       <Button disabled={!learnerCanAttempt || isGradingAnswer} onClick={() => setLearnerConfidence(2)} type="button" variant={learnerConfidence === 2 ? "default" : "outline"}>Unsure</Button>
@@ -3116,7 +3116,7 @@ export default function HomePage() {
                 <div className="border-r border-border px-6 py-4"><p className="text-xs font-medium uppercase text-muted-foreground">Need attention</p><p className="mt-1 text-2xl font-semibold tabular-nums">{dashboardSummary.signals.length}</p></div>
                 <div className="px-6 py-4"><p className="text-xs font-medium uppercase text-muted-foreground">Attempts / learner</p><p className="mt-1 text-2xl font-semibold tabular-nums">{dashboardSummary.learner_count ? (dashboardSummary.attempt_count / dashboardSummary.learner_count).toFixed(1) : "0.0"}</p></div>
               </div>
-              {dashboardColdStartMessage(dashboardSummary) ? <div className="border-b border-amber-200 bg-amber-50 px-8 py-3 text-sm text-amber-900" role="status"><strong>Not enough data yet.</strong> {dashboardColdStartMessage(dashboardSummary)}</div> : null}
+              {dashboardColdStartMessage(dashboardSummary) ? <div className="border-b border-[#e6c6a9] bg-[#fff0e3] px-8 py-3 text-sm text-[#795342]" role="status"><strong>Not enough data yet.</strong> {dashboardColdStartMessage(dashboardSummary)}</div> : null}
 
               {!dashboardSummary.not_enough_data ? (
                 <section aria-labelledby="performance-evidence-title" className="border-b border-border">
@@ -3332,12 +3332,12 @@ function formatDuration(seconds: number) {
 }
 
 const graphTopicPalette = [
-  { background: "#eff6ff", border: "#2563eb", edge: "#3b82f6" },
-  { background: "#ecfdf5", border: "#059669", edge: "#10b981" },
-  { background: "#fffbeb", border: "#d97706", edge: "#f59e0b" },
-  { background: "#fff1f2", border: "#e11d48", edge: "#f43f5e" },
-  { background: "#f5f5f4", border: "#57534e", edge: "#78716c" },
-  { background: "#ecfeff", border: "#0891b2", edge: "#06b6d4" },
+  { background: "#fff0e3", border: "#c76a25", edge: "#d97a2b" },
+  { background: "#eee4de", border: "#795342", edge: "#9a6a51" },
+  { background: "#f1f0ed", border: "#68666d", edge: "#8a8881" },
+  { background: "#f7e6d8", border: "#9f511b", edge: "#c76a25" },
+  { background: "#e9ddd6", border: "#5f4033", edge: "#795342" },
+  { background: "#efede8", border: "#8a8881", edge: "#aaa59d" },
 ] as const;
 
 function graphTopicColors(topicIndex: number) {

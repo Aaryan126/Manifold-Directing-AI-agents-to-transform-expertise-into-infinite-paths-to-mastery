@@ -726,6 +726,9 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(page.getByRole("heading", { name: "Course radar" })).toHaveCount(0);
   const activityChart = page.getByRole("img", { name: /Daily active learners over the last seven days/ });
   await expect(activityChart).toBeVisible();
+  await expect(activityChart.locator("svg")).toBeVisible();
+  await expect(activityChart.locator("path")).toHaveCount(1);
+  await expect(activityChart.locator("circle")).toHaveCount(7);
   await expect(activityChart.locator("[data-value]")).toHaveCount(7);
   await expect(page.getByText("enrolled learners", { exact: true })).toBeVisible();
   await expect(page.getByText("new this week", { exact: true })).toBeVisible();
@@ -933,8 +936,8 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect(sourceNode).toBeInViewport();
   await expect(conceptNode.locator("article[data-kind='concept']")).toBeVisible();
   await expect(sourceNode.locator("article[data-kind='source']")).toBeVisible();
-  await expect(conceptNode.locator("article[data-kind='concept']")).toHaveCSS("background-color", "rgb(227, 237, 242)");
-  await expect(clipNode.locator("article[data-kind='clip']")).toHaveCSS("background-color", "rgb(226, 240, 223)");
+  await expect(conceptNode.locator("article[data-kind='concept']")).toHaveCSS("background-color", "rgb(239, 237, 232)");
+  await expect(clipNode.locator("article[data-kind='clip']")).toHaveCSS("background-color", "rgb(238, 228, 222)");
   await expect(sourceNode.locator("article[data-kind='source']")).toHaveCSS("background-color", "rgb(238, 234, 226)");
   await clipNode.click();
   await expect(page.getByRole("heading", { name: "Vector direction" })).toBeVisible();

@@ -350,15 +350,15 @@ function MasteryMapNode({ data }: NodeProps<MasteryNode>) {
 
 function routeChangeColor(action: string) {
   return {
-    advance: "#26778a",
-    reinforce: "#28796f",
-    remediate: "#8556a3",
-    flag_instructor: "#9b5d25",
-    complete: "#4f7b46",
+    advance: "#d97a2b",
+    reinforce: "#795342",
+    remediate: "#5f4033",
+    flag_instructor: "#9f511b",
+    complete: "#795342",
     content_unavailable: "#77747b",
-    placement_skip: "#4f7b46",
-    placement_retain: "#9b5d25",
-  }[action] ?? "#9b5d25";
+    placement_skip: "#795342",
+    placement_retain: "#9f511b",
+  }[action] ?? "#9f511b";
 }
 
 function routeChangeLabel(action: string) {

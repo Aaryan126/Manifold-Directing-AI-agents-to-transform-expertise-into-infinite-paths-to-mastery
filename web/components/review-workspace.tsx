@@ -132,7 +132,7 @@ export function ReviewQueueItem({
     >
       <span className={cn(
         "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground",
-        (status === "accepted" || status === "edited") && "border-emerald-600 bg-emerald-50 text-emerald-700",
+        (status === "accepted" || status === "edited") && "border-[#795342] bg-[#eee4de] text-[#5f4033]",
       )}>
         {statusIcon}
       </span>

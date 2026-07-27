@@ -607,6 +607,20 @@ function IntelligenceBrief({
 function LearnerActivity({ dashboard }: { dashboard: DashboardSnapshot }) {
   const history = dashboard.activity_history;
   const peak = Math.max(1, ...history.map((point) => point.active_learners));
+  const chartWidth = 600;
+  const chartTop = 18;
+  const chartBottom = 128;
+  const chartInset = 30;
+  const chartPoints = history.map((point, index) => ({
+    ...point,
+    x: history.length === 1
+      ? chartWidth / 2
+      : chartInset + (index * (chartWidth - chartInset * 2)) / (history.length - 1),
+    y: chartBottom - (point.active_learners / peak) * (chartBottom - chartTop),
+  }));
+  const chartPath = chartPoints
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+    .join(" ");
   const latest = history.at(-1)?.active_learners ?? 0;
   const previous = history.at(-2)?.active_learners ?? 0;
   const change = latest - previous;
@@ -632,15 +646,24 @@ function LearnerActivity({ dashboard }: { dashboard: DashboardSnapshot }) {
       </div>
       {history.length ? (
         <div className={styles.learnerActivityChart} role="img" aria-label={chartLabel}>
-          {history.map((point) => (
-            <div className={styles.learnerActivityBar} data-value={point.active_learners} key={point.date}>
-              <span>
-                <b>{point.active_learners}</b>
-                <i style={{ height: `${Math.max(5, (point.active_learners / peak) * 100)}%` }} />
-              </span>
-              <small>{formatActivityDate(point.date)}</small>
-            </div>
-          ))}
+          <svg aria-hidden="true" className={styles.learnerActivityPlot} viewBox={`0 0 ${chartWidth} 150`}>
+            <line className={styles.learnerActivityGridLine} x1={chartInset} x2={chartWidth - chartInset} y1="73" y2="73" />
+            <line className={styles.learnerActivityGridLine} x1={chartInset} x2={chartWidth - chartInset} y1={chartBottom} y2={chartBottom} />
+            <path className={styles.learnerActivityLine} d={chartPath} />
+            {chartPoints.map((point) => (
+              <g key={point.date}>
+                <text className={styles.learnerActivityValue} textAnchor="middle" x={point.x} y={Math.max(12, point.y - 10)}>
+                  {point.active_learners}
+                </text>
+                <circle className={styles.learnerActivityPoint} cx={point.x} cy={point.y} r="5" />
+              </g>
+            ))}
+          </svg>
+          <div className={styles.learnerActivityLabels}>
+            {history.map((point) => (
+              <small data-value={point.active_learners} key={point.date}>{formatActivityDate(point.date)}</small>
+            ))}
+          </div>
         </div>
       ) : (
         <div className={styles.learnerActivityEmpty}>

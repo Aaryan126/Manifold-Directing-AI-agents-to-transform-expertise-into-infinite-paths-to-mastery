@@ -59,7 +59,7 @@ export function InstructorProductionStudio({
               <span className={cn(
                 "flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold tabular-nums text-muted-foreground",
                 isActive && "bg-primary text-primary-foreground",
-                stage.state === "complete" && "border-emerald-200 bg-emerald-50 text-emerald-700",
+                stage.state === "complete" && "border-[#d9c7ba] bg-[#eee4de] text-[#5f4033]",
               )}>
                 {stage.state === "complete" ? <Check aria-hidden="true" className="size-3.5" /> : isBlocked ? <LockKeyhole aria-hidden="true" className="size-3" /> : index + 1}
               </span>
@@ -106,7 +106,7 @@ export function InstructorPublishReview({
       <div className="grid min-h-[420px] grid-cols-[minmax(0,1fr)_304px]">
         <div className="min-w-0 px-6 py-6 xl:px-7">
           {courseStatus === "published" ? (
-            <div className="flex items-start gap-4 border-l-2 border-emerald-600 bg-emerald-50 px-5 py-4 text-emerald-950">
+            <div className="flex items-start gap-4 border-l-2 border-[#795342] bg-[#eee4de] px-5 py-4 text-[#5f4033]">
               <Check aria-hidden="true" className="mt-0.5 size-5" />
               <div><h3 className="font-semibold">Course published</h3><p className="mt-1 text-sm">Learners can enroll and begin the adaptive course.</p></div>
             </div>
@@ -116,7 +116,7 @@ export function InstructorPublishReview({
               <div className="mt-4 border-t border-border">
                 {blockers.map((blocker, index) => (
                   <div className="flex items-start gap-3 border-b border-border py-4" key={blocker}>
-                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-amber-300 bg-amber-50 text-xs font-semibold text-amber-800">{index + 1}</span>
+                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-[#e6c6a9] bg-[#fff0e3] text-xs font-semibold text-[#9f511b]">{index + 1}</span>
                     <p className="min-w-0 flex-1 text-sm leading-6">{blocker}</p>
                   </div>
                 ))}
@@ -136,7 +136,7 @@ export function InstructorPublishReview({
           <div className="mt-4 space-y-3">
             {stages.map((stage, index) => (
               <div className="flex items-center gap-3" key={stage.id}>
-                <span className={cn("flex size-6 items-center justify-center rounded-full border border-border text-xs", stage.state === "complete" && "border-emerald-200 bg-emerald-50 text-emerald-700")}>
+                <span className={cn("flex size-6 items-center justify-center rounded-full border border-border text-xs", stage.state === "complete" && "border-[#d9c7ba] bg-[#eee4de] text-[#5f4033]")}>
                   {stage.state === "complete" ? <Check aria-hidden="true" className="size-3.5" /> : index + 1}
                 </span>
                 <span className="text-sm font-medium">{stage.label}</span>

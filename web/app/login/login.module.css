@@ -45,7 +45,7 @@
 .loginPanel label { color: #5f5e65; display: grid; font-size: 12px; font-weight: 650; gap: 7px; }
 .loginPanel input { background: #fff; border: 1px solid #d3d0c8; border-radius: 9px; color: var(--ink); font: inherit; font-size: 15px; min-height: 50px; padding: 0 14px; }
 .loginPanel input:focus { border-color: #6d6b65; outline: 3px solid rgb(217 122 43 / 15%); }
-.error { background: #fff0ed; border-left: 3px solid #b9463d; color: #8f382f; font-size: 12px; margin: 0; padding: 10px 12px; }
+.error { background: var(--manifold-orange-soft); border-left: 3px solid var(--manifold-orange-strong); color: var(--manifold-orange-strong); font-size: 12px; margin: 0; padding: 10px 12px; }
 .submit { align-items: center; background: var(--ink); border: 1px solid var(--ink); border-radius: 9px; color: #fff; cursor: pointer; display: flex; font: inherit; font-size: 14px; font-weight: 650; gap: 8px; justify-content: center; justify-self: center; min-height: 46px; min-width: 118px; padding: 0 20px; }
 .submit span { text-align: center; }
 .submit svg { height: 17px; width: 17px; }
