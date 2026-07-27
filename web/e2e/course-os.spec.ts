@@ -58,6 +58,28 @@ function oneLectureCourseFlow(courseId: string, revisionId: string, revisionKind
   };
 }
 
+function courseFlowWithUnitCount(
+  courseId: string,
+  revisionId: string,
+  revisionKind: "active" | "working",
+  unitCount: number,
+) {
+  const flow = oneLectureCourseFlow(courseId, revisionId, revisionKind);
+  return {
+    ...flow,
+    units: Array.from({ length: unitCount }, (_, index) => ({
+      ...flow.units[0],
+      id: `lecture-unit-${index + 1}`,
+      logical_id: `lecture-unit-logical-${index + 1}`,
+      title: index === 0 ? "Forces lecture" : `Forces lecture ${index + 1}`,
+      sequence_rank: index,
+      video_id: index === 0
+        ? lectureVideoId
+        : `${String(index + 1).padStart(8, "0")}-1212-4212-8212-121212121212`,
+    })),
+  };
+}
+
 async function mockCourseOS(page: Page) {
   await setInstructorSession(page);
   let deleted = false;
@@ -285,7 +307,7 @@ async function mockCourseOS(page: Page) {
   return { deleted: () => deleted };
 }
 
-async function mockPublishedCourseOS(page: Page) {
+async function mockPublishedCourseOS(page: Page, flowUnitCount = 1) {
   await setInstructorSession(page);
   let savedLayout: { positions?: Array<{ logical_artifact_id?: string; x?: number; y?: number }> } | null = null;
   const proposalDecisions: Array<{ proposal_id: string; decision: string }> = [];
@@ -328,10 +350,11 @@ async function mockPublishedCourseOS(page: Page) {
     if (path.endsWith("/course-flow")) {
       const working = new URL(route.request().url()).searchParams.get("revision") === "working";
       return route.fulfill({
-        json: oneLectureCourseFlow(
+        json: courseFlowWithUnitCount(
           published.id,
           working ? workingRevisionId : published.active_revision_id,
           working ? "working" : "active",
+          flowUnitCount,
         ),
       });
     }
@@ -946,6 +969,31 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect(page.getByRole("button", { name: "Assessments" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Preview", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Course settings" })).toBeVisible();
+  const courseFlowHeading = page.getByRole("heading", { name: "Design the whole learning journey" });
+  const courseFlowHeader = courseFlowHeading.locator("xpath=../..");
+  const courseFlowCopy = courseFlowHeading.locator("..");
+  const courseFlowActions = page.getByRole("button", { name: "New lecture" }).locator("..");
+  const [flowHeaderBounds, flowCopyBounds, flowActionBounds] = await Promise.all([
+    courseFlowHeader.boundingBox(),
+    courseFlowCopy.boundingBox(),
+    courseFlowActions.boundingBox(),
+  ]);
+  expect(flowHeaderBounds).not.toBeNull();
+  expect(flowCopyBounds).not.toBeNull();
+  expect(flowActionBounds).not.toBeNull();
+  expect(Math.abs(
+    (flowCopyBounds!.y + flowCopyBounds!.height / 2)
+      - (flowActionBounds!.y + flowActionBounds!.height / 2),
+  )).toBeLessThanOrEqual(1);
+  expect(Math.abs(
+    (flowCopyBounds!.x - flowHeaderBounds!.x)
+      - (flowHeaderBounds!.x + flowHeaderBounds!.width - flowActionBounds!.x - flowActionBounds!.width),
+  )).toBeLessThanOrEqual(1);
+  const courseFlowGraph = page.locator("[data-viewport-density='close']");
+  await expect(courseFlowGraph).toBeVisible();
+  await expect.poll(async () => courseFlowGraph.locator(".react-flow__viewport").evaluate((element) => {
+    return new DOMMatrix(getComputedStyle(element).transform).a;
+  })).toBeGreaterThanOrEqual(1.29);
   await page.getByRole("button", { name: "New lecture" }).click();
   await expect(page.getByPlaceholder("What lecture would you like to add? Paste a lecture link or add a file…")).toBeVisible();
   await expect(page.getByRole("button", { name: "Course Flow" })).toBeVisible();
@@ -1195,6 +1243,18 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect(page.getByText("Routing settings")).toBeVisible();
   await page.getByRole("button", { name: "Edit course default" }).click();
   await expect(page.getByRole("heading", { name: "Edit course default" })).toBeVisible();
+});
+
+test("Course Flow opens five or more units at overview scale", async ({ page }) => {
+  const state = await mockPublishedCourseOS(page, 5);
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto(`/app/courses/${state.published.id}`);
+
+  const courseFlowGraph = page.locator("[data-viewport-density='overview']");
+  await expect(courseFlowGraph).toBeVisible();
+  await expect.poll(async () => courseFlowGraph.locator(".react-flow__viewport").evaluate((element) => {
+    return new DOMMatrix(getComputedStyle(element).transform).a;
+  })).toBeLessThanOrEqual(0.82);
 });
 
 test("saving a dragged Blueprint node keeps the graph mounted", async ({ page }) => {

@@ -2032,12 +2032,12 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 }
 
 .courseFlowHeader {
-  align-items: flex-end;
+  align-items: center;
   background: #fff;
   border-bottom: 1px solid #dedbd3;
-  display: flex;
-  gap: 30px;
-  justify-content: space-between;
+  display: grid;
+  gap: clamp(32px, 5vw, 80px);
+  grid-template-columns: minmax(0, 1fr) auto;
   padding: 28px 34px 24px;
 }
 
@@ -2073,9 +2073,11 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 
 .courseFlowActions {
   align-items: center;
+  align-self: center;
   display: flex;
   flex: 0 0 auto;
   gap: 9px;
+  justify-content: flex-end;
 }
 
 .courseFlowActions .activeMode {
@@ -2756,7 +2758,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .courseFlowDialog > footer button:disabled { cursor: not-allowed; opacity: .45; }
 
 @media (max-width: 900px) {
-  .courseFlowHeader { align-items: flex-start; flex-direction: column; }
+  .courseFlowHeader { align-items: flex-start; grid-template-columns: 1fr; }
   .courseFlowActions { justify-content: space-between; width: 100%; }
   .courseFlowLane { grid-template-columns: 1fr; }
   .courseFlowLaneTitle { border-bottom: 1px solid #dedbd3; border-right: 0; }

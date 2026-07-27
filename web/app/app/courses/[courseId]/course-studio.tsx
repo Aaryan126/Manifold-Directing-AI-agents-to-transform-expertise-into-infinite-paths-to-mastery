@@ -121,6 +121,7 @@ import {
 import styles from "../../course-os.module.css";
 import { TeacherSidebar, useTeacherSidebar } from "../../teacher-dashboard";
 import { ProviderVideo, type PlaybackInfo } from "../../../ProviderVideo";
+import { courseFlowViewportPolicy } from "../../../courseFlowViewport";
 import { readDevelopmentSession } from "../../../developmentSession";
 
 const pipelineBase = process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localhost:8000";
@@ -2877,6 +2878,7 @@ function CourseFlowWorkspace({
   ), [flow]);
   const lectureCount = units.filter((unit) => unit.kind === "lecture").length;
   const compactSequence = modules.length === 0 && units.length <= 2;
+  const viewportPolicy = useMemo(() => courseFlowViewportPolicy(units.length), [units.length]);
   const groups = useMemo(() => [
     ...modules.map((module) => ({
       id: module.logical_id,
@@ -3122,7 +3124,11 @@ function CourseFlowWorkspace({
           );
         }
       }
-      window.setTimeout(() => graphInstance.current?.fitView({ duration: 350, padding: .14 }), 40);
+      window.setTimeout(() => graphInstance.current?.fitView({
+        duration: 350,
+        maxZoom: viewportPolicy.maxZoom,
+        padding: viewportPolicy.padding,
+      }), 40);
     } finally {
       setGraphBusy(false);
     }
@@ -3184,13 +3190,20 @@ function CourseFlowWorkspace({
               })}
             </section>
           ) : null}
-          <div className={styles.courseFlowGraph} data-compact={compactSequence || undefined}>
+          <div
+            className={styles.courseFlowGraph}
+            data-compact={compactSequence || undefined}
+            data-viewport-density={viewportPolicy.density}
+          >
             <ReactFlow
               colorMode="light"
               edges={graphEdges}
               fitView
-              fitViewOptions={{ padding: .14 }}
-              maxZoom={compactSequence ? .9 : 1.5}
+              fitViewOptions={{
+                maxZoom: viewportPolicy.maxZoom,
+                padding: viewportPolicy.padding,
+              }}
+              maxZoom={1.6}
               minZoom={.35}
               nodes={graphNodes}
               nodesConnectable={false}
