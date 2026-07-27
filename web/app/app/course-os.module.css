@@ -1040,6 +1040,7 @@
 .hiddenInput { display: none; }
 
 .canvasBody { flex: 1; min-height: 0; overflow: hidden; position: relative; }
+.workspaceViewMotion { height: 100%; inset: 0; min-height: 0; min-width: 0; overflow: hidden; position: absolute; width: 100%; }
 .canvasEmpty { align-items: center; display: flex; flex-direction: column; height: 100%; justify-content: center; padding: 40px; text-align: center; }
 .canvasEmpty > svg { color: #4d4e53; height: 34px; margin-bottom: 17px; width: 34px; }
 .canvasEmpty h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 29px; font-weight: 470; letter-spacing: -0.035em; margin: 0 0 9px; }

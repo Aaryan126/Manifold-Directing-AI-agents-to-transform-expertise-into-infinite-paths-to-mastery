@@ -1055,6 +1055,8 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect(page.getByRole("button", { name: "Assessments" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Preview", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Course settings" })).toBeVisible();
+  await expect(page.locator('[data-motion-view="flow"]')).toHaveCSS("opacity", "1");
+  await expect(page.locator('[data-motion-scope="course-flow-enter"]')).toBeVisible();
   const courseFlowHeading = page.getByRole("heading", { name: "Design the whole learning journey" });
   const courseFlowHeader = courseFlowHeading.locator("xpath=../..");
   const courseFlowCopy = courseFlowHeading.locator("..");
@@ -1086,6 +1088,10 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await page.getByRole("button", { name: "Course Flow" }).click();
   await page.getByText("Forces lecture", { exact: true }).click();
   await expect(page.getByRole("button", { name: "Blueprint", exact: true })).toBeVisible();
+  await expect(page.locator('[data-motion-view="blueprint"]')).toHaveCSS("opacity", "1");
+  await expect(page.locator('[data-motion-view="flow"]')).toHaveCount(0);
+  await expect(page.locator('[data-motion-scope="blueprint-enter"]')).toBeVisible();
+  await expect(page.locator('[data-motion-scope="studio-context-title"]')).toHaveText("Forces lecture");
   await expect(page.getByRole("button", { name: "Old Blueprint" })).toHaveCount(0);
   await expect(page.getByText("Private design")).toBeVisible();
   const blueprintSummary = page.getByRole("group", { name: "Blueprint status and metrics" });

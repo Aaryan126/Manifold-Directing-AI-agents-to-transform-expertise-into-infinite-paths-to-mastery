@@ -45,6 +45,24 @@ export function pageEntranceMotion(reducedMotion: boolean | null) {
   };
 }
 
+export function workspaceViewMotion(reducedMotion: boolean | null) {
+  return {
+    animate: {
+      opacity: 1,
+      x: 0,
+    },
+    exit: reducedMotion
+      ? { opacity: 1, x: 0 }
+      : { opacity: 0, x: -8 },
+    initial: reducedMotion
+      ? false
+      : { opacity: 0, x: 10 },
+    transition: reducedMotion
+      ? { duration: 0 }
+      : { duration: 0.28, ease: interfaceEase },
+  };
+}
+
 export function sectionCascadeVariants(
   reducedMotion: boolean | null,
 ): Variants {

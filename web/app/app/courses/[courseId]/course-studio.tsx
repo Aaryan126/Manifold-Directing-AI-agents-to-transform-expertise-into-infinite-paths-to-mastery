@@ -15,7 +15,7 @@ import {
   type ReactFlowInstance,
 } from "@xyflow/react";
 import ELK from "elkjs/lib/elk.bundled.js";
-import { motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import ReactMarkdown from "react-markdown";
@@ -69,8 +69,12 @@ import {
 
 import { AssistantMorph } from "../../../assistant-morph";
 import {
+  interfaceEase,
   MotionHandoff,
   pageEntranceMotion,
+  sectionCascadeVariants,
+  sectionItemVariants,
+  workspaceViewMotion,
 } from "../../../interface-motion";
 import {
   readRuntimeConversation,
@@ -1792,14 +1796,35 @@ export function CourseStudio({ courseId }: { courseId: string }) {
               }}
               type="button"
             ><ArrowLeft /></button>
-            <h1>{focusedLectureUnit?.title ?? course?.title ?? "Course studio"}</h1>
+            <AnimatePresence initial={false} mode="wait">
+              <motion.h1
+                animate={{ opacity: 1, y: 0 }}
+                data-motion-scope="studio-context-title"
+                exit={reducedMotion ? undefined : { opacity: 0, y: -3 }}
+                initial={reducedMotion ? false : { opacity: 0, y: 4 }}
+                key={focusedLectureUnit?.logical_id ?? course?.id ?? "course-studio"}
+                transition={reducedMotion
+                  ? { duration: 0 }
+                  : { duration: 0.2, ease: interfaceEase }}
+              >
+                {focusedLectureUnit?.title ?? course?.title ?? "Course studio"}
+              </motion.h1>
+            </AnimatePresence>
           </div>
           {!focusedCreation && lectureFocusVideoId ? (
-            <nav className={styles.studioViewTabs} aria-label="Course views">
+            <motion.nav
+              animate={{ opacity: 1, x: 0 }}
+              aria-label="Course views"
+              className={styles.studioViewTabs}
+              initial={reducedMotion ? false : { opacity: 0, x: 8 }}
+              transition={reducedMotion
+                ? { duration: 0 }
+                : { delay: 0.06, duration: 0.24, ease: interfaceEase }}
+            >
               <CanvasTab active={canvasView === "blueprint"} icon={<GitFork />} label="Blueprint" onClick={() => setCanvasView("blueprint")} />
               <CanvasTab active={canvasView === "assessments"} icon={<Check />} label="Assessments" onClick={() => setCanvasView("assessments")} />
               <CanvasTab active={canvasView === "preview"} icon={<Eye />} label="Preview" onClick={() => setCanvasView("preview")} />
-            </nav>
+            </motion.nav>
           ) : <span className={styles.studioHeaderSpacer} />}
           <div className={styles.studioHeaderActions}>
             {focusedCreation ? (
@@ -1848,6 +1873,13 @@ export function CourseStudio({ courseId }: { courseId: string }) {
             <div className={styles.workspaceStage}>
               <section className={styles.canvasPanel} aria-label="Course workspace canvas">
               <div className={styles.canvasBody}>
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    className={styles.workspaceViewMotion}
+                    data-motion-view={canvasView}
+                    key={`${canvasView}:${lectureFocusVideoId ?? "course"}`}
+                    {...workspaceViewMotion(reducedMotion)}
+                  >
                 {canvasView === "flow" ? (
                   <CourseFlowWorkspace
                     activeFlow={activeCourseFlow}
@@ -1928,6 +1960,8 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                 {canvasView === "review" && course?.status !== "published" ? <ReviewCanvas bundles={bundles} onBundle={decideBundle} onItem={decideItem} /> : null}
                 {canvasView === "assessments" ? <AssessmentsCanvas courseFlow={null} disabled={sending} onRemove={removeAssessment} onSave={saveAssessment} workspace={focusedAssessmentWorkspace} /> : null}
                 {canvasView === "preview" ? <PreviewCanvas course={course} courseFlow={null} workspace={focusedAssessmentWorkspace} /> : null}
+                  </motion.div>
+                </AnimatePresence>
               </div>
               </section>
               <AssistantMorph
@@ -2947,6 +2981,7 @@ function CourseFlowWorkspace({
   undoing: boolean;
   workingFlow: CourseFlow | null;
 }) {
+  const reducedMotion = useReducedMotion();
   const [editor, setEditor] = useState<{
     kind: CourseFlowUnitKind;
     unit?: CourseFlowUnit;
@@ -3229,8 +3264,17 @@ function CourseFlowWorkspace({
   }
 
   return (
-    <section className={styles.courseFlowWorkspace}>
-      <header className={styles.courseFlowHeader}>
+    <motion.section
+      animate="visible"
+      className={styles.courseFlowWorkspace}
+      data-motion-scope="course-flow-enter"
+      initial={reducedMotion ? false : "hidden"}
+      variants={sectionCascadeVariants(reducedMotion)}
+    >
+      <motion.header
+        className={styles.courseFlowHeader}
+        variants={sectionItemVariants}
+      >
         <div>
           <small>Course Flow</small>
           <h2>Design the whole learning journey</h2>
@@ -3246,26 +3290,29 @@ function CourseFlowWorkspace({
           {mode === "design" ? <button className={styles.secondaryAction} disabled={disabled || undoing || !undoLabel} onClick={() => void onUndo()} title={undoLabel ? `Undo ${undoLabel.toLowerCase()}` : "Nothing to undo"} type="button"><RotateCcw />Undo</button> : null}
           {lectureCount > 1 ? <button className={styles.secondaryAction} onClick={onOpenWholeCourse} type="button"><Network />Cross-lecture map</button> : null}
         </div>
-      </header>
+      </motion.header>
       {mode === "design" ? (
-        <div className={styles.courseFlowAuthoring}>
+        <motion.div
+          className={styles.courseFlowAuthoring}
+          variants={sectionItemVariants}
+        >
           <button disabled={disabled} onClick={() => setModuleEditorOpen(true)} type="button"><Plus /><BookOpenCheck />Module</button>
           <button disabled={disabled} onClick={() => setEditor({ kind: "quiz" })} type="button"><Plus /><ClipboardCheck />Quiz</button>
           <button disabled={disabled} onClick={() => setEditor({ kind: "assignment" })} type="button"><Plus /><FilePenLine />Assignment</button>
           <span>Every change remains private until you publish the revision.</span>
-        </div>
+        </motion.div>
       ) : null}
       {!flow ? (
-        <div className={styles.courseFlowEmpty}><LoaderCircle className={styles.spin} />Loading Course Flow…</div>
+        <motion.div className={styles.courseFlowEmpty} variants={sectionItemVariants}><LoaderCircle className={styles.spin} />Loading Course Flow…</motion.div>
       ) : units.length === 0 ? (
-        <div className={styles.courseFlowEmpty}>
+        <motion.div className={styles.courseFlowEmpty} variants={sectionItemVariants}>
           <GraduationCap />
           <h3>Start with a lecture</h3>
           <p>Add the first lecture and Course Director will build its detailed Blueprint.</p>
           <button onClick={beginNewLecture} type="button">Add lecture</button>
-        </div>
+        </motion.div>
       ) : (
-        <div className={styles.courseFlowCanvas}>
+        <motion.div className={styles.courseFlowCanvas} variants={sectionItemVariants}>
           {flow.edges.some((edge) => edge.status === "proposed") && mode === "design" ? (
             <section className={styles.courseFlowPending}>
               <strong>Relationship proposals</strong>
@@ -3289,6 +3336,7 @@ function CourseFlowWorkspace({
               edges={graphEdges}
               fitView
               fitViewOptions={{
+                duration: reducedMotion ? 0 : 460,
                 maxZoom: viewportPolicy.maxZoom,
                 padding: viewportPolicy.padding,
               }}
@@ -3370,7 +3418,7 @@ function CourseFlowWorkspace({
               ) : null}
             </div>
           ) : null}
-        </div>
+        </motion.div>
       )}
       {editor ? (
         <CourseFlowUnitDialog
@@ -3417,7 +3465,7 @@ function CourseFlowWorkspace({
           source={relationshipDraft.source}
         />
       ) : null}
-    </section>
+    </motion.section>
   );
 }
 
@@ -3718,6 +3766,7 @@ function BlueprintWorkspace({
   undoLabel: string | null;
   workingBlueprint: CourseBlueprint | null;
 }) {
+  const reducedMotion = useReducedMotion();
   const [selectedLogicalId, setSelectedLogicalId] = useState<string | null>(null);
   const [focusTopicLogicalId, setFocusTopicLogicalId] = useState<string | null>(null);
   const [flowInstance, setFlowInstance] = useState<
@@ -4027,18 +4076,31 @@ function BlueprintWorkspace({
   }
 
   return (
-    <div className={styles.blueprintWorkspace} data-mode={mode}>
+    <motion.div
+      animate="visible"
+      className={styles.blueprintWorkspace}
+      data-mode={mode}
+      data-motion-scope="blueprint-enter"
+      initial={reducedMotion ? false : "hidden"}
+      variants={sectionCascadeVariants(reducedMotion)}
+    >
       {contextTitle === "Cross-lecture concept map" ? (
-        <div className={styles.blueprintContextBar}>
+        <motion.div
+          className={styles.blueprintContextBar}
+          variants={sectionItemVariants}
+        >
           <button onClick={onBackToCourseFlow} type="button"><ArrowLeft />Course Flow</button>
           <span aria-hidden="true">/</span>
           <div>
             <strong>{contextTitle}</strong>
             <small>Whole-course structure</small>
           </div>
-        </div>
+        </motion.div>
       ) : null}
-      <header className={styles.blueprintCommandBar}>
+      <motion.header
+        className={styles.blueprintCommandBar}
+        variants={sectionItemVariants}
+      >
         <div className={styles.blueprintSummaryGroup} role="group" aria-label="Blueprint status and metrics">
           <div className={styles.blueprintStatusSummary}>
             <p>
@@ -4088,7 +4150,7 @@ function BlueprintWorkspace({
             <Network />Auto arrange
           </button>
         </div>
-      </header>
+      </motion.header>
 
       {pendingEdges.length ? (
         <div className={styles.blueprintNotice}>
@@ -4113,7 +4175,11 @@ function BlueprintWorkspace({
         </section>
       ) : null}
 
-      <section className={styles.blueprintGraphControls} aria-label="Blueprint graph controls">
+      <motion.section
+        aria-label="Blueprint graph controls"
+        className={styles.blueprintGraphControls}
+        variants={sectionItemVariants}
+      >
         <div className={styles.blueprintRelationshipPresets}>
           <span>Relationships</span>
           <button
@@ -4188,9 +4254,12 @@ function BlueprintWorkspace({
             <span key={kind}><i data-kind={kind}>{blueprintKindIcon(kind)}</i>{kind}</span>
           ))}
         </div>
-      </section>
+      </motion.section>
 
-      <div className={styles.blueprintBody}>
+      <motion.div
+        className={styles.blueprintBody}
+        variants={sectionItemVariants}
+      >
         <nav className={styles.blueprintOutline} aria-label="Course Blueprint outline">
           <button aria-pressed={!focusTopicLogicalId} onClick={() => { setAutoArrangeVersion(0); setFocusTopicLogicalId(null); setSelectedLogicalId(null); }} type="button"><BookOpenCheck /><span><strong>Whole course</strong><small>{topics.length} topics · {concepts.length} concepts</small></span></button>
           {topics.map((topic, topicIndex) => {
@@ -4207,17 +4276,31 @@ function BlueprintWorkspace({
         </nav>
 
         <div className={styles.blueprintCanvas}>
-          {!flow.layoutReady ? (
-            <div className={styles.blueprintLayoutLoading}>
-              <LoaderCircle className={styles.spin} />
-              <span>Arranging the course system…</span>
-            </div>
-          ) : null}
+          <AnimatePresence>
+            {!flow.layoutReady ? (
+              <motion.div
+                animate={{ opacity: 1 }}
+                className={styles.blueprintLayoutLoading}
+                exit={reducedMotion ? undefined : { opacity: 0 }}
+                initial={reducedMotion ? false : { opacity: 0 }}
+                transition={reducedMotion
+                  ? { duration: 0 }
+                  : { duration: 0.2, ease: interfaceEase }}
+              >
+                <LoaderCircle className={styles.spin} />
+                <span>Arranging the course system…</span>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
           <ReactFlow
             edgeTypes={blueprintEdgeTypes}
             edges={flow.edges}
             fitView
-            fitViewOptions={{ maxZoom: 1, padding: 0.14 }}
+            fitViewOptions={{
+              duration: reducedMotion ? 0 : 460,
+              maxZoom: 1,
+              padding: 0.14,
+            }}
             key={reactFlowMountKey}
             nodeTypes={blueprintNodeTypes}
             nodes={flow.nodes}
@@ -4392,7 +4475,7 @@ function BlueprintWorkspace({
             />
           ) : null}
         </div>
-      </div>
+      </motion.div>
       {relationshipDraft && !relationshipDraft.kind ? (
         <BlueprintRelationshipKindDialog
           onChoose={(kind) => setRelationshipDraft((current) => current ? { ...current, kind } : null)}
@@ -4454,7 +4537,7 @@ function BlueprintWorkspace({
           onConfirm={() => void confirmRemoval()}
         />
       ) : null}
-    </div>
+    </motion.div>
   );
 }
 

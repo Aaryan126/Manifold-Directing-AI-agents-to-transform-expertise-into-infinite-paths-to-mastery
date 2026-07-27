@@ -6,6 +6,7 @@ import {
   pageEntranceTarget,
   sectionCascadeVariants,
   sectionItemVariants,
+  workspaceViewMotion,
 } from "../app/interface-motion";
 
 describe("interface motion", () => {
@@ -41,6 +42,19 @@ describe("interface motion", () => {
         delayChildren: 0,
         staggerChildren: 0,
       },
+    });
+    expect(workspaceViewMotion(true)).toMatchObject({
+      initial: false,
+      transition: { duration: 0 },
+    });
+  });
+
+  it("hands workspace views off with a short directional transition", () => {
+    expect(workspaceViewMotion(false)).toMatchObject({
+      initial: { opacity: 0, x: 10 },
+      animate: { opacity: 1, x: 0 },
+      exit: { opacity: 0, x: -8 },
+      transition: { duration: 0.28 },
     });
   });
 });
