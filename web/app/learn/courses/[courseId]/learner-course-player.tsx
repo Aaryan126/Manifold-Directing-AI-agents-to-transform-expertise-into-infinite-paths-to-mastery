@@ -37,6 +37,10 @@ import {
 import { AssistantMorph } from "../../../assistant-morph";
 import { ProviderVideo } from "../../../ProviderVideo";
 import {
+  readRuntimeConversation,
+  writeRuntimeConversation,
+} from "../../../runtime-conversations";
+import {
   readDevelopmentSession,
   type DevelopmentSession,
 } from "../../../developmentSession";
@@ -116,9 +120,11 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
   const [guideOpen, setGuideOpen] = useState(false);
   const [guideResult, setGuideResult] = useState<GuideResult | null>(null);
   const [guideMessages, setGuideMessages] = useState<LearnerGuideMessage[]>([]);
+  const [conversationHydrated, setConversationHydrated] = useState(false);
   const [guideComposer, setGuideComposer] = useState("");
   const [guideSending, setGuideSending] = useState(false);
   const guideMessageListRef = useRef<HTMLDivElement | null>(null);
+  const conversationScopeRef = useRef<string | null>(null);
   const [masteryOpen, setMasteryOpen] = useState(false);
   const [inspectedConceptId, setInspectedConceptId] = useState<string | null>(null);
   const [helpPreview, setHelpPreview] =
@@ -146,12 +152,14 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
       router.replace("/login");
       return;
     }
+    conversationScopeRef.current = null;
     setIdentity(nextIdentity);
+    setConversationHydrated(false);
     setLoading(true);
     setError(null);
     try {
       const requestHeaders = { "X-User-ID": nextIdentity.id };
-      const [courseResponse, pathResponse, workspaceResponse, guideResponse] =
+      const [courseResponse, pathResponse, workspaceResponse] =
         await Promise.all([
         fetch(`${pipelineBase}/learners/me/courses/${courseId}`, {
           headers: requestHeaders,
@@ -162,11 +170,8 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
         fetch(`${pipelineBase}/learn/courses/${courseId}/workspace`, {
           headers: requestHeaders,
         }),
-        fetch(`${pipelineBase}/learn/courses/${courseId}/guide/messages`, {
-          headers: requestHeaders,
-        }),
       ]);
-      if ([courseResponse, pathResponse, workspaceResponse, guideResponse].some(
+      if ([courseResponse, pathResponse, workspaceResponse].some(
         (response) => response.status === 403,
       )) {
         router.replace("/learn");
@@ -176,7 +181,6 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
         !courseResponse.ok
         || !pathResponse.ok
         || !workspaceResponse.ok
-        || !guideResponse.ok
       ) {
         throw new Error("Could not prepare this course workspace.");
       }
@@ -184,12 +188,18 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
         (await courseResponse.json()) as LearnerCourseExperience;
       const nextPath = (await pathResponse.json()) as LearnerPath;
       const nextWorkspace = (await workspaceResponse.json()) as LearnerWorkspace;
-      const nextGuideMessages =
-        (await guideResponse.json()) as LearnerGuideMessage[];
       setCourse(nextCourse);
       setPath(nextPath);
       setWorkspace(nextWorkspace);
-      setGuideMessages(nextGuideMessages);
+      setGuideMessages(
+        readRuntimeConversation<LearnerGuideMessage>(
+          "learning-assistant",
+          nextIdentity.id,
+          courseId,
+        ),
+      );
+      conversationScopeRef.current = `${nextIdentity.id}:${courseId}`;
+      setConversationHydrated(true);
       setStudySession(nextWorkspace.session);
       setSelectedMode(
         nextWorkspace.session?.mode
@@ -210,6 +220,20 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (
+      !identity
+      || !conversationHydrated
+      || conversationScopeRef.current !== `${identity.id}:${courseId}`
+    ) return;
+    writeRuntimeConversation(
+      "learning-assistant",
+      identity.id,
+      courseId,
+      guideMessages,
+    );
+  }, [conversationHydrated, courseId, guideMessages, identity]);
 
   const activeStep = studySession?.steps.find((step) => step.status === "active")
     ?? studySession?.steps.find((step) => step.status === "pending")

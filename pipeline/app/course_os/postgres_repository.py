@@ -122,30 +122,6 @@ class PostgresCourseOSRepository(CourseOSRepository):
                 "update courses set working_revision_id = %s where id = %s",
                 (revision["id"], course_id),
             )
-            conversation = await (
-                await conn.execute(
-                    """
-                    insert into course_conversations (course_id, revision_id)
-                    values (%s, %s)
-                    returning id
-                    """,
-                    (course_id, revision["id"]),
-                )
-            ).fetchone()
-            if conversation is None:
-                raise RuntimeError("Failed to create course conversation.")
-            await conn.execute(
-                """
-                insert into course_messages (conversation_id, role, content, blocks)
-                values (%s, 'manifold', %s, %s::jsonb)
-                """,
-                (
-                    conversation["id"],
-                    "Share one lecture file or link. I’ll build a complete private draft, "
-                    "then bring you the decisions that need your judgment.",
-                    Jsonb([{"type": "source_request"}]),
-                ),
-            )
         summary = await self.get_course(course_id)
         if summary is None:
             raise RuntimeError("Created course could not be loaded.")
@@ -634,29 +610,6 @@ class PostgresCourseOSRepository(CourseOSRepository):
             await conn.execute(
                 "update courses set working_revision_id = %s, updated_at = now() where id = %s",
                 (working_revision_id, course_id),
-            )
-            await conn.execute(
-                """
-                insert into course_conversations (course_id, revision_id)
-                values (%s, %s)
-                returning id
-                """,
-                (course_id, working_revision_id),
-            )
-            await conn.execute(
-                """
-                insert into course_messages (conversation_id, role, content, blocks)
-                select id, 'manifold', %s, %s::jsonb
-                from course_conversations
-                where course_id = %s and revision_id = %s
-                """,
-                (
-                    "I’ve opened a private working revision. The live course stays unchanged "
-                    "until you review these decisions and publish the update.",
-                    Jsonb([{"type": "revision_opened"}]),
-                    course_id,
-                    working_revision_id,
-                ),
             )
         summary = await self.get_course(course_id)
         if summary is None:
@@ -1768,7 +1721,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
         self,
         course_id: UUID,
         revision_id: UUID,
-        message_id: UUID,
+        message_id: UUID | None,
         instruction: str,
     ) -> CourseProposal:
         proposed_state = {"instruction": instruction}
@@ -1800,7 +1753,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
         self,
         course_id: UUID,
         revision_id: UUID,
-        message_id: UUID,
+        message_id: UUID | None,
         *,
         proposal_type: str,
         artifact_type: str,

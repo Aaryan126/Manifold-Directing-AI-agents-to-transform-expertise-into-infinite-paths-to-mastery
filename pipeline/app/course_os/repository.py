@@ -148,7 +148,7 @@ class CourseOSRepository(ABC):
         self,
         course_id: UUID,
         revision_id: UUID,
-        message_id: UUID,
+        message_id: UUID | None,
         instruction: str,
     ) -> CourseProposal: ...
 
@@ -157,7 +157,7 @@ class CourseOSRepository(ABC):
         self,
         course_id: UUID,
         revision_id: UUID,
-        message_id: UUID,
+        message_id: UUID | None,
         *,
         proposal_type: str,
         artifact_type: str,

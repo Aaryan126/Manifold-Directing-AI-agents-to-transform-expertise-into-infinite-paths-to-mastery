@@ -205,7 +205,7 @@ async def test_answer_is_server_graded_and_records_session_purpose() -> None:
 
 
 @pytest.mark.anyio
-async def test_learning_guide_reports_persisted_status_without_generating_content() -> None:
+async def test_learning_guide_reports_status_without_persisting_transcript() -> None:
     fixture = LearningFixture(state=MasteryState.PRACTICED)
 
     learner_message, guide_message = await fixture.service.message_guide(
@@ -219,9 +219,13 @@ async def test_learning_guide_reports_persisted_status_without_generating_conten
     assert guide_message.intent == "status"
     assert "mastered 0 of 1 concepts" in guide_message.content
     assert "currently working on" in guide_message.content
-    assert fixture.repository.guide_messages_saved == (
-        learner_message,
-        guide_message,
+    assert fixture.repository.guide_messages_saved == ()
+    assert (
+        await fixture.service.guide_messages(
+            fixture.learner_id,
+            fixture.course_id,
+        )
+        == ()
     )
 
 

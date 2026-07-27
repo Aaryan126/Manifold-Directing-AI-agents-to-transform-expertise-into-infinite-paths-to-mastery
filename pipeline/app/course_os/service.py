@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -38,6 +39,20 @@ from app.course_os.repository import CourseOSRepository
 
 class CourseOSValidationError(ValueError):
     pass
+
+
+def _runtime_message(
+    role: str,
+    content: str,
+    blocks: tuple[dict[str, Any], ...] = (),
+) -> ConversationMessage:
+    return ConversationMessage(
+        id=uuid4(),
+        role=role,
+        content=content,
+        blocks=blocks,
+        created_at=datetime.now(UTC),
+    )
 
 
 class CourseOSService:
@@ -335,9 +350,8 @@ class CourseOSService:
         course_id: UUID,
         instructor_id: UUID,
     ) -> tuple[ConversationMessage, ...]:
-        course = await self._require_owned_course(course_id, instructor_id)
-        revision_id = _current_revision(course)
-        return await self._repository.list_messages(course_id, revision_id)
+        await self._require_owned_course(course_id, instructor_id)
+        return ()
 
     async def send_message(
         self,
@@ -363,18 +377,10 @@ class CourseOSService:
             except ValueError as exc:
                 raise CourseOSValidationError(str(exc)) from exc
         revision_id = _current_revision(course)
-        instructor_message = await self._repository.add_message(
-            course_id,
-            revision_id,
-            "instructor",
-            instruction,
-        )
         if evidence_question:
             evidence = await self._repository.course_evidence(course_id, revision_id)
             answer = _evidence_answer(evidence)
-            response = await self._repository.add_message(
-                course_id,
-                revision_id,
+            response = _runtime_message(
                 "manifold",
                 answer,
                 ({"type": "evidence", **evidence},),
@@ -403,9 +409,7 @@ class CourseOSService:
             course_flow,
         )
         if not plan.actions:
-            response = await self._repository.add_message(
-                course_id,
-                revision_id,
+            response = _runtime_message(
                 "manifold",
                 plan.clarification or plan.summary,
                 (
@@ -421,14 +425,12 @@ class CourseOSService:
             proposal = await self._create_director_proposal(
                 course_id,
                 revision_id,
-                instructor_message.id,
+                None,
                 action,
                 blueprint,
             )
             proposals.append(proposal)
-        response = await self._repository.add_message(
-            course_id,
-            revision_id,
+        response = _runtime_message(
             "manifold",
             (
                 f"{plan.summary} I prepared {len(proposals)} independent private "
@@ -458,7 +460,7 @@ class CourseOSService:
         self,
         course_id: UUID,
         revision_id: UUID,
-        message_id: UUID,
+        message_id: UUID | None,
         action: CourseDirectorAction,
         blueprint: CourseBlueprint,
     ) -> CourseProposal:

@@ -205,7 +205,10 @@ async function mockCourseOS(page: Page) {
           'event: status\ndata: {"message":"Inspecting the Blueprint…"}',
           'event: delta\ndata: {"content":"### Course update\\n\\n"}',
           'event: delta\ndata: {"content":"- **Vector addition** is covered.\\n- One review decision remains."}',
-          'event: done\ndata: {"message_id":"streamed-director-message"}',
+          `event: done\ndata: ${JSON.stringify({
+            message: courseMessages.at(-1),
+            proposal: null,
+          })}`,
           "",
         ].join("\n\n"),
         contentType: "text/event-stream",
@@ -855,7 +858,7 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(page.getByRole("button", { name: "Preview", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Open Course Director" })).toBeVisible();
   await page.getByRole("button", { name: "Open Course Director" }).click();
-  await expect(page.getByText("Your complete private draft is ready for review.")).toBeVisible();
+  await expect(page.getByText("Your complete private draft is ready for review.")).toHaveCount(0);
   const closeDirector = page.getByRole("button", { name: "Close Course Director" });
   await expect(closeDirector).toBeVisible();
   await expect(closeDirector).toBeFocused();
@@ -865,6 +868,15 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(openDirector).toBeFocused();
   await openDirector.click();
   await expect(closeDirector).toBeFocused();
+  await page.getByRole("complementary", { name: "Course Director" }).evaluate(
+    async (element) => {
+      await Promise.all(
+        element.getAnimations({ subtree: true }).map((animation) =>
+          animation.finished.catch(() => undefined)
+        ),
+      );
+    },
+  );
   const directorTitle = page.locator("#conversation-title");
   const directorIdentity = directorTitle.locator("xpath=../..");
   await expect.poll(async () => {
@@ -895,8 +907,15 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   expect(await page.getByText("Vector addition", { exact: true }).evaluate((element) => element.tagName)).toBe("STRONG");
   await expect(page.getByRole("listitem").filter({ hasText: "One review decision remains." })).toBeVisible();
   await closeDirector.click();
-  await expect(page.getByText("Your complete private draft is ready for review.")).toHaveCount(0);
   await expect(openDirector).toBeFocused();
+  await openDirector.click();
+  await expect(page.getByRole("heading", { name: "Course update", level: 3 })).toBeVisible();
+  await closeDirector.click();
+
+  await page.reload();
+  await page.getByRole("button", { name: "Open Course Director" }).click();
+  await expect(page.getByRole("heading", { name: "Course update", level: 3 })).toHaveCount(0);
+  await expect(page.getByLabel("Message Course Director")).toBeVisible();
 });
 
 test("Course Director capsule expands and reverses with keyboard focus", async ({ page }) => {

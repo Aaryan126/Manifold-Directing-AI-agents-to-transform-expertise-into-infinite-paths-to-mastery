@@ -1,3 +1,5 @@
+import { clearRuntimeConversations } from "./runtime-conversations";
+
 export type DevelopmentSession = {
   id: string;
   email?: string;
@@ -35,6 +37,7 @@ export function readDevelopmentSession(storage: StorageLike): DevelopmentSession
 }
 
 export function saveDevelopmentSession(storage: StorageLike, session: DevelopmentSession) {
+  clearRuntimeConversations();
   storage.setItem(developmentSessionKey, JSON.stringify(session));
   storage.setItem(
     session.role === "instructor" ? instructorStorageKey : learnerStorageKey,
@@ -43,6 +46,7 @@ export function saveDevelopmentSession(storage: StorageLike, session: Developmen
 }
 
 export function clearDevelopmentSession(storage: StorageLike) {
+  clearRuntimeConversations();
   storage.removeItem(developmentSessionKey);
   storage.removeItem(instructorStorageKey);
   storage.removeItem(learnerStorageKey);

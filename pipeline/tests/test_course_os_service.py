@@ -267,6 +267,29 @@ async def test_dashboard_change_command_creates_private_reviewable_directive() -
 
 
 @pytest.mark.anyio
+async def test_course_director_history_starts_empty_without_reading_legacy_rows() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    course = _course()
+    repository.user_role = AsyncMock(return_value="instructor")
+    repository.get_course = AsyncMock(return_value=course)
+    repository.list_messages = AsyncMock(
+        return_value=(
+            ConversationMessage(
+                id=uuid4(),
+                role="manifold",
+                content="Legacy persisted message",
+                blocks=(),
+                created_at=datetime.now(UTC),
+            ),
+        )
+    )
+    service = CourseOSService(repository)
+
+    assert await service.messages(course.id, course.instructor_id) == ()
+    repository.list_messages.assert_not_awaited()
+
+
+@pytest.mark.anyio
 async def test_chat_turn_creates_reviewable_directive_instead_of_mutating_course() -> None:
     repository = create_autospec(CourseOSRepository, instance=True)
     course = _course()
@@ -288,16 +311,9 @@ async def test_chat_turn_creates_reviewable_directive_instead_of_mutating_course
         status="proposed",
         created_at=datetime.now(UTC),
     )
-    response_message = ConversationMessage(
-        id=uuid4(),
-        role="manifold",
-        content="Review this directive.",
-        blocks=({"type": "proposal", "proposal_id": str(proposal.id)},),
-        created_at=datetime.now(UTC),
-    )
     repository.user_role = AsyncMock(return_value="instructor")
     repository.get_course = AsyncMock(return_value=course)
-    repository.add_message = AsyncMock(side_effect=[instructor_message, response_message])
+    repository.add_message = AsyncMock()
     repository.blueprint = AsyncMock(return_value=_empty_blueprint(course))
     repository.create_typed_proposal = AsyncMock(return_value=proposal)
     director = AsyncMock()
@@ -310,9 +326,13 @@ async def test_chat_turn_creates_reviewable_directive_instead_of_mutating_course
         instructor_message.content,
     )
 
-    assert response == response_message
+    assert response.role == "manifold"
+    assert "prepared 1 independent private change" in response.content
+    assert response.blocks[0]["proposal_id"] == str(proposal.id)
     assert created_proposal == proposal
     repository.create_typed_proposal.assert_awaited_once()
+    assert repository.create_typed_proposal.await_args.args[2] is None
+    repository.add_message.assert_not_awaited()
 
 
 @pytest.mark.anyio
@@ -375,10 +395,9 @@ async def test_course_director_reconnect_is_one_atomic_review_proposal() -> None
         status="proposed",
         created_at=datetime.now(UTC),
     )
-    response_message = replace(instructor_message, id=uuid4(), role="manifold")
     repository.user_role = AsyncMock(return_value="instructor")
     repository.get_course = AsyncMock(return_value=course)
-    repository.add_message = AsyncMock(side_effect=[instructor_message, response_message])
+    repository.add_message = AsyncMock()
     repository.blueprint = AsyncMock(return_value=blueprint)
     repository.create_typed_proposal = AsyncMock(return_value=proposal)
     director = AsyncMock()
@@ -408,9 +427,11 @@ async def test_course_director_reconnect_is_one_atomic_review_proposal() -> None
         instructor_message.content,
     )
 
-    assert response == response_message
+    assert response.role == "manifold"
+    assert response.blocks[0]["proposal_id"] == str(proposal.id)
     assert created_proposal == proposal
     call = repository.create_typed_proposal.await_args
+    assert call.args[2] is None
     assert call.kwargs["artifact_type"] == "blueprint_relationship_reconnect"
     assert call.kwargs["before_state"] == {
         "relationship_type": "requires",
@@ -426,6 +447,7 @@ async def test_course_director_reconnect_is_one_atomic_review_proposal() -> None
         "previous_source_logical_id": str(first.logical_id),
         "previous_target_logical_id": str(previous_target.logical_id),
     }
+    repository.add_message.assert_not_awaited()
 
 
 @pytest.mark.anyio
@@ -543,16 +565,9 @@ async def test_copilot_question_answers_from_saved_evidence_without_a_mutation_p
         blocks=(),
         created_at=datetime.now(UTC),
     )
-    response_message = ConversationMessage(
-        id=uuid4(),
-        role="manifold",
-        content="Based on saved evidence.",
-        blocks=({"type": "evidence", "attempts": 12},),
-        created_at=datetime.now(UTC),
-    )
     repository.user_role = AsyncMock(return_value="instructor")
     repository.get_course = AsyncMock(return_value=course)
-    repository.add_message = AsyncMock(side_effect=[instructor_message, response_message])
+    repository.add_message = AsyncMock()
     repository.course_evidence = AsyncMock(
         return_value={
             "enrolled_learners": 3,
@@ -570,10 +585,13 @@ async def test_copilot_question_answers_from_saved_evidence_without_a_mutation_p
         instructor_message.content,
     )
 
-    assert response == response_message
+    assert response.role == "manifold"
+    assert response.blocks[0]["type"] == "evidence"
+    assert response.blocks[0]["attempts"] == 12
     assert proposal is None
     repository.create_proposal.assert_not_awaited()
     repository.course_evidence.assert_awaited_once_with(course.id, course.working_revision_id)
+    repository.add_message.assert_not_awaited()
 
 
 @pytest.mark.anyio
@@ -604,11 +622,10 @@ async def test_live_course_chat_opens_private_revision_before_proposing_mutation
         status="proposed",
         created_at=datetime.now(UTC),
     )
-    response_message = replace(instructor_message, id=uuid4(), role="manifold")
     repository.user_role = AsyncMock(return_value="instructor")
     repository.get_course = AsyncMock(return_value=course)
     repository.create_working_revision = AsyncMock(return_value=working)
-    repository.add_message = AsyncMock(side_effect=[instructor_message, response_message])
+    repository.add_message = AsyncMock()
     repository.blueprint = AsyncMock(return_value=_empty_blueprint(working))
     repository.create_typed_proposal = AsyncMock(return_value=proposal)
     director = AsyncMock()
@@ -621,13 +638,16 @@ async def test_live_course_chat_opens_private_revision_before_proposing_mutation
         instructor_message.content,
     )
 
-    assert response == response_message
+    assert response.role == "manifold"
+    assert response.blocks[0]["proposal_id"] == str(proposal.id)
     assert created_proposal == proposal
     repository.create_working_revision.assert_awaited_once_with(
         course.id,
         course.instructor_id,
     )
     repository.create_typed_proposal.assert_awaited_once()
+    assert repository.create_typed_proposal.await_args.args[2] is None
+    repository.add_message.assert_not_awaited()
 
 
 @pytest.mark.anyio

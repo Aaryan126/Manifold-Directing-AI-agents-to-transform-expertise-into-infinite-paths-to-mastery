@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.assessments.service import AssessmentService, AssessmentValidationError
 from app.learning.guide import (
@@ -643,8 +643,8 @@ class LearningService:
         learner_id: UUID,
         course_id: UUID,
     ) -> tuple[LearningGuideMessage, ...]:
-        context = await self.context(learner_id, course_id)
-        return await self._repository.guide_messages(context)
+        await self.context(learner_id, course_id)
+        return ()
 
     async def message_guide(
         self,
@@ -677,20 +677,31 @@ class LearningService:
         ):
             actions.append("approved_hint")
         intent = await self._guide.classify(cleaned, tuple(actions))
-        reply, action, evidence = self._guide_reply(
+        reply, action, _evidence = self._guide_reply(
             intent,
             path,
             mastery,
             session,
             tuple(actions),
         )
-        return await self._repository.append_guide_exchange(
-            context,
-            learner_content=cleaned,
-            guide_content=reply,
-            intent=intent,
-            action=action,
-            evidence=evidence,
+        created_at = datetime.now(UTC)
+        return (
+            LearningGuideMessage(
+                id=uuid4(),
+                role="learner",
+                content=cleaned,
+                intent=None,
+                action=None,
+                created_at=created_at,
+            ),
+            LearningGuideMessage(
+                id=uuid4(),
+                role="guide",
+                content=reply,
+                intent=intent,
+                action=action,
+                created_at=created_at,
+            ),
         )
 
     def _guide_reply(

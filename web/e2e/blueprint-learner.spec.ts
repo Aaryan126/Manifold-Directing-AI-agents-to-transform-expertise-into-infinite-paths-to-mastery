@@ -522,6 +522,23 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   ).toBeVisible();
   expect(helpCreated).toBe(true);
 
+  await page.getByRole("button", { name: "Close Learning Assistant" }).click();
+  await page.getByRole("button", { name: "Open Learning Assistant" }).click();
+  await expect(
+    page.getByLabel("Learning Assistant").locator("[data-role='learner']").filter({
+      hasText: "I’m stuck.",
+    }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Close Learning Assistant" }).click();
+
+  await page.reload();
+  await page.getByRole("button", { name: "Open Learning Assistant" }).click();
+  await expect(
+    page.getByLabel("Learning Assistant").locator("[data-role='learner']").filter({
+      hasText: "I’m stuck.",
+    }),
+  ).toHaveCount(0);
+
   const accessibility = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
     .analyze();

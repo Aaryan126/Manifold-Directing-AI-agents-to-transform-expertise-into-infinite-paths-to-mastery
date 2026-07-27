@@ -68,6 +68,10 @@ import {
 
 import { AssistantMorph } from "../../../assistant-morph";
 import {
+  readRuntimeConversation,
+  writeRuntimeConversation,
+} from "../../../runtime-conversations";
+import {
   answerOutcomeSummary,
   availableBlueprintRelationshipKinds,
   blueprintEdgeKinds,
@@ -194,9 +198,11 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const sourceInput = useRef<HTMLInputElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
+  const conversationScopeRef = useRef<string | null>(null);
   const [identity, setIdentity] = useState<DevelopmentIdentity | null>(null);
   const [course, setCourse] = useState<CourseSummary | null>(null);
   const [messages, setMessages] = useState<CourseMessage[]>([]);
+  const [conversationHydrated, setConversationHydrated] = useState(false);
   const [run, setRun] = useState<GenerationRun | null>(null);
   const [activeBlueprint, setActiveBlueprint] = useState<CourseBlueprint | null>(null);
   const [workingBlueprint, setWorkingBlueprint] = useState<CourseBlueprint | null>(null);
@@ -358,14 +364,17 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         router.replace("/login");
         return;
       }
+      conversationScopeRef.current = null;
+      setConversationHydrated(false);
       setIdentity(user);
-      const [courseResult, messageResult] = await Promise.all([
-        request<CourseSummary>(`/courses/${courseId}/studio`, user),
-        request<CourseMessage[]>(`/courses/${courseId}/messages`, user),
-      ]);
+      const courseResult = await request<CourseSummary>(`/courses/${courseId}/studio`, user);
       setCourse(courseResult);
       setBlueprintMode(courseResult.status === "published" ? "live" : "design");
-      setMessages(messageResult);
+      setMessages(
+        readRuntimeConversation<CourseMessage>("course-director", user.id, courseId),
+      );
+      conversationScopeRef.current = `${user.id}:${courseId}`;
+      setConversationHydrated(true);
       if (shouldHydrateGenerationRun(courseResult) && courseResult.generation_run_id) {
         const runResult = await request<GenerationRun>(
           `/courses/${courseId}/generation-runs/${courseResult.generation_run_id}`,
@@ -412,6 +421,15 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   useEffect(() => {
     void loadStudio();
   }, [loadStudio]);
+
+  useEffect(() => {
+    if (
+      !identity
+      || !conversationHydrated
+      || conversationScopeRef.current !== `${identity.id}:${courseId}`
+    ) return;
+    writeRuntimeConversation("course-director", identity.id, courseId, messages);
+  }, [conversationHydrated, courseId, identity, messages]);
 
   useEffect(() => {
     if (!identity || !run || !["queued", "running"].includes(run.status)) return;
@@ -477,6 +495,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     setMessages((current) => [...current, optimisticMessage]);
     setDirectorStream({ content: "", status: "Reading the course structure…" });
     try {
+      let completedMessage: CourseMessage | null = null;
       const response = await fetch(`${pipelineBase}/courses/${courseId}/messages/stream`, {
         method: "POST",
         headers: {
@@ -512,10 +531,23 @@ export function CourseStudio({ courseId }: { courseId: string }) {
               : "Course Director could not complete that request.",
           );
         }
+        if (
+          streamEvent.event === "done"
+          && streamEvent.data.message
+          && typeof streamEvent.data.message === "object"
+        ) {
+          completedMessage = streamEvent.data.message as unknown as CourseMessage;
+        }
       });
+      if (!completedMessage) {
+        throw new Error("Course Director completed without a conversation response.");
+      }
       const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
       setCourse(nextCourse);
-      setMessages(await request<CourseMessage[]>(`/courses/${courseId}/messages`, identity));
+      setMessages((current) => [
+        ...current,
+        completedMessage as CourseMessage,
+      ]);
       setDirectorStream(null);
       await refreshArtifacts(identity);
       await Promise.all([
@@ -528,9 +560,6 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       setError(caught instanceof Error ? caught.message : "Could not send the message.");
       setDirectorStream(null);
       setMessages((current) => current.filter((message) => message.id !== optimisticMessage.id));
-      void request<CourseMessage[]>(`/courses/${courseId}/messages`, identity)
-        .then(setMessages)
-        .catch(() => undefined);
       setComposer(content);
     } finally {
       setSending(false);
