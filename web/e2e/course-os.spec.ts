@@ -725,12 +725,12 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(
     page.getByRole("heading", { name: /Good (morning|afternoon|evening), Ada\./ }),
   ).toBeVisible();
-  const greetingBlock = await page.getByRole("heading", { name: /Good (morning|afternoon|evening), Ada\./ }).locator("..").boundingBox();
+  const greetingHeadline = await page.getByRole("heading", { name: /Good (morning|afternoon|evening), Ada\./ }).boundingBox();
   const newCourseButton = await page.getByRole("button", { name: "New course" }).boundingBox();
-  expect(greetingBlock).not.toBeNull();
+  expect(greetingHeadline).not.toBeNull();
   expect(newCourseButton).not.toBeNull();
   expect(Math.abs(
-    (greetingBlock!.y + greetingBlock!.height / 2)
+    (greetingHeadline!.y + greetingHeadline!.height / 2)
       - (newCourseButton!.y + newCourseButton!.height / 2),
   )).toBeLessThanOrEqual(1);
   await page.getByRole("button", { name: "New course" }).click();

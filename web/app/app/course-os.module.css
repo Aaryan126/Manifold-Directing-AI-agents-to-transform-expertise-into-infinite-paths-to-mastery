@@ -251,26 +251,37 @@
 }
 
 .dashboardHeader {
-  align-items: center;
-  display: flex;
-  gap: 30px;
-  justify-content: space-between;
+  column-gap: 30px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
   margin-bottom: 42px;
+  row-gap: 14px;
 }
 
 .dashboardHeader h1 {
   font-family: "Source Serif 4 Variable", Georgia, serif;
   font-size: clamp(38px, 4.2vw, 64px);
   font-weight: 430;
+  grid-column: 1;
+  grid-row: 1;
   letter-spacing: -0.045em;
   line-height: 0.98;
-  margin: 0 0 14px;
+  margin: 0;
 }
 
-.dashboardHeader > div > p:last-child {
+.dashboardHeader > p {
   color: var(--os-subtle);
   font-size: 18px;
+  grid-column: 1;
+  grid-row: 2;
   margin: 0;
+}
+
+.dashboardHeader > .primaryButton {
+  align-self: center;
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .primaryButton {
@@ -691,9 +702,9 @@
   .dashboardSidebar nav a,.dashboardSidebar nav > span { flex-direction: column; }
   .dashboardSidebar nav span small { display: none; }
   .dashboardMain { padding: 32px 18px 90px; }
-  .dashboardHeader { align-items: stretch; flex-direction: column; margin-bottom: 30px; }
+  .dashboardHeader { grid-template-columns: 1fr; grid-template-rows: auto auto auto; margin-bottom: 30px; }
   .dashboardHeader h1 { font-size: 42px; }
-  .dashboardHeader .primaryButton { width: 100%; }
+  .dashboardHeader .primaryButton { grid-column: 1; grid-row: 3; margin-top: 6px; width: 100%; }
   .intelligenceBrief { padding: 22px 18px; }
   .dashboardCommand,.commandResult { margin-left: 0; }
   .commandSuggestions { display: flex; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }

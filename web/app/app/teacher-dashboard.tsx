@@ -192,10 +192,8 @@ export function TeacherDashboard() {
       <TeacherSidebar collapsed={sidebarCollapsed} identity={identity} onToggle={toggleSidebar} />
       <main className={styles.dashboardMain}>
         <header className={styles.dashboardHeader}>
-          <div>
-            <h1>{identity ? `Good ${timeOfDay()}, ${firstName(identity.display_name)}.` : "Your courses"}</h1>
-            <p>Build with Manifold, then focus your judgment where it changes learning.</p>
-          </div>
+          <h1>{identity ? `Good ${timeOfDay()}, ${firstName(identity.display_name)}.` : "Your courses"}</h1>
+          <p>Build with Manifold, then focus your judgment where it changes learning.</p>
           <button className={styles.primaryButton} disabled={creating || loading} onClick={openCreateDialog} type="button">
             {creating ? <LoaderCircle className={styles.spin} aria-hidden="true" /> : <Plus aria-hidden="true" />}
             New course
