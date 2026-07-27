@@ -4215,6 +4215,7 @@ function BlueprintWorkspace({
               <div className={styles.blueprintToolbarMenu}>
                 <button
                   aria-expanded={jumpOpen}
+                  className={styles.blueprintJumpButton}
                   onClick={() => {
                     setJumpOpen((current) => !current);
                     setAddNodeOpen(false);

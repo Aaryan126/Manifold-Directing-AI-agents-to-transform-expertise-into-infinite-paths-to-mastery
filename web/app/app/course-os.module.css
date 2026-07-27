@@ -1688,6 +1688,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintFloatingChrome { display: grid; gap: 8px; left: 18px; max-width: calc(100% - 36px); pointer-events: none; position: absolute; top: 16px; z-index: 14; }
 .blueprintFloatingToolbar { align-items: center; background: rgb(255 255 255 / 96%); border: 1px solid #d9d5cd; border-radius: 11px; box-shadow: 0 8px 24px rgb(31 32 36 / 10%); display: flex; gap: 3px; max-width: 100%; padding: 5px; pointer-events: auto; width: max-content; }
 .blueprintFloatingToolbar > button,.blueprintToolbarMenu > button { align-items: center; background: transparent; border: 0; border-radius: 7px; color: #55535a; cursor: pointer; display: flex; font: inherit; font-size: 10px; font-weight: 720; gap: 6px; min-height: 34px; padding: 0 9px; white-space: nowrap; }
+.blueprintToolbarMenu > .blueprintJumpButton { justify-content: flex-start; min-width: 122px; padding-inline: 13px; }
 .blueprintFloatingToolbar > button:hover,.blueprintFloatingToolbar > button[aria-expanded="true"],.blueprintToolbarMenu > button:hover,.blueprintToolbarMenu > button[aria-expanded="true"] { background: #f0eee9; color: #202126; }
 .blueprintFloatingToolbar > button:disabled { color: #aaa7a0; cursor: default; }
 .blueprintFloatingToolbar > button svg,.blueprintToolbarMenu > button svg { height: 14px; width: 14px; }
