@@ -795,6 +795,7 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(activityChart.locator("[data-value]")).toHaveCount(7);
   await expect(page.getByText("enrolled learners", { exact: true })).toBeVisible();
   await expect(page.getByText("new this week", { exact: true })).toBeVisible();
+  await expect(page.getByText("+0", { exact: true })).toHaveCount(0);
   const priorityPanel = page.getByRole("article").filter({
     has: page.getByRole("heading", { name: "Needs your judgment", exact: true }),
   });
@@ -1086,28 +1087,18 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect.poll(async () => courseFlowGraph.locator(".react-flow__viewport").evaluate((element) => {
     return new DOMMatrix(getComputedStyle(element).transform).a;
   })).toBeGreaterThanOrEqual(1.29);
+  const lectureUnitCard = courseFlowGraph.locator("[class*='courseFlowGraphUnit']").filter({
+    hasText: "Forces lecture",
+  }).first();
+  await expect(lectureUnitCard).toBeVisible();
+  expect(await lectureUnitCard.evaluate(
+    (element) => getComputedStyle(element, "::before").content,
+  )).toBe("none");
   await page.getByRole("button", { name: "New lecture" }).click();
   await expect(page.getByPlaceholder("What lecture would you like to add? Paste a lecture link or add a file…")).toBeVisible();
   await expect(page.getByRole("button", { name: "Course Flow" })).toBeVisible();
   await page.getByRole("button", { name: "Course Flow" }).click();
   await page.getByText("Forces lecture", { exact: true }).click();
-  const blueprintCanvas = page.locator('[data-viewport-state]');
-  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "animating");
-  const firstAnimatedNode = blueprintCanvas.locator(".react-flow__node").first();
-  const firstNodeStart = await firstAnimatedNode.evaluate(
-    (element) => getComputedStyle(element).transform,
-  );
-  const firstNodeStartOpacity = await firstAnimatedNode.evaluate(
-    (element) => Number(getComputedStyle(element).opacity),
-  );
-  expect(firstNodeStartOpacity).toBeLessThan(0.4);
-  await page.waitForTimeout(360);
-  expect(await firstAnimatedNode.evaluate(
-    (element) => getComputedStyle(element).transform,
-  )).not.toBe(firstNodeStart);
-  expect(await firstAnimatedNode.evaluate(
-    (element) => Number(getComputedStyle(element).opacity),
-  )).toBeGreaterThan(firstNodeStartOpacity);
   await expect(page.getByRole("button", { name: "Blueprint", exact: true })).toBeVisible();
   await expect(page.locator('[data-motion-view="blueprint"]')).toHaveCSS("opacity", "1");
   await expect(page.locator('[data-motion-view="flow"]')).toHaveCount(0);
@@ -1118,6 +1109,9 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   const blueprintSummary = page.getByRole("group", { name: "Blueprint status and metrics" });
   await expect(blueprintSummary.getByText("50%")).toBeVisible();
   await expect(blueprintSummary.getByText("8 attempts")).toBeVisible();
+  const blueprintMetrics = blueprintSummary.locator("[class*='blueprintCompactMetrics']");
+  await expect(blueprintMetrics).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(blueprintMetrics).toHaveCSS("border-top-width", "0px");
   const blueprintSummaryBounds = await blueprintSummary.boundingBox();
   expect(blueprintSummaryBounds).not.toBeNull();
   expect(blueprintSummaryBounds!.height).toBeLessThanOrEqual(44);
@@ -1139,6 +1133,7 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   )).toBe(true);
   await expect(page.getByText(/concepts are missing a reviewed assessment or teaching artifact/i)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Design" })).toHaveAttribute("aria-pressed", "true");
+  const blueprintCanvas = page.locator('[data-viewport-state]');
   const blueprintViewport = blueprintCanvas.locator(".react-flow__viewport");
   const readBlueprintTransform = () => blueprintViewport.evaluate(
     (element) => getComputedStyle(element).transform,
@@ -1148,14 +1143,12 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await page.waitForTimeout(350);
   expect(await readBlueprintTransform()).toBe(initialBlueprintTransform);
   await page.getByRole("button", { name: "Live" }).click();
-  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "animating");
   await expect(page.getByText("Published live")).toBeVisible();
   await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
   const liveBlueprintTransform = await readBlueprintTransform();
   await page.waitForTimeout(350);
   expect(await readBlueprintTransform()).toBe(liveBlueprintTransform);
   await page.getByRole("button", { name: "Design" }).click();
-  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "animating");
   await expect(page.getByText("Private design")).toBeVisible();
   await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
   const blueprintMode = page.getByRole("navigation", { name: "Blueprint mode" });
@@ -1243,7 +1236,6 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
 
   await page.getByRole("button", { name: "Design" }).click();
   await page.getByRole("button", { name: "Auto arrange" }).click();
-  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "animating");
   await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
   const designConceptNode = page.getByTestId("rf__node-concept-working");
   await expect(designConceptNode).toBeVisible();

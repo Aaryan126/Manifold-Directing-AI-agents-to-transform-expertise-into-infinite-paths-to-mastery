@@ -14,8 +14,6 @@ import {
   type NodeProps,
   type ReactFlowInstance,
 } from "@xyflow/react";
-import { interpolateNumber } from "d3-interpolate";
-import { timer as d3Timer, type Timer } from "d3-timer";
 import ELK from "elkjs/lib/elk.bundled.js";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -70,15 +68,6 @@ import {
 } from "lucide-react";
 
 import { AssistantMorph } from "../../../assistant-morph";
-import {
-  blueprintEnteringNodeOpacity,
-  blueprintEdgeRevealProgress,
-  blueprintMotionPaintHold,
-  blueprintMotionTotalDuration,
-  blueprintNodeMotionProgress,
-  createBlueprintNodeMotionPlan,
-  type BlueprintMotionPosition,
-} from "../../../blueprint-motion";
 import {
   interfaceEase,
   MotionHandoff,
@@ -2342,7 +2331,6 @@ type BlueprintGraphEdgeData = {
   emphasized: boolean;
   kind: BlueprintEdgeKind;
   points: Array<{ x: number; y: number }> | null;
-  reveal: number;
   visible: boolean;
 };
 type BlueprintGraphEdge = Edge<BlueprintGraphEdgeData, "blueprintRelation">;
@@ -2479,9 +2467,8 @@ function BlueprintRelationEdge({
   const path = points.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
   const labelPoint = points[Math.floor(points.length / 2)] ?? { x: sourceX, y: sourceY };
   const kind = data?.kind ?? "contains";
-  const reveal = data?.reveal ?? 1;
   return (
-    <g opacity={reveal}>
+    <>
       <BaseEdge id={id} interactionWidth={18} markerEnd={markerEnd} path={path} style={style} />
       {data?.visible ? (
         <text
@@ -2494,7 +2481,7 @@ function BlueprintRelationEdge({
           {blueprintRelationshipLabels[kind]}
         </text>
       ) : null}
-    </g>
+    </>
   );
 }
 
@@ -3786,14 +3773,6 @@ function BlueprintWorkspace({
     ReactFlowInstance<BlueprintGraphNode, BlueprintGraphEdge> | null
   >(null);
   const [settledViewportKey, setSettledViewportKey] = useState<string | null>(null);
-  const [animatingViewportKey, setAnimatingViewportKey] = useState<string | null>(null);
-  const [completedMotionKey, setCompletedMotionKey] = useState<string | null>(null);
-  const [animatedGraph, setAnimatedGraph] = useState<{
-    edges: BlueprintGraphEdge[];
-    key: string;
-    nodes: BlueprintGraphNode[];
-  } | null>(null);
-  const previousNodePositions = useRef<Map<string, BlueprintMotionPosition>>(new Map());
   const [enabledRelationships, setEnabledRelationships] = useState<Set<BlueprintEdgeKind>>(
     () => new Set(coreBlueprintEdgeKinds),
   );
@@ -3849,25 +3828,10 @@ function BlueprintWorkspace({
       relationshipDraft,
     },
   );
-  const latestFlow = useRef(flow);
-  latestFlow.current = flow;
   const viewportContextKey = `${mode}:${focusTopicLogicalId ?? "course"}:${autoArrangeVersion}`;
   const viewportFitKey = `${viewportContextKey}:${flow.layoutKey ?? "pending"}`;
-  const viewportFitted = flow.layoutReady
+  const viewportReady = flow.layoutReady
     && (!flow.nodes.length || settledViewportKey === viewportFitKey);
-  const viewportState = !viewportFitted
-    ? "settling"
-    : !flow.nodes.length || completedMotionKey === viewportFitKey
-      ? "ready"
-      : animatingViewportKey === viewportFitKey
-        ? "animating"
-        : "settling";
-  const displayedNodes = animatedGraph?.key === viewportFitKey
-    ? animatedGraph.nodes
-    : flow.nodes;
-  const displayedEdges = animatedGraph?.key === viewportFitKey
-    ? animatedGraph.edges
-    : flow.edges;
   const evidence = selected?.kind === "concept"
     ? blueprintEvidence.find((item) => item.concept_id === selected.id) ?? null
     : null;
@@ -3940,14 +3904,10 @@ function BlueprintWorkspace({
     let cancelled = false;
     let frame = 0;
     let attempts = 0;
-    let animationStartTimer = 0;
-    let positionTimer: Timer | null = null;
     setSettledViewportKey(null);
-    setAnimatingViewportKey(null);
-    setCompletedMotionKey(null);
     // Keep intermediate ELK positions invisible, let React Flow measure the
-    // completed nodes, then perform one authoritative fit. Only after that fit
-    // do we reveal and tween the graph into the ELK positions.
+    // completed nodes, then perform one authoritative fit before revealing the
+    // graph. This prevents the mount fit and completed-layout fit from racing.
     const fitWhenSynchronized = () => {
       if (cancelled) return;
       const renderedNodes = flowInstance.getNodes();
@@ -3961,87 +3921,8 @@ function BlueprintWorkspace({
         return;
       }
       void flowInstance.fitView({ duration: 0, maxZoom: 1, padding: 0.14 });
-      const finalNodes = latestFlow.current.nodes;
-      const finalEdges = latestFlow.current.edges;
-      const motionPlans = createBlueprintNodeMotionPlan(
-        finalNodes.map((node) => ({
-          id: node.id,
-          layer: blueprintNodeLayer(node.data.artifact.kind),
-          logicalId: node.data.artifact.logical_id,
-          position: node.position,
-        })),
-        previousNodePositions.current,
-      );
-      const planById = new Map(motionPlans.map((plan) => [plan.id, plan]));
-      const positionInterpolators = new Map(motionPlans.map((plan) => [
-        plan.id,
-        {
-          x: interpolateNumber(plan.from.x, plan.position.x),
-          y: interpolateNumber(plan.from.y, plan.position.y),
-        },
-      ]));
-      const totalDuration = blueprintMotionTotalDuration(motionPlans);
-      const renderFrame = (elapsed: number) => {
-        const nodes = finalNodes.map((node) => {
-          const plan = planById.get(node.id);
-          const interpolators = positionInterpolators.get(node.id);
-          if (!plan || !interpolators) return node;
-          const progress = blueprintNodeMotionProgress(elapsed, plan.delay);
-          return {
-            ...node,
-            position: {
-              x: interpolators.x(progress),
-              y: interpolators.y(progress),
-            },
-            style: {
-              ...node.style,
-              opacity: plan.entering ? blueprintEnteringNodeOpacity(progress) : 1,
-            },
-          };
-        });
-        const edgeReveal = blueprintEdgeRevealProgress(elapsed, totalDuration);
-        const edges = finalEdges.map((edge) => ({
-          ...edge,
-          data: edge.data
-            ? { ...edge.data, reveal: edgeReveal }
-            : edge.data,
-        }));
-        setAnimatedGraph({ edges, key: viewportFitKey, nodes });
-      };
-      if (reducedMotion) {
-        previousNodePositions.current = new Map(finalNodes.map((node) => [
-          node.data.artifact.logical_id,
-          node.position,
-        ]));
-        setAnimatedGraph(null);
-        setAnimatingViewportKey(null);
-        setCompletedMotionKey(viewportFitKey);
-        setSettledViewportKey(viewportFitKey);
-        return;
-      }
-      renderFrame(0);
-      setAnimatingViewportKey(viewportFitKey);
-      setSettledViewportKey(viewportFitKey);
       frame = window.requestAnimationFrame(() => {
-        if (cancelled) return;
-        animationStartTimer = window.setTimeout(() => {
-          positionTimer = d3Timer((elapsed) => {
-            if (cancelled) {
-              positionTimer?.stop();
-              return;
-            }
-            renderFrame(elapsed);
-            if (elapsed < totalDuration) return;
-            positionTimer?.stop();
-            previousNodePositions.current = new Map(finalNodes.map((node) => [
-              node.data.artifact.logical_id,
-              node.position,
-            ]));
-            setAnimatedGraph(null);
-            setAnimatingViewportKey(null);
-            setCompletedMotionKey(viewportFitKey);
-          });
-        }, blueprintMotionPaintHold);
+        if (!cancelled) setSettledViewportKey(viewportFitKey);
       });
     };
     const timer = window.setTimeout(() => {
@@ -4049,12 +3930,10 @@ function BlueprintWorkspace({
     }, 40);
     return () => {
       cancelled = true;
-      positionTimer?.stop();
       window.clearTimeout(timer);
-      window.clearTimeout(animationStartTimer);
       window.cancelAnimationFrame(frame);
     };
-  }, [flow.layoutReady, flow.nodes.length, flowInstance, reducedMotion, viewportFitKey]);
+  }, [flow.layoutReady, flow.nodes.length, flowInstance, viewportFitKey]);
 
   const closeArtifactInspector = useCallback(() => {
     setSelectedLogicalId(null);
@@ -4410,10 +4289,10 @@ function BlueprintWorkspace({
 
         <div
           className={styles.blueprintCanvas}
-          data-viewport-state={viewportState}
+          data-viewport-state={viewportReady ? "ready" : "settling"}
         >
           <AnimatePresence>
-            {viewportState === "settling" ? (
+            {!viewportReady ? (
               <motion.div
                 animate={{ opacity: 1 }}
                 className={styles.blueprintLayoutLoading}
@@ -4429,20 +4308,20 @@ function BlueprintWorkspace({
             ) : null}
           </AnimatePresence>
           <motion.div
-            animate={{ opacity: viewportState === "settling" ? 0 : 1 }}
-            aria-hidden={viewportState !== "ready"}
+            animate={{ opacity: viewportReady ? 1 : 0 }}
+            aria-hidden={!viewportReady}
             className={styles.blueprintGraphStage}
             initial={false}
             transition={reducedMotion
               ? { duration: 0 }
-              : { duration: 0.08, ease: interfaceEase }}
+              : { duration: 0.24, ease: interfaceEase }}
           >
             <ReactFlow
               edgeTypes={blueprintEdgeTypes}
-              edges={displayedEdges}
+              edges={flow.edges}
               key={viewportContextKey}
               nodeTypes={blueprintNodeTypes}
-              nodes={displayedNodes}
+              nodes={flow.nodes}
               nodesConnectable={false}
               nodesDraggable={mode === "design"}
               onInit={(instance) => {
@@ -5015,7 +4894,6 @@ function useBlueprintFlow(
         emphasized,
         kind: edge.kind,
         points: edgePoints[edge.id] ?? null,
-        reveal: 1,
         visible,
       },
       focusable: visible,

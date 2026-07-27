@@ -682,7 +682,7 @@ function LearnerActivity({ dashboard }: { dashboard: DashboardSnapshot }) {
       </header>
       <div className={styles.learnerActivitySummary}>
         <div><strong>{dashboard.active_learners}</strong><span>enrolled learners</span></div>
-        <div><strong>+{dashboard.new_learners}</strong><span>new this week</span></div>
+        <div><strong>{dashboard.new_learners}</strong><span>new this week</span></div>
       </div>
       {history.length ? (
         <div className={styles.learnerActivityChart} role="img" aria-label={chartLabel}>
