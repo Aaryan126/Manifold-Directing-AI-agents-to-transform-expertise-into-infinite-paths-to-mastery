@@ -423,6 +423,9 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   await expect(
     mastery.locator(".react-flow__edge").filter({ hasText: "Support route" }),
   ).toHaveCount(1);
+  await expect(
+    mastery.locator("article[data-route-change='remediate']"),
+  ).toHaveCSS("border-left-color", "rgb(133, 86, 163)");
   await expect.poll(async () => {
     const canvasBounds = await mastery.getByTestId("mastery-map").boundingBox();
     const nodeBounds = await mastery.locator(".react-flow__node").evaluateAll(

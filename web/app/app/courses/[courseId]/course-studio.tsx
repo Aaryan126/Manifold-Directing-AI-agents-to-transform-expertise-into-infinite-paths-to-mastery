@@ -3095,12 +3095,12 @@ function CourseFlowWorkspace({
     className: styles.courseFlowGraphEdge,
     markerEnd: {
       type: MarkerType.ArrowClosed,
-      color: edge.relationship === "assesses" ? "#d97a2b" : edge.relationship === "requires" ? "#795342" : "#7a7770",
+      color: edge.relationship === "assesses" ? "#c97029" : edge.relationship === "requires" ? "#6c7f99" : "#7a7770",
       height: 16,
       width: 16,
     },
     style: {
-      stroke: edge.relationship === "assesses" ? "#d97a2b" : edge.relationship === "requires" ? "#795342" : "#7a7770",
+      stroke: edge.relationship === "assesses" ? "#c97029" : edge.relationship === "requires" ? "#6c7f99" : "#7a7770",
       strokeDasharray: edge.relationship === "requires" ? "5 4" : undefined,
       strokeWidth: 1.6,
     },
@@ -4661,10 +4661,10 @@ function useBlueprintFlow(
   const relationColor: Record<BlueprintEdgeKind, string> = {
     contains: "#aaa69d",
     next: "#292a2f",
-    requires: "#795342",
-    teaches: "#d97a2b",
-    assesses: "#9f511b",
-    remediates_to: "#5f4033",
+    requires: "#68656d",
+    teaches: "#55768f",
+    assesses: "#b96a26",
+    remediates_to: "#a45652",
     cites: "#858179",
   };
   const relationHandles = (kind: BlueprintEdgeKind) => {

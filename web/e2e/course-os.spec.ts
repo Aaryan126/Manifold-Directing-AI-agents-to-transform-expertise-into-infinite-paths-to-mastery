@@ -936,8 +936,8 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect(sourceNode).toBeInViewport();
   await expect(conceptNode.locator("article[data-kind='concept']")).toBeVisible();
   await expect(sourceNode.locator("article[data-kind='source']")).toBeVisible();
-  await expect(conceptNode.locator("article[data-kind='concept']")).toHaveCSS("background-color", "rgb(239, 237, 232)");
-  await expect(clipNode.locator("article[data-kind='clip']")).toHaveCSS("background-color", "rgb(238, 228, 222)");
+  await expect(conceptNode.locator("article[data-kind='concept']")).toHaveCSS("background-color", "rgb(227, 237, 242)");
+  await expect(clipNode.locator("article[data-kind='clip']")).toHaveCSS("background-color", "rgb(226, 240, 223)");
   await expect(sourceNode.locator("article[data-kind='source']")).toHaveCSS("background-color", "rgb(238, 234, 226)");
   await clipNode.click();
   await expect(page.getByRole("heading", { name: "Vector direction" })).toBeVisible();

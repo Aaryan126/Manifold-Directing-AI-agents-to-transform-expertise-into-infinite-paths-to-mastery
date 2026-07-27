@@ -496,11 +496,11 @@ export default function HomePage() {
     const progress = masteryByConcept.get(node.id);
     const state = progress?.state ?? "not_started";
     const borderColor = state === "mastered"
-      ? "#795342"
+      ? "#059669"
       : state === "struggling"
-        ? "#9f511b"
+        ? "#dc2626"
         : state === "practiced"
-          ? "#d97a2b"
+          ? "#d97706"
           : "var(--border)";
     return {
       id: node.id,
@@ -2583,7 +2583,7 @@ export default function HomePage() {
                   <span aria-hidden="true">·</span>
                   <span><strong className="font-semibold text-foreground">{flowEdges.length}</strong> {flowEdges.length === 1 ? "prerequisite" : "prerequisites"}</span>
                   {graphTopicFocus !== "all" ? <><span aria-hidden="true">·</span><span className="font-medium text-primary">Focused view</span></> : null}
-                  <span aria-label="Node colors identify topics" className="ml-1 flex gap-1" role="img" title="Node colors identify topics"><span className="size-2 rounded-full bg-[#55545b]" /><span className="size-2 rounded-full bg-[#795342]" /><span className="size-2 rounded-full bg-[#d97a2b]" /></span>
+                  <span aria-label="Node colors identify topics" className="ml-1 flex gap-1" role="img" title="Node colors identify topics"><span className="size-2 rounded-full bg-blue-600" /><span className="size-2 rounded-full bg-emerald-600" /><span className="size-2 rounded-full bg-amber-600" /></span>
                 </div>
                 <div className="h-[700px] min-w-0">
                   <ReactFlow
@@ -3332,12 +3332,12 @@ function formatDuration(seconds: number) {
 }
 
 const graphTopicPalette = [
-  { background: "#fff0e3", border: "#c76a25", edge: "#d97a2b" },
-  { background: "#eee4de", border: "#795342", edge: "#9a6a51" },
-  { background: "#f1f0ed", border: "#68666d", edge: "#8a8881" },
-  { background: "#f7e6d8", border: "#9f511b", edge: "#c76a25" },
-  { background: "#e9ddd6", border: "#5f4033", edge: "#795342" },
-  { background: "#efede8", border: "#8a8881", edge: "#aaa59d" },
+  { background: "#eff6ff", border: "#2563eb", edge: "#3b82f6" },
+  { background: "#ecfdf5", border: "#059669", edge: "#10b981" },
+  { background: "#fffbeb", border: "#d97706", edge: "#f59e0b" },
+  { background: "#fff1f2", border: "#e11d48", edge: "#f43f5e" },
+  { background: "#f5f5f4", border: "#57534e", edge: "#78716c" },
+  { background: "#ecfeff", border: "#0891b2", edge: "#06b6d4" },
 ] as const;
 
 function graphTopicColors(topicIndex: number) {

@@ -1528,9 +1528,9 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintRelationshipFilters input { accent-color: #24252a; height: 14px; margin: 0; width: 14px; }
 .blueprintRelationshipFilters i { background: #8d8980; border-radius: 10px; height: 3px; width: 9px; }
 .blueprintRelationshipFilters i[data-kind="next"] { background: #292a2f; }
-.blueprintRelationshipFilters i[data-kind="teaches"] { background: var(--manifold-orange); }
+.blueprintRelationshipFilters i[data-kind="teaches"] { background: #55768f; }
 .blueprintRelationshipFilters i[data-kind="assesses"] { background: #b96a26; }
-.blueprintRelationshipFilters i[data-kind="remediates_to"] { background: var(--manifold-brown-strong); }
+.blueprintRelationshipFilters i[data-kind="remediates_to"] { background: #a45652; }
 .blueprintDesignActions { align-items: center; border-left: 1px solid #dfdcd5; display: flex; flex-wrap: wrap; gap: 5px; padding-left: 12px; }
 .blueprintDesignActions button { align-items: center; background: #fff; border: 1px solid #d9d5cd; border-radius: 7px; color: #4e4c53; cursor: pointer; display: flex; font: inherit; font-size: 10px; font-weight: 750; gap: 5px; min-height: 32px; padding: 7px 9px; }
 .blueprintDesignActions button:hover { background: #efede8; color: #202126; }
@@ -1554,8 +1554,8 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintTypeLegend i { align-items: center; border: 1px solid #cfcbc3; border-radius: 5px; display: flex; height: 19px; justify-content: center; width: 19px; }
 .blueprintTypeLegend i[data-kind="source"] { background: #eeeae2; border-color: #aaa39a; color: #4f4b44; }
 .blueprintTypeLegend i[data-kind="topic"] { background: #e4e1da; border-color: #8d887f; color: #25262b; }
-.blueprintTypeLegend i[data-kind="concept"] { background: var(--manifold-grey-soft); border-color: #aaa59d; color: var(--manifold-graphite); }
-.blueprintTypeLegend i[data-kind="clip"] { background: var(--manifold-brown-soft); border-color: #b49381; color: var(--manifold-brown-strong); }
+.blueprintTypeLegend i[data-kind="concept"] { background: #e3edf2; border-color: #8fa8b5; color: #39586c; }
+.blueprintTypeLegend i[data-kind="clip"] { background: #e2f0df; border-color: #82a77b; color: #426b3e; }
 .blueprintTypeLegend i[data-kind="question"] { background: #ffecd7; border-color: #d29860; color: #a85819; }
 .blueprintTypeLegend i svg { height: 11px; width: 11px; }
 .blueprintBody { display: grid; flex: 1; grid-template-columns: 254px minmax(0, 1fr); min-height: 0; }
@@ -1572,9 +1572,9 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintOutline > div { border-top: 1px solid #e4e1da; margin-top: 8px; padding-top: 8px; }
 .blueprintOutline > div > button ~ button { align-items: center; font-size: 11.5px; margin-top: 2px; padding-left: 35px; }
 .blueprintOutline i { background: #b8b5ae; border-radius: 50%; flex: 0 0 auto; height: 8px; width: 8px; }
-.blueprintOutline i[data-state="mastered"] { background: var(--manifold-brown); }
+.blueprintOutline i[data-state="mastered"] { background: #568a4d; }
 .blueprintOutline i[data-state="struggling"] { background: #d37626; }
-.blueprintOutline i[data-state="practiced"] { background: var(--manifold-orange); }
+.blueprintOutline i[data-state="practiced"] { background: #4d68a8; }
 .blueprintCanvas { background: #fff; min-height: 0; overflow: hidden; position: relative; }
 .blueprintCanvas > :global(.react-flow) { inset: 0; position: absolute; }
 .blueprintLayoutLoading { align-items: center; color: #68666d; display: flex; font-size: 12px; gap: 9px; left: 50%; pointer-events: none; position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 6; }
@@ -1585,10 +1585,10 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintTypedNode[data-kind="source"]::before { background: #77736b; }
 .blueprintTypedNode[data-kind="topic"] { background: #e4e1da; border-color: #8d887f; }
 .blueprintTypedNode[data-kind="topic"]::before { background: #25262b; }
-.blueprintTypedNode[data-kind="concept"] { background: var(--manifold-grey-soft); border-color: #aaa59d; }
-.blueprintTypedNode[data-kind="concept"]::before { background: var(--manifold-graphite); }
-.blueprintTypedNode[data-kind="clip"] { background: var(--manifold-brown-soft); border-color: #b49381; }
-.blueprintTypedNode[data-kind="clip"]::before { background: var(--manifold-brown); }
+.blueprintTypedNode[data-kind="concept"] { background: #e3edf2; border-color: #8fa8b5; }
+.blueprintTypedNode[data-kind="concept"]::before { background: #55768f; }
+.blueprintTypedNode[data-kind="clip"] { background: #e2f0df; border-color: #82a77b; }
+.blueprintTypedNode[data-kind="clip"]::before { background: #5e8c57; }
 .blueprintTypedNode[data-kind="question"] { background: #ffecd7; border-color: #d29860; }
 .blueprintTypedNode[data-kind="question"]::before { background: #c8752d; }
 .blueprintTypedNode[data-risk="true"] { border-color: #d67a2d; box-shadow: 0 0 0 2px rgb(214 122 45 / 12%), 0 8px 22px rgb(34 35 39 / 7%); }
@@ -1713,9 +1713,9 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintRelationshipChoices > button { align-items: center; background: #f7f5f1; border: 1px solid #dedad2; border-radius: 10px; color: #24252a; cursor: pointer; display: grid; gap: 12px; grid-template-columns: 12px 1fr 18px; padding: 12px 14px; text-align: left; }
 .blueprintRelationshipChoices > button:hover { background: #fff; border-color: #9b978f; }
 .blueprintRelationshipChoices > button > i { background: #77747c; border-radius: 999px; height: 9px; width: 9px; }
-.blueprintRelationshipChoices > button > i[data-kind="teaches"] { background: var(--manifold-orange); }
+.blueprintRelationshipChoices > button > i[data-kind="teaches"] { background: #55768f; }
 .blueprintRelationshipChoices > button > i[data-kind="assesses"] { background: #b96a26; }
-.blueprintRelationshipChoices > button > i[data-kind="remediates_to"] { background: var(--manifold-brown-strong); }
+.blueprintRelationshipChoices > button > i[data-kind="remediates_to"] { background: #a45652; }
 .blueprintRelationshipChoices > button > span { display: grid; gap: 3px; }
 .blueprintRelationshipChoices strong { font-size: 12px; }
 .blueprintRelationshipChoices small { color: #747179; font-size: 10px; }
@@ -1844,7 +1844,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintLegend { align-items: center; border-bottom: 1px solid #e4e1da; color: #6d6a72; display: flex; flex-wrap: wrap; font-size: 10px; gap: 17px; margin-bottom: 3px; padding: 0 4px 13px; }
 .blueprintLegend span { align-items: center; display: flex; gap: 6px; }
 .blueprintLegend i { background: #c9c6bf; border-radius: 2px; height: 10px; width: 3px; }
-.blueprintLegend i[data-tone="healthy"] { background: var(--manifold-brown); }
+.blueprintLegend i[data-tone="healthy"] { background: #5f8d54; }
 .blueprintLegend i[data-tone="attention"] { background: #d27729; }
 .blueprintLegend i[data-tone="private"] { background: #24252a; }
 .blueprintLegend em { color: #525057; font-style: normal; margin-left: auto; }
@@ -1862,7 +1862,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .structuredBlueprint[data-design="true"] .conceptBundleCard { cursor: grab; }
 .structuredBlueprint[data-design="true"] .conceptBundleCard:active { cursor: grabbing; }
 .conceptBundleCard::before { background: #c7c4bd; border-radius: 10px 0 0 10px; bottom: -1px; content: ""; left: -1px; position: absolute; top: -1px; width: 4px; }
-.conceptBundleCard[data-tone="healthy"]::before { background: var(--manifold-brown); }
+.conceptBundleCard[data-tone="healthy"]::before { background: #5f8d54; }
 .conceptBundleCard[data-tone="attention"]::before { background: #d27729; }
 .conceptBundleCard[data-tone="private"]::before { background: #24252a; }
 .conceptBundleCard:hover,.conceptBundleCard[data-selected="true"] { border-color: #9b978f; box-shadow: 0 8px 22px rgb(32 33 37 / 9%); transform: translateY(-1px); }
@@ -2171,8 +2171,8 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 
 .courseFlowGraphUnit {
   align-items: start;
-  background: var(--manifold-grey-soft);
-  border: 1px solid #aaa59d;
+  background: #edf3f6;
+  border: 1px solid #9db5c3;
   border-radius: 11px;
   color: #202126;
   display: grid;
@@ -2189,7 +2189,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 }
 
 .courseFlowGraphUnit[data-relationship-target="true"] {
-  box-shadow: 0 0 0 3px var(--manifold-orange), 0 9px 24px rgb(121 83 66 / 16%);
+  box-shadow: 0 0 0 3px #5b8f52, 0 9px 24px rgb(55 105 52 / 16%);
   cursor: crosshair;
 }
 
@@ -2199,7 +2199,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 }
 
 .courseFlowGraphUnit::before {
-  background: var(--manifold-graphite);
+  background: #587b91;
   content: "";
   height: 4px;
   inset: 0 0 auto;
@@ -2213,17 +2213,17 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 
 .courseFlowGraphUnit[data-kind="quiz"]::before { background: #c96e26; }
 .courseFlowGraphUnit[data-kind="assignment"] {
-  background: var(--manifold-brown-soft);
-  border-color: #b49381;
+  background: #edf5ea;
+  border-color: #a9c19f;
 }
-.courseFlowGraphUnit[data-kind="assignment"]::before { background: var(--manifold-brown); }
+.courseFlowGraphUnit[data-kind="assignment"]::before { background: #608356; }
 .courseFlowGraphUnit[data-status="proposed"] { box-shadow: inset 0 0 0 1px #d58b45; }
 
 .courseFlowGraphUnitIcon {
   align-items: center;
   background: rgb(255 255 255 / 68%);
   border-radius: 8px;
-  color: var(--manifold-graphite);
+  color: #456b82;
   display: flex;
   height: 35px;
   justify-content: center;
@@ -2231,7 +2231,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 }
 
 .courseFlowGraphUnit[data-kind="quiz"] .courseFlowGraphUnitIcon { color: #b45f1e; }
-.courseFlowGraphUnit[data-kind="assignment"] .courseFlowGraphUnitIcon { color: var(--manifold-brown); }
+.courseFlowGraphUnit[data-kind="assignment"] .courseFlowGraphUnitIcon { color: #547b4b; }
 .courseFlowGraphUnit svg { height: 17px; width: 17px; }
 .courseFlowGraphUnit > div { display: grid; gap: 4px; min-width: 0; }
 .courseFlowGraphUnit small {
@@ -2374,7 +2374,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
   background: transparent;
   border: 0;
   border-top: 1px solid rgb(89 91 96 / 13%);
-  color: var(--manifold-graphite);
+  color: #456b82;
   cursor: pointer;
   display: flex;
   font-family: inherit;
@@ -2525,7 +2525,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 }
 
 .courseFlowCard::before {
-  background: var(--manifold-graphite);
+  background: #6b8395;
   content: "";
   height: 4px;
   inset: 0 0 auto;
@@ -2533,7 +2533,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 }
 
 .courseFlowCard[data-kind="quiz"]::before { background: #cf762c; }
-.courseFlowCard[data-kind="assignment"]::before { background: var(--manifold-brown); }
+.courseFlowCard[data-kind="assignment"]::before { background: #6d8a59; }
 .courseFlowCard[data-status="proposed"] { border-color: #ddb88e; }
 
 .courseFlowCardMain {
@@ -2557,9 +2557,9 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 
 .courseFlowIcon {
   align-items: center;
-  background: var(--manifold-grey-soft);
+  background: #edf2f5;
   border-radius: 8px;
-  color: var(--manifold-graphite);
+  color: #4f6d82;
   display: flex;
   height: 35px;
   justify-content: center;
@@ -2567,7 +2567,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 }
 
 .courseFlowCard[data-kind="quiz"] .courseFlowIcon { background: #fff0e2; color: #b86522; }
-.courseFlowCard[data-kind="assignment"] .courseFlowIcon { background: var(--manifold-brown-soft); color: var(--manifold-brown); }
+.courseFlowCard[data-kind="assignment"] .courseFlowIcon { background: #edf4ea; color: #55794e; }
 .courseFlowIcon svg { height: 17px; width: 17px; }
 
 .courseFlowCardActions {
@@ -2675,7 +2675,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .previewJourney article { grid-template-columns: 26px minmax(150px, 1fr); min-width: 210px; }
 .previewJourney article > span { align-items: center; background: #fff; border: 1px solid #ddd9d1; border-radius: 50%; display: flex; font-size: 8px; height: 26px; justify-content: center; }
 .previewJourney article[data-kind="quiz"] { background: #fff5ea; border-color: #efc79f; }
-.previewJourney article[data-kind="assignment"] { background: var(--manifold-brown-soft); border-color: #d9c7ba; }
+.previewJourney article[data-kind="assignment"] { background: #eff5ec; border-color: #c8d8c2; }
 .courseFlowDialog fieldset { border: 1px solid #dfdcd4; border-radius: 9px; padding: 12px; }
 .courseFlowDialog legend { padding: 0 6px; }
 .courseFlowDialog legend small { color: #7a777e; font-weight: 500; margin-left: 6px; text-transform: none; }

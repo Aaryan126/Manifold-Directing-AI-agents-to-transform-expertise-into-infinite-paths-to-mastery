@@ -2,14 +2,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const paletteSurfaces = [
+const chromePaletteSurfaces = [
   "app/globals.css",
-  "app/app/course-os.module.css",
   "app/landing.module.css",
-  "app/learn/learner.module.css",
-  "app/learn/learner-mastery-map.tsx",
   "app/login/login.module.css",
-  "app/workspace.tsx",
   "components/coursefoundry-shell.tsx",
   "components/instructor-production-studio.tsx",
   "components/insights-charts.tsx",
@@ -52,7 +48,7 @@ describe("Manifold brand palette", () => {
   });
 
   it("does not restore the retired green accent palette", () => {
-    const source = paletteSurfaces
+    const source = chromePaletteSurfaces
       .map((file) => readFileSync(resolve(file), "utf8").toLowerCase())
       .join("\n");
 
@@ -63,5 +59,19 @@ describe("Manifold brand palette", () => {
     expect(source).not.toMatch(
       /(emerald|green|teal|cyan|blue|indigo|violet|purple|red|rose|amber|yellow|lime)-[0-9]/,
     );
+  });
+
+  it("keeps instructional flowcharts intentionally multicolor", () => {
+    const instructorGraph = readFileSync(resolve("app/app/course-os.module.css"), "utf8");
+    const learnerGraph = readFileSync(resolve("app/learn/learner.module.css"), "utf8");
+    const legacyGraph = readFileSync(resolve("app/workspace.tsx"), "utf8");
+
+    expect(instructorGraph).toContain("background: #e3edf2");
+    expect(instructorGraph).toContain("background: #e2f0df");
+    expect(instructorGraph).toContain("background: #fff1e3");
+    expect(learnerGraph).toContain("--mastery-route-color: #26778a");
+    expect(learnerGraph).toContain("--mastery-route-color: #8556a3");
+    expect(legacyGraph).toContain('background: "#eff6ff"');
+    expect(legacyGraph).toContain('background: "#ecfdf5"');
   });
 });
