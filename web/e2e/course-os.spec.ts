@@ -722,14 +722,32 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(page.getByText(/add lectures and build their Blueprints/i)).toBeVisible();
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("heading", { name: "Needs your judgment", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Course radar" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Learner activity", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Course radar" })).toHaveCount(0);
+  const activityChart = page.getByRole("img", { name: /Daily active learners over the last seven days/ });
+  await expect(activityChart).toBeVisible();
+  await expect(activityChart.locator("[data-value]")).toHaveCount(7);
+  await expect(page.getByText("enrolled learners", { exact: true })).toBeVisible();
+  await expect(page.getByText("new this week", { exact: true })).toBeVisible();
+  const priorityPanel = page.getByRole("article").filter({
+    has: page.getByRole("heading", { name: "Needs your judgment", exact: true }),
+  });
+  const learnerActivityPanel = page.getByRole("article").filter({
+    has: page.getByRole("heading", { name: "Learner activity", exact: true }),
+  });
+  const priorityBounds = await priorityPanel.boundingBox();
+  const activityBounds = await learnerActivityPanel.boundingBox();
+  expect(priorityBounds).not.toBeNull();
+  expect(activityBounds).not.toBeNull();
+  expect(Math.abs(priorityBounds!.y - activityBounds!.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(priorityBounds!.width - activityBounds!.width)).toBeLessThanOrEqual(2);
+  expect(Math.abs(priorityBounds!.height - activityBounds!.height)).toBeLessThanOrEqual(1);
+  expect(priorityBounds!.x).toBeLessThan(activityBounds!.x);
   const intelligenceHeadline = page.getByRole("heading", { name: /2 of 2 open issues/i });
   await expect(intelligenceHeadline).toBeVisible();
   expect(await intelligenceHeadline.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await expect(page.getByText("Portfolio summary", { exact: true })).toHaveCount(0);
   await expect(page.getByPlaceholder("Ask Manifold anything…")).toBeVisible();
-  await expect(page.getByRole("columnheader", { name: "Clip completion" })).toBeVisible();
-  await expect(page.getByRole("columnheader", { name: "Agent" })).toHaveCSS("text-align", "center");
   await expect(page.getByLabel("Suggested commands").getByRole("button")).toHaveCount(4);
   await page.getByRole("button", { name: "Find confident misconceptions" }).click();
   await page.getByRole("button", { name: "Ask Manifold" }).click();

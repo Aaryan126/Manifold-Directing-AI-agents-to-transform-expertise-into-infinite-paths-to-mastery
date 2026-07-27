@@ -30,7 +30,6 @@ import { clearDevelopmentSession, readDevelopmentSession } from "../developmentS
 
 import {
   courseState,
-  type CourseRadarItem,
   type CourseSummary,
   type DashboardCommandResult,
   type DashboardSnapshot,
@@ -253,9 +252,8 @@ export function TeacherDashboard() {
                   )}
                 </div>
               </article>
+              <LearnerActivity dashboard={dashboard} />
             </section>
-
-            <CourseRadar courses={dashboard.course_radar ?? []} />
 
             <section className={styles.coursesSection} aria-labelledby="courses-title">
               <div className={styles.sectionHeading}>
@@ -606,47 +604,61 @@ function IntelligenceBrief({
   );
 }
 
-function CourseRadar({ courses }: { courses: CourseRadarItem[] }) {
+function LearnerActivity({ dashboard }: { dashboard: DashboardSnapshot }) {
+  const history = dashboard.activity_history;
+  const peak = Math.max(1, ...history.map((point) => point.active_learners));
+  const latest = history.at(-1)?.active_learners ?? 0;
+  const previous = history.at(-2)?.active_learners ?? 0;
+  const change = latest - previous;
+  const trend = change === 0
+    ? `Daily activity held at ${latest}.`
+    : `Daily activity ${change > 0 ? "rose" : "fell"} by ${Math.abs(change)} since yesterday.`;
+  const chartLabel = history.length
+    ? `Daily active learners over the last seven days: ${history.map((point) => `${formatActivityDate(point.date)} ${point.active_learners}`).join(", ")}.`
+    : "No daily learner activity recorded in the last seven days.";
+
   return (
-    <section className={styles.courseRadar} aria-labelledby="course-radar-title">
-      <header><div><h2 id="course-radar-title">Course radar</h2><p>Compare every live course, its learner evidence, and the specialist watching it.</p></div><span>Last 7 days</span></header>
-      {courses.length ? (
-        <div className={styles.radarScroller}>
-          <div className={styles.radarTable} role="table" aria-label="Published course intelligence">
-            <div className={styles.radarTableHead} role="row">
-              <span role="columnheader">Course</span><span role="columnheader">Activity</span><span role="columnheader">Accuracy</span><span role="columnheader">Confidence</span><span role="columnheader">Clip completion</span><span role="columnheader">Mastery</span><span role="columnheader">Open issues</span><span role="columnheader">Agent</span>
-            </div>
-            {courses.map((course) => <CourseRadarRow course={course} key={course.course_id} />)}
-          </div>
+    <article className={styles.learnerActivityPanel} aria-labelledby="learner-activity-title">
+      <header>
+        <div>
+          <h2 id="learner-activity-title">Learner activity</h2>
+          <p>Daily learners who completed a knowledge check.</p>
         </div>
-      ) : <div className={styles.radarEmpty}><Activity aria-hidden="true" /><p><strong>No published-course evidence yet.</strong> The radar activates when a course is live.</p></div>}
-    </section>
+        <span>Last 7 days</span>
+      </header>
+      <div className={styles.learnerActivitySummary}>
+        <div><strong>{dashboard.active_learners}</strong><span>enrolled learners</span></div>
+        <div><strong>+{dashboard.new_learners}</strong><span>new this week</span></div>
+      </div>
+      {history.length ? (
+        <div className={styles.learnerActivityChart} role="img" aria-label={chartLabel}>
+          {history.map((point) => (
+            <div className={styles.learnerActivityBar} data-value={point.active_learners} key={point.date}>
+              <span>
+                <b>{point.active_learners}</b>
+                <i style={{ height: `${Math.max(5, (point.active_learners / peak) * 100)}%` }} />
+              </span>
+              <small>{formatActivityDate(point.date)}</small>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className={styles.learnerActivityEmpty}>
+          <Activity aria-hidden="true" />
+          <span><strong>Collecting learner activity</strong><small>Knowledge-check activity will appear after a course is live.</small></span>
+        </div>
+      )}
+      <footer>
+        <span><i />Active through assessment evidence</span>
+        <p>{trend}</p>
+      </footer>
+    </article>
   );
 }
 
-function CourseRadarRow({ course }: { course: CourseRadarItem }) {
-  const peak = Math.max(1, ...course.activity_trend);
-  const route = `/app/courses/${course.course_id}`;
-  return (
-    <div className={styles.radarRow} role="row">
-      <Link className={styles.radarCourse} href={`${route}?view=overview`} role="cell"><strong>{course.title}</strong><small>{course.active_learners} peak active learners</small></Link>
-      <Link className={styles.radarActivity} href={`${route}?view=overview#learning-patterns`} role="cell" aria-label={`Inspect activity for ${course.title}`}>
-        <span role="img" aria-label={`Seven-day learner activity: ${course.activity_trend.join(", ")}`}>
-          {course.activity_trend.map((value, index) => <i key={index} style={{ height: `${Math.max(12, (value / peak) * 100)}%` }} />)}
-        </span>
-      </Link>
-      <RadarMetric href={`${route}?view=overview#evidence-inspector`} label="accuracy" value={percent(course.accuracy_percent)} />
-      <RadarMetric href={`${route}?view=overview#evidence-inspector`} label="confidence" note={course.confident_incorrect_attempts ? `${course.confident_incorrect_attempts} confident misses` : undefined} value={percent(course.confidence_percent)} />
-      <RadarMetric href={`${route}?view=preview`} label="clip completion" note={course.clip_completion_percent === null ? undefined : `${Math.round(100 - course.clip_completion_percent)}% drop-off`} value={percent(course.clip_completion_percent)} />
-      <RadarMetric href={`${route}?view=overview#evidence-inspector`} label="mastery" note={`+${course.mastery_movement} this week`} value={percent(course.mastery_percent)} />
-      <Link className={styles.radarIssues} data-open={course.open_issues > 0 || undefined} href={`${route}?view=overview#priority-brief`} role="cell"><strong>{course.open_issues}</strong><small>{course.open_issues === 1 ? "issue" : "issues"}</small></Link>
-      <Link className={styles.radarAgent} data-status={course.agent_status} href={`${route}?view=overview#course-team`} role="cell"><i /><span><strong>{agentStatus(course.agent_status)}</strong><small>{agentRole(course.agent_role)}</small></span></Link>
-    </div>
-  );
-}
-
-function RadarMetric({ href, label, note, value }: { href: string; label: string; note?: string; value: string }) {
-  return <Link aria-label={`Inspect ${label}`} className={styles.radarMetric} href={href} role="cell"><strong>{value}</strong><small>{note ?? (value === "—" ? "Collecting evidence" : label)}</small></Link>;
+function formatActivityDate(date: string) {
+  return new Intl.DateTimeFormat("en", { timeZone: "UTC", weekday: "short" })
+    .format(new Date(`${date}T00:00:00Z`));
 }
 
 function attentionIcon(kind: DashboardSnapshot["attention"][number]["kind"]) {
@@ -685,11 +697,4 @@ function timeOfDay() {
   if (hour < 12) return "morning";
   if (hour < 18) return "afternoon";
   return "evening";
-}
-function percent(value: number | null) { return value === null ? "—" : `${Math.round(value)}%`; }
-function agentStatus(status: CourseRadarItem["agent_status"]) {
-  return { working: "Working", ready_for_review: "Ready for review", needs_attention: "Needs attention", monitoring: "Monitoring" }[status];
-}
-function agentRole(role: CourseRadarItem["agent_role"]) {
-  return role ? { learning_analyst: "Learning analyst", curriculum_architect: "Curriculum architect", clip_editor: "Clip editor", assessment_designer: "Assessment designer" }[role] : "Course team";
 }

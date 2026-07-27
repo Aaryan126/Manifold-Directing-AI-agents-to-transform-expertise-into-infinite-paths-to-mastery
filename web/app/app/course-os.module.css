@@ -360,18 +360,24 @@
 .sectionHeading > span { color: var(--os-subtle); font-size: 14px; }
 
 .dashboardOperations {
-  display: block;
+  align-items: stretch;
+  display: grid;
+  gap: 22px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.priorityPanel {
+.priorityPanel,
+.learnerActivityPanel {
   background: #fff;
   border: 1px solid var(--os-line);
   border-radius: 13px;
+  height: 100%;
   min-width: 0;
   overflow: hidden;
 }
 
 .priorityPanel > header,
+.learnerActivityPanel > header,
 .courseHealth > header {
   align-items: flex-start;
   display: flex;
@@ -380,6 +386,7 @@
 }
 
 .priorityPanel h2,
+.learnerActivityPanel h2,
 .courseHealth h2 {
   font-family: "Source Serif 4 Variable", Georgia, serif;
   font-size: 23px;
@@ -389,8 +396,10 @@
 }
 
 .priorityPanel header p,
+.learnerActivityPanel header p,
 .courseHealth header p { color: var(--os-subtle); font-size: 13px; margin: 0; }
-.priorityPanel header > span { color: #68666d; font-size: 12px; padding-top: 7px; }
+.priorityPanel header > span,
+.learnerActivityPanel header > span { color: #68666d; font-size: 12px; padding-top: 7px; }
 .priorityPanel header button { align-items: center; background: transparent; border: 0; color: #55545b; cursor: pointer; display: flex; font: inherit; font-size: 12px; gap: 7px; padding: 6px 0 6px 10px; }
 .priorityPanel header button:hover { color: #19191e; }
 .priorityPanel header button svg { height: 14px; width: 14px; }
@@ -446,49 +455,27 @@
 .courseHealth > a:hover { background: #faf9f6; color: #1d1d22; }
 .courseHealth > a svg { height: 14px; width: 14px; }
 
-.courseRadar { background: #fff; border: 1px solid var(--os-line); border-radius: 13px; margin-top: 22px; overflow: hidden; }
-.courseRadar > header { align-items: flex-start; display: flex; justify-content: space-between; padding: 22px 24px 17px; }
-.courseRadar h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 26px; font-weight: 490; letter-spacing: -.03em; margin: 0 0 4px; }
-.courseRadar header p { color: var(--os-subtle); font-size: 13px; margin: 0; }
-.courseRadar header > span { color: #68666d; font-size: 11px; padding-top: 6px; }
-.radarScroller { overflow-x: auto; }
-.radarTable { min-width: 1160px; }
-.radarTableHead,
-.radarRow { align-items: stretch; display: grid; grid-template-columns: minmax(230px, 1.55fr) 135px repeat(4, minmax(112px, .78fr)) 96px minmax(155px, 1fr); }
-.radarTableHead { background: #f7f6f2; border-block: 1px solid #ebe8e1; color: #65636a; font-size: 10px; font-weight: 720; letter-spacing: .045em; text-transform: uppercase; }
-.radarTableHead span { align-items: center; display: flex; justify-content: center; line-height: 1.25; min-height: 44px; padding: 9px 12px; text-align: center; }
-.radarTableHead span:last-child { justify-content: center; text-align: center; width: 100%; }
-.radarRow { border-bottom: 1px solid #efede8; min-height: 104px; }
-.radarRow:last-child { border-bottom: 0; }
-.radarRow > a { border-right: 1px solid #f0eee9; color: inherit; min-width: 0; text-decoration: none; }
-.radarRow > a:last-child { border-right: 0; }
-.radarRow > a:hover { background: #faf9f6; }
-.radarCourse { display: flex; flex-direction: column; justify-content: center; padding: 16px 20px; }
-.radarCourse strong { font-size: 13px; line-height: 1.35; }
-.radarCourse small { color: #68666d; font-size: 10px; margin-top: 5px; }
-.radarActivity { align-items: center; display: flex; justify-content: center; padding: 16px; }
-.radarActivity > span { align-items: end; display: flex; gap: 4px; height: 40px; width: 82px; }
-.radarActivity i { background: #7d9c69; border-radius: 3px 3px 1px 1px; display: block; flex: 1; min-height: 4px; }
-.radarMetric,
-.radarIssues { align-items: center; display: flex; flex-direction: column; justify-content: center; padding: 12px 10px; text-align: center; }
-.radarMetric strong,
-.radarIssues strong { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 22px; font-weight: 510; }
-.radarMetric small,
-.radarIssues small { color: #68666d; font-size: 9px; line-height: 1.3; margin-top: 4px; }
-.radarIssues[data-open] strong { color: #b55f1b; }
-.radarAgent { align-items: center; display: flex; gap: 10px; padding: 14px 16px; }
-.radarAgent > i { background: #668c51; border-radius: 50%; flex: 0 0 auto; height: 8px; width: 8px; }
-.radarAgent[data-status="working"] > i { animation: radarPulse 1.4s ease-in-out infinite; background: #d57a25; box-shadow: 0 0 0 5px #fff0e0; }
-.radarAgent[data-status="ready_for_review"] > i { background: #d57a25; }
-.radarAgent[data-status="needs_attention"] > i { background: #b9483d; }
-.radarAgent span { display: grid; gap: 3px; min-width: 0; }
-.radarAgent strong { font-size: 11px; }
-.radarAgent small { color: #68666d; font-size: 9px; }
-.radarEmpty { align-items: center; color: #77757d; display: flex; gap: 12px; margin: 0 28px 26px; min-height: 88px; padding: 20px; }
-.radarEmpty svg { height: 22px; width: 22px; }
-.radarEmpty p { display: grid; font-size: 12px; gap: 4px; margin: 0; }
-.radarEmpty strong { color: #3d3c42; font-size: 13px; }
-@keyframes radarPulse { 50% { box-shadow: 0 0 0 8px rgb(213 122 37 / 6%); } }
+.learnerActivityPanel { display: flex; flex-direction: column; }
+.learnerActivitySummary { display: grid; gap: 1px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0 28px 4px; }
+.learnerActivitySummary > div { display: grid; gap: 2px; min-width: 0; padding: 1px 16px 7px 0; }
+.learnerActivitySummary > div + div { border-left: 1px solid #ebe8e1; padding-left: 18px; }
+.learnerActivitySummary strong { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 25px; font-weight: 510; line-height: 1; }
+.learnerActivitySummary span { color: #68666d; font-size: 10px; }
+.learnerActivityChart { align-items: stretch; border-bottom: 1px solid #e9e7e1; display: grid; flex: 1; gap: 10px; grid-template-columns: repeat(7, minmax(0, 1fr)); margin: 4px 28px 0; min-height: 144px; padding: 18px 6px 0; }
+.learnerActivityBar { align-items: center; display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; }
+.learnerActivityBar > span { align-items: center; display: flex; flex: 1; flex-direction: column; justify-content: flex-end; min-height: 0; width: 100%; }
+.learnerActivityBar b { color: #6b6970; font-size: 10px; font-weight: 650; margin-bottom: 5px; }
+.learnerActivityBar i { background: #7d9c69; border-radius: 5px 5px 1px 1px; box-shadow: inset 0 0 0 1px rgb(73 105 56 / 10%); display: block; min-height: 5px; width: min(24px, 52%); }
+.learnerActivityBar small { color: #68666d; font-size: 9px; margin: 8px 0 7px; text-transform: uppercase; }
+.learnerActivityEmpty { align-items: center; color: #74727a; display: flex; flex: 1; gap: 12px; margin: 0 28px; min-height: 144px; padding: 18px 6px; }
+.learnerActivityEmpty > svg { height: 22px; width: 22px; }
+.learnerActivityEmpty > span { display: grid; gap: 3px; }
+.learnerActivityEmpty strong { color: #3d3d43; font-size: 13px; }
+.learnerActivityEmpty small { font-size: 11px; line-height: 1.4; }
+.learnerActivityPanel footer { align-items: center; display: flex; gap: 14px; justify-content: space-between; min-height: 47px; padding: 10px 28px 12px; }
+.learnerActivityPanel footer > span { align-items: center; color: #66646b; display: flex; font-size: 9px; gap: 7px; white-space: nowrap; }
+.learnerActivityPanel footer > span i { background: #7d9c69; border-radius: 50%; height: 7px; width: 7px; }
+.learnerActivityPanel footer p { color: #77757c; font-size: 9px; margin: 0; text-align: right; }
 
 .courseGrid {
   display: grid;
@@ -676,6 +663,7 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 1050px) {
+  .dashboardOperations { grid-template-columns: 1fr; }
   .courseGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .briefHeading h2 { white-space: normal; }
 }
@@ -701,13 +689,15 @@
   .courseGrid { grid-template-columns: 1fr; }
   .priorityItem { grid-template-columns: 40px minmax(0, 1fr) 15px; }
   .priorityItem em { display: none; }
+  .learnerActivityPanel footer { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .learnerActivityPanel footer p { text-align: left; }
   .sectionHeading { align-items: stretch; flex-direction: column; }
   .searchBox input { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .courseCard,.priorityItem { transition: none; }
-  .spin,.skeletonGrid i,.radarAgent[data-status="working"] > i,.directorThinking i { animation: none; }
+  .spin,.skeletonGrid i,.directorThinking i { animation: none; }
 }
 
 /* Course Studio */
