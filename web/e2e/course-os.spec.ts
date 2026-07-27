@@ -1319,7 +1319,13 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await page.getByRole("button", { name: "Save learning order" }).click();
   await expect.poll(() => state.savedSequence()).toEqual(["concept-logical-2", "concept-logical"]);
   await expect(page.getByText("Private edit saved")).toBeVisible();
-  await page.getByRole("button", { name: "Prepare AI cleanup" }).click();
+  const dismissCleanupButton = page.getByRole("button", { name: "Not now" });
+  const prepareCleanupButton = page.getByRole("button", { name: "Prepare AI cleanup" });
+  await expect(dismissCleanupButton).toHaveCSS("white-space", "nowrap");
+  await expect(prepareCleanupButton).toHaveCSS("white-space", "nowrap");
+  await expect.poll(async () => (await dismissCleanupButton.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(78);
+  await expect.poll(async () => (await prepareCleanupButton.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(148);
+  await prepareCleanupButton.click();
   await expect.poll(() => state.cleanupRequests.at(-1)?.task_type).toBe("cleanup_blueprint");
   await expect.poll(() => state.cleanupRequests.at(-1)?.target_logical_artifact_id)
     .toBe("concept-logical");

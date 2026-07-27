@@ -1808,11 +1808,12 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintCanvas :global(.react-flow__controls-button:last-child),.structuredFlowCanvas :global(.react-flow__controls-button:last-child) { border-right: 0; }
 .blueprintCleanupPrompt { align-items: center; background: #f7f3ef; border-bottom: 1px solid #d9c7ba; display: flex; gap: 20px; justify-content: space-between; padding: 11px 32px; }
 .blueprintCleanupPrompt > div { align-items: center; display: flex; gap: 10px; }
+.blueprintCleanupPrompt > div:last-child { flex: 0 0 auto; }
 .blueprintCleanupPrompt > div:first-child > svg { color: var(--manifold-brown); height: 18px; width: 18px; }
 .blueprintCleanupPrompt p { display: grid; font-size: 12px; gap: 2px; margin: 0; }
 .blueprintCleanupPrompt p span { color: #68666d; }
-.blueprintCleanupPrompt button { align-items: center; background: transparent; border: 1px solid #d2c0b4; border-radius: 7px; color: #4e4c53; display: flex; font: inherit; font-size: 10px; font-weight: 750; gap: 6px; justify-content: center; min-height: 32px; padding: 7px 10px; }
-.blueprintCleanupPrompt button:last-child { background: #222328; border-color: #222328; color: #fff; }
+.blueprintCleanupPrompt button { align-items: center; background: transparent; border: 1px solid #d2c0b4; border-radius: 7px; color: #4e4c53; display: flex; font: inherit; font-size: 10px; font-weight: 750; gap: 6px; justify-content: center; min-height: 32px; min-width: 78px; padding: 7px 12px; white-space: nowrap; }
+.blueprintCleanupPrompt button:last-child { background: #222328; border-color: #222328; color: #fff; min-width: 148px; }
 .blueprintCleanupPrompt button svg { height: 13px; width: 13px; }
 .blueprintFlowNode { border: 1px solid #d9d5cc !important; border-radius: 11px !important; box-shadow: 0 7px 18px rgb(33 34 38 / 5%); padding: 0 !important; }
 .blueprintNodeLabel { display: grid; gap: 5px; padding: 14px; text-align: left; }
