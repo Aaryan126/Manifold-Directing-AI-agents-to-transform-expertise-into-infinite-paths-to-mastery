@@ -234,13 +234,19 @@ export function TeacherDashboard() {
                 </header>
                 <div className={styles.priorityList}>
                   {dashboard.attention.length ? (showAllAttention ? dashboard.attention : dashboard.attention.slice(0, 3)).map((item) => (
-                    <Link className={styles.priorityItem} data-kind={item.kind} href={`/app/courses/${item.course_id}`} key={item.id}>
+                    <Link
+                      className={styles.priorityItem}
+                      data-has-action={item.kind === "learner_insight" ? undefined : "true"}
+                      data-kind={item.kind}
+                      href={`/app/courses/${item.course_id}`}
+                      key={item.id}
+                    >
                       <span className={styles.priorityIcon}>{attentionIcon(item.kind)}</span>
                       <span>
                         <strong>{item.title}</strong>
                         <small>{item.detail}</small>
                       </span>
-                      <em>{attentionAction(item.kind)}</em>
+                      {item.kind === "learner_insight" ? null : <em>{attentionAction(item.kind)}</em>}
                       <ChevronRight aria-hidden="true" />
                     </Link>
                   )) : (
@@ -617,9 +623,10 @@ function LearnerActivity({ dashboard }: { dashboard: DashboardSnapshot }) {
       : chartInset + (index * (chartWidth - chartInset * 2)) / (history.length - 1),
     y: chartBottom - (point.active_learners / peak) * (chartBottom - chartTop),
   }));
-  const chartPath = chartPoints
-    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
-    .join(" ");
+  const chartPath = smoothActivityPath(chartPoints);
+  const areaPath = chartPoints.length
+    ? `${chartPath} L ${chartPoints.at(-1)?.x ?? chartInset} ${chartBottom} L ${chartPoints[0].x} ${chartBottom} Z`
+    : "";
   const latest = history.at(-1)?.active_learners ?? 0;
   const previous = history.at(-2)?.active_learners ?? 0;
   const change = latest - previous;
@@ -646,11 +653,13 @@ function LearnerActivity({ dashboard }: { dashboard: DashboardSnapshot }) {
       {history.length ? (
         <div className={styles.learnerActivityChart} role="img" aria-label={chartLabel}>
           <svg aria-hidden="true" className={styles.learnerActivityPlot} viewBox={`0 0 ${chartWidth} 150`}>
-            <line className={styles.learnerActivityGridLine} x1={chartInset} x2={chartWidth - chartInset} y1="73" y2="73" />
+            <line className={styles.learnerActivityGridLine} x1={chartInset} x2={chartWidth - chartInset} y1={chartTop} y2={chartTop} />
+            <line className={styles.learnerActivityGridLine} x1={chartInset} x2={chartWidth - chartInset} y1={(chartTop + chartBottom) / 2} y2={(chartTop + chartBottom) / 2} />
             <line className={styles.learnerActivityGridLine} x1={chartInset} x2={chartWidth - chartInset} y1={chartBottom} y2={chartBottom} />
-            <path className={styles.learnerActivityLine} d={chartPath} />
+            <path className={styles.learnerActivityArea} d={areaPath} data-activity-area />
+            <path className={styles.learnerActivityLine} d={chartPath} data-activity-line pathLength="1" />
             {chartPoints.map((point) => (
-              <g key={point.date}>
+              <g className={styles.learnerActivityMarker} key={point.date}>
                 <text className={styles.learnerActivityValue} textAnchor="middle" x={point.x} y={Math.max(12, point.y - 10)}>
                   {point.active_learners}
                 </text>
@@ -676,6 +685,17 @@ function LearnerActivity({ dashboard }: { dashboard: DashboardSnapshot }) {
       </footer>
     </article>
   );
+}
+
+function smoothActivityPath(points: Array<{ x: number; y: number }>) {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+
+  return points.slice(1).reduce((path, point, index) => {
+    const previous = points[index];
+    const midpoint = (previous.x + point.x) / 2;
+    return `${path} C ${midpoint} ${previous.y}, ${midpoint} ${point.y}, ${point.x} ${point.y}`;
+  }, `M ${points[0].x} ${points[0].y}`);
 }
 
 function formatActivityDate(date: string) {

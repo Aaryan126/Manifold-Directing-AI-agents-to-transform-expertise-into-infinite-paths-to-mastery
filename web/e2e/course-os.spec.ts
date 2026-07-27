@@ -751,7 +751,15 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   const activityChart = page.getByRole("img", { name: /Daily active learners over the last seven days/ });
   await expect(activityChart).toBeVisible();
   await expect(activityChart.locator("svg")).toBeVisible();
-  await expect(activityChart.locator("path")).toHaveCount(1);
+  await expect(activityChart.locator("path")).toHaveCount(2);
+  await expect(activityChart.locator("[data-activity-area]")).toBeVisible();
+  const animatedActivityLine = activityChart.locator("[data-activity-line]");
+  await expect(animatedActivityLine).toHaveAttribute("d", / C /);
+  await expect(animatedActivityLine).toHaveCSS("animation-name", /learnerActivityDraw/);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(animatedActivityLine).toHaveCSS("animation-name", "none");
+  await expect(animatedActivityLine).toHaveCSS("stroke-dashoffset", /^(0|0px)$/);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   await expect(activityChart.locator("circle")).toHaveCount(7);
   await expect(activityChart.locator("[data-value]")).toHaveCount(7);
   await expect(page.getByText("enrolled learners", { exact: true })).toBeVisible();
@@ -768,6 +776,7 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
     "color",
     "rgb(217, 122, 43)",
   );
+  await expect(learnerInsight.locator("em")).toHaveCount(0);
   const learnerActivityPanel = page.getByRole("article").filter({
     has: page.getByRole("heading", { name: "Learner activity", exact: true }),
   });
