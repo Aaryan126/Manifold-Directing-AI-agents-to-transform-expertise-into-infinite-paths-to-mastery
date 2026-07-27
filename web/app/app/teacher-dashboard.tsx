@@ -23,6 +23,7 @@ import {
   Search,
   Send,
   Trash2,
+  UserRound,
 } from "lucide-react";
 
 import { BrandMark } from "../../components/brand-mark";
@@ -336,7 +337,7 @@ export function TeacherSidebar({
           type="button"
         ><LogOut aria-hidden="true" /><span>Log out</span></button>
         <div className={styles.profileChip}>
-          <span>{initials(identity?.display_name ?? "Teacher")}</span>
+          <span><UserRound aria-hidden="true" data-profile-icon /></span>
           <div><strong>{identity?.display_name ?? "Teacher"}</strong><small>Instructor</small></div>
         </div>
         <button className={styles.sidebarToggle} onClick={onToggle} title={collapsed ? "Expand navigation" : "Collapse navigation"} type="button">
@@ -714,7 +715,6 @@ function DashboardSkeleton() {
 }
 
 function firstName(name: string) { return name.trim().split(/\s+/)[0] || "Teacher"; }
-function initials(name: string) { return name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(); }
 function timeOfDay() {
   const hour = new Date().getHours();
   if (hour < 12) return "morning";

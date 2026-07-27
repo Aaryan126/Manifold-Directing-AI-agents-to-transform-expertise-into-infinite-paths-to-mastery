@@ -721,6 +721,7 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
     "background-color",
     "rgb(255, 255, 255)",
   );
+  await expect(teacherSidebar.locator("[data-profile-icon]")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: /Good (morning|afternoon|evening), Ada\./ }),
   ).toBeVisible();
