@@ -1,4 +1,5 @@
-export const blueprintNodeMotionDuration = 420;
+export const blueprintNodeMotionDuration = 760;
+export const blueprintMotionPaintHold = 110;
 
 export type BlueprintMotionPosition = {
   x: number;
@@ -23,7 +24,7 @@ function deterministicOffset(value: string) {
   for (let index = 0; index < value.length; index += 1) {
     hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
   }
-  return ((Math.abs(hash) % 3) - 1) * 10;
+  return ((Math.abs(hash) % 3) - 1) * 22;
 }
 
 export function createBlueprintNodeMotionPlan(
@@ -37,11 +38,11 @@ export function createBlueprintNodeMotionPlan(
     const previous = previousPositions.get(node.logicalId);
     return {
       ...node,
-      delay: node.layer * 36 + Math.min(rank * 10, 40),
+      delay: node.layer * 72 + Math.min(rank * 18, 72),
       entering: !previous,
       from: previous ?? {
         x: node.position.x + deterministicOffset(node.logicalId),
-        y: node.position.y - 34 - node.layer * 4,
+        y: node.position.y - 108 - node.layer * 14,
       },
     };
   });
@@ -52,7 +53,13 @@ export function blueprintNodeMotionProgress(elapsed: number, delay: number) {
     0,
     Math.min(1, (elapsed - delay) / blueprintNodeMotionDuration),
   );
-  return 1 - ((1 - linear) ** 3);
+  return linear < 0.5
+    ? 4 * (linear ** 3)
+    : 1 - (((-2 * linear + 2) ** 3) / 2);
+}
+
+export function blueprintEnteringNodeOpacity(progress: number) {
+  return 0.14 + progress * 0.86;
 }
 
 export function blueprintMotionTotalDuration(plans: BlueprintNodeMotionPlan[]) {

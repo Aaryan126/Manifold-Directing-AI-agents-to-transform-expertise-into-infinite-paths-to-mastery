@@ -1097,10 +1097,17 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   const firstNodeStart = await firstAnimatedNode.evaluate(
     (element) => getComputedStyle(element).transform,
   );
-  await page.waitForTimeout(120);
+  const firstNodeStartOpacity = await firstAnimatedNode.evaluate(
+    (element) => Number(getComputedStyle(element).opacity),
+  );
+  expect(firstNodeStartOpacity).toBeLessThan(0.4);
+  await page.waitForTimeout(360);
   expect(await firstAnimatedNode.evaluate(
     (element) => getComputedStyle(element).transform,
   )).not.toBe(firstNodeStart);
+  expect(await firstAnimatedNode.evaluate(
+    (element) => Number(getComputedStyle(element).opacity),
+  )).toBeGreaterThan(firstNodeStartOpacity);
   await expect(page.getByRole("button", { name: "Blueprint", exact: true })).toBeVisible();
   await expect(page.locator('[data-motion-view="blueprint"]')).toHaveCSS("opacity", "1");
   await expect(page.locator('[data-motion-view="flow"]')).toHaveCount(0);

@@ -71,7 +71,9 @@ import {
 
 import { AssistantMorph } from "../../../assistant-morph";
 import {
+  blueprintEnteringNodeOpacity,
   blueprintEdgeRevealProgress,
+  blueprintMotionPaintHold,
   blueprintMotionTotalDuration,
   blueprintNodeMotionProgress,
   createBlueprintNodeMotionPlan,
@@ -3938,6 +3940,7 @@ function BlueprintWorkspace({
     let cancelled = false;
     let frame = 0;
     let attempts = 0;
+    let animationStartTimer = 0;
     let positionTimer: Timer | null = null;
     setSettledViewportKey(null);
     setAnimatingViewportKey(null);
@@ -3992,7 +3995,7 @@ function BlueprintWorkspace({
             },
             style: {
               ...node.style,
-              opacity: plan.entering ? progress : 1,
+              opacity: plan.entering ? blueprintEnteringNodeOpacity(progress) : 1,
             },
           };
         });
@@ -4021,22 +4024,24 @@ function BlueprintWorkspace({
       setSettledViewportKey(viewportFitKey);
       frame = window.requestAnimationFrame(() => {
         if (cancelled) return;
-        positionTimer = d3Timer((elapsed) => {
-          if (cancelled) {
+        animationStartTimer = window.setTimeout(() => {
+          positionTimer = d3Timer((elapsed) => {
+            if (cancelled) {
+              positionTimer?.stop();
+              return;
+            }
+            renderFrame(elapsed);
+            if (elapsed < totalDuration) return;
             positionTimer?.stop();
-            return;
-          }
-          renderFrame(elapsed);
-          if (elapsed < totalDuration) return;
-          positionTimer?.stop();
-          previousNodePositions.current = new Map(finalNodes.map((node) => [
-            node.data.artifact.logical_id,
-            node.position,
-          ]));
-          setAnimatedGraph(null);
-          setAnimatingViewportKey(null);
-          setCompletedMotionKey(viewportFitKey);
-        });
+            previousNodePositions.current = new Map(finalNodes.map((node) => [
+              node.data.artifact.logical_id,
+              node.position,
+            ]));
+            setAnimatedGraph(null);
+            setAnimatingViewportKey(null);
+            setCompletedMotionKey(viewportFitKey);
+          });
+        }, blueprintMotionPaintHold);
       });
     };
     const timer = window.setTimeout(() => {
@@ -4046,6 +4051,7 @@ function BlueprintWorkspace({
       cancelled = true;
       positionTimer?.stop();
       window.clearTimeout(timer);
+      window.clearTimeout(animationStartTimer);
       window.cancelAnimationFrame(frame);
     };
   }, [flow.layoutReady, flow.nodes.length, flowInstance, reducedMotion, viewportFitKey]);
@@ -4429,7 +4435,7 @@ function BlueprintWorkspace({
             initial={false}
             transition={reducedMotion
               ? { duration: 0 }
-              : { duration: 0.24, ease: interfaceEase }}
+              : { duration: 0.08, ease: interfaceEase }}
           >
             <ReactFlow
               edgeTypes={blueprintEdgeTypes}

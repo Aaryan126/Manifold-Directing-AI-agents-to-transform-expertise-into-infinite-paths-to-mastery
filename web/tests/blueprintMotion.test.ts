@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   blueprintEdgeRevealProgress,
+  blueprintEnteringNodeOpacity,
   blueprintMotionTotalDuration,
   blueprintNodeMotionDuration,
   blueprintNodeMotionProgress,
@@ -19,7 +20,7 @@ describe("Blueprint node motion", () => {
   it("introduces semantic layers in order from above their final positions", () => {
     const plans = createBlueprintNodeMotionPlan(nodes, new Map());
 
-    expect(plans.map((plan) => plan.delay)).toEqual([0, 36, 72, 108]);
+    expect(plans.map((plan) => plan.delay)).toEqual([0, 72, 144, 216]);
     plans.forEach((plan) => {
       expect(plan.entering).toBe(true);
       expect(plan.from.y).toBeLessThan(plan.position.y);
@@ -49,6 +50,12 @@ describe("Blueprint node motion", () => {
       plans[0].delay + blueprintNodeMotionDuration,
       plans[0].delay,
     )).toBe(1);
+    expect(blueprintNodeMotionProgress(
+      plans[0].delay + blueprintNodeMotionDuration / 2,
+      plans[0].delay,
+    )).toBe(0.5);
+    expect(blueprintEnteringNodeOpacity(0)).toBe(0.14);
+    expect(blueprintEnteringNodeOpacity(1)).toBe(1);
     expect(blueprintEdgeRevealProgress(total * 0.4, total)).toBe(0);
     expect(blueprintEdgeRevealProgress(total, total)).toBe(1);
   });
