@@ -1007,14 +1007,16 @@ test("course studio exposes Blueprint, review decisions, and a mobile-safe layou
   await openLecture.focus();
   await openLecture.press("Enter");
   await expect(page.getByRole("heading", { name: "Forces lecture", level: 1 })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Blueprint", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Assessments", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Preview", exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Course views" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Assessments", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Preview", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Review/ })).toHaveCount(0);
   await expect(page.getByText("Lecture Blueprint", { exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "Blueprint", exact: true }).click();
-  await expect(page.getByText("Private design")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Jump to/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Relationships" })).toBeVisible();
+  await page.getByRole("button", { name: /Jump to/ }).click();
   await page.getByRole("button", { name: "Net force 1 concepts" }).click();
+  await page.getByRole("button", { name: /Jump to/ }).click();
   await expect(page.getByRole("button", { name: "Vector addition", exact: true })).toBeVisible();
   await expect(page.locator('[data-motion-scope="page-enter"]')).toHaveCSS("opacity", "1");
   await expect(page.locator('[data-motion-state="ready"]')).toHaveCSS("opacity", "1");
@@ -1102,33 +1104,24 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect(page.getByRole("button", { name: "Course Flow" })).toBeVisible();
   await page.getByRole("button", { name: "Course Flow" }).click();
   await page.getByText("Forces lecture", { exact: true }).click();
-  await expect(page.getByRole("button", { name: "Blueprint", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Blueprint", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Jump to/ })).toBeVisible();
   await expect(page.locator('[data-motion-view="blueprint"]')).toHaveCSS("opacity", "1");
   await expect(page.locator('[data-motion-view="flow"]')).toHaveCount(0);
   await expect(page.locator('[data-motion-scope="blueprint-enter"]')).toBeVisible();
   await expect(page.locator('[data-motion-scope="studio-context-title"]')).toHaveText("Forces lecture");
   await expect(page.getByRole("button", { name: "Old Blueprint" })).toHaveCount(0);
-  await expect(page.getByText("Private design")).toBeVisible();
-  const blueprintSummary = page.getByRole("group", { name: "Blueprint status and metrics" });
-  await expect(blueprintSummary.getByText("50%")).toBeVisible();
-  await expect(blueprintSummary.getByText("8 attempts")).toBeVisible();
-  const blueprintMetrics = blueprintSummary.locator("[class*='blueprintCompactMetrics']");
-  await expect(blueprintMetrics).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-  await expect(blueprintMetrics).toHaveCSS("border-top-width", "0px");
-  const blueprintSummaryBounds = await blueprintSummary.boundingBox();
-  expect(blueprintSummaryBounds).not.toBeNull();
-  expect(blueprintSummaryBounds!.height).toBeLessThanOrEqual(44);
-  expect(blueprintSummaryBounds!.width).toBeGreaterThan(560);
-  expect(blueprintSummaryBounds!.width).toBeLessThan(820);
+  await expect(page.getByText("Private revision", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /Course health/ }).click();
+  const courseHealth = page.getByLabel("Course health");
+  await expect(courseHealth.getByText("50%")).toBeVisible();
+  await expect(courseHealth.getByText("8 attempts")).toBeVisible();
+  await page.getByRole("button", { name: "Close course health" }).click();
   await expect(page.getByText("Blueprint status")).toHaveCount(0);
   await expect(page.getByText("Learner-facing course")).toHaveCount(0);
   await expect(page.getByText("Adaptive course system")).toHaveCount(0);
   await expect(page.getByText("Published course", { exact: true })).toHaveCount(0);
-  const courseViews = page.getByRole("navigation", { name: "Course views" });
-  expect(await courseViews.evaluate((element) => element.parentElement?.className.includes("studioHeader")))
-    .toBe(true);
-  await expect(courseViews.getByRole("button")).toHaveCount(3);
-  await expect(courseViews.getByRole("button", { name: "Course Flow" })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Course views" })).toHaveCount(0);
   await expect(page.getByText("Lecture Blueprint", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Forces lecture", level: 1 })).toBeVisible();
   expect(await page.getByRole("button", { name: "Sources" }).evaluate(
@@ -1146,17 +1139,18 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await page.waitForTimeout(350);
   expect(await readBlueprintTransform()).toBe(initialBlueprintTransform);
   await page.getByRole("button", { name: "Live" }).click();
-  await expect(page.getByText("Published live")).toBeVisible();
+  await expect(page.getByText("Published", { exact: true })).toBeVisible();
   await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
   const liveBlueprintTransform = await readBlueprintTransform();
   await page.waitForTimeout(350);
   expect(await readBlueprintTransform()).toBe(liveBlueprintTransform);
   await page.getByRole("button", { name: "Design" }).click();
-  await expect(page.getByText("Private design")).toBeVisible();
+  await expect(page.getByText("Private revision", { exact: true })).toBeVisible();
   await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
   const blueprintMode = page.getByRole("navigation", { name: "Blueprint mode" });
-  expect(await blueprintMode.evaluate((element) => element.parentElement?.className.includes("blueprintCommandActions")))
+  expect(await blueprintMode.evaluate((element) => element.parentElement?.className.includes("blueprintFloatingToolbar")))
     .toBe(true);
+  await page.getByRole("button", { name: "Relationships" }).click();
   await expect(page.getByRole("button", { name: "Core" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "Auto arrange" })).toBeVisible();
   await expect(page.getByRole("dialog", { name: /artifact inspector/ })).toHaveCount(0);
@@ -1353,7 +1347,8 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect(page.getByRole("button", { name: "Review", exact: true })).toHaveCount(0);
   await expect(page.getByText("Human checkpoint", { exact: true })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Assessments" }).click();
+  await page.getByRole("button", { name: "More course actions" }).click();
+  await page.getByRole("menuitem", { name: /Assessment workspace/ }).click();
   await expect(page.getByRole("heading", { name: "Assessments" })).toBeVisible();
   await expect(page.getByText("What determines the direction of net force?")).toBeVisible();
   await expect(page.getByRole("button", { name: "Add assessment" })).toBeVisible();
@@ -1364,11 +1359,13 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect(page.getByRole("heading", { name: "Edit assessment" })).toBeVisible();
   await expect(page.getByText("Editing private revision", { exact: true })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Preview", exact: true }).click();
+  await page.getByRole("button", { name: "More course actions" }).click();
+  await page.getByRole("menuitem", { name: /View as learner/ }).click();
   await expect(page.getByRole("heading", { name: "Learner clip preview" })).toBeVisible();
   await expect(page.getByLabel("Force systems clip")).toBeVisible();
 
-  await page.getByRole("button", { name: "Course settings" }).click();
+  await page.getByRole("button", { name: "More course actions" }).click();
+  await page.getByRole("menuitem", { name: /Course settings/ }).click();
   await expect(page.getByText("Routing settings")).toBeVisible();
   await page.getByRole("button", { name: "Edit course default" }).click();
   await expect(page.getByRole("heading", { name: "Edit course default" })).toBeVisible();

@@ -49,8 +49,10 @@ import {
   GraduationCap,
   GitFork,
   LoaderCircle,
+  Maximize2,
   MessageCircleMore,
   MessageSquareText,
+  MoreHorizontal,
   Network,
   Paperclip,
   Pencil,
@@ -239,6 +241,8 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   const [directorOpen, setDirectorOpen] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [courseHealthOpen, setCourseHealthOpen] = useState(false);
+  const [studioMoreOpen, setStudioMoreOpen] = useState(false);
   const [lectureIntakeOpen, setLectureIntakeOpen] = useState(false);
   const [lectureCreationVideoId, setLectureCreationVideoId] = useState<string | null>(null);
   const [blueprintUndoEntries, setBlueprintUndoEntries] = useState<BlueprintUndoEntry[]>([]);
@@ -1671,6 +1675,32 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     ) ?? null,
     [activeCourseFlow, lectureFocusVideoId, workingCourseFlow],
   );
+  const focusedHealthBlueprint = blueprintMode === "design"
+    ? (focusedWorkingBlueprint ?? focusedActiveBlueprint)
+    : (focusedActiveBlueprint ?? focusedWorkingBlueprint);
+  const focusedHealthConcepts = focusedHealthBlueprint?.nodes.filter(
+    (node) => node.kind === "concept",
+  ) ?? [];
+  const focusedCoverageGaps = focusedHealthBlueprint?.uncovered_concept_ids.length ?? 0;
+  const focusedCoveragePercent = focusedHealthConcepts.length
+    ? Math.max(
+      0,
+      Math.min(
+        100,
+        Math.round(
+          ((focusedHealthConcepts.length - focusedCoverageGaps) / focusedHealthConcepts.length)
+          * 100,
+        ),
+      ),
+    )
+    : 100;
+  const focusedPendingRelationships = focusedHealthBlueprint?.edges.filter(
+    (edge) => edge.kind === "requires" && edge.status === "proposed",
+  ).length ?? 0;
+  const focusedPrivateTasks = agentTasks.filter(
+    (task) => ["queued", "running", "waiting_review"].includes(task.status),
+  ).length;
+  const focusedHealthIssues = focusedCoverageGaps + focusedPendingRelationships;
   const courseDirector = (
     <section
       className={`${styles.conversationPanel} ${focusedCreation ? styles.creationConversation : styles.dockedConversation}`}
@@ -1799,21 +1829,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
               </motion.h1>
             </AnimatePresence>
           </div>
-          {!focusedCreation && lectureFocusVideoId ? (
-            <motion.nav
-              animate={{ opacity: 1, x: 0 }}
-              aria-label="Course views"
-              className={styles.studioViewTabs}
-              initial={reducedMotion ? false : { opacity: 0, x: 8 }}
-              transition={reducedMotion
-                ? { duration: 0 }
-                : { delay: 0.06, duration: 0.24, ease: interfaceEase }}
-            >
-              <CanvasTab active={canvasView === "blueprint"} icon={<GitFork />} label="Blueprint" onClick={() => setCanvasView("blueprint")} />
-              <CanvasTab active={canvasView === "assessments"} icon={<Check />} label="Assessments" onClick={() => setCanvasView("assessments")} />
-              <CanvasTab active={canvasView === "preview"} icon={<Eye />} label="Preview" onClick={() => setCanvasView("preview")} />
-            </motion.nav>
-          ) : <span className={styles.studioHeaderSpacer} />}
+          <span className={styles.studioHeaderSpacer} />
           <div className={styles.studioHeaderActions}>
             {focusedCreation ? (
               <button className={styles.studioIntakeBack} disabled={sending && Boolean(run)} onClick={() => {
@@ -1825,13 +1841,91 @@ export function CourseStudio({ courseId }: { courseId: string }) {
             ) : null}
             {!focusedCreation ? (
               <>
-                <div className={styles.studioSettingsMenu}>
-                  <button aria-expanded={settingsOpen} aria-label="Course settings" className={styles.studioSettingsButton} onClick={() => setSettingsOpen((current) => !current)} type="button"><Settings /></button>
-                  {settingsOpen ? <CourseSettingsPopover disabled={sending} onClose={() => setSettingsOpen(false)} onRemove={removeRoutingPolicy} onSave={saveRoutingPolicy} workspace={routingWorkspace} /> : null}
-                </div>
+                {lectureFocusVideoId ? (
+                  <>
+                    {canvasView !== "blueprint" ? (
+                      <button
+                        className={styles.studioReturnToMap}
+                        onClick={() => setCanvasView("blueprint")}
+                        type="button"
+                      >
+                        <ArrowLeft />Return to map
+                      </button>
+                    ) : null}
+                    <span className={styles.studioPublicationState} data-mode={blueprintMode}>
+                      <i />
+                      {blueprintMode === "design"
+                        ? "Private revision"
+                        : course?.status === "published"
+                          ? "Published"
+                          : "Private"}
+                    </span>
+                    <div className={styles.studioHealthMenu}>
+                      <button
+                        aria-expanded={courseHealthOpen}
+                        className={styles.studioHealthButton}
+                        onClick={() => {
+                          setCourseHealthOpen((current) => !current);
+                          setStudioMoreOpen(false);
+                        }}
+                        type="button"
+                      >
+                        <Activity />
+                        <span>Course health</span>
+                        {focusedHealthIssues ? <i>{focusedHealthIssues}</i> : <Check />}
+                      </button>
+                      {courseHealthOpen ? (
+                        <section className={styles.studioHealthPopover} aria-label="Course health">
+                          <header>
+                            <div>
+                              <small>Lecture health</small>
+                              <strong>{focusedHealthIssues ? `${focusedHealthIssues} issues to review` : "Ready and covered"}</strong>
+                            </div>
+                            <button aria-label="Close course health" onClick={() => setCourseHealthOpen(false)} type="button"><X /></button>
+                          </header>
+                          <dl>
+                            <div><dt>Coverage</dt><dd>{focusedCoveragePercent}%</dd></div>
+                            <div><dt>Evidence</dt><dd>{dashboardSummary?.attempt_count ?? 0} attempts</dd></div>
+                            <div><dt>Private work</dt><dd>{focusedPrivateTasks} active</dd></div>
+                          </dl>
+                          {focusedCoverageGaps ? <p><CircleAlert />{focusedCoverageGaps} concepts still need a reviewed teaching artifact or assessment.</p> : null}
+                          {focusedPendingRelationships ? <p><GitFork />{focusedPendingRelationships} prerequisite relationships await review.</p> : null}
+                        </section>
+                      ) : null}
+                    </div>
+                  </>
+                ) : null}
+                {!lectureFocusVideoId ? (
+                  <div className={styles.studioSettingsMenu}>
+                    <button aria-expanded={settingsOpen} aria-label="Course settings" className={styles.studioSettingsButton} onClick={() => setSettingsOpen((current) => !current)} type="button"><Settings /></button>
+                    {settingsOpen ? <CourseSettingsPopover disabled={sending} onClose={() => setSettingsOpen(false)} onRemove={removeRoutingPolicy} onSave={saveRoutingPolicy} workspace={routingWorkspace} /> : null}
+                  </div>
+                ) : null}
                 <button className={styles.studioSourceButton} onClick={() => setSourcesOpen(true)} type="button">
                   <FileText /><span>Sources</span><i>{sources.length}</i>
                 </button>
+                {lectureFocusVideoId ? <div className={styles.studioMoreMenu}>
+                  <button
+                    aria-expanded={studioMoreOpen}
+                    aria-label="More course actions"
+                    className={styles.studioMoreButton}
+                    onClick={() => {
+                      setStudioMoreOpen((current) => !current);
+                      setCourseHealthOpen(false);
+                    }}
+                    type="button"
+                  >
+                    <MoreHorizontal />
+                  </button>
+                  {studioMoreOpen ? (
+                    <div className={styles.studioMorePopover} role="menu">
+                      <button onClick={() => { setCanvasView("assessments"); setStudioMoreOpen(false); }} role="menuitem" type="button"><ClipboardCheck /><span><strong>Assessment workspace</strong><small>Review every question in this lecture</small></span></button>
+                      <button onClick={() => { setCanvasView("preview"); setStudioMoreOpen(false); }} role="menuitem" type="button"><Eye /><span><strong>View as learner</strong><small>Preview the current learner experience</small></span></button>
+                      <button onClick={() => { setSettingsOpen(true); setStudioMoreOpen(false); }} role="menuitem" type="button"><Settings /><span><strong>Course settings</strong><small>Routing policy and defaults</small></span></button>
+                    </div>
+                  ) : null}
+                  {settingsOpen ? <CourseSettingsPopover disabled={sending} onClose={() => setSettingsOpen(false)} onRemove={removeRoutingPolicy} onSave={saveRoutingPolicy} workspace={routingWorkspace} /> : null}
+                </div> : null}
               </>
             ) : null}
             <div className={styles.studioStatus}>
@@ -2284,10 +2378,6 @@ function filterAssessmentWorkspaceForBlueprint(
       (clip) => clip.video_id === videoId || clipIds.has(clip.id) || topicIds.has(clip.topic_id),
     ),
   };
-}
-
-function CanvasTab({ active, badge, icon, label, onClick }: { active: boolean; badge?: number; icon: ReactNode; label: string; onClick: () => void }) {
-  return <button aria-label={label} aria-pressed={active} onClick={onClick} type="button">{icon}<span>{label}</span>{badge ? <i>{badge}</i> : null}</button>;
 }
 
 const blueprintModes: Array<{ id: BlueprintMode; label: string }> = [
@@ -3759,6 +3849,9 @@ function BlueprintWorkspace({
   const [autoArrangeVersion, setAutoArrangeVersion] = useState(0);
   const [designDialog, setDesignDialog] = useState<"topic" | "concept" | "order" | null>(null);
   const [addNodeOpen, setAddNodeOpen] = useState(false);
+  const [jumpOpen, setJumpOpen] = useState(false);
+  const [relationshipFiltersOpen, setRelationshipFiltersOpen] = useState(false);
+  const [evidenceLensOpen, setEvidenceLensOpen] = useState(false);
   const [relationshipDraft, setRelationshipDraft] = useState<BlueprintRelationshipDraft | null>(null);
   const [selectedRelationship, setSelectedRelationship] = useState<BlueprintEdge | null>(null);
   const [relationshipError, setRelationshipError] = useState<string | null>(null);
@@ -4089,188 +4182,281 @@ function BlueprintWorkspace({
           </div>
         </motion.div>
       ) : null}
-      <motion.header
-        className={styles.blueprintCommandBar}
-        variants={sectionItemVariants}
-      >
-        <div className={styles.blueprintSummaryGroup} role="group" aria-label="Blueprint status and metrics">
-          <div className={styles.blueprintStatusSummary}>
-            <p>
-              <i data-mode={mode} />
-              <strong>{mode === "design" ? "Private design" : "Published live"}</strong>
-            </p>
-          </div>
-          <div className={styles.blueprintCompactMetrics}>
-            <article title={coverageGaps ? `${coverageGaps} coverage gaps` : "Coverage complete"}>
-              <small>Coverage</small>
-              <div className={styles.blueprintCoverageValue}>
-                <strong>{coveragePercent}%</strong>
-                <span aria-hidden="true"><i style={{ width: `${coveragePercent}%` }} /></span>
-              </div>
-            </article>
-            <article>
-              <small>Evidence</small>
-              <strong>{dashboard?.attempt_count ?? 0} attempts</strong>
-            </article>
-            <article>
-              <small>Private</small>
-              <strong>{activePrivateTasks} active</strong>
-            </article>
-          </div>
-        </div>
-        <div className={styles.blueprintCommandActions}>
-          <nav className={styles.blueprintModeToggle} aria-label="Blueprint mode">
-            {blueprintModes.map((item) => (
-              <button
-                aria-pressed={mode === item.id}
-                key={item.id}
-                onClick={() => {
-                  setAutoArrangeVersion(0);
-                  onModeChange(item.id);
-                }}
-                type="button"
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
-          <button
-            className={styles.blueprintAutoArrange}
-            onClick={() => setAutoArrangeVersion((current) => current + 1)}
-            type="button"
-          >
-            <Network />Auto arrange
-          </button>
-        </div>
-      </motion.header>
-
-      {pendingEdges.length ? (
-        <div className={styles.blueprintNotice}>
-          <CircleAlert />
-          <p><strong>{pendingEdges.length} prerequisite relationships need review.</strong> They remain private until you confirm them.</p>
-        </div>
-      ) : null}
-
-      {cleanupAnchor ? (
-        <section className={styles.blueprintCleanupPrompt} aria-live="polite">
-          <div>
-            <Check />
-            <p><strong>Private edit saved</strong><span>Course Director can inspect the surrounding course and prepare optional cleanup.</span></p>
-          </div>
-          <div>
-            <button onClick={() => setCleanupAnchorLogicalId(null)} type="button">Not now</button>
-            <button disabled={cleanupRunning || disabled} onClick={() => void runCleanup()} type="button">
-              {cleanupRunning ? <LoaderCircle className={styles.spin} /> : <Wand2 />}
-              Prepare AI cleanup
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      <motion.section
-        aria-label="Blueprint graph controls"
-        className={styles.blueprintGraphControls}
-        variants={sectionItemVariants}
-      >
-        <div className={styles.blueprintRelationshipPresets}>
-          <span>Relationships</span>
-          <button
-            aria-pressed={enabledRelationships.size === coreBlueprintEdgeKinds.size
-              && [...coreBlueprintEdgeKinds].every((kind) => enabledRelationships.has(kind))}
-            onClick={showCoreRelationships}
-            type="button"
-          >
-            Core
-          </button>
-          <button
-            aria-pressed={enabledRelationships.size === blueprintEdgeKinds.length}
-            onClick={showAllRelationships}
-            type="button"
-          >
-            All
-          </button>
-        </div>
-        <details className={styles.blueprintRelationshipFilters}>
-          <summary>Choose relationships</summary>
-          <div>
-            {blueprintEdgeKinds.map((kind) => (
-              <label key={kind}>
-                <input
-                  checked={enabledRelationships.has(kind)}
-                  onChange={() => toggleRelationship(kind)}
-                  type="checkbox"
-                />
-                <i data-kind={kind} />
-                {blueprintRelationshipLabels[kind]}
-              </label>
-            ))}
-          </div>
-        </details>
-        {mode === "design" ? (
-          <div className={styles.blueprintDesignActions}>
-            <div className={styles.blueprintAddNode}>
-              <button
-                aria-expanded={addNodeOpen}
-                onClick={() => setAddNodeOpen((current) => !current)}
-                type="button"
-              >
-                <Plus />Add node<ChevronDown />
-              </button>
-              {addNodeOpen ? (
-                <div role="menu">
-                  <button onClick={() => { setAddNodeOpen(false); setDesignDialog("topic"); }} role="menuitem" type="button"><BookOpenCheck /><span><strong>Topic</strong><small>Organize part of the lecture</small></span></button>
-                  <button onClick={() => { setAddNodeOpen(false); setDesignDialog("concept"); }} role="menuitem" type="button"><BrainCircuit /><span><strong>Concept</strong><small>Add a learning objective</small></span></button>
-                  <button onClick={() => { setAddNodeOpen(false); onOpenAssessments(); }} role="menuitem" type="button"><ClipboardList /><span><strong>Assessment</strong><small>Add or edit a knowledge check</small></span></button>
-                  <button onClick={() => { setAddNodeOpen(false); onOpenSources(); }} role="menuitem" type="button"><FileText /><span><strong>Source</strong><small>Add supporting course context</small></span></button>
-                </div>
-              ) : null}
-            </div>
-            <button onClick={() => setDesignDialog("order")} type="button"><ArrowUp />Learning order</button>
-            <button
-              aria-label={undoLabel ? `Undo ${undoLabel}` : "Undo last Blueprint change"}
-              disabled={!undoLabel || undoing || disabled}
-              onClick={() => void performUndo()}
-              title={undoLabel ? `Undo ${undoLabel} (⌘Z / Ctrl+Z)` : "Nothing to undo in this session"}
-              type="button"
-            >
-              {undoing ? <LoaderCircle className={styles.spin} /> : <RotateCcw />}
-              Undo
-            </button>
-            <span className={styles.blueprintAutosaveStatus} title="Changes are saved to the private revision. Publish updates is the learner-facing gate.">
-              <Check />Saved privately
-            </span>
-          </div>
-        ) : null}
-        <div className={styles.blueprintTypeLegend} aria-label="Artifact types">
-          {(["source", "topic", "concept", "clip", "question"] as BlueprintNode["kind"][]).map((kind) => (
-            <span key={kind}><i data-kind={kind}>{blueprintKindIcon(kind)}</i>{kind}</span>
-          ))}
-        </div>
-      </motion.section>
-
       <motion.div
         className={styles.blueprintBody}
         variants={sectionItemVariants}
       >
-        <nav className={styles.blueprintOutline} aria-label="Course Blueprint outline">
-          <button aria-pressed={!focusTopicLogicalId} onClick={() => { setAutoArrangeVersion(0); setFocusTopicLogicalId(null); setSelectedLogicalId(null); }} type="button"><BookOpenCheck /><span><strong>Whole course</strong><small>{topics.length} topics · {concepts.length} concepts</small></span></button>
-          {topics.map((topic, topicIndex) => {
-            const topicConcepts = concepts.filter((concept) => blueprint.edges.some((edge) => edge.kind === "contains" && edge.source_id === topic.id && edge.target_id === concept.id));
-            return (
-              <div key={topic.id}>
-                <button aria-pressed={focusTopicLogicalId === topic.logical_id} onClick={() => { setAutoArrangeVersion(0); setFocusTopicLogicalId(topic.logical_id); setSelectedLogicalId(topic.logical_id); }} type="button"><span>{String(topicIndex + 1).padStart(2, "0")}</span><span><strong>{topic.title}</strong><small>{topicConcepts.length} concepts</small></span></button>
-                {focusTopicLogicalId === topic.logical_id ? topicConcepts.map((concept) => (
-                  <button aria-current={selectedLogicalId === concept.logical_id ? "true" : undefined} key={concept.id} onClick={() => setSelectedLogicalId(concept.logical_id)} type="button"><i data-state={masteryStateForConcept(concept.id, blueprintEvidence)} />{concept.title}</button>
-                )) : null}
-              </div>
-            );
-          })}
-        </nav>
-
         <div
           className={styles.blueprintCanvas}
           data-viewport-state={viewportReady ? "ready" : "settling"}
         >
+          <section aria-label="Blueprint graph controls" className={styles.blueprintFloatingChrome}>
+            <div className={styles.blueprintFloatingToolbar}>
+              <nav className={styles.blueprintModeToggle} aria-label="Blueprint mode">
+                {blueprintModes.map((item) => (
+                  <button
+                    aria-pressed={mode === item.id}
+                    key={item.id}
+                    onClick={() => {
+                      setAutoArrangeVersion(0);
+                      setAddNodeOpen(false);
+                      setEvidenceLensOpen(false);
+                      setJumpOpen(false);
+                      setRelationshipFiltersOpen(false);
+                      onModeChange(item.id);
+                    }}
+                    type="button"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </nav>
+
+              <div className={styles.blueprintToolbarMenu}>
+                <button
+                  aria-expanded={jumpOpen}
+                  onClick={() => {
+                    setJumpOpen((current) => !current);
+                    setAddNodeOpen(false);
+                    setEvidenceLensOpen(false);
+                    setRelationshipFiltersOpen(false);
+                  }}
+                  type="button"
+                >
+                  <Search />Jump to…
+                </button>
+                {jumpOpen ? (
+                  <nav aria-label="Course Blueprint outline" className={styles.blueprintJumpPopover}>
+                    <header><small>Navigate the lecture</small><strong>Jump to an artifact</strong></header>
+                    <button
+                      aria-pressed={!focusTopicLogicalId}
+                      onClick={() => {
+                        setAutoArrangeVersion(0);
+                        setFocusTopicLogicalId(null);
+                        setSelectedLogicalId(null);
+                        setJumpOpen(false);
+                      }}
+                      type="button"
+                    >
+                      <BookOpenCheck />
+                      <span><strong>Whole lecture</strong><small>{topics.length} topics · {concepts.length} concepts</small></span>
+                    </button>
+                    {topics.map((topic, topicIndex) => {
+                      const topicConcepts = concepts.filter((concept) => blueprint.edges.some(
+                        (edge) => edge.kind === "contains"
+                          && edge.source_id === topic.id
+                          && edge.target_id === concept.id,
+                      ));
+                      return (
+                        <div key={topic.id}>
+                          <button
+                            aria-pressed={focusTopicLogicalId === topic.logical_id}
+                            onClick={() => {
+                              setAutoArrangeVersion(0);
+                              setFocusTopicLogicalId(topic.logical_id);
+                              setSelectedLogicalId(topic.logical_id);
+                              setJumpOpen(false);
+                            }}
+                            type="button"
+                          >
+                            <span>{String(topicIndex + 1).padStart(2, "0")}</span>
+                            <span><strong>{topic.title}</strong><small>{topicConcepts.length} concepts</small></span>
+                          </button>
+                          {focusTopicLogicalId === topic.logical_id ? topicConcepts.map((concept) => (
+                            <button
+                              aria-current={selectedLogicalId === concept.logical_id ? "true" : undefined}
+                              key={concept.id}
+                              onClick={() => {
+                                setSelectedLogicalId(concept.logical_id);
+                                setJumpOpen(false);
+                              }}
+                              type="button"
+                            >
+                              <i data-state={masteryStateForConcept(concept.id, blueprintEvidence)} />
+                              {concept.title}
+                            </button>
+                          )) : null}
+                        </div>
+                      );
+                    })}
+                  </nav>
+                ) : null}
+              </div>
+
+              <div className={styles.blueprintToolbarMenu}>
+                <button
+                  aria-expanded={relationshipFiltersOpen}
+                  onClick={() => {
+                    setRelationshipFiltersOpen((current) => !current);
+                    setAddNodeOpen(false);
+                    setEvidenceLensOpen(false);
+                    setJumpOpen(false);
+                  }}
+                  type="button"
+                >
+                  <GitFork />Relationships
+                </button>
+                {relationshipFiltersOpen ? (
+                  <section className={styles.blueprintRelationshipPopover} aria-label="Relationship filters">
+                    <header>
+                      <div><small>Visible connections</small><strong>Relationships</strong></div>
+                      <div>
+                        <button
+                          aria-pressed={enabledRelationships.size === coreBlueprintEdgeKinds.size
+                            && [...coreBlueprintEdgeKinds].every((kind) => enabledRelationships.has(kind))}
+                          onClick={showCoreRelationships}
+                          type="button"
+                        >Core</button>
+                        <button
+                          aria-pressed={enabledRelationships.size === blueprintEdgeKinds.length}
+                          onClick={showAllRelationships}
+                          type="button"
+                        >All</button>
+                      </div>
+                    </header>
+                    {blueprintEdgeKinds.map((kind) => (
+                      <label key={kind}>
+                        <input
+                          checked={enabledRelationships.has(kind)}
+                          onChange={() => toggleRelationship(kind)}
+                          type="checkbox"
+                        />
+                        <i data-kind={kind} />
+                        {blueprintRelationshipLabels[kind]}
+                      </label>
+                    ))}
+                  </section>
+                ) : null}
+              </div>
+
+              {mode === "design" ? (
+                <>
+                  <div className={`${styles.blueprintAddNode} ${styles.blueprintToolbarMenu}`}>
+                    <button
+                      aria-label="Add node"
+                      aria-expanded={addNodeOpen}
+                      onClick={() => {
+                        setAddNodeOpen((current) => !current);
+                        setEvidenceLensOpen(false);
+                        setJumpOpen(false);
+                        setRelationshipFiltersOpen(false);
+                      }}
+                      type="button"
+                    >
+                      <Plus />Add<ChevronDown />
+                    </button>
+                    {addNodeOpen ? (
+                      <div role="menu">
+                        <button onClick={() => { setAddNodeOpen(false); setDesignDialog("topic"); }} role="menuitem" type="button"><BookOpenCheck /><span><strong>Topic</strong><small>Organize part of the lecture</small></span></button>
+                        <button onClick={() => { setAddNodeOpen(false); setDesignDialog("concept"); }} role="menuitem" type="button"><BrainCircuit /><span><strong>Concept</strong><small>Add a learning objective</small></span></button>
+                        <button onClick={() => { setAddNodeOpen(false); onOpenAssessments(); }} role="menuitem" type="button"><ClipboardList /><span><strong>Assessment</strong><small>Add or edit a knowledge check</small></span></button>
+                        <button onClick={() => { setAddNodeOpen(false); onOpenSources(); }} role="menuitem" type="button"><FileText /><span><strong>Source</strong><small>Add supporting course context</small></span></button>
+                      </div>
+                    ) : null}
+                  </div>
+                  <button
+                    onClick={() => setAutoArrangeVersion((current) => current + 1)}
+                    type="button"
+                  >
+                    <Network />Auto arrange
+                  </button>
+                  <button
+                    aria-label={undoLabel ? `Undo ${undoLabel}` : "Undo last Blueprint change"}
+                    disabled={!undoLabel || undoing || disabled}
+                    onClick={() => void performUndo()}
+                    title={undoLabel ? `Undo ${undoLabel} (⌘Z / Ctrl+Z)` : "Nothing to undo in this session"}
+                    type="button"
+                  >
+                    {undoing ? <LoaderCircle className={styles.spin} /> : <RotateCcw />}
+                    Undo
+                  </button>
+                  <button aria-label="Learning order" onClick={() => setDesignDialog("order")} type="button"><ArrowUp />Order</button>
+                </>
+              ) : (
+                <div className={styles.blueprintToolbarMenu}>
+                  <button
+                    aria-expanded={evidenceLensOpen}
+                    onClick={() => {
+                      setEvidenceLensOpen((current) => !current);
+                      setAddNodeOpen(false);
+                      setJumpOpen(false);
+                      setRelationshipFiltersOpen(false);
+                    }}
+                    type="button"
+                  >
+                    <Activity />Evidence lens
+                  </button>
+                  {evidenceLensOpen ? (
+                    <section className={styles.blueprintEvidencePopover} aria-label="Blueprint evidence summary">
+                      <header><small>Published learner evidence</small><strong>Course signal</strong></header>
+                      <dl>
+                        <div><dt>Coverage</dt><dd>{coveragePercent}%</dd></div>
+                        <div><dt>Attempts</dt><dd>{dashboard?.attempt_count ?? 0}</dd></div>
+                        <div><dt>Private work</dt><dd>{activePrivateTasks}</dd></div>
+                      </dl>
+                      <p>{coverageGaps ? `${coverageGaps} concepts need coverage.` : "Every concept has reviewed coverage."}</p>
+                    </section>
+                  ) : null}
+                </div>
+              )}
+
+              <button
+                aria-label="Fit whole lecture in view"
+                onClick={() => void flowInstance?.fitView({
+                  duration: reducedMotion ? 0 : 180,
+                  maxZoom: 1,
+                  padding: 0.14,
+                })}
+                title="Fit whole lecture"
+                type="button"
+              >
+                <Maximize2 />
+              </button>
+            </div>
+
+            <button
+              className={styles.blueprintFocusChip}
+              onClick={() => setJumpOpen((current) => !current)}
+              type="button"
+            >
+              <BookOpenCheck />
+              {focusTopicLogicalId
+                ? topics.find((topic) => topic.logical_id === focusTopicLogicalId)?.title ?? "Focused topic"
+                : `Whole lecture · ${topics.length} topics · ${concepts.length} concepts`}
+            </button>
+
+            {mode === "design" ? (
+              <span className={styles.blueprintFloatingSaveState} title="Changes are saved to the private revision. Publish updates is the learner-facing gate.">
+                <Check />Saved privately
+              </span>
+            ) : null}
+          </section>
+
+          <div className={styles.blueprintFloatingMessages}>
+            {pendingEdges.length ? (
+              <div className={styles.blueprintNotice}>
+                <CircleAlert />
+                <p><strong>{pendingEdges.length} prerequisite relationships need review.</strong> They remain private until you confirm them.</p>
+              </div>
+            ) : null}
+
+            {cleanupAnchor ? (
+              <section className={styles.blueprintCleanupPrompt} aria-live="polite">
+                <div>
+                  <Check />
+                  <p><strong>Private edit saved</strong><span>Course Director can inspect the surrounding course and prepare optional cleanup.</span></p>
+                </div>
+                <div>
+                  <button onClick={() => setCleanupAnchorLogicalId(null)} type="button">Not now</button>
+                  <button disabled={cleanupRunning || disabled} onClick={() => void runCleanup()} type="button">
+                    {cleanupRunning ? <LoaderCircle className={styles.spin} /> : <Wand2 />}
+                    Prepare AI cleanup
+                  </button>
+                </div>
+              </section>
+            ) : null}
+          </div>
+
           <AnimatePresence>
             {!viewportReady ? (
               <motion.div

@@ -773,7 +773,7 @@
 /* Course Studio */
 .studioApp { height: 100dvh; overflow: hidden; }
 .studioMain { background: #fff; display: flex; flex-direction: column; height: 100dvh; min-width: 0; }
-.studioHeader { align-items: center; background: rgb(251 250 247 / 96%); border-bottom: 1px solid var(--os-line); display: flex; flex: none; height: 68px; padding: 0 22px; }
+.studioHeader { align-items: center; background: rgb(251 250 247 / 96%); border-bottom: 1px solid var(--os-line); display: flex; flex: none; height: 58px; padding: 0 18px; }
 .studioTitle { align-items: center; display: flex; gap: 13px; min-width: 0; }
 .studioTitle > button { align-items: center; background: transparent; border: 1px solid #e1dfd8; border-radius: 8px; color: #6f6e75; cursor: pointer; display: flex; height: 34px; justify-content: center; padding: 0; width: 34px; }
 .studioTitle > button:hover { background: #eeece7; color: #222228; }
@@ -793,6 +793,40 @@
 .studioSourceButton:hover { background: #f4f2ed; color: #202126; }
 .studioSourceButton svg { height: 14px; width: 14px; }
 .studioSourceButton i { align-items: center; background: #efede8; border-radius: 999px; display: flex; font-size: 9px; font-style: normal; height: 19px; justify-content: center; min-width: 19px; padding: 0 5px; }
+.studioPublicationState { align-items: center; color: #59585f; display: flex; font-size: 11px; font-weight: 680; gap: 7px; padding: 0 12px; white-space: nowrap; }
+.studioPublicationState > i { background: var(--manifold-brown); border-radius: 50%; height: 7px; width: 7px; }
+.studioPublicationState[data-mode="design"] > i { background: #cf7627; }
+.studioHealthMenu,.studioMoreMenu { align-self: stretch; display: flex; position: relative; }
+.studioHealthButton,.studioMoreButton,.studioReturnToMap { align-items: center; align-self: center; background: transparent; border: 1px solid transparent; border-radius: 8px; color: #57565d; cursor: pointer; display: flex; font: inherit; font-size: 11px; font-weight: 690; gap: 7px; min-height: 36px; padding: 0 11px; }
+.studioHealthButton:hover,.studioHealthButton[aria-expanded="true"],.studioMoreButton:hover,.studioMoreButton[aria-expanded="true"],.studioReturnToMap:hover { background: #f1efe9; border-color: #dedad2; color: #202126; }
+.studioHealthButton > svg,.studioReturnToMap svg { height: 14px; width: 14px; }
+.studioHealthButton > i { align-items: center; background: #fff0e1; border-radius: 999px; color: #94561c; display: flex; font-size: 9px; font-style: normal; height: 19px; justify-content: center; min-width: 19px; padding: 0 5px; }
+.studioHealthButton > svg:last-child { color: var(--manifold-brown); height: 13px; width: 13px; }
+.studioMoreButton { height: 36px; justify-content: center; margin: auto 3px; padding: 0; width: 36px; }
+.studioMoreButton svg { height: 17px; width: 17px; }
+.studioReturnToMap { margin: auto 6px auto 0; white-space: nowrap; }
+.studioHealthPopover,.studioMorePopover { background: #fff; border: 1px solid #d9d5cd; border-radius: 11px; box-shadow: 0 16px 42px rgb(28 29 33 / 15%); position: absolute; right: 0; top: calc(100% - 3px); z-index: 45; }
+.studioHealthPopover { padding: 14px; width: 300px; }
+.studioHealthPopover > header { align-items: flex-start; display: flex; justify-content: space-between; }
+.studioHealthPopover > header > div { display: grid; gap: 3px; }
+.studioHealthPopover > header small { color: #8f531d; font-size: 9px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.studioHealthPopover > header strong { font-size: 14px; letter-spacing: -.015em; }
+.studioHealthPopover > header button { align-items: center; background: transparent; border: 0; border-radius: 6px; color: #77747b; display: flex; height: 27px; justify-content: center; width: 27px; }
+.studioHealthPopover > header button:hover { background: #f1efe9; }
+.studioHealthPopover > header svg { height: 13px; width: 13px; }
+.studioHealthPopover dl { border-block: 1px solid #e5e2dc; display: grid; gap: 9px; grid-template-columns: repeat(3, 1fr); margin: 13px 0 10px; padding: 12px 0; }
+.studioHealthPopover dl div { display: grid; gap: 4px; }
+.studioHealthPopover dt { color: #77747b; font-size: 9px; }
+.studioHealthPopover dd { font-size: 12px; font-weight: 750; margin: 0; }
+.studioHealthPopover p { align-items: flex-start; color: #68666d; display: flex; font-size: 10px; gap: 7px; line-height: 1.45; margin: 8px 0 0; }
+.studioHealthPopover p svg { color: #a65c1c; flex: 0 0 auto; height: 13px; margin-top: 1px; width: 13px; }
+.studioMorePopover { display: grid; gap: 2px; min-width: 250px; padding: 6px; }
+.studioMorePopover > button { align-items: center; background: transparent; border: 0; border-radius: 7px; color: #4e4c53; display: grid; font: inherit; gap: 9px; grid-template-columns: 25px 1fr; padding: 9px; text-align: left; }
+.studioMorePopover > button:hover { background: #f2f0eb; color: #202126; }
+.studioMorePopover > button > svg { height: 16px; width: 16px; }
+.studioMorePopover > button > span { display: grid; gap: 2px; }
+.studioMorePopover strong { font-size: 11px; }
+.studioMorePopover small { color: #77747b; font-size: 9px; font-weight: 500; }
 .studioIntakeBack,.studioSettingsButton { align-items: center; background: transparent; border: 0; color: #626168; cursor: pointer; display: flex; font: inherit; font-size: 12px; font-weight: 700; gap: 6px; padding: 0 14px; }
 .studioIntakeBack:hover,.studioSettingsButton:hover { background: #f2f0eb; color: #202126; }
 .studioIntakeBack svg,.studioSettingsButton svg { height: 16px; width: 16px; }
@@ -1633,7 +1667,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintTypeLegend i[data-kind="clip"] { background: #e2f0df; border-color: #82a77b; color: #426b3e; }
 .blueprintTypeLegend i[data-kind="question"] { background: #ffecd7; border-color: #d29860; color: #a85819; }
 .blueprintTypeLegend i svg { height: 11px; width: 11px; }
-.blueprintBody { display: grid; flex: 1; grid-template-columns: 254px minmax(0, 1fr); min-height: 0; }
+.blueprintBody { display: block; flex: 1; min-height: 0; }
 .blueprintOutline { background: #f8f7f4; border-right: 1px solid #dfdcd5; overflow: auto; padding: 12px 10px 20px; }
 .blueprintOutline button { align-items: flex-start; background: transparent; border: 1px solid transparent; border-radius: 8px; color: #55545b; cursor: pointer; display: flex; font: inherit; gap: 10px; padding: 10px; text-align: left; transition: background 120ms ease, border-color 120ms ease, color 120ms ease; width: 100%; }
 .blueprintOutline button:hover { background: #f0eee9; color: #202126; }
@@ -1650,7 +1684,68 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintOutline i[data-state="mastered"] { background: #568a4d; }
 .blueprintOutline i[data-state="struggling"] { background: #d37626; }
 .blueprintOutline i[data-state="practiced"] { background: #4d68a8; }
-.blueprintCanvas { background: #fff; min-height: 0; overflow: hidden; position: relative; }
+.blueprintCanvas { background: #fff; height: 100%; min-height: 0; overflow: hidden; position: relative; }
+.blueprintFloatingChrome { display: grid; gap: 8px; left: 18px; max-width: calc(100% - 36px); pointer-events: none; position: absolute; top: 16px; z-index: 14; }
+.blueprintFloatingToolbar { align-items: center; background: rgb(255 255 255 / 96%); border: 1px solid #d9d5cd; border-radius: 11px; box-shadow: 0 8px 24px rgb(31 32 36 / 10%); display: flex; gap: 3px; max-width: 100%; padding: 5px; pointer-events: auto; width: max-content; }
+.blueprintFloatingToolbar > button,.blueprintToolbarMenu > button { align-items: center; background: transparent; border: 0; border-radius: 7px; color: #55535a; cursor: pointer; display: flex; font: inherit; font-size: 10px; font-weight: 720; gap: 6px; min-height: 34px; padding: 0 9px; white-space: nowrap; }
+.blueprintFloatingToolbar > button:hover,.blueprintFloatingToolbar > button[aria-expanded="true"],.blueprintToolbarMenu > button:hover,.blueprintToolbarMenu > button[aria-expanded="true"] { background: #f0eee9; color: #202126; }
+.blueprintFloatingToolbar > button:disabled { color: #aaa7a0; cursor: default; }
+.blueprintFloatingToolbar > button svg,.blueprintToolbarMenu > button svg { height: 14px; width: 14px; }
+.blueprintFloatingToolbar .blueprintModeToggle { border: 0; border-radius: 8px; flex: 0 0 auto; padding: 2px; }
+.blueprintFloatingToolbar .blueprintModeToggle button { min-height: 30px; min-width: 55px; padding: 0 10px; }
+.blueprintToolbarMenu { position: relative; }
+.blueprintJumpPopover,.blueprintRelationshipPopover,.blueprintEvidencePopover { background: #fff; border: 1px solid #d9d5cd; border-radius: 11px; box-shadow: 0 16px 42px rgb(28 29 33 / 16%); left: 0; position: absolute; top: calc(100% + 8px); z-index: 32; }
+.blueprintJumpPopover { max-height: min(570px, calc(100dvh - 180px)); min-width: 310px; overflow: auto; padding: 7px; }
+.blueprintJumpPopover > header,.blueprintEvidencePopover > header { display: grid; gap: 2px; padding: 7px 9px 10px; }
+.blueprintJumpPopover header small,.blueprintEvidencePopover header small,.blueprintRelationshipPopover header small { color: #9a561d; font-size: 8px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.blueprintJumpPopover header strong,.blueprintEvidencePopover header strong,.blueprintRelationshipPopover header strong { font-size: 12px; }
+.blueprintJumpPopover button { align-items: flex-start; background: transparent; border: 1px solid transparent; border-radius: 8px; color: #55545b; cursor: pointer; display: flex; font: inherit; gap: 9px; padding: 9px; text-align: left; width: 100%; }
+.blueprintJumpPopover button:hover,.blueprintJumpPopover button[aria-pressed="true"],.blueprintJumpPopover button[aria-current="true"] { background: #f2f0eb; color: #202126; }
+.blueprintJumpPopover > button > svg { height: 16px; margin-top: 1px; width: 16px; }
+.blueprintJumpPopover button > span:last-child { display: grid; gap: 3px; min-width: 0; }
+.blueprintJumpPopover button strong { font-size: 11px; line-height: 1.35; }
+.blueprintJumpPopover button small { color: #625f67; font-size: 9px; }
+.blueprintJumpPopover > div { border-top: 1px solid #ece9e3; padding-top: 3px; }
+.blueprintJumpPopover > div > button > span:first-child { color: #625f67; flex: 0 0 24px; font-family: ui-monospace, monospace; font-size: 9px; padding-top: 2px; }
+.blueprintJumpPopover > div > button ~ button { align-items: center; font-size: 10px; padding-left: 42px; }
+.blueprintJumpPopover i { background: #b8b5ae; border-radius: 50%; flex: 0 0 auto; height: 7px; width: 7px; }
+.blueprintJumpPopover i[data-state="mastered"] { background: #568a4d; }
+.blueprintJumpPopover i[data-state="struggling"] { background: #d37626; }
+.blueprintJumpPopover i[data-state="practiced"] { background: #4d68a8; }
+.blueprintRelationshipPopover { display: grid; gap: 2px; min-width: 235px; padding: 7px; }
+.blueprintRelationshipPopover > header { align-items: center; display: flex; justify-content: space-between; padding: 7px 7px 9px; }
+.blueprintRelationshipPopover > header > div:first-child { display: grid; gap: 2px; }
+.blueprintRelationshipPopover > header > div:last-child { display: flex; gap: 3px; }
+.blueprintRelationshipPopover > header button { background: #f1efe9; border: 0; border-radius: 6px; color: #66636b; font: inherit; font-size: 8px; font-weight: 750; padding: 6px 8px; }
+.blueprintRelationshipPopover > header button[aria-pressed="true"] { background: #25262b; color: #fff; }
+.blueprintRelationshipPopover label { align-items: center; border-radius: 7px; color: #4d4b52; cursor: pointer; display: grid; font-size: 10px; gap: 8px; grid-template-columns: 16px 9px 1fr; padding: 7px 8px; }
+.blueprintRelationshipPopover label:hover { background: #f4f2ed; color: #202126; }
+.blueprintRelationshipPopover input { accent-color: #24252a; height: 14px; margin: 0; width: 14px; }
+.blueprintRelationshipPopover label > i { background: #8d8980; border-radius: 10px; height: 3px; width: 9px; }
+.blueprintRelationshipPopover label > i[data-kind="next"] { background: #292a2f; }
+.blueprintRelationshipPopover label > i[data-kind="teaches"] { background: #55768f; }
+.blueprintRelationshipPopover label > i[data-kind="assesses"] { background: #b96a26; }
+.blueprintRelationshipPopover label > i[data-kind="remediates_to"] { background: #a45652; }
+.blueprintEvidencePopover { min-width: 255px; padding: 7px; }
+.blueprintEvidencePopover dl { border-block: 1px solid #e9e6df; display: grid; gap: 8px; grid-template-columns: repeat(3, 1fr); margin: 0; padding: 10px 8px; }
+.blueprintEvidencePopover dl div { display: grid; gap: 3px; }
+.blueprintEvidencePopover dt { color: #77747b; font-size: 8px; }
+.blueprintEvidencePopover dd { font-size: 11px; font-weight: 750; margin: 0; }
+.blueprintEvidencePopover p { color: #6a6870; font-size: 9px; line-height: 1.45; margin: 9px 8px 7px; }
+.blueprintFloatingToolbar .blueprintAddNode > div { top: calc(100% + 8px); }
+.blueprintFloatingToolbar .blueprintAddNode > div > button { align-items: center; background: transparent; color: #4e4c53; min-height: 0; }
+.blueprintFloatingToolbar .blueprintAddNode > div > button:hover { background: #f2f0eb; }
+.blueprintFocusChip { align-items: center; background: rgb(255 255 255 / 94%); border: 1px solid #ddd9d1; border-radius: 999px; box-shadow: 0 4px 14px rgb(31 32 36 / 7%); color: #626067; cursor: pointer; display: flex; font: inherit; font-size: 9px; font-weight: 680; gap: 6px; min-height: 30px; padding: 0 10px; pointer-events: auto; width: max-content; }
+.blueprintFocusChip:hover { background: #fff; color: #202126; }
+.blueprintFocusChip svg { height: 13px; width: 13px; }
+.blueprintFloatingSaveState { align-items: center; color: var(--manifold-brown); display: flex; font-size: 9px; font-weight: 700; gap: 5px; padding-left: 5px; pointer-events: none; width: max-content; }
+.blueprintFloatingSaveState svg { height: 12px; width: 12px; }
+.blueprintFloatingMessages { display: grid; gap: 8px; left: 50%; max-width: min(610px, calc(100% - 40px)); pointer-events: none; position: absolute; top: 76px; transform: translateX(-50%); width: max-content; z-index: 13; }
+.blueprintFloatingMessages > * { pointer-events: auto; }
+.blueprintFloatingMessages .blueprintNotice { background: rgb(255 247 235 / 96%); border: 1px solid #e8c79f; border-radius: 9px; box-shadow: 0 6px 20px rgb(31 32 36 / 8%); padding: 9px 12px; }
+.blueprintFloatingMessages .blueprintNotice svg { height: 15px; width: 15px; }
+.blueprintFloatingMessages .blueprintNotice p { font-size: 10px; }
+.blueprintFloatingMessages .blueprintCleanupPrompt { background: rgb(255 255 255 / 97%); border: 1px solid #d8d4cc; border-radius: 10px; box-shadow: 0 9px 28px rgb(31 32 36 / 12%); padding: 10px 12px; width: min(590px, calc(100vw - 48px)); }
 .blueprintGraphStage { inset: 0; pointer-events: none; position: absolute; }
 .blueprintCanvas[data-viewport-state="ready"] .blueprintGraphStage { pointer-events: auto; }
 .blueprintGraphStage > :global(.react-flow) { height: 100%; width: 100%; }
@@ -2006,19 +2101,22 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 @media (max-width: 1180px) {
   .blueprintCommandBar { gap: 12px; }
   .blueprintCompactMetrics { display: none; }
-  .blueprintBody { grid-template-columns: 220px minmax(0, 1fr); }
+  .blueprintBody { display: block; }
   .blueprintTypeLegend { display: none; }
+  .studioHealthButton > span,.studioPublicationState { display: none; }
 }
 
 @media (max-width: 900px) {
   .blueprintCommandBar { padding-left: 20px; }
-  .blueprintBody { display: grid; grid-template-columns: 190px minmax(500px, 1fr); overflow-x: auto; }
+  .blueprintBody { display: block; overflow: hidden; }
   .blueprintGraphControls { flex-wrap: wrap; padding-left: 20px; }
   .blueprintDesignActions { border-left: 0; order: 3; padding-left: 0; width: 100%; }
   .blueprintCleanupPrompt { align-items: flex-start; flex-direction: column; padding-inline: 20px; }
   .blueprintTypeLegend { border-left: 0; max-width: 100%; overflow-x: auto; padding-left: 0; }
   .blueprintAutoArrange { margin-left: 0; }
   .blueprintInspector { max-height: calc(100% - 78px); right: 12px; top: 66px; width: min(350px, calc(100% - 24px)); }
+  .blueprintFloatingChrome { overflow-x: auto; padding-bottom: 8px; right: 12px; }
+  .blueprintFloatingToolbar { max-width: none; }
 }
 
 @media (max-width: 620px) {
