@@ -20,7 +20,7 @@ export function LearnerSidebar({ session, active }: { session: DevelopmentSessio
   return (
     <aside className={styles.dashboardSidebar} data-collapsed={collapsed || undefined}>
       <Link className={styles.wordmark} href="/learn" aria-label="Manifold learner dashboard">
-        <BrandMark />
+        <span className={styles.sidebarLogoTile}><BrandMark /></span>
         <span>Manifold</span>
       </Link>
       <nav aria-label="Learner workspace">

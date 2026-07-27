@@ -47,6 +47,17 @@
   text-decoration: none;
 }
 
+.sidebarLogoTile {
+  align-items: center;
+  background: #ffffff;
+  border-radius: 10px;
+  display: flex;
+  flex: none;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+
 .brandMark {
   display: grid;
   gap: 2px;

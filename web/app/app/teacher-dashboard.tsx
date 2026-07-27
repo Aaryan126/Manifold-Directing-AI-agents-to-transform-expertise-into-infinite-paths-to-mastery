@@ -315,7 +315,7 @@ export function TeacherSidebar({
   return (
     <aside className={compact ? styles.studioSidebar : styles.dashboardSidebar} data-collapsed={collapsed || undefined}>
       <Link className={styles.wordmark} href="/app" aria-label="Manifold teacher dashboard">
-        <BrandMark />
+        <span className={styles.sidebarLogoTile}><BrandMark /></span>
         <span>Manifold</span>
       </Link>
       <nav aria-label="Teacher workspace">

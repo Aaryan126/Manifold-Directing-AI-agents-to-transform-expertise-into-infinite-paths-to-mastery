@@ -717,6 +717,10 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
 
   const teacherSidebar = page.locator("aside").first();
   await expect(teacherSidebar).toHaveCSS("background-color", "rgb(217, 122, 43)");
+  await expect(page.getByRole("link", { name: "Manifold teacher dashboard" }).locator("[class*='sidebarLogoTile']")).toHaveCSS(
+    "background-color",
+    "rgb(255, 255, 255)",
+  );
   await expect(
     page.getByRole("heading", { name: /Good (morning|afternoon|evening), Ada\./ }),
   ).toBeVisible();
