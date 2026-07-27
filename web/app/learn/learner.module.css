@@ -375,17 +375,19 @@
 .guideLauncher { align-items: center; background: #24252a; border: 1px solid #24252a; border-radius: 999px; bottom: 24px; box-shadow: 0 12px 32px rgb(31 31 35 / 18%); color: #fff; cursor: pointer; display: flex; font: inherit; font-size: 13px; font-weight: 680; gap: 9px; min-height: 48px; padding: 0 17px; position: fixed; right: 24px; z-index: 45; }
 .guideLauncher:hover,.guideLauncher[aria-expanded="true"] { background: #393a40; }
 .guideLauncher svg { height: 18px; width: 18px; }
-.guideDock { background: #fff; bottom: 0; box-shadow: -18px 0 50px rgb(31 31 35 / 14%); position: fixed; right: 0; top: 72px; width: min(460px, calc(100vw - 76px)); z-index: 50; }
+.guideDock { background: #fff; bottom: 0; box-shadow: -18px 0 50px rgb(31 31 35 / 14%); display: flex; flex-direction: column; overflow: hidden; position: fixed; right: 0; top: 72px; transform-origin: bottom right; width: min(460px, calc(100vw - 76px)); z-index: 50; }
 .guideDockClose { align-items: center; background: #fff; border: 1px solid #dcd8d0; border-radius: 8px; color: #5e5c63; cursor: pointer; display: flex; height: 34px; justify-content: center; position: absolute; right: 16px; top: 20px; width: 34px; z-index: 2; }
 .guideDockClose:hover { background: #f1efe9; color: #202126; }
 .guideDockClose svg { height: 17px; width: 17px; }
-.guideConversation { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; height: 100%; }
-.guideConversation > header { align-items: center; border-bottom: 1px solid #e2dfd8; display: flex; min-height: 72px; padding: 14px 62px 14px 20px; }
+.guideLauncherIdentity { align-items: center; display: flex; gap: 9px; white-space: nowrap; }
+.guideMorphContent { flex: 1; min-height: 0; width: 100%; }
+.guideDockHeader { align-items: center; border-bottom: 1px solid #e2dfd8; display: flex; flex: none; justify-content: space-between; min-height: 72px; padding: 14px 16px 14px 20px; }
+.guideConversation { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; }
 .guideDockIdentity { align-items: center; display: flex; gap: 11px; min-width: 0; }
 .guideDockIdentity > svg { color: #292a30; flex: none; height: 19px; width: 19px; }
 .guideDockIdentity > div { display: grid; gap: 1px; min-width: 0; }
-.guideConversation > header h2 { font-size: 15px; font-weight: 720; letter-spacing: -.015em; margin: 0; }
-.guideConversation > header small { color: #6c6a71; font-size: 10px; }
+.guideDockHeader h2 { font-size: 15px; font-weight: 720; letter-spacing: -.015em; margin: 0; }
+.guideDockHeader small { color: #6c6a71; font-size: 10px; }
 .guideStatus { background: #f7f5f0; border-bottom: 1px solid #dfdcd5; min-height: 44px; padding: 13px 20px; }
 .guideStatus strong { display: block; font-size: 12px; line-height: 1.45; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .guideStatus strong span { color: #a65318; font-size: inherit; font-weight: 760; }

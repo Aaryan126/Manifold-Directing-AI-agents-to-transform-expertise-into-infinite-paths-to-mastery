@@ -324,6 +324,14 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   await expect(page.locator(".lucide-sparkles")).toHaveCount(0);
   await page.getByRole("button", { name: "Open Learning Assistant" }).click();
   const assistant = page.getByLabel("Learning Assistant");
+  const closeAssistant = page.getByRole("button", { name: "Close Learning Assistant" });
+  await expect(closeAssistant).toBeFocused();
+  await page.keyboard.press("Escape");
+  const openAssistant = page.getByRole("button", { name: "Open Learning Assistant" });
+  await expect(openAssistant).toBeVisible();
+  await expect(openAssistant).toBeFocused();
+  await openAssistant.click();
+  await expect(closeAssistant).toBeFocused();
   await expect(assistant.getByText("Right now:")).toBeVisible();
   await expect(assistant.getByText("Vector direction")).toBeVisible();
   const statusBounds = await assistant.locator("[class*='guideStatus']").boundingBox();
@@ -346,7 +354,8 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   expect(learnerMessageBounds).not.toBeNull();
   expect(assistantMessageBounds).not.toBeNull();
   expect(learnerMessageBounds!.x).toBeGreaterThan(assistantMessageBounds!.x);
-  await page.getByRole("button", { name: "Close Learning Assistant" }).click();
+  await closeAssistant.click();
+  await expect(openAssistant).toBeFocused();
 
   await page.getByText("Transcript", { exact: true }).click();
   await expect(page.getByLabel("Clip transcript")).toContainText(

@@ -34,6 +34,7 @@ import {
   X,
 } from "lucide-react";
 
+import { AssistantMorph } from "../../../assistant-morph";
 import { ProviderVideo } from "../../../ProviderVideo";
 import {
   readDevelopmentSession,
@@ -984,18 +985,27 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
           />
         ) : null}
 
-        <button
-          aria-expanded={guideOpen}
-          aria-label="Open Learning Assistant"
-          className={styles.guideLauncher}
-          onClick={() => setGuideOpen((open) => !open)}
-          type="button"
+        <AssistantMorph
+          closeButtonClassName={styles.guideDockClose}
+          icon={<MessageSquareText />}
+          label="Learning Assistant"
+          launcherClassName={styles.guideLauncher}
+          launcherIdentityClassName={styles.guideLauncherIdentity}
+          onOpenChange={(open) => {
+            setGuideOpen(open);
+            if (!open) {
+              setGuideResult(null);
+              setHelpPreview(null);
+            }
+          }}
+          open={guideOpen}
+          panelClassName={styles.guideDock}
+          panelContentClassName={styles.guideMorphContent}
+          panelHeaderClassName={styles.guideDockHeader}
+          panelIdentityClassName={styles.guideDockIdentity}
+          subtitle="Course-aware support"
+          surfaceId="learning-assistant-shell"
         >
-          <MessageSquareText />
-          <span>Learning Assistant</span>
-        </button>
-
-        {guideOpen ? (
           <LearningGuideDock
             actions={workspace.guide_actions}
             busy={busy}
@@ -1007,11 +1017,6 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
             messages={guideMessages}
             messageListRef={guideMessageListRef}
             onAction={(action) => void runGuideAction(action)}
-            onClose={() => {
-              setGuideOpen(false);
-              setGuideResult(null);
-              setHelpPreview(null);
-            }}
             onComposer={setGuideComposer}
             onHelpNote={setHelpNote}
             onPrompt={(prompt) => void submitGuideContent(prompt)}
@@ -1020,7 +1025,7 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
             path={path}
             sending={guideSending}
           />
-        ) : null}
+        </AssistantMorph>
 
         {modeChooserOpen ? (
           <ModeChooser
@@ -1940,7 +1945,6 @@ function LearningGuideDock({
   messages,
   messageListRef,
   onAction,
-  onClose,
   onComposer,
   onHelpNote,
   onPrompt,
@@ -1959,7 +1963,6 @@ function LearningGuideDock({
   messages: LearnerGuideMessage[];
   messageListRef: { current: HTMLDivElement | null };
   onAction: (action: string) => void;
-  onClose: () => void;
   onComposer: (value: string) => void;
   onHelpNote: (note: string) => void;
   onPrompt: (prompt: string) => void;
@@ -1976,26 +1979,7 @@ function LearningGuideDock({
     "How does mastery work?",
   ];
   return (
-    <aside aria-label="Learning Assistant" className={styles.guideDock}>
-      <button
-        aria-label="Close Learning Assistant"
-        className={styles.guideDockClose}
-        onClick={onClose}
-        type="button"
-      >
-        <X />
-      </button>
-      <section className={styles.guideConversation}>
-        <header>
-          <div className={styles.guideDockIdentity}>
-            <MessageSquareText />
-            <div>
-              <h2>Learning Assistant</h2>
-              <small>Course-aware support</small>
-            </div>
-          </div>
-        </header>
-
+    <section aria-label="Learning Assistant conversation" className={styles.guideConversation}>
         <div className={styles.guideStatus}>
           <strong>
             <span>Right now:</span>{" "}
@@ -2134,8 +2118,7 @@ function LearningGuideDock({
             </button>
           </div>
         </form>
-      </section>
-    </aside>
+    </section>
   );
 }
 

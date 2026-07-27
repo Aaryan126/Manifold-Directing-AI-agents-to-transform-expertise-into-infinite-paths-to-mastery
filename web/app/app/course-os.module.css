@@ -874,7 +874,7 @@
 }
 .workspaceStage { flex: 1; min-height: 0; position: relative; }
 .workspaceStage > .canvasPanel { height: 100%; width: 100%; }
-.directorDock { background: #fff; box-shadow: -18px 0 50px rgb(31 31 35 / 14%); inset: 56px 0 0 auto; max-width: 460px; position: absolute; width: min(42vw, 460px); z-index: 15; }
+.directorDock { background: #fff; box-shadow: -18px 0 50px rgb(31 31 35 / 14%); display: flex; flex-direction: column; inset: 56px 0 0 auto; max-width: 460px; overflow: hidden; position: absolute; transform-origin: bottom right; width: min(42vw, 460px); z-index: 15; }
 .directorDockClose { align-items: center; background: #fff; border: 1px solid #dcd8d0; border-radius: 8px; color: #5e5c63; cursor: pointer; display: flex; height: 34px; justify-content: center; position: absolute; right: 16px; top: 22px; width: 34px; z-index: 18; }
 .directorDockClose:hover { background: #f1efe9; color: #202126; }
 .directorDockClose svg { height: 17px; width: 17px; }
@@ -882,10 +882,13 @@
 .directorLauncher { align-items: center; background: #24252a; border: 1px solid #24252a; border-radius: 999px; bottom: 24px; box-shadow: 0 12px 32px rgb(31 31 35 / 18%); color: #fff; cursor: pointer; display: flex; font: inherit; font-size: 13px; font-weight: 650; gap: 9px; min-height: 48px; padding: 0 17px; position: absolute; right: 24px; z-index: 12; }
 .directorLauncher:hover,.directorLauncher[aria-expanded="true"] { background: #393a40; }
 .directorLauncher svg { height: 19px; width: 19px; }
+.directorLauncherIdentity { align-items: center; display: flex; gap: 9px; white-space: nowrap; }
+.directorMorphContent { flex: 1; min-height: 0; width: 100%; }
 .panelHeader { align-items: center; border-bottom: 1px solid #eeece7; display: flex; flex: none; height: 78px; justify-content: space-between; padding: 0 20px; }
 .directorIdentity,.panelHeaderActions { align-items: center; display: flex; gap: 11px; }
 .directorIdentity > svg { color: #292a30; height: 19px; width: 19px; }
-.panelHeader strong { font-size: 15px; font-weight: 700; letter-spacing: -0.015em; }
+.directorIdentity > div { display: grid; gap: 1px; min-width: 0; }
+.panelHeader h2 { font-size: 15px; font-weight: 700; letter-spacing: -0.015em; margin: 0; }
 .panelHeader small { color: #89878e; font-size: 11px; }
 .panelHeaderActions > button { align-items: center; background: transparent; border: 0; border-radius: 7px; color: #747279; cursor: pointer; display: flex; height: 34px; justify-content: center; width: 34px; }
 .panelHeaderActions > button:hover { background: #efede8; color: #222329; }

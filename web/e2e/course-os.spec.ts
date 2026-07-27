@@ -846,7 +846,9 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(page.getByText("Ready to review", { exact: true })).toBeVisible();
 
   await page.getByRole("heading", { name: "Forces and motion", exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/app/courses/${course.id}$`));
+  await expect(page).toHaveURL(new RegExp(`/app/courses/${course.id}$`), {
+    timeout: 15_000,
+  });
   await expect(page.getByRole("heading", { name: "Forces and motion", level: 1 })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Course views" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Assessments" })).toHaveCount(0);
@@ -854,10 +856,30 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(page.getByRole("button", { name: "Open Course Director" })).toBeVisible();
   await page.getByRole("button", { name: "Open Course Director" }).click();
   await expect(page.getByText("Your complete private draft is ready for review.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Close Course Director" })).toBeVisible();
+  const closeDirector = page.getByRole("button", { name: "Close Course Director" });
+  await expect(closeDirector).toBeVisible();
+  await expect(closeDirector).toBeFocused();
+  await page.keyboard.press("Escape");
+  const openDirector = page.getByRole("button", { name: "Open Course Director" });
+  await expect(openDirector).toBeVisible();
+  await expect(openDirector).toBeFocused();
+  await openDirector.click();
+  await expect(closeDirector).toBeFocused();
   const directorTitle = page.locator("#conversation-title");
+  const directorIdentity = directorTitle.locator("xpath=../..");
+  await expect.poll(async () => {
+    const headerBounds = await directorTitle.locator("xpath=../../..").boundingBox();
+    const identityBounds = await directorIdentity.boundingBox();
+    if (!headerBounds || !identityBounds) return Number.POSITIVE_INFINITY;
+    const topGap = identityBounds.y - headerBounds.y;
+    const bottomGap = headerBounds.y
+      + headerBounds.height
+      - identityBounds.y
+      - identityBounds.height;
+    return Math.abs(topGap - bottomGap);
+  }).toBeLessThanOrEqual(1);
   const directorHeaderBounds = await directorTitle.locator("xpath=../../..").boundingBox();
-  const directorIdentityBounds = await directorTitle.locator("..").boundingBox();
+  const directorIdentityBounds = await directorIdentity.boundingBox();
   expect(directorHeaderBounds).not.toBeNull();
   expect(directorIdentityBounds).not.toBeNull();
   const directorHeaderTopGap = directorIdentityBounds!.y - directorHeaderBounds!.y;
@@ -872,8 +894,40 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(page.getByRole("heading", { name: "Course update", level: 3 })).toBeVisible();
   expect(await page.getByText("Vector addition", { exact: true }).evaluate((element) => element.tagName)).toBe("STRONG");
   await expect(page.getByRole("listitem").filter({ hasText: "One review decision remains." })).toBeVisible();
-  await page.getByRole("button", { name: "Close Course Director" }).click();
+  await closeDirector.click();
   await expect(page.getByText("Your complete private draft is ready for review.")).toHaveCount(0);
+  await expect(openDirector).toBeFocused();
+});
+
+test("Course Director capsule expands and reverses with keyboard focus", async ({ page }) => {
+  await mockCourseOS(page);
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto(`/app/courses/${course.id}`);
+
+  const openDirector = page.getByRole("button", { name: "Open Course Director" });
+  const launcherBounds = await openDirector.boundingBox();
+  expect(launcherBounds).not.toBeNull();
+  await openDirector.click();
+
+  const director = page.getByRole("complementary", { name: "Course Director" });
+  const closeDirector = page.getByRole("button", { name: "Close Course Director" });
+  await expect(director).toBeVisible();
+  await expect(closeDirector).toBeFocused();
+  await expect.poll(async () => (await director.boundingBox())?.width ?? 0)
+    .toBeGreaterThan(launcherBounds!.width * 2);
+  const directorBounds = await director.boundingBox();
+  expect(directorBounds).not.toBeNull();
+  expect(directorBounds!.height).toBeGreaterThan(launcherBounds!.height * 4);
+
+  await page.keyboard.press("Escape");
+  await expect(director).toHaveCount(0);
+  await expect(openDirector).toBeFocused();
+
+  await openDirector.click();
+  await expect(closeDirector).toBeFocused();
+  await closeDirector.click();
+  await expect(director).toHaveCount(0);
+  await expect(openDirector).toBeFocused();
 });
 
 test("new course retries reuse one idempotency key", async ({ page }) => {

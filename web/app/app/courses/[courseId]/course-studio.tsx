@@ -66,6 +66,7 @@ import {
   X,
 } from "lucide-react";
 
+import { AssistantMorph } from "../../../assistant-morph";
 import {
   answerOutcomeSummary,
   availableBlueprintRelationshipKinds,
@@ -1639,11 +1640,6 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       aria-label={focusedCreation ? "Course Director" : undefined}
       aria-labelledby={focusedCreation ? undefined : "conversation-title"}
     >
-      {!focusedCreation ? (
-        <div className={styles.panelHeader}>
-          <div className={styles.directorIdentity}><MessageSquareText /><span><strong id="conversation-title">Course Director</strong></span></div>
-        </div>
-      ) : null}
       {composerCentered ? (
         <div className={styles.creationGreeting}>
           <SunMedium aria-hidden="true" />
@@ -1874,23 +1870,23 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                 {canvasView === "preview" ? <PreviewCanvas course={course} courseFlow={null} workspace={focusedAssessmentWorkspace} /> : null}
               </div>
               </section>
-              <button aria-expanded={directorOpen} aria-label="Open Course Director" className={styles.directorLauncher} onClick={() => setDirectorOpen((current) => !current)} type="button">
-                <MessageSquareText />
-                <span>Course Director</span>
-              </button>
-              {directorOpen ? (
-                <aside className={styles.directorDock}>
-                  <button
-                    aria-label="Close Course Director"
-                    className={styles.directorDockClose}
-                    onClick={() => setDirectorOpen(false)}
-                    type="button"
-                  >
-                    <X />
-                  </button>
-                  {courseDirector}
-                </aside>
-              ) : null}
+              <AssistantMorph
+                closeButtonClassName={styles.directorDockClose}
+                icon={<MessageSquareText />}
+                label="Course Director"
+                launcherClassName={styles.directorLauncher}
+                launcherIdentityClassName={styles.directorLauncherIdentity}
+                onOpenChange={setDirectorOpen}
+                open={directorOpen}
+                panelClassName={styles.directorDock}
+                panelContentClassName={styles.directorMorphContent}
+                panelHeaderClassName={styles.panelHeader}
+                panelIdentityClassName={styles.directorIdentity}
+                surfaceId="course-director-shell"
+                titleId="conversation-title"
+              >
+                {courseDirector}
+              </AssistantMorph>
               {sourcesOpen ? (
                 <SourcesDrawer
                   disabled={sending}
