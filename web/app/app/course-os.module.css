@@ -912,9 +912,9 @@
 .creationGreeting h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: clamp(31px, 3.1vw, 44px); font-weight: 430; letter-spacing: -0.04em; line-height: 1; margin: 0; }
 .messageList { flex: 1; min-height: 0; overflow: auto; padding: 28px 24px 38px; scroll-behavior: smooth; }
 .creationConversation .messageList { padding: 38px clamp(36px, 12vw, 220px) 190px; }
-.directorContextStatus { align-items: center; background: #f7f5f0; border: 1px solid #e2dfd8; border-radius: 9px; display: flex; gap: 6px; margin: 0 0 24px; min-height: 38px; overflow: hidden; padding: 9px 11px; }
-.directorContextStatus span { color: #a65318; flex: none; font-size: 10px; font-weight: 760; }
-.directorContextStatus strong { color: #47464c; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.directorContextStatus { align-items: baseline; background: transparent; border: 0; border-radius: 0; display: flex; gap: 6px; margin: 0 0 18px; min-height: 0; overflow: hidden; padding: 0; }
+.directorContextStatus span { color: #a65318; flex: none; font-size: 10px; font-weight: 730; }
+.directorContextStatus strong { color: #5f5d64; font-size: 11px; font-weight: 630; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .messageBubble { display: flex; gap: 10px; margin: 0 0 24px; }
 .messageBubble[data-role="instructor"] { justify-content: flex-end; }
 .messageBubble[data-role="instructor"] > div { background: #26272d; border-radius: 14px 14px 4px 14px; color: #fff; max-width: 82%; padding: 11px 13px; }
@@ -2093,6 +2093,19 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
   justify-content: flex-end;
 }
 
+.courseFlowActions .blueprintModeToggle {
+  border-radius: 10px;
+  min-height: 48px;
+  padding: 4px;
+}
+
+.courseFlowActions .blueprintModeToggle button {
+  border-radius: 7px;
+  font-size: 11.5px;
+  min-width: 76px;
+  padding: 10px 16px;
+}
+
 .courseFlowActions .activeMode {
   background: #fff;
   box-shadow: 0 2px 8px rgb(28 29 33 / 10%);
@@ -2107,15 +2120,15 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
   color: #fff;
   display: flex;
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 760;
-  gap: 7px;
-  min-height: 39px;
-  padding: 8px 13px;
+  gap: 8px;
+  min-height: 48px;
+  padding: 10px 17px;
 }
 
 .courseFlowPrimaryAction:disabled { cursor: wait; opacity: .5; }
-.courseFlowPrimaryAction svg { height: 15px; width: 15px; }
+.courseFlowPrimaryAction svg { height: 16px; width: 16px; }
 
 .secondaryAction {
   align-items: center;

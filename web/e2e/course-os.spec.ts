@@ -867,6 +867,9 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(page.getByText("Your complete private draft is ready for review.")).toHaveCount(0);
   await expect(page.getByText("Right now:")).toBeVisible();
   await expect(page.getByText("Forces and motion · Course Flow")).toBeVisible();
+  const directorContext = page.locator("[class*='directorContextStatus']");
+  await expect(directorContext).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(directorContext).toHaveCSS("border-top-width", "0px");
   await expect(page.getByText(/Welcome back, Ada/)).toBeVisible();
   await expect(page.locator('[data-motion-scope="page-enter"]')).toHaveCSS("opacity", "1");
   await expect(page.locator('[data-motion-state="ready"]')).toBeVisible();
@@ -1066,6 +1069,7 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   const courseFlowHeader = courseFlowHeading.locator("xpath=../..");
   const courseFlowCopy = courseFlowHeading.locator("..");
   const courseFlowActions = page.getByRole("button", { name: "New lecture" }).locator("..");
+  const courseFlowModeToggle = page.getByRole("button", { name: "Live", exact: true }).locator("..");
   const [flowHeaderBounds, flowCopyBounds, flowActionBounds] = await Promise.all([
     courseFlowHeader.boundingBox(),
     courseFlowCopy.boundingBox(),
@@ -1082,6 +1086,9 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
     (flowCopyBounds!.x - flowHeaderBounds!.x)
       - (flowHeaderBounds!.x + flowHeaderBounds!.width - flowActionBounds!.x - flowActionBounds!.width),
   )).toBeLessThanOrEqual(1);
+  expect((await page.getByRole("button", { name: "New lecture" }).boundingBox())?.height)
+    .toBeGreaterThanOrEqual(48);
+  expect((await courseFlowModeToggle.boundingBox())?.height).toBeGreaterThanOrEqual(48);
   const courseFlowGraph = page.locator("[data-viewport-density='close']");
   await expect(courseFlowGraph).toBeVisible();
   await expect.poll(async () => courseFlowGraph.locator(".react-flow__viewport").evaluate((element) => {

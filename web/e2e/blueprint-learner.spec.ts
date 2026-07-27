@@ -336,6 +336,9 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   await expect(
     assistant.getByText("Right now: Vector direction"),
   ).toBeVisible();
+  const assistantContext = assistant.locator("[class*='guideStatus']");
+  await expect(assistantContext).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(assistantContext).toHaveCSS("border-bottom-width", "0px");
   await expect(
     assistant.getByText(/Welcome back. You’re currently working on Vector direction/),
   ).toBeVisible();
