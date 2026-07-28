@@ -23,6 +23,7 @@ from app.course_os.models import (
     CourseAssessment,
     CourseBlueprint,
     CourseCreate,
+    CourseDecisionTrace,
     CourseFlow,
     CourseFlowEdge,
     CourseFlowModule,
@@ -38,6 +39,7 @@ from app.course_os.models import (
     CourseSummary,
     DashboardActivityPoint,
     DashboardSnapshot,
+    DecisionTraceStage,
     GenerationRun,
     GenerationRunStatus,
     GenerationTask,
@@ -1144,7 +1146,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
                       'proposed',
                       %s::jsonb
                     from videos v where v.id = %s
-                    on conflict (revision_id, video_id) do update
+                    on conflict (revision_id, video_id) where video_id is not null do update
                     set updated_at = now()
                     returning id
                     """,
@@ -1398,6 +1400,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
         task_id: UUID,
         error_message: str,
         retry: bool,
+        measurement: dict[str, Any] | None = None,
     ) -> None:
         async with await psycopg.AsyncConnection.connect(
             self._database_url,
@@ -1418,10 +1421,27 @@ class PostgresCourseOSRepository(CourseOSRepository):
                                              )
                                                else next_attempt_at end,
                         error_message = %s, lease_owner = null, lease_expires_at = null,
+                        output = case
+                          when %s::jsonb is null then output
+                          else jsonb_set(
+                            coalesce(output, '{}'::jsonb),
+                            '{measurement_attempts}',
+                            coalesce(output -> 'measurement_attempts', '[]'::jsonb)
+                              || jsonb_build_array(%s::jsonb),
+                            true
+                          )
+                        end,
                         updated_at = now()
                     where id = %s returning run_id, status
                     """,
-                    (retry, retry, error_message[:2000], task_id),
+                    (
+                        retry,
+                        retry,
+                        error_message[:2000],
+                        Jsonb(measurement) if measurement is not None else None,
+                        Jsonb(measurement) if measurement is not None else None,
+                        task_id,
+                    ),
                 )
             ).fetchone()
             if row is not None and str(row["status"]) == GenerationTaskStatus.FAILED.value:
@@ -3105,6 +3125,261 @@ class PostgresCourseOSRepository(CourseOSRepository):
                 route_actions={str(key): int(value) for key, value in row["route_actions"].items()},
             )
             for row in rows
+        )
+
+    async def decision_trace(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        revision_kind: str,
+        concept_id: UUID | None,
+    ) -> CourseDecisionTrace | None:
+        async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
+            concept = await (
+                await conn.execute(
+                    """
+                    select c.id, c.logical_id, c.name, c.description, c.review_status,
+                           t.id as topic_id, t.logical_id as topic_logical_id,
+                           t.title as topic_title, t.start_seconds, t.end_seconds,
+                           v.id as video_id,
+                           coalesce(
+                             nullif(v.source_metadata ->> 'filename', ''),
+                             'Lecture recording'
+                           ) as source_label
+                    from concepts c
+                    left join lateral (
+                      select t.*
+                      from topic_concepts tc
+                      join topics t on t.id = tc.topic_id
+                      where tc.concept_id = c.id and t.review_status <> 'dismissed'
+                      order by t.start_seconds, t.title
+                      limit 1
+                    ) t on true
+                    left join videos v on v.id = t.video_id
+                    where c.course_id = %s and c.revision_id = %s
+                      and c.review_status <> 'dismissed'
+                      and (%s::uuid is null or c.id = %s)
+                    order by
+                      exists (
+                        select 1 from learner_route_events event
+                        where event.course_id = c.course_id
+                          and event.revision_id = c.revision_id
+                          and (
+                            event.concept_id = c.id
+                            or event.target_concept_id = c.id
+                          )
+                      ) desc,
+                      c.sequence_rank,
+                      c.name
+                    limit 1
+                    """,
+                    (course_id, revision_id, concept_id, concept_id),
+                )
+            ).fetchone()
+            if concept is None:
+                return None
+
+            selected_concept_id = UUID(str(concept["id"]))
+            route = await (
+                await conn.execute(
+                    """
+                    select event.id, event.learner_id, event.attempt_id,
+                           event.mastery_before, event.mastery_after, event.action,
+                           event.target_concept_id, event.target_clip_id,
+                           event.why, event.evidence_snapshot, event.created_at,
+                           attempt.question_id, attempt.correctness, attempt.confidence,
+                           attempt.answer, attempt.purpose,
+                           question.logical_id as question_logical_id,
+                           question.body as question_body
+                    from learner_route_events event
+                    join attempts attempt on attempt.id = event.attempt_id
+                    join questions question on question.id = attempt.question_id
+                    where event.course_id = %s and event.revision_id = %s
+                      and (
+                        event.concept_id = %s
+                        or event.target_concept_id = %s
+                      )
+                    order by event.created_at desc
+                    limit 1
+                    """,
+                    (
+                        course_id,
+                        revision_id,
+                        selected_concept_id,
+                        selected_concept_id,
+                    ),
+                )
+            ).fetchone()
+
+            question = None
+            if route is not None:
+                question = {
+                    "id": route["question_id"],
+                    "logical_id": route["question_logical_id"],
+                    "body": route["question_body"],
+                }
+            if question is None:
+                question = await (
+                    await conn.execute(
+                        """
+                        select q.id, q.logical_id, q.body
+                        from question_concepts qc
+                        join questions q on q.id = qc.question_id
+                        where qc.concept_id = %s and q.revision_id = %s
+                          and q.review_status <> 'dismissed'
+                        order by qc.is_primary desc, q.created_at
+                        limit 1
+                        """,
+                        (selected_concept_id, revision_id),
+                    )
+                ).fetchone()
+
+            attempt = route
+            if attempt is None and question is not None:
+                attempt = await (
+                    await conn.execute(
+                        """
+                        select a.id as attempt_id, a.learner_id, a.question_id,
+                               a.correctness, a.confidence, a.answer, a.purpose,
+                               a.created_at
+                        from attempts a
+                        where a.question_id = %s
+                        order by a.created_at desc
+                        limit 1
+                        """,
+                        (question["id"],),
+                    )
+                ).fetchone()
+
+            clip = await (
+                await conn.execute(
+                    """
+                    select clip.id, clip.logical_id, clip.type, clip.start_seconds,
+                           clip.end_seconds
+                    from clips clip
+                    left join clip_concepts cc
+                      on cc.clip_id = clip.id and cc.concept_id = %s
+                    where clip.revision_id = %s and clip.status <> 'superseded'
+                      and (
+                        clip.id = %s::uuid
+                        or cc.concept_id is not null
+                      )
+                    order by (clip.id = %s::uuid) desc, clip.start_seconds
+                    limit 1
+                    """,
+                    (
+                        selected_concept_id,
+                        revision_id,
+                        route["target_clip_id"] if route is not None else None,
+                        route["target_clip_id"] if route is not None else None,
+                    ),
+                )
+            ).fetchone()
+
+            artifact_ids = [
+                selected_concept_id,
+                question["id"] if question is not None else None,
+                clip["id"] if clip is not None else None,
+            ]
+            signal = await (
+                await conn.execute(
+                    """
+                    select id, type, related_entity_type, related_entity_id,
+                           ai_diagnosis, status, instructor_action, created_at
+                    from dashboard_signals
+                    where course_id = %s
+                      and related_entity_id = any(%s::uuid[])
+                    order by created_at desc
+                    limit 1
+                    """,
+                    (
+                        course_id,
+                        [value for value in artifact_ids if value is not None],
+                    ),
+                )
+            ).fetchone()
+
+            proposal = None
+            if signal is not None:
+                proposal = await (
+                    await conn.execute(
+                        """
+                        select proposal.id, proposal.proposal_type,
+                               proposal.artifact_type,
+                               proposal.logical_artifact_id,
+                               proposal.proposed_state, proposal.rationale,
+                               proposal.status, proposal.created_at
+                        from course_agent_tasks task
+                        join course_proposals proposal
+                          on proposal.id = any(task.proposal_ids)
+                        where task.course_id = %s and task.revision_id = %s
+                          and task.evidence_snapshot ->> 'signal_id' = %s
+                        order by proposal.created_at desc
+                        limit 1
+                        """,
+                        (course_id, revision_id, str(signal["id"])),
+                    )
+                ).fetchone()
+
+            citation = await (
+                await conn.execute(
+                    """
+                    select citation.id, citation.excerpt, citation.metadata,
+                           section.page_number, section.title as section_title,
+                           source.id as source_id, source.logical_id as source_logical_id,
+                           source.filename
+                    from source_citations citation
+                    join source_sections section
+                      on section.id = citation.source_section_id
+                    join course_sources source on source.id = section.source_id
+                    where citation.revision_id = %s
+                      and (
+                        (
+                          citation.artifact_type = 'concept'
+                          and citation.logical_artifact_id = %s
+                        )
+                        or (
+                          citation.artifact_type = 'clip'
+                          and citation.logical_artifact_id = %s::uuid
+                        )
+                        or (
+                          citation.artifact_type = 'question'
+                          and citation.logical_artifact_id = %s::uuid
+                        )
+                      )
+                    order by
+                      (citation.artifact_type = 'concept') desc,
+                      citation.created_at desc
+                    limit 1
+                    """,
+                    (
+                        revision_id,
+                        concept["logical_id"],
+                        clip["logical_id"] if clip is not None else None,
+                        question["logical_id"] if question is not None else None,
+                    ),
+                )
+            ).fetchone()
+
+        stages = _decision_trace_stages(
+            concept=concept,
+            citation=citation,
+            clip=clip,
+            question=question,
+            attempt=attempt,
+            route=route,
+            signal=signal,
+            proposal=proposal,
+        )
+        return CourseDecisionTrace(
+            course_id=course_id,
+            revision_id=revision_id,
+            revision_kind=revision_kind,  # type: ignore[arg-type]
+            concept_id=selected_concept_id,
+            concept_logical_id=UUID(str(concept["logical_id"])),
+            concept_title=str(concept["name"]),
+            complete=all(stage.status == "available" for stage in stages),
+            stages=stages,
         )
 
     async def update_concept_sequence(
@@ -6399,6 +6674,212 @@ async def _revision_artifact_states(
         (str(row["artifact_type"]), UUID(str(row["logical_id"]))): _json_dict(row["state"])
         for row in rows
     }
+
+
+def _decision_trace_stages(
+    *,
+    concept: Mapping[str, Any],
+    citation: Mapping[str, Any] | None,
+    clip: Mapping[str, Any] | None,
+    question: Mapping[str, Any] | None,
+    attempt: Mapping[str, Any] | None,
+    route: Mapping[str, Any] | None,
+    signal: Mapping[str, Any] | None,
+    proposal: Mapping[str, Any] | None,
+) -> tuple[DecisionTraceStage, ...]:
+    source_metadata: dict[str, Any] = {}
+    source_artifact_id: UUID | None
+    source_logical_id: UUID | None
+    if concept.get("start_seconds") is not None:
+        source_metadata["start_seconds"] = float(concept["start_seconds"])
+    if concept.get("end_seconds") is not None:
+        source_metadata["end_seconds"] = float(concept["end_seconds"])
+    if citation is not None:
+        source_metadata.update(
+            {
+                "page_number": int(citation["page_number"]),
+                "excerpt": str(citation["excerpt"]),
+                "citation_metadata": _json_dict(citation["metadata"]),
+            }
+        )
+        source_title = str(citation["filename"])
+        source_summary = (
+            str(citation["excerpt"]).strip()
+            or f"Page {citation['page_number']} supports this concept."
+        )
+        source_artifact_id = UUID(str(citation["source_id"]))
+        source_logical_id = UUID(str(citation["source_logical_id"]))
+    else:
+        source_title = str(concept.get("source_label") or "Lecture recording")
+        topic_title = str(concept.get("topic_title") or "reviewed lecture segment")
+        source_summary = f"{topic_title} is the reviewed source moment for this chain."
+        source_artifact_id = (
+            UUID(str(concept["video_id"])) if concept.get("video_id") else None
+        )
+        source_logical_id = None
+
+    stages: list[DecisionTraceStage] = [
+        DecisionTraceStage(
+            key="source",
+            title=source_title,
+            summary=source_summary,
+            status="available" if source_artifact_id is not None else "missing",
+            artifact_type="source",
+            artifact_id=source_artifact_id,
+            logical_artifact_id=source_logical_id,
+            metadata=source_metadata,
+        ),
+        DecisionTraceStage(
+            key="concept",
+            title=str(concept["name"]),
+            summary=str(concept.get("description") or "Reviewed course concept."),
+            status="available",
+            artifact_type="concept",
+            artifact_id=UUID(str(concept["id"])),
+            logical_artifact_id=UUID(str(concept["logical_id"])),
+            metadata={"review_status": str(concept["review_status"])},
+        ),
+    ]
+
+    if clip is not None:
+        stages.append(
+            DecisionTraceStage(
+                key="clip",
+                title=str(clip["type"]).replace("_", " ").title(),
+                summary=(
+                    f"Teaching moment from {float(clip['start_seconds']):.1f}s "
+                    f"to {float(clip['end_seconds']):.1f}s."
+                ),
+                status="available",
+                artifact_type="clip",
+                artifact_id=UUID(str(clip["id"])),
+                logical_artifact_id=UUID(str(clip["logical_id"])),
+                metadata={
+                    "start_seconds": float(clip["start_seconds"]),
+                    "end_seconds": float(clip["end_seconds"]),
+                },
+            )
+        )
+    else:
+        stages.append(_missing_trace_stage("clip", "Teaching clip"))
+
+    if question is not None:
+        stages.append(
+            DecisionTraceStage(
+                key="assessment",
+                title="Assessment",
+                summary=str(question["body"]),
+                status="available",
+                artifact_type="question",
+                artifact_id=UUID(str(question["id"])),
+                logical_artifact_id=UUID(str(question["logical_id"])),
+            )
+        )
+    else:
+        stages.append(_missing_trace_stage("assessment", "Assessment"))
+
+    if attempt is not None:
+        stages.append(
+            DecisionTraceStage(
+                key="learner_evidence",
+                title=(
+                    "Correct learner response"
+                    if bool(attempt["correctness"])
+                    else "Incorrect learner response"
+                ),
+                summary=(
+                    f"Confidence {int(attempt['confidence'])}/4; "
+                    f"purpose: {str(attempt.get('purpose') or 'lesson')}."
+                ),
+                status="available",
+                artifact_type="attempt",
+                artifact_id=UUID(str(attempt["attempt_id"])),
+                metadata={
+                    "correctness": bool(attempt["correctness"]),
+                    "confidence": int(attempt["confidence"]),
+                    "purpose": str(attempt.get("purpose") or "lesson"),
+                },
+            )
+        )
+    else:
+        stages.append(_missing_trace_stage("learner_evidence", "Learner evidence"))
+
+    if route is not None:
+        stages.append(
+            DecisionTraceStage(
+                key="route_event",
+                title=str(route["action"]).replace("_", " ").title(),
+                summary=str(route["why"]),
+                status="available",
+                artifact_type="route_event",
+                artifact_id=UUID(str(route["id"])),
+                metadata={
+                    "mastery_before": str(route["mastery_before"]),
+                    "mastery_after": str(route["mastery_after"]),
+                    "evidence_snapshot": _json_dict(route["evidence_snapshot"]),
+                },
+            )
+        )
+    else:
+        stages.append(_missing_trace_stage("route_event", "Adaptive route"))
+
+    if signal is not None:
+        diagnosis = _json_dict(signal["ai_diagnosis"])
+        stages.append(
+            DecisionTraceStage(
+                key="dashboard_signal",
+                title=str(diagnosis.get("title") or str(signal["type"]).replace("_", " ").title()),
+                summary=str(
+                    diagnosis.get("summary")
+                    or diagnosis.get("recommended_action")
+                    or "The dashboard surfaced this persisted learner pattern."
+                ),
+                status="available",
+                artifact_type="dashboard_signal",
+                artifact_id=UUID(str(signal["id"])),
+                metadata={
+                    "signal_type": str(signal["type"]),
+                    "status": str(signal["status"]),
+                    "related_entity_type": str(signal["related_entity_type"]),
+                },
+            )
+        )
+    else:
+        stages.append(_missing_trace_stage("dashboard_signal", "Dashboard signal"))
+
+    if proposal is not None:
+        stages.append(
+            DecisionTraceStage(
+                key="proposed_revision",
+                title=str(proposal["proposal_type"]).replace("_", " ").title(),
+                summary=str(proposal["rationale"]),
+                status="available",
+                artifact_type=str(proposal["artifact_type"] or "proposal"),
+                artifact_id=UUID(str(proposal["id"])),
+                logical_artifact_id=(
+                    UUID(str(proposal["logical_artifact_id"]))
+                    if proposal.get("logical_artifact_id")
+                    else None
+                ),
+                metadata={
+                    "status": str(proposal["status"]),
+                    "proposed_state": _json_dict(proposal["proposed_state"]),
+                    "connection": "generated_from_dashboard_signal",
+                },
+            )
+        )
+    else:
+        stages.append(_missing_trace_stage("proposed_revision", "Proposed revision"))
+    return tuple(stages)
+
+
+def _missing_trace_stage(key: str, title: str) -> DecisionTraceStage:
+    return DecisionTraceStage(
+        key=key,
+        title=title,
+        summary="No persisted record exists at this stage yet.",
+        status="missing",
+    )
 
 
 def _course_summary(row: dict[str, Any]) -> CourseSummary:

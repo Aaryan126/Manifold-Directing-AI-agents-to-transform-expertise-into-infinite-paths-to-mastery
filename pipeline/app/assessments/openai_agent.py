@@ -1,4 +1,5 @@
 import json
+from time import perf_counter
 from uuid import UUID
 
 from openai import AsyncOpenAI
@@ -12,6 +13,7 @@ from app.assessments.models import (
     QuestionType,
     RemediationProposal,
 )
+from app.evaluation.telemetry import record_openai_usage
 
 
 class OpenAIAssessmentAgent(AssessmentAgent):
@@ -24,16 +26,30 @@ class OpenAIAssessmentAgent(AssessmentAgent):
         context: AssessmentContext,
         previous_question: str | None = None,
     ) -> QuestionProposal:
+        started = perf_counter()
         response = await self._client.responses.create(
             model=self._model,
             input=_prompt(context, previous_question),
         )
+        record_openai_usage(
+            response,
+            operation="generate_assessment",
+            model=self._model,
+            latency_ms=(perf_counter() - started) * 1000,
+        )
         return _parse_response(response.output_text)
 
     async def grade_answer(self, question: Question, learner_answer: str) -> AnswerGrade:
+        started = perf_counter()
         response = await self._client.responses.create(
             model=self._model,
             input=_grading_prompt(question, learner_answer),
+        )
+        record_openai_usage(
+            response,
+            operation="grade_answer",
+            model=self._model,
+            latency_ms=(perf_counter() - started) * 1000,
         )
         payload = json.loads(response.output_text)
         is_correct = bool(payload["is_correct"])

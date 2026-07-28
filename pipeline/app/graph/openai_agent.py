@@ -1,8 +1,10 @@
+from time import perf_counter
 from uuid import UUID
 
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 
+from app.evaluation.telemetry import record_openai_usage
 from app.graph.agent import ConceptGraphAgent
 from app.graph.models import (
     ConceptGraphProposal,
@@ -41,6 +43,7 @@ class OpenAIConceptGraphAgent(ConceptGraphAgent):
         self._model = model
 
     async def propose_graph(self, context: CourseGraphContext) -> ConceptGraphProposal:
+        started = perf_counter()
         response = await self._client.responses.parse(
             model=self._model,
             input=[
@@ -70,6 +73,12 @@ class OpenAIConceptGraphAgent(ConceptGraphAgent):
                 },
             ],
             text_format=_GraphOutput,
+        )
+        record_openai_usage(
+            response,
+            operation="build_concept_graph",
+            model=self._model,
+            latency_ms=(perf_counter() - started) * 1000,
         )
         parsed = response.output_parsed
         if parsed is None:

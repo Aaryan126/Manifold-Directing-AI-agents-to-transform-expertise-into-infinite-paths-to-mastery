@@ -1695,7 +1695,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintFloatingToolbar .blueprintModeToggle { border: 0; border-radius: 8px; flex: 0 0 auto; padding: 2px; }
 .blueprintFloatingToolbar .blueprintModeToggle button { min-height: 30px; min-width: 55px; padding: 0 10px; }
 .blueprintToolbarMenu { position: relative; }
-.blueprintJumpPopover,.blueprintRelationshipPopover,.blueprintEvidencePopover { background: #fff; border: 1px solid #d9d5cd; border-radius: 11px; box-shadow: 0 16px 42px rgb(28 29 33 / 16%); left: 0; position: absolute; top: calc(100% + 8px); z-index: 32; }
+.blueprintJumpPopover,.blueprintRelationshipPopover,.blueprintEvidencePopover,.blueprintTracePopover { background: #fff; border: 1px solid #d9d5cd; border-radius: 11px; box-shadow: 0 16px 42px rgb(28 29 33 / 16%); left: 0; position: absolute; top: calc(100% + 8px); z-index: 32; }
 .blueprintJumpPopover { max-height: min(570px, calc(100dvh - 180px)); min-width: 310px; overflow: auto; padding: 7px; }
 .blueprintJumpPopover > header,.blueprintEvidencePopover > header { display: grid; gap: 2px; padding: 7px 9px 10px; }
 .blueprintJumpPopover header small,.blueprintEvidencePopover header small,.blueprintRelationshipPopover header small { color: #9a561d; font-size: 8px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
@@ -1733,6 +1733,31 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintEvidencePopover dt { color: #77747b; font-size: 8px; }
 .blueprintEvidencePopover dd { font-size: 11px; font-weight: 750; margin: 0; }
 .blueprintEvidencePopover p { color: #6a6870; font-size: 9px; line-height: 1.45; margin: 9px 8px 7px; }
+.blueprintTracePopover { display: grid; max-height: min(680px, calc(100vh - 150px)); min-width: 440px; overflow: hidden; right: 0; left: auto; }
+.blueprintTracePopover > header { align-items: start; border-bottom: 1px solid #e9e6df; display: flex; gap: 18px; justify-content: space-between; padding: 14px 15px 12px; }
+.blueprintTracePopover > header div { display: grid; gap: 3px; }
+.blueprintTracePopover > header small { color: #9a561d; font-size: 8px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.blueprintTracePopover > header strong { font-size: 13px; max-width: 240px; }
+.blueprintTracePopover > header > span { background: #f1eee8; border-radius: 99px; color: #706b63; font-size: 8px; font-weight: 760; padding: 6px 8px; white-space: nowrap; }
+.blueprintTracePopover > header > span[data-complete="true"] { background: #e3efe4; color: #426347; }
+.blueprintTracePopover ol { display: grid; list-style: none; margin: 0; overflow: auto; padding: 8px 10px; }
+.blueprintTracePopover li { align-items: start; display: grid; gap: 10px; grid-template-columns: 22px minmax(0, 1fr) auto; min-height: 53px; padding: 7px 5px; position: relative; }
+.blueprintTracePopover li:not(:last-child)::after { background: #d7d2c8; content: ""; height: calc(100% - 29px); left: 15px; position: absolute; top: 36px; width: 1px; }
+.blueprintTracePopover li > i { align-items: center; background: #28292e; border-radius: 50%; color: #fff; display: flex; font-size: 8px; font-style: normal; font-weight: 800; height: 22px; justify-content: center; position: relative; width: 22px; z-index: 1; }
+.blueprintTracePopover li[data-status="missing"] > i { background: #f4f1eb; border: 1px dashed #aaa49a; color: #827d74; }
+.blueprintTracePopover li > span:first-of-type { display: grid; gap: 2px; min-width: 0; }
+.blueprintTracePopover li > span:first-of-type small { color: #9a561d; font-size: 7px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.blueprintTracePopover li > span:first-of-type strong { color: #25262b; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blueprintTracePopover li > span:first-of-type p { color: #6e6b72; display: -webkit-box; font-size: 8px; line-height: 1.4; margin: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.blueprintTracePopover li > svg { color: #52745a; height: 13px; margin-top: 4px; width: 13px; }
+.blueprintTracePopover li > span:last-child { color: #99948b; font-size: 7px; font-weight: 740; margin-top: 5px; white-space: nowrap; }
+.blueprintTracePopover li[data-status="missing"] > span:first-of-type { opacity: .66; }
+.blueprintTracePopover > footer { align-items: center; background: #f8f6f2; border-top: 1px solid #e9e6df; display: flex; gap: 12px; justify-content: space-between; padding: 9px 11px; }
+.blueprintTracePopover > footer p { color: #77736b; font-size: 7px; line-height: 1.4; margin: 0; max-width: 290px; }
+.blueprintTracePopover > footer button { align-items: center; background: #fff; border: 1px solid #d9d5cd; border-radius: 7px; color: #55535a; display: flex; font: inherit; font-size: 8px; font-weight: 740; gap: 5px; padding: 6px 8px; }
+.blueprintTracePopover > footer button svg { height: 10px; width: 10px; }
+.blueprintTraceLoading,.blueprintTraceError { align-items: center; color: #67646c; display: flex; font-size: 9px; gap: 7px; margin: 0; min-height: 180px; padding: 20px; }
+.blueprintTraceLoading svg,.blueprintTraceError svg { height: 14px; width: 14px; }
 .blueprintFloatingToolbar .blueprintAddNode > div { top: calc(100% + 8px); }
 .blueprintFloatingToolbar .blueprintAddNode > div > button { align-items: center; background: transparent; color: #4e4c53; min-height: 0; }
 .blueprintFloatingToolbar .blueprintAddNode > div > button:hover { background: #f2f0eb; }

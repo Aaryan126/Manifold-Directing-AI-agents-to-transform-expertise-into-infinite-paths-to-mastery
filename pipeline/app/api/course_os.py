@@ -17,6 +17,7 @@ from app.course_os.models import (
     CourseAssessment,
     CourseBlueprint,
     CourseCreate,
+    CourseDecisionTrace,
     CourseFlow,
     CourseFlowModuleDraft,
     CourseFlowUnitDraft,
@@ -310,6 +311,28 @@ class CourseBlueprintResponse(BaseModel):
     nodes: list[BlueprintNodeResponse]
     edges: list[BlueprintEdgeResponse]
     uncovered_concept_ids: list[UUID]
+
+
+class DecisionTraceStageResponse(BaseModel):
+    key: str
+    title: str
+    summary: str
+    status: Literal["available", "missing"]
+    artifact_type: str | None
+    artifact_id: UUID | None
+    logical_artifact_id: UUID | None
+    metadata: dict[str, Any]
+
+
+class CourseDecisionTraceResponse(BaseModel):
+    course_id: UUID
+    revision_id: UUID
+    revision_kind: Literal["active", "working"]
+    concept_id: UUID
+    concept_logical_id: UUID
+    concept_title: str
+    complete: bool
+    stages: list[DecisionTraceStageResponse]
 
 
 class CourseFlowModuleResponse(BaseModel):
@@ -826,6 +849,24 @@ async def course_blueprint(
     revision: Literal["active", "working"] = "active",
 ) -> CourseBlueprintResponse:
     return _blueprint_response(await _call(service.blueprint(course_id, user_id, revision)))
+
+
+@router.get(
+    "/courses/{course_id}/decision-trace",
+    response_model=CourseDecisionTraceResponse,
+)
+async def course_decision_trace(
+    course_id: UUID,
+    user_id: UserContext,
+    service: CourseOSDependency,
+    revision: Literal["active", "working"] = "active",
+    concept_id: UUID | None = None,
+) -> CourseDecisionTraceResponse:
+    return _decision_trace_response(
+        await _call(
+            service.decision_trace(course_id, user_id, revision, concept_id)
+        )
+    )
 
 
 @router.get("/courses/{course_id}/course-flow", response_model=CourseFlowResponse)
@@ -1682,6 +1723,19 @@ def _blueprint_response(blueprint: CourseBlueprint) -> CourseBlueprintResponse:
         nodes=[BlueprintNodeResponse(**node.__dict__) for node in blueprint.nodes],
         edges=[BlueprintEdgeResponse(**edge.__dict__) for edge in blueprint.edges],
         uncovered_concept_ids=list(blueprint.uncovered_concept_ids),
+    )
+
+
+def _decision_trace_response(trace: CourseDecisionTrace) -> CourseDecisionTraceResponse:
+    return CourseDecisionTraceResponse(
+        course_id=trace.course_id,
+        revision_id=trace.revision_id,
+        revision_kind=trace.revision_kind,
+        concept_id=trace.concept_id,
+        concept_logical_id=trace.concept_logical_id,
+        concept_title=trace.concept_title,
+        complete=trace.complete,
+        stages=[DecisionTraceStageResponse(**stage.__dict__) for stage in trace.stages],
     )
 
 

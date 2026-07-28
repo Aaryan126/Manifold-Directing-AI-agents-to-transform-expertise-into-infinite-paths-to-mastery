@@ -17,6 +17,7 @@ from app.course_os.models import (
     CourseAssessment,
     CourseBlueprint,
     CourseCreate,
+    CourseDecisionTrace,
     CourseFlow,
     CourseFlowModuleDraft,
     CourseFlowUnitDraft,
@@ -827,6 +828,27 @@ class CourseOSService:
             days,
             learner_id,
         )
+
+    async def decision_trace(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        revision_kind: str,
+        concept_id: UUID | None,
+    ) -> CourseDecisionTrace:
+        course = await self._require_owned_course(course_id, instructor_id)
+        revision_id = _selected_revision(course, revision_kind)
+        trace = await self._repository.decision_trace(
+            course_id,
+            revision_id,
+            revision_kind,
+            concept_id,
+        )
+        if trace is None:
+            raise CourseOSValidationError(
+                "No reviewable concept exists in this course revision."
+            )
+        return trace
 
     async def update_concept_sequence(
         self,

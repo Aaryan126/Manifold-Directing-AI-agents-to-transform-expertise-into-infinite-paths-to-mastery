@@ -1,10 +1,12 @@
 import json
+from time import perf_counter
 from uuid import UUID
 
 from openai import AsyncOpenAI
 
 from app.clips.agent import ClipExtractionAgent
 from app.clips.models import ClipContext, ClipProposal, ClipType
+from app.evaluation.telemetry import record_openai_usage
 
 
 class OpenAIClipExtractionAgent(ClipExtractionAgent):
@@ -17,9 +19,16 @@ class OpenAIClipExtractionAgent(ClipExtractionAgent):
         context: ClipContext,
         instructor_notes: str | None = None,
     ) -> tuple[ClipProposal, ...]:
+        started = perf_counter()
         response = await self._client.responses.create(
             model=self._model,
             input=_prompt(context, instructor_notes),
+        )
+        record_openai_usage(
+            response,
+            operation="extract_teaching_clips",
+            model=self._model,
+            latency_ms=(perf_counter() - started) * 1000,
         )
         return _parse_response(response.output_text, context)
 

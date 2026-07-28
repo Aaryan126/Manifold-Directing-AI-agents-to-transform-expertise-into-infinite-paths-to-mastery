@@ -59,6 +59,7 @@ import {
   Play,
   Plus,
   RotateCcw,
+  ScanSearch,
   Scissors,
   Search,
   Settings,
@@ -116,6 +117,7 @@ import {
   type BlueprintMutationImpact,
   type BlueprintNode,
   type CourseBlueprint,
+  type CourseDecisionTrace,
   type CourseFlow,
   type CourseFlowEdge,
   type CourseFlowUnit,
@@ -268,6 +270,16 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   }, []);
 
   const latestBlueprintUndo = blueprintUndoEntries.at(-1) ?? null;
+  const loadDecisionTrace = useCallback(async (
+    conceptId: string | null,
+    revision: "active" | "working",
+  ): Promise<CourseDecisionTrace> => {
+    if (!identity) throw new Error("Instructor session is not ready.");
+    return request<CourseDecisionTrace>(
+      `/courses/${courseId}/decision-trace?revision=${revision}${conceptId ? `&concept_id=${conceptId}` : ""}`,
+      identity,
+    );
+  }, [courseId, identity, request]);
 
   function rememberBlueprintUndo(label: string, run: () => Promise<void>) {
     setBlueprintUndoEntries((current) => [
@@ -2012,6 +2024,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                       setDirectorOpen(true);
                     }}
                     onLoadPack={loadAgentTaskPack}
+                    onLoadTrace={loadDecisionTrace}
                     onLayout={saveBlueprintPosition}
                     onPrepare={requestBlueprintImprovement}
                     onCleanup={requestBlueprintCleanup}
@@ -3752,6 +3765,7 @@ function BlueprintWorkspace({
   onCreateRelationship,
   onInspectRemoval,
   onLoadPack,
+  onLoadTrace,
   onLayout,
   onOpenAssessments,
   onBackToCourseFlow,
@@ -3803,6 +3817,10 @@ function BlueprintWorkspace({
   onCreateRelationship: (relationship: BlueprintRelationshipSpec) => Promise<CourseBlueprint | null>;
   onInspectRemoval: (node: BlueprintNode) => Promise<BlueprintMutationImpact | null>;
   onLoadPack: (taskId: string) => Promise<AgentTaskPack>;
+  onLoadTrace: (
+    conceptId: string | null,
+    revision: "active" | "working",
+  ) => Promise<CourseDecisionTrace>;
   onLayout: (
     node: BlueprintNode,
     x: number,
@@ -3852,6 +3870,10 @@ function BlueprintWorkspace({
   const [jumpOpen, setJumpOpen] = useState(false);
   const [relationshipFiltersOpen, setRelationshipFiltersOpen] = useState(false);
   const [evidenceLensOpen, setEvidenceLensOpen] = useState(false);
+  const [traceOpen, setTraceOpen] = useState(false);
+  const [traceLoading, setTraceLoading] = useState(false);
+  const [decisionTrace, setDecisionTrace] = useState<CourseDecisionTrace | null>(null);
+  const [traceError, setTraceError] = useState<string | null>(null);
   const [relationshipDraft, setRelationshipDraft] = useState<BlueprintRelationshipDraft | null>(null);
   const [selectedRelationship, setSelectedRelationship] = useState<BlueprintEdge | null>(null);
   const [relationshipError, setRelationshipError] = useState<string | null>(null);
@@ -4092,6 +4114,26 @@ function BlueprintWorkspace({
     });
   }, []);
 
+  const loadDecisionTrace = useCallback(async () => {
+    setTraceLoading(true);
+    setTraceError(null);
+    try {
+      setDecisionTrace(await onLoadTrace(
+        selected?.kind === "concept" ? selected.id : null,
+        mode === "live" ? "active" : "working",
+      ));
+    } catch (caught) {
+      setTraceError(caught instanceof Error ? caught.message : "Could not load this decision trace.");
+    } finally {
+      setTraceLoading(false);
+    }
+  }, [mode, onLoadTrace, selected]);
+
+  useEffect(() => {
+    if (!traceOpen) return;
+    void loadDecisionTrace();
+  }, [loadDecisionTrace, traceOpen]);
+
   function recordPrivateMutation(anchor: BlueprintNode | null) {
     setCleanupAnchorLogicalId(anchor?.logical_id ?? null);
     if (anchor) setSelectedLogicalId(anchor.logical_id);
@@ -4201,6 +4243,7 @@ function BlueprintWorkspace({
                       setAutoArrangeVersion(0);
                       setAddNodeOpen(false);
                       setEvidenceLensOpen(false);
+                      setTraceOpen(false);
                       setJumpOpen(false);
                       setRelationshipFiltersOpen(false);
                       onModeChange(item.id);
@@ -4220,6 +4263,7 @@ function BlueprintWorkspace({
                     setJumpOpen((current) => !current);
                     setAddNodeOpen(false);
                     setEvidenceLensOpen(false);
+                    setTraceOpen(false);
                     setRelationshipFiltersOpen(false);
                   }}
                   type="button"
@@ -4291,6 +4335,7 @@ function BlueprintWorkspace({
                     setRelationshipFiltersOpen((current) => !current);
                     setAddNodeOpen(false);
                     setEvidenceLensOpen(false);
+                    setTraceOpen(false);
                     setJumpOpen(false);
                   }}
                   type="button"
@@ -4339,6 +4384,7 @@ function BlueprintWorkspace({
                       onClick={() => {
                         setAddNodeOpen((current) => !current);
                         setEvidenceLensOpen(false);
+                        setTraceOpen(false);
                         setJumpOpen(false);
                         setRelationshipFiltersOpen(false);
                       }}
@@ -4374,11 +4420,13 @@ function BlueprintWorkspace({
                   <button aria-label="Learning order" onClick={() => setDesignDialog("order")} type="button"><ArrowUp />Order</button>
                 </>
               ) : (
+                <>
                 <div className={styles.blueprintToolbarMenu}>
                   <button
                     aria-expanded={evidenceLensOpen}
                     onClick={() => {
                       setEvidenceLensOpen((current) => !current);
+                      setTraceOpen(false);
                       setAddNodeOpen(false);
                       setJumpOpen(false);
                       setRelationshipFiltersOpen(false);
@@ -4399,6 +4447,58 @@ function BlueprintWorkspace({
                     </section>
                   ) : null}
                 </div>
+                <div className={styles.blueprintToolbarMenu}>
+                  <button
+                    aria-expanded={traceOpen}
+                    onClick={() => {
+                      setTraceOpen((current) => !current);
+                      setEvidenceLensOpen(false);
+                      setAddNodeOpen(false);
+                      setJumpOpen(false);
+                      setRelationshipFiltersOpen(false);
+                    }}
+                    type="button"
+                  >
+                    <ScanSearch />Trace decision
+                  </button>
+                  {traceOpen ? (
+                    <section className={styles.blueprintTracePopover} aria-label="Decision trace">
+                      <header>
+                        <div>
+                          <small>Persisted decision lineage</small>
+                          <strong>{decisionTrace?.concept_title ?? "Tracing course evidence"}</strong>
+                        </div>
+                        <span data-complete={decisionTrace?.complete || undefined}>
+                          {decisionTrace?.complete ? "Complete chain" : "Honest gaps shown"}
+                        </span>
+                      </header>
+                      {traceLoading ? (
+                        <p className={styles.blueprintTraceLoading}><LoaderCircle className={styles.spin} />Tracing persisted records…</p>
+                      ) : traceError ? (
+                        <p className={styles.blueprintTraceError}><CircleAlert />{traceError}</p>
+                      ) : (
+                        <ol>
+                          {decisionTrace?.stages.map((stage, index) => (
+                            <li data-status={stage.status} key={stage.key}>
+                              <i>{index + 1}</i>
+                              <span>
+                                <small>{decisionTraceStageLabel(stage.key)}</small>
+                                <strong>{stage.title}</strong>
+                                <p>{stage.summary}</p>
+                              </span>
+                              {stage.status === "available" ? <Check /> : <span>Not yet</span>}
+                            </li>
+                          ))}
+                        </ol>
+                      )}
+                      <footer>
+                        <p>Every available step maps to a stored artifact or event. Missing steps are never inferred.</p>
+                        <button disabled={traceLoading} onClick={() => void loadDecisionTrace()} type="button"><RotateCcw />Refresh</button>
+                      </footer>
+                    </section>
+                  ) : null}
+                </div>
+                </>
               )}
 
               <button
@@ -5591,6 +5691,22 @@ function coverageLabel(node: BlueprintNode) {
   if (node.kind === "question") return String(node.metadata.type ?? "assessment").replaceAll("_", " ");
   if (node.kind === "source") return String(node.metadata.source_type ?? "source").toUpperCase();
   return node.status;
+}
+
+function decisionTraceStageLabel(
+  key: CourseDecisionTrace["stages"][number]["key"],
+): string {
+  const labels: Record<CourseDecisionTrace["stages"][number]["key"], string> = {
+    source: "Source moment",
+    concept: "Concept",
+    clip: "Teaching clip",
+    assessment: "Assessment",
+    learner_evidence: "Learner evidence",
+    route_event: "Route event",
+    dashboard_signal: "Dashboard signal",
+    proposed_revision: "Proposed revision",
+  };
+  return labels[key];
 }
 
 function blueprintKindIcon(kind: BlueprintNode["kind"]) {

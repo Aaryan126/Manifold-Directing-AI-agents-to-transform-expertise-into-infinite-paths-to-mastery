@@ -17,10 +17,12 @@ from app.course_os.models import (
     CourseAssessment,
     CourseBlueprint,
     CourseCreate,
+    CourseDecisionTrace,
     CourseRoutingPolicy,
     CourseSummary,
     DashboardCommandResult,
     DashboardSnapshot,
+    DecisionTraceStage,
     RoutingPolicyDraft,
 )
 from app.dependencies import get_course_os_service
@@ -105,6 +107,65 @@ def test_teacher_dashboard_returns_empty_state_metrics() -> None:
             "course_radar": [],
         }
         service.dashboard.assert_awaited_once_with(instructor_id)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_decision_trace_serializes_available_and_missing_chain_stages() -> None:
+    instructor_id = uuid4()
+    course_id = uuid4()
+    revision_id = uuid4()
+    concept_id = uuid4()
+    logical_id = uuid4()
+    service = AsyncMock()
+    service.decision_trace.return_value = CourseDecisionTrace(
+        course_id=course_id,
+        revision_id=revision_id,
+        revision_kind="active",
+        concept_id=concept_id,
+        concept_logical_id=logical_id,
+        concept_title="Vector direction",
+        complete=False,
+        stages=(
+            DecisionTraceStage(
+                key="concept",
+                title="Vector direction",
+                summary="Reviewed concept.",
+                status="available",
+                artifact_type="concept",
+                artifact_id=concept_id,
+                logical_artifact_id=logical_id,
+            ),
+            DecisionTraceStage(
+                key="dashboard_signal",
+                title="Dashboard signal",
+                summary="No persisted record exists at this stage yet.",
+                status="missing",
+            ),
+        ),
+    )
+    app.dependency_overrides[get_course_os_service] = lambda: service
+    client = TestClient(app)
+
+    try:
+        response = client.get(
+            f"/courses/{course_id}/decision-trace",
+            params={"revision": "active", "concept_id": str(concept_id)},
+            headers={"X-User-ID": str(instructor_id)},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["complete"] is False
+        assert [stage["status"] for stage in response.json()["stages"]] == [
+            "available",
+            "missing",
+        ]
+        service.decision_trace.assert_awaited_once_with(
+            course_id,
+            instructor_id,
+            "active",
+            concept_id,
+        )
     finally:
         app.dependency_overrides.clear()
 

@@ -7,6 +7,17 @@ from app.db.migrations import (
 )
 
 
+def test_generation_upsert_targets_the_partial_course_unit_video_index() -> None:
+    repository = Path("app/course_os/postgres_repository.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "on conflict (revision_id, video_id) where video_id is not null do update"
+        in repository
+    )
+
+
 def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     migration = Path("migrations/001_initial_schema.sql").read_text(encoding="utf-8")
     topic_review_migration = Path("migrations/003_topic_review_status.sql").read_text(

@@ -1,8 +1,10 @@
+from time import perf_counter
 from typing import Any
 
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 
+from app.evaluation.telemetry import record_openai_usage
 from app.segmentation.agent import SegmentationAgent
 from app.segmentation.models import TopicProposal, VideoTranscript
 
@@ -28,6 +30,7 @@ class OpenAISegmentationAgent(SegmentationAgent):
 
     async def propose_topics(self, transcript: VideoTranscript) -> tuple[TopicProposal, ...]:
         transcript_payload = _compact_transcript(transcript)
+        started = perf_counter()
         response = await self._client.responses.parse(
             model=self._model,
             input=[
@@ -55,6 +58,12 @@ class OpenAISegmentationAgent(SegmentationAgent):
                 },
             ],
             text_format=_SegmentationOutput,
+        )
+        record_openai_usage(
+            response,
+            operation="segment_lecture",
+            model=self._model,
+            latency_ms=(perf_counter() - started) * 1000,
         )
         parsed = response.output_parsed
         if parsed is None:

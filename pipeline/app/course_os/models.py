@@ -263,6 +263,30 @@ class CourseBlueprint:
 
 
 @dataclass(frozen=True)
+class DecisionTraceStage:
+    key: str
+    title: str
+    summary: str
+    status: Literal["available", "missing"]
+    artifact_type: str | None = None
+    artifact_id: UUID | None = None
+    logical_artifact_id: UUID | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class CourseDecisionTrace:
+    course_id: UUID
+    revision_id: UUID
+    revision_kind: Literal["active", "working"]
+    concept_id: UUID
+    concept_logical_id: UUID
+    concept_title: str
+    complete: bool
+    stages: tuple[DecisionTraceStage, ...]
+
+
+@dataclass(frozen=True)
 class CourseFlowModule:
     id: UUID
     logical_id: UUID

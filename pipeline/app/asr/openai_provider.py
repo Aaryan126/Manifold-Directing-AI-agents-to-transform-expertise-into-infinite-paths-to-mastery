@@ -1,10 +1,12 @@
 import subprocess
 import tempfile
 from pathlib import Path
+from time import perf_counter
 
 from openai import AsyncOpenAI
 
 from app.asr.base import ASRProvider, Transcript, TranscriptWord
+from app.evaluation.telemetry import record_openai_usage
 
 MAX_TRANSCRIPTION_BYTES = 24 * 1024 * 1024
 AUDIO_BITRATE = "32k"
@@ -26,20 +28,35 @@ class OpenAIASRProvider(ASRProvider):
             transcripts: list[Transcript] = []
             offset_seconds = 0.0
             for chunk in chunks:
-                chunk_transcript = await self._transcribe_single_file(chunk.path)
+                chunk_transcript = await self._transcribe_single_file(
+                    chunk.path,
+                    chunk.duration_seconds,
+                )
                 transcripts.append(_offset_transcript(chunk_transcript, offset_seconds))
                 offset_seconds += chunk.duration_seconds
 
             return _merge_transcripts(transcripts)
 
-    async def _transcribe_single_file(self, media_path: Path) -> Transcript:
+    async def _transcribe_single_file(
+        self,
+        media_path: Path,
+        duration_seconds: float,
+    ) -> Transcript:
         with media_path.open("rb") as audio_file:
+            started = perf_counter()
             response = await self._client.audio.transcriptions.create(
                 file=audio_file,
                 model=self._model,
                 response_format="verbose_json",
                 timestamp_granularities=["word"],
             )
+        record_openai_usage(
+            response,
+            operation="transcribe_source",
+            model=self._model,
+            latency_ms=(perf_counter() - started) * 1000,
+            audio_seconds=duration_seconds,
+        )
 
         raw_words = response.words or []
         words = tuple(

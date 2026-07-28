@@ -15,12 +15,14 @@ from app.course_os.models import (
     CourseAssessment,
     CourseBlueprint,
     CourseCreate,
+    CourseDecisionTrace,
     CourseFlow,
     CourseProposal,
     CourseRadarItem,
     CourseSummary,
     DashboardActivityPoint,
     DashboardSnapshot,
+    DecisionTraceStage,
     RevisionDiff,
     RoutingPolicyDraft,
 )
@@ -75,6 +77,33 @@ def _empty_course_flow(course: CourseSummary) -> CourseFlow:
     )
 
 
+def _decision_trace(course: CourseSummary, concept_id=None) -> CourseDecisionTrace:
+    assert course.working_revision_id is not None
+    selected_concept_id = concept_id or uuid4()
+    logical_id = uuid4()
+    stages = (
+        DecisionTraceStage(
+            key="concept",
+            title="Vector direction",
+            summary="Direction is distinct from magnitude.",
+            status="available",
+            artifact_type="concept",
+            artifact_id=selected_concept_id,
+            logical_artifact_id=logical_id,
+        ),
+    )
+    return CourseDecisionTrace(
+        course_id=course.id,
+        revision_id=course.working_revision_id,
+        revision_kind="working",
+        concept_id=selected_concept_id,
+        concept_logical_id=logical_id,
+        concept_title="Vector direction",
+        complete=True,
+        stages=stages,
+    )
+
+
 def _topic_plan() -> CourseDirectorPlan:
     return CourseDirectorPlan(
         summary="Prepare a concrete introduction topic.",
@@ -126,6 +155,33 @@ async def test_delete_course_requires_ownership_before_permanent_removal() -> No
     await service.delete_course(course.id, course.instructor_id)
 
     repository.delete_course.assert_awaited_once_with(course.id, course.instructor_id)
+
+
+@pytest.mark.anyio
+async def test_decision_trace_is_revision_scoped_and_requires_course_ownership() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    course = _course()
+    concept_id = uuid4()
+    trace = _decision_trace(course, concept_id)
+    repository.user_role = AsyncMock(return_value="instructor")
+    repository.get_course = AsyncMock(return_value=course)
+    repository.decision_trace = AsyncMock(return_value=trace)
+    service = CourseOSService(repository)
+
+    result = await service.decision_trace(
+        course.id,
+        course.instructor_id,
+        "working",
+        concept_id,
+    )
+
+    assert result == trace
+    repository.decision_trace.assert_awaited_once_with(
+        course.id,
+        course.working_revision_id,
+        "working",
+        concept_id,
+    )
 
 
 @pytest.mark.anyio

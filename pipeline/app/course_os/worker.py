@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import suppress
+from time import perf_counter
 from typing import Any
 from uuid import UUID
 
@@ -7,6 +8,7 @@ from app.assessments.service import AssessmentService
 from app.clips.service import ClipService
 from app.course_os.models import GenerationTask
 from app.course_os.repository import CourseOSRepository
+from app.evaluation.telemetry import capture_ai_usage
 from app.graph.review_service import ConceptGraphService
 from app.ingestion.service import IngestionService
 from app.segmentation.service import SegmentationService
@@ -60,13 +62,33 @@ class CourseGenerationWorker:
         )
         if task is None:
             return False
+        started = perf_counter()
         try:
-            output = await self._execute(task)
+            with capture_ai_usage() as ai_usage:
+                output = await self._execute(task)
         except GenerationTaskRetryableError as exc:
-            await self._repository.fail_generation_task(task.id, str(exc), retry=True)
+            await self._repository.fail_generation_task(
+                task.id,
+                str(exc),
+                retry=True,
+                measurement=_task_measurement(started, ai_usage),
+            )
         except Exception as exc:
-            await self._repository.fail_generation_task(task.id, str(exc), retry=True)
+            await self._repository.fail_generation_task(
+                task.id,
+                str(exc),
+                retry=True,
+                measurement=_task_measurement(started, ai_usage),
+            )
         else:
+            measurement = _task_measurement(started, ai_usage)
+            previous_attempts = (
+                task.output.get("measurement_attempts", [])
+                if isinstance(task.output, dict)
+                else []
+            )
+            output["measurement"] = measurement
+            output["measurement_attempts"] = [*previous_attempts, measurement]
             await self._repository.complete_generation_task(task.id, output)
         return True
 
@@ -153,3 +175,10 @@ def _video_id(task: GenerationTask) -> UUID:
 def _ingestion_job_id(task: GenerationTask) -> UUID | None:
     value = task.input.get("ingestion_job_id")
     return UUID(value) if isinstance(value, str) else None
+
+
+def _task_measurement(started: float, ai_usage: list[Any]) -> dict[str, Any]:
+    return {
+        "wall_time_ms": round((perf_counter() - started) * 1000, 2),
+        "ai_calls": [record.as_dict() for record in ai_usage],
+    }

@@ -14,6 +14,7 @@ from app.course_os.models import (
 )
 from app.course_os.repository import CourseOSRepository
 from app.course_os.worker import CourseGenerationWorker
+from app.evaluation.telemetry import record_openai_usage
 
 
 def _task(task_type: str) -> GenerationTask:
@@ -108,10 +109,13 @@ async def test_source_task_runs_transcription_inside_the_durable_worker() -> Non
 
     assert worked is True
     ingestion.process_job.assert_awaited_once_with(UUID(task.input["ingestion_job_id"]))
-    repository.complete_generation_task.assert_awaited_once_with(
-        task.id,
-        {"video_id": task.input["video_id"], "transcript_ready": True},
-    )
+    completed_task_id, output = repository.complete_generation_task.await_args.args
+    assert completed_task_id == task.id
+    assert output["video_id"] == task.input["video_id"]
+    assert output["transcript_ready"] is True
+    assert output["measurement"]["wall_time_ms"] >= 0
+    assert output["measurement"]["ai_calls"] == []
+    assert output["measurement_attempts"] == [output["measurement"]]
 
 
 @pytest.mark.anyio
@@ -135,14 +139,12 @@ async def test_outline_task_applies_reviewable_course_title_proposal() -> None:
         run.revision_id,
         UUID(task.input["video_id"]),
     )
-    repository.complete_generation_task.assert_awaited_once_with(
-        task.id,
-        {
-            "topic_ids": [str(topic_id)],
-            "count": 1,
-            "course_title": "Practical Vectors",
-        },
-    )
+    completed_task_id, output = repository.complete_generation_task.await_args.args
+    assert completed_task_id == task.id
+    assert output["topic_ids"] == [str(topic_id)]
+    assert output["count"] == 1
+    assert output["course_title"] == "Practical Vectors"
+    assert output["measurement"]["wall_time_ms"] >= 0
 
 
 @pytest.mark.anyio
@@ -163,7 +165,43 @@ async def test_graph_task_generates_private_proposals_before_review() -> None:
 
     assert worked is True
     graph.propose_graph.assert_awaited_once_with(run.course_id, provisional=True)
-    repository.complete_generation_task.assert_awaited_once_with(
-        task.id,
-        {"concept_count": 2, "edge_count": 1},
-    )
+    completed_task_id, output = repository.complete_generation_task.await_args.args
+    assert completed_task_id == task.id
+    assert output["concept_count"] == 2
+    assert output["edge_count"] == 1
+    assert output["measurement"]["wall_time_ms"] >= 0
+
+
+@pytest.mark.anyio
+async def test_failed_attempt_persists_provider_usage_for_retry_cost_accounting() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    task = _task("outline")
+    repository.claim_generation_task = AsyncMock(return_value=task)
+    repository.get_generation_run = AsyncMock(return_value=_run(task))
+    repository.fail_generation_task = AsyncMock()
+    segmentation = AsyncMock()
+
+    async def fail_after_provider_call(*_args: object, **_kwargs: object) -> None:
+        record_openai_usage(
+            SimpleNamespace(
+                usage=SimpleNamespace(
+                    input_tokens=100,
+                    output_tokens=25,
+                    total_tokens=125,
+                )
+            ),
+            operation="segment_lecture",
+            model="gpt-5.4",
+            latency_ms=20,
+        )
+        raise RuntimeError("provider output was unusable")
+
+    segmentation.propose_topics.side_effect = fail_after_provider_call
+
+    worked = await _worker(repository, segmentation=segmentation).run_once()
+
+    assert worked is True
+    measurement = repository.fail_generation_task.await_args.kwargs["measurement"]
+    assert measurement["wall_time_ms"] >= 0
+    assert measurement["ai_calls"][0]["input_tokens"] == 100
+    assert measurement["ai_calls"][0]["output_tokens"] == 25

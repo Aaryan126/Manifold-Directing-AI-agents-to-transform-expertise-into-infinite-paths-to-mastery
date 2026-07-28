@@ -11,6 +11,7 @@ from app.course_os.models import (
     CourseAssessment,
     CourseBlueprint,
     CourseCreate,
+    CourseDecisionTrace,
     CourseFlow,
     CourseFlowModuleDraft,
     CourseFlowUnitDraft,
@@ -102,6 +103,7 @@ class CourseOSRepository(ABC):
         task_id: UUID,
         error_message: str,
         retry: bool,
+        measurement: dict[str, Any] | None = None,
     ) -> None: ...
 
     @abstractmethod
@@ -282,6 +284,15 @@ class CourseOSRepository(ABC):
         days: int,
         learner_id: UUID | None,
     ) -> tuple[BlueprintConceptEvidence, ...]: ...
+
+    @abstractmethod
+    async def decision_trace(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+        revision_kind: str,
+        concept_id: UUID | None,
+    ) -> CourseDecisionTrace | None: ...
 
     @abstractmethod
     async def update_concept_sequence(

@@ -262,6 +262,36 @@ export type CourseBlueprint = {
   uncovered_concept_ids: string[];
 };
 
+export type DecisionTraceStage = {
+  key:
+    | "source"
+    | "concept"
+    | "clip"
+    | "assessment"
+    | "learner_evidence"
+    | "route_event"
+    | "dashboard_signal"
+    | "proposed_revision";
+  title: string;
+  summary: string;
+  status: "available" | "missing";
+  artifact_type: string | null;
+  artifact_id: string | null;
+  logical_artifact_id: string | null;
+  metadata: Record<string, unknown>;
+};
+
+export type CourseDecisionTrace = {
+  course_id: string;
+  revision_id: string;
+  revision_kind: "active" | "working";
+  concept_id: string;
+  concept_logical_id: string;
+  concept_title: string;
+  complete: boolean;
+  stages: DecisionTraceStage[];
+};
+
 export type CourseFlowModule = {
   id: string;
   logical_id: string;

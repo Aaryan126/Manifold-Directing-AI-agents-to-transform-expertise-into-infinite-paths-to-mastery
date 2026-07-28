@@ -12,6 +12,8 @@
     "test": "npm run test --workspaces --if-present",
     "test:e2e": "npm run test:e2e --workspace @coursefoundry/web",
     "test:health": "node scripts/check-health.mjs",
+    "eval:launchpad": "python3 scripts/launchpad_evaluation.py",
+    "eval:launchpad:generation": "python3 scripts/launchpad_evaluation.py --run-generation",
     "ci": "npm run lint && npm run typecheck && npm run test"
   },
   "engines": {
