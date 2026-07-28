@@ -186,6 +186,7 @@ This is not a single feature — it's a constraint on every feature below. Rules
 - Changes from the dashboard apply to future learner interactions by default; a "reprocess in-progress learners" option should exist but require explicit instructor confirmation, since it affects people mid-course.
 - Blueprint Live mode separates course-design health (coverage, structure, source alignment, assessment/clip readiness) from learner-evidence health (reach, correctness, confidence, mastery, remediation, and trends), so a new course remains useful without fabricated learner data.
 - Blueprint Design mode uses the same selected structure as Live mode for persisted graph/sequence manipulation, avoiding a separate diagnostic map that drifts from its editor. Every canvas operation has an accessible outline/inspector equivalent. Add/edit/remove and relationship actions are type-aware, state their learner/course impact before consequential changes, and never silently ignore an invalid target.
+- Blueprint Live mode provides an on-demand decision-lineage projection over the persisted course system: source moment → reviewed concept → teaching clip → assessment → learner evidence → deterministic route event → dashboard signal → signal-linked private proposed revision. It must distinguish an exact persisted link from an absent stage, never infer a proposal-to-signal relationship from proximity alone, and remain an overlay so the graph is still the primary workspace.
 
 ### 6.9 Publishing, Enrollment & Development Identity
 - Courses have an explicit draft/published state. Learners cannot enroll in or access learner content for draft courses.
@@ -194,6 +195,7 @@ This is not a single feature — it's a constraint on every feature below. Rules
 
 ### 6.10 Agent Runs, Review Bundles & Course Revisions
 - Agent work is persisted as resumable course-generation runs and scoped tasks with dependencies, leases, retry state, progress, and structured failures. Work continues without an open browser and resumes safely after service restart.
+- Each durable generation task persists measured wall time plus in-scope provider operation, provider/model, latency, and provider-returned token/audio usage when available. Evaluation tooling calculates cost only from those records and a dated explicit price table; missing usage remains unpriced rather than estimated.
 - A new course accepts one initial source; instructors can add further sources later through a new working revision.
 - The initial source remains an audio/video lecture. Supplemental PDF and PPTX sources may be added to a revision as private AI context, reviewed learner resources, or both. Native text, speaker notes, page/slide visuals, and exact citations are extracted asynchronously; no supplemental source becomes learner-visible without review and publication.
 - Post-generation specialist work is persisted with the same durable status/retry expectations as generation. A specialist task may prepare multiple atomic proposals, but each proposal is independently reviewable and failure cannot leave partially applied artifacts.
@@ -278,6 +280,7 @@ This is a recommendation, not a mandate — `implementation.md` should record th
 - Segmentation review time for a 2-hour lecture: under 10 minutes for a first-pass instructor review.
 - Assessment approval: >90% of generated questions require only light edits (not full rewrites) in normal cases, tracked as a quality signal for the generation prompts/pipeline.
 - Dashboard signal precision: manually-sampled dashboard flags should reflect real, actionable issues (not noise) at a rate the instructor finds worth their time — track dismiss-rate as an inverse quality signal.
+- A repository-owned competition harness can reproduce automated verification, warm application latency, one optional disposable real-provider generation, per-task/provider usage, calculated model cost, current course/trace completeness, and explicit quality gates as JSON plus Markdown. Measured, calculated, vendor-claimed, and unmeasured values must remain visibly distinct.
 
 ### HITL-specific (important given the hackathon/theme framing, and just good product practice)
 - Every AI-generated artifact type (segmentation, graph, clips, questions, dashboard suggestions) has a demonstrable, working `Accept / Edit / Dismiss` interaction.

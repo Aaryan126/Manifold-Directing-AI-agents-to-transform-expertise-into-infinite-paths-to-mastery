@@ -1,0 +1,767 @@
+{
+  "schema_version": 1,
+  "measured_at": "2026-07-28T05:53:51.423432+00:00",
+  "git_commit": "fb0c1ad",
+  "trials": 20,
+  "commands": [
+    {
+      "name": "Web/shared tests",
+      "command": "npm test",
+      "passed": true,
+      "exit_code": 0,
+      "duration_seconds": 2.902,
+      "test_count": 98,
+      "output_tail": "> test\n> npm run test --workspaces --if-present\n\n\n> @coursefoundry/web@0.0.0 test\n> vitest run\n\n\n RUN  v3.2.7 /Users/aaryan/Desktop/CourseFoundry-fresh/web\n\n \u2713 tests/clipPreview.test.ts (4 tests) 3ms\n \u2713 tests/topicCoverage.test.ts (2 tests) 3ms\n \u2713 tests/brandPalette.test.ts (3 tests) 10ms\n \u2713 tests/reviewState.test.ts (3 tests) 2ms\n \u2713 tests/graphModel.test.ts (5 tests) 13ms\n \u2713 tests/assessmentReview.test.ts (4 tests) 3ms\n \u2713 tests/learnerCourse.test.ts (8 tests) 5ms\n \u2713 tests/instructorWorkflow.test.ts (5 tests) 4ms\n \u2713 tests/courseOS.test.ts (16 tests) 7ms\n \u2713 tests/health.test.ts (1 test) 26ms\n \u2713 tests/dashboardPerformance.test.ts (4 tests) 4ms\n \u2713 tests/interfaceMotion.test.ts (4 tests) 6ms\n \u2713 tests/clipReview.test.ts (6 tests) 4ms\n \u2713 tests/courseFlowViewport.test.ts (3 tests) 6ms\n \u2713 tests/traceability.test.ts (3 tests) 6ms\n \u2713 tests/routingPolicy.test.ts (3 tests) 3ms\n \u2713 tests/runtimeConversations.test.ts (3 tests) 3ms\n \u2713 tests/developmentSession.test.ts (2 tests) 3ms\n \u2713 tests/clipPresentation.test.ts (4 tests) 3ms\n \u2713 tests/assessmentEditor.test.ts (3 tests) 3ms\n \u2713 tests/dashboardReview.test.ts (3 tests) 24ms\n \u2713 tests/timecode.test.ts (3 tests) 3ms\n \u2713 tests/learnerExperience.test.ts (2 tests) 3ms\n \u2713 tests/topicReview.test.ts (2 tests) 3ms\n \u2713 tests/courseMapOverview.test.ts (1 test) 2ms\n\n Test Files  25 passed (25)\n      Tests  97 passed (97)\n   Start at  13:48:48\n   Duration  1.65s (transform 781ms, setup 0ms, collect 2.25s, tests 152ms, environment 4ms, prepare 2.66s)\n\n\n> @coursefoundry/shared@0.0.0 test\n> vitest run\n\n\n RUN  v3.2.7 /Users/aaryan/Desktop/CourseFoundry-fresh/shared\n\n \u2713 src/index.test.ts (1 test) 2ms\n\n Test Files  1 passed (1)\n      Tests  1 passed (1)\n   Start at  13:48:50\n   Duration  244ms (transform 26ms, setup 0ms, collect 36ms, tests 2ms, environment 0ms, prepare 39ms)"
+    },
+    {
+      "name": "Pipeline tests",
+      "command": "uv run pytest -q",
+      "passed": true,
+      "exit_code": 0,
+      "duration_seconds": 5.084,
+      "test_count": 196,
+      "output_tail": "........................................................................ [ 36%]\n........................................................................ [ 73%]\n....................................................                     [100%]\n=============================== warnings summary ===============================\n.venv/lib/python3.12/site-packages/fastapi/testclient.py:1\n  /Users/aaryan/Desktop/CourseFoundry-fresh/pipeline/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.\n    from starlette.testclient import TestClient as TestClient  # noqa\n\n<frozen importlib._bootstrap>:488\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyPacked has no __module__ attribute\n\n<frozen importlib._bootstrap>:488\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyObject has no __module__ attribute\n\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type swigvarlink has no __module__ attribute\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n196 passed, 6 warnings in 4.49s"
+    },
+    {
+      "name": "Lint",
+      "command": "npm run lint",
+      "passed": true,
+      "exit_code": 0,
+      "duration_seconds": 5.224,
+      "test_count": null,
+      "output_tail": "> lint\n> npm run lint --workspaces --if-present\n\n\n> @coursefoundry/web@0.0.0 lint\n> eslint .\n\n\n> @coursefoundry/shared@0.0.0 lint\n> tsc -p tsconfig.json --noEmit"
+    },
+    {
+      "name": "Typecheck",
+      "command": "npm run typecheck",
+      "passed": true,
+      "exit_code": 0,
+      "duration_seconds": 3.715,
+      "test_count": null,
+      "output_tail": "> typecheck\n> npm run typecheck --workspaces --if-present\n\n\n> @coursefoundry/web@0.0.0 typecheck\n> tsc -p tsconfig.json --noEmit\n\n\n> @coursefoundry/shared@0.0.0 typecheck\n> tsc -p tsconfig.json --noEmit"
+    },
+    {
+      "name": "Application build/start",
+      "command": "docker compose up --build -d",
+      "passed": true,
+      "exit_code": 0,
+      "duration_seconds": 69.329,
+      "test_count": null,
+      "output_tail": "m notice To update run: npm install -g npm@12.0.1\n#24 54.45 npm notice\n#24 DONE 54.8s\n\n#10 [web deps 2/6] WORKDIR /app\n#10 CACHED\n\n#30 [web runner 3/5] COPY --from=builder /app/web/.next/standalone ./\n#30 DONE 0.3s\n\n#31 [web runner 4/5] COPY --from=builder /app/web/.next/static ./web/.next/static\n#31 DONE 0.0s\n\n#32 [web runner 5/5] COPY --from=builder /app/web/public ./web/public\n#32 DONE 0.0s\n\n#33 [web] exporting to image\n#33 exporting layers\n#33 exporting layers 2.4s done\n#33 exporting manifest sha256:f3c9b0ee319aecafb299ee8da67c5da9a655059f214f151e9626863dae5e40e0 done\n#33 exporting config sha256:e85f245150675d9128e19bcb715ffbd2e9feb5ebf61891717a3b6d70d7529f01 done\n#33 exporting attestation manifest sha256:fb2bf92f00c05f8a1463e5620ed3ded0a961604ed94d03a6a5cb3ee638080ec4 done\n#33 exporting manifest list sha256:e0e157cd9047448984b41f5768f9678006295a9fa764d609f6e1322fabbbfdd3 done\n#33 naming to docker.io/library/coursefoundry-fresh-web:latest done\n#33 unpacking to docker.io/library/coursefoundry-fresh-web:latest\n#33 unpacking to docker.io/library/coursefoundry-fresh-web:latest 0.6s done\n#33 DONE 3.1s\n\n#34 [web] resolving provenance for metadata file\n#34 DONE 0.0s\n\n Image coursefoundry-fresh-web Building \n Image coursefoundry-fresh-pipeline Building \n Image coursefoundry-fresh-web Built \n Image coursefoundry-fresh-pipeline Built \n Container coursefoundry-fresh-postgres-1 Running \n Container coursefoundry-fresh-pipeline-1 Recreate \n Container coursefoundry-fresh-pipeline-1 Recreated \n Container coursefoundry-fresh-web-1 Recreate \n Container coursefoundry-fresh-web-1 Recreated \n Container coursefoundry-fresh-postgres-1 Waiting \n Container coursefoundry-fresh-postgres-1 Healthy \n Container coursefoundry-fresh-pipeline-1 Starting \n Container coursefoundry-fresh-pipeline-1 Started \n Container coursefoundry-fresh-pipeline-1 Waiting \n Container coursefoundry-fresh-pipeline-1 Healthy \n Container coursefoundry-fresh-web-1 Starting \n Container coursefoundry-fresh-web-1 Started"
+    }
+  ],
+  "endpoint_latency": {
+    "pipeline_health": {
+      "trials": 20,
+      "p50_ms": 1.81,
+      "p95_ms": 2.46,
+      "min_ms": 1.45,
+      "max_ms": 3.12
+    },
+    "web_health": {
+      "trials": 20,
+      "p50_ms": 3.82,
+      "p95_ms": 9.26,
+      "min_ms": 2.26,
+      "max_ms": 12.03
+    },
+    "teacher_dashboard": {
+      "trials": 20,
+      "p50_ms": 16.42,
+      "p95_ms": 112.44,
+      "min_ms": 9.87,
+      "max_ms": 140.04
+    },
+    "active_blueprint": {
+      "trials": 20,
+      "p50_ms": 10.55,
+      "p95_ms": 17.55,
+      "min_ms": 9.33,
+      "max_ms": 17.7
+    },
+    "decision_trace": {
+      "trials": 20,
+      "p50_ms": 9.95,
+      "p95_ms": 29.43,
+      "min_ms": 6.96,
+      "max_ms": 58.2
+    }
+  },
+  "current_course": {
+    "portfolio": {
+      "course_count": 10,
+      "published_course_count": 4,
+      "untitled_course_count": 7
+    },
+    "selected_course": {
+      "id": "6d47015a-7e94-43ff-bcf6-303dedd2668e",
+      "instructor_id": "4c4f0c25-d8de-47d3-ab25-b059deda0aea",
+      "title": "Learn Anything in 20 Hours",
+      "description": "Reusable Manifold demonstration course.",
+      "status": "published",
+      "active_revision_id": "ba396137-1707-4a6f-9d7d-018ca8165c54",
+      "working_revision_id": "02e77ab3-9c97-47a1-9237-dde841866cb6",
+      "revision_status": "building",
+      "generation_run_id": null,
+      "generation_status": null,
+      "generation_phase": null,
+      "generation_progress": 0.0,
+      "source_count": 1,
+      "topic_count": 6,
+      "concept_count": 14,
+      "pending_review_count": 0,
+      "open_signal_count": 1,
+      "updated_at": "2026-07-21T07:20:58.125836Z"
+    },
+    "blueprint": {
+      "node_count": 36,
+      "edge_count": 88,
+      "node_kinds": {
+        "topic": 6,
+        "concept": 14,
+        "clip": 8,
+        "question": 7,
+        "source": 1
+      },
+      "node_statuses": {
+        "edited": 5,
+        "accepted": 23,
+        "active": 7,
+        "flagged": 1
+      },
+      "edge_kinds": {
+        "contains": 23,
+        "requires": 15,
+        "teaches": 13,
+        "assesses": 6,
+        "next": 13,
+        "remediates_to": 18
+      },
+      "coverage_gap_count": 11
+    },
+    "trace": {
+      "concept_title": "Motivation for rapid skill acquisition",
+      "complete": false,
+      "available_stages": 6,
+      "total_stages": 8,
+      "stages": [
+        {
+          "key": "source",
+          "title": "Lecture recording",
+          "summary": "Parenthood, time scarcity, and the motivation to learn faster is the reviewed source moment for this chain.",
+          "status": "available",
+          "artifact_type": "source",
+          "artifact_id": "37dc03ef-a611-475d-98d0-418985e96dc3",
+          "logical_artifact_id": null,
+          "metadata": {
+            "start_seconds": 8.66,
+            "end_seconds": 386.0
+          }
+        },
+        {
+          "key": "concept",
+          "title": "Motivation for rapid skill acquisition",
+          "summary": "A learner may seek methods that produce useful progress quickly because life circumstances limit available practice time.",
+          "status": "available",
+          "artifact_type": "concept",
+          "artifact_id": "9287ed61-be38-4a95-810b-f3b6caf5bc48",
+          "logical_artifact_id": "9287ed61-be38-4a95-810b-f3b6caf5bc48",
+          "metadata": {
+            "review_status": "accepted"
+          }
+        },
+        {
+          "key": "clip",
+          "title": "Explanation",
+          "summary": "Teaching moment from 8.7s to 187.9s.",
+          "status": "available",
+          "artifact_type": "clip",
+          "artifact_id": "0a57554f-2c6a-4581-9f8b-9d093e7a27e2",
+          "logical_artifact_id": "0a57554f-2c6a-4581-9f8b-9d093e7a27e2",
+          "metadata": {
+            "start_seconds": 8.66,
+            "end_seconds": 187.9
+          }
+        },
+        {
+          "key": "assessment",
+          "title": "Assessment",
+          "summary": "According to the topic summary, why does the speaker become interested in learning faster?",
+          "status": "available",
+          "artifact_type": "question",
+          "artifact_id": "0f6c7d33-faa7-4a07-b6ae-5e7f18a39d98",
+          "logical_artifact_id": "0f6c7d33-faa7-4a07-b6ae-5e7f18a39d98",
+          "metadata": {}
+        },
+        {
+          "key": "learner_evidence",
+          "title": "Correct learner response",
+          "summary": "Confidence 4/4; purpose: lesson.",
+          "status": "available",
+          "artifact_type": "attempt",
+          "artifact_id": "a6bbaef8-c12c-40e8-81d5-c830ba26e1e1",
+          "logical_artifact_id": null,
+          "metadata": {
+            "correctness": true,
+            "confidence": 4,
+            "purpose": "lesson"
+          }
+        },
+        {
+          "key": "route_event",
+          "title": "Adaptive route",
+          "summary": "No persisted record exists at this stage yet.",
+          "status": "missing",
+          "artifact_type": null,
+          "artifact_id": null,
+          "logical_artifact_id": null,
+          "metadata": {}
+        },
+        {
+          "key": "dashboard_signal",
+          "title": "Learners are stuck on Motivation for rapid skill acquisition",
+          "summary": "2 of 2 learners who touched this concept are struggling.",
+          "status": "available",
+          "artifact_type": "dashboard_signal",
+          "artifact_id": "ee210396-23a0-4aac-9e27-333915d5a850",
+          "logical_artifact_id": null,
+          "metadata": {
+            "signal_type": "stuck_cohort",
+            "status": "open",
+            "related_entity_type": "concept"
+          }
+        },
+        {
+          "key": "proposed_revision",
+          "title": "Proposed revision",
+          "summary": "No persisted record exists at this stage yet.",
+          "status": "missing",
+          "artifact_type": null,
+          "artifact_id": null,
+          "logical_artifact_id": null,
+          "metadata": {}
+        }
+      ]
+    }
+  },
+  "generation": {
+    "status": "waiting_review",
+    "error_summary": null,
+    "wall_time_seconds": 213.91,
+    "task_metrics": [
+      {
+        "task_type": "source_ready",
+        "status": "complete",
+        "attempts": 1,
+        "wall_time_ms": 13.88,
+        "ai_calls": [],
+        "measurement_attempts": [
+          {
+            "ai_calls": [],
+            "wall_time_ms": 13.88
+          }
+        ]
+      },
+      {
+        "task_type": "outline",
+        "status": "complete",
+        "attempts": 1,
+        "wall_time_ms": 10511.26,
+        "ai_calls": [
+          {
+            "model": "gpt-5.4",
+            "provider": "openai",
+            "operation": "segment_lecture",
+            "latency_ms": 10435.54,
+            "input_tokens": 3611,
+            "total_tokens": 4474,
+            "output_tokens": 863,
+            "cached_input_tokens": 2816
+          }
+        ],
+        "measurement_attempts": [
+          {
+            "ai_calls": [
+              {
+                "model": "gpt-5.4",
+                "provider": "openai",
+                "operation": "segment_lecture",
+                "latency_ms": 10435.54,
+                "input_tokens": 3611,
+                "total_tokens": 4474,
+                "output_tokens": 863,
+                "cached_input_tokens": 2816
+              }
+            ],
+            "wall_time_ms": 10511.26
+          }
+        ]
+      },
+      {
+        "task_type": "concept_graph",
+        "status": "complete",
+        "attempts": 1,
+        "wall_time_ms": 9433.25,
+        "ai_calls": [
+          {
+            "model": "gpt-5.4",
+            "provider": "openai",
+            "operation": "build_concept_graph",
+            "latency_ms": 9383.74,
+            "input_tokens": 1099,
+            "total_tokens": 2010,
+            "output_tokens": 911,
+            "cached_input_tokens": 0
+          }
+        ],
+        "measurement_attempts": [
+          {
+            "ai_calls": [
+              {
+                "model": "gpt-5.4",
+                "provider": "openai",
+                "operation": "build_concept_graph",
+                "latency_ms": 9383.74,
+                "input_tokens": 1099,
+                "total_tokens": 2010,
+                "output_tokens": 911,
+                "cached_input_tokens": 0
+              }
+            ],
+            "wall_time_ms": 9433.25
+          }
+        ]
+      },
+      {
+        "task_type": "clips",
+        "status": "complete",
+        "attempts": 2,
+        "wall_time_ms": 156843.27000000002,
+        "ai_calls": [
+          {
+            "model": "gpt-5.4",
+            "provider": "openai",
+            "operation": "extract_teaching_clips",
+            "latency_ms": 4501.7,
+            "input_tokens": 3667,
+            "total_tokens": 3997,
+            "output_tokens": 330,
+            "cached_input_tokens": 0
+          },
+          {
+            "model": "gpt-5.4",
+            "provider": "openai",
+            "operation": "extract_teaching_clips",
+            "latency_ms": 3347.57,
+            "input_tokens": 3684,
+            "total_tokens": 3928,
+            "output_tokens": 244,
+            "cached_input_tokens": 0
+          },
+          {
+            "model": "gpt-5.4",
+            "provider": "openai",
+            "operation": "extract_teaching_clips",
+            "latency_ms": 3486.21,
+            "input_tokens": 3729,
+            "total_tokens": 3988,
+            "output_tokens": 259,
+            "cached_input_tokens": 0
+          },
+          {
+            "model": "gpt-5.4",
+            "provider": "openai",
+            "operation": "extract_teaching_clips",
+            "latency_ms": 5429.32,
+            "input_tokens": 3748,
+            "total_tokens": 4257,
+            "output_tokens": 509,
+            "cached_input_tokens": 0
+          },
+          {
+            "model": "gpt-5.4",
+            "provider": "openai",
+            "operation": "extract_teaching_clips",
+            "latency_ms": 6265.78,
+            "input_tokens": 3762,
+            "total_tokens": 4241,
+            "output_tokens": 479,
+            "cached_input_tokens": 0
+          },
+          {
+            "model": "gpt-5.4",
+            "provider": "openai",
+            "operation": "extract_teaching_clips",
+            "latency_ms": 4489.74,
+            "input_tokens": 3667,
+            "total_tokens": 4007,
+            "output_tokens": 340,
+            "cached_input_tokens": 2816
+          },
+          {
+            "model": "gpt-5.4",
+            "provider": "openai",
+            "operation": "extract_teaching_clips",
+            "latency_ms": 5586.82,
+            "input_tokens": 3684,
+            "total_tokens": 4215,
+            "output_tokens": 531,
+            "cached_input_tokens": 2816
+          },
+          {
+            "model": "gpt-5.4",
+            "provider": "openai",
+            "operation": "extract_teaching_clips",
+            "latency_ms": 3925.7,
+            "input_tokens": 3729,
+            "total_tokens": 4024,
+            "output_tokens": 295,
+            "cached_input_tokens": 2816
+          },
+          {
+            "model": "gpt-5.4",
+            "provider": "openai",
+            "operation": "extract_teaching_clips",
+            "latency_ms": 5005.26,
+            "input_tokens": 3748,
+            "total_tokens": 4186,
+            "output_tokens": 438,
+            "cached_input_tokens": 2816
+          },
+          {
+            "model": "gpt-5.4",
+            "provider": "openai",
+            "operation": "extract_teaching_clips",
+            "latency_ms": 6362.24,
+            "input_tokens": 3762,
+            "total_tokens": 4287,
+            "output_tokens": 525,
+            "cached_input_tokens": 2816
+          }
+        ],
+        "measurement_attempts": [
+          {
+            "ai_calls": [
+              {
+                "model": "gpt-5.4",
+                "provider": "openai",
+                "operation": "extract_teaching_clips",
+                "latency_ms": 4501.7,
+                "input_tokens": 3667,
+                "total_tokens": 3997,
+                "output_tokens": 330,
+                "cached_input_tokens": 0
+              },
+              {
+                "model": "gpt-5.4",
+                "provider": "openai",
+                "operation": "extract_teaching_clips",
+                "latency_ms": 3347.57,
+                "input_tokens": 3684,
+                "total_tokens": 3928,
+                "output_tokens": 244,
+                "cached_input_tokens": 0
+              },
+              {
+                "model": "gpt-5.4",
+                "provider": "openai",
+                "operation": "extract_teaching_clips",
+                "latency_ms": 3486.21,
+                "input_tokens": 3729,
+                "total_tokens": 3988,
+                "output_tokens": 259,
+                "cached_input_tokens": 0
+              },
+              {
+                "model": "gpt-5.4",
+                "provider": "openai",
+                "operation": "extract_teaching_clips",
+                "latency_ms": 5429.32,
+                "input_tokens": 3748,
+                "total_tokens": 4257,
+                "output_tokens": 509,
+                "cached_input_tokens": 0
+              },
+              {
+                "model": "gpt-5.4",
+                "provider": "openai",
+                "operation": "extract_teaching_clips",
+                "latency_ms": 6265.78,
+                "input_tokens": 3762,
+                "total_tokens": 4241,
+                "output_tokens": 479,
+                "cached_input_tokens": 0
+              }
+            ],
+            "wall_time_ms": 65597.03
+          },
+          {
+            "ai_calls": [
+              {
+                "model": "gpt-5.4",
+                "provider": "openai",
+                "operation": "extract_teaching_clips",
+                "latency_ms": 4489.74,
+                "input_tokens": 3667,
+                "total_tokens": 4007,
+                "output_tokens": 340,
+                "cached_input_tokens": 2816
+              },
+              {
+                "model": "gpt-5.4",
+                "provider": "openai",
+                "operation": "extract_teaching_clips",
+                "latency_ms": 5586.82,
+                "input_tokens": 3684,
+                "total_tokens": 4215,
+                "output_tokens": 531,
+                "cached_input_tokens": 2816
+              },
+              {
+                "model": "gpt-5.4",
+                "provider": "openai",
+                "operation": "extract_teaching_clips",
+                "latency_ms": 3925.7,
+                "input_tokens": 3729,
+                "total_tokens": 4024,
+                "output_tokens": 295,
+                "cached_input_tokens": 2816
+              },
+              {
+                "model": "gpt-5.4",
+                "provider": "openai",
+                "operation": "extract_teaching_clips",
+                "latency_ms": 5005.26,
+                "input_tokens": 3748,
+                "total_tokens": 4186,
+                "output_tokens": 438,
+                "cached_input_tokens": 2816
+              },
+              {
+                "model": "gpt-5.4",
+                "provider": "openai",
+                "operation": "extract_teaching_clips",
+                "latency_ms": 6362.24,
+                "input_tokens": 3762,
+                "total_tokens": 4287,
+                "output_tokens": 525,
+                "cached_input_tokens": 2816
+              }
+            ],
+            "wall_time_ms": 91246.24
+          }
+        ]
+      },
+      {
+        "task_type": "assessments",
+        "status": "complete",
+        "attempts": 1,
+        "wall_time_ms": 29351.49,
+        "ai_calls": [
+          {
+            "model": "gpt-5.4",
+            "provider": "openai",
+            "operation": "generate_assessment",
+            "latency_ms": 5276.13,
+            "input_tokens": 398,
+            "total_tokens": 833,
+            "output_tokens": 435,
+            "cached_input_tokens": 0
+          },
+          {
+            "model": "gpt-5.4",
+            "provider": "openai",
+            "operation": "generate_assessment",
+            "latency_ms": 5694.64,
+            "input_tokens": 422,
+            "total_tokens": 965,
+            "output_tokens": 543,
+            "cached_input_tokens": 0
+          },
+          {
+            "model": "gpt-5.4",
+            "provider": "openai",
+            "operation": "generate_assessment",
+            "latency_ms": 6580.73,
+            "input_tokens": 464,
+            "total_tokens": 956,
+            "output_tokens": 492,
+            "cached_input_tokens": 0
+          },
+          {
+            "model": "gpt-5.4",
+            "provider": "openai",
+            "operation": "generate_assessment",
+            "latency_ms": 6125.47,
+            "input_tokens": 488,
+            "total_tokens": 1021,
+            "output_tokens": 533,
+            "cached_input_tokens": 0
+          },
+          {
+            "model": "gpt-5.4",
+            "provider": "openai",
+            "operation": "generate_assessment",
+            "latency_ms": 5469.19,
+            "input_tokens": 501,
+            "total_tokens": 957,
+            "output_tokens": 456,
+            "cached_input_tokens": 0
+          }
+        ],
+        "measurement_attempts": [
+          {
+            "ai_calls": [
+              {
+                "model": "gpt-5.4",
+                "provider": "openai",
+                "operation": "generate_assessment",
+                "latency_ms": 5276.13,
+                "input_tokens": 398,
+                "total_tokens": 833,
+                "output_tokens": 435,
+                "cached_input_tokens": 0
+              },
+              {
+                "model": "gpt-5.4",
+                "provider": "openai",
+                "operation": "generate_assessment",
+                "latency_ms": 5694.64,
+                "input_tokens": 422,
+                "total_tokens": 965,
+                "output_tokens": 543,
+                "cached_input_tokens": 0
+              },
+              {
+                "model": "gpt-5.4",
+                "provider": "openai",
+                "operation": "generate_assessment",
+                "latency_ms": 6580.73,
+                "input_tokens": 464,
+                "total_tokens": 956,
+                "output_tokens": 492,
+                "cached_input_tokens": 0
+              },
+              {
+                "model": "gpt-5.4",
+                "provider": "openai",
+                "operation": "generate_assessment",
+                "latency_ms": 6125.47,
+                "input_tokens": 488,
+                "total_tokens": 1021,
+                "output_tokens": 533,
+                "cached_input_tokens": 0
+              },
+              {
+                "model": "gpt-5.4",
+                "provider": "openai",
+                "operation": "generate_assessment",
+                "latency_ms": 5469.19,
+                "input_tokens": 501,
+                "total_tokens": 957,
+                "output_tokens": 456,
+                "cached_input_tokens": 0
+              }
+            ],
+            "wall_time_ms": 29351.49
+          }
+        ]
+      },
+      {
+        "task_type": "review_bundles",
+        "status": "complete",
+        "attempts": 1,
+        "wall_time_ms": 31.46,
+        "ai_calls": [],
+        "measurement_attempts": [
+          {
+            "ai_calls": [],
+            "wall_time_ms": 31.46
+          }
+        ]
+      }
+    ],
+    "ai_call_count": 17,
+    "input_tokens": 44163,
+    "cached_input_tokens": 16896,
+    "output_tokens": 8183,
+    "artifact_counts": {
+      "topic": 5,
+      "concept": 4,
+      "clip": 5,
+      "question": 5
+    },
+    "coverage_gap_count": 0,
+    "cost": {
+      "estimated_openai_usd": 0.195136,
+      "priced_call_count": 17,
+      "unpriced_models": [],
+      "pricing_basis": "Actual provider-returned tokens multiplied by OpenAI GPT-5.4 standard pricing accessed 2026-07-28.",
+      "pricing_source": "https://developers.openai.com/api/docs/models/gpt-5.4"
+    },
+    "cleanup": "disposable course deleted"
+  },
+  "quality_gates": [
+    {
+      "gate": "Automated verification",
+      "passed": true,
+      "evidence": "294 automated tests reported."
+    },
+    {
+      "gate": "Application availability",
+      "passed": true,
+      "evidence": "Pipeline and web health endpoints responded during the run."
+    },
+    {
+      "gate": "Warm API latency",
+      "passed": true,
+      "evidence": "All measured warm endpoint p95 values are below 250 ms."
+    },
+    {
+      "gate": "Adaptive course structure",
+      "passed": true,
+      "evidence": "Requires \u22654 concepts, one prerequisite, one clip, and one question."
+    },
+    {
+      "gate": "Decision lineage visibility",
+      "passed": true,
+      "evidence": "6/8 trace stages currently have persisted evidence."
+    },
+    {
+      "gate": "Measured AI generation",
+      "passed": true,
+      "evidence": "17 provider calls captured with 52346 total tokens."
+    }
+  ],
+  "baselines": [
+    {
+      "method": "Articulate 360 AI",
+      "verified_capability": "Creates editable course drafts, lessons, interactive blocks, and knowledge checks from prompts or source documents.",
+      "difference": "A direct authoring baseline. Its public page does not establish the same source-to-mastery-to-revision lineage measured by this harness.",
+      "commercial_context": "$1,449 personal or $1,749 teams per user/year (vendor list price).",
+      "source": "https://www.articulate.com/features/ai-powered-authoring/",
+      "pricing_source": "https://www.articulate.com/360/pricing/"
+    },
+    {
+      "method": "H5P Interactive Video",
+      "verified_capability": "Authors overlays, quizzes, summaries, and Go To adaptivity on an existing video.",
+      "difference": "A strong manual interactive-video baseline; the official tutorial describes placing interactions and adaptive jumps in the authoring UI.",
+      "commercial_context": "Open content format; hosting and authoring arrangement varies.",
+      "source": "https://h5p.org/tutorial-interactive-video"
+    },
+    {
+      "method": "Area9 Rhapsode",
+      "verified_capability": "An integrated adaptive learning platform that continuously personalizes paths toward mastery.",
+      "difference": "A mature adaptive-platform baseline. Manifold's evaluated wedge begins with an instructor recording and makes every course-revision decision reviewable.",
+      "commercial_context": "No public price used in this comparison.",
+      "source": "https://area9lyceum.com/"
+    },
+    {
+      "method": "Traditional custom e-learning",
+      "verified_capability": "ATD notes that development time depends on content, interactivity, media, tools, expertise, and review cycles.",
+      "difference": "No universal hour ratio is treated as ground truth. The defensible comparison is a matched manual build, which remains a follow-up experiment.",
+      "commercial_context": "Team and workflow dependent.",
+      "source": "https://www.td.org/content/atd-blog/estimating-e-learning-development-time"
+    }
+  ]
+}

@@ -1,313 +1,216 @@
 # Manifold
 
-> **Directing AI agents to transform expertise into infinite paths to master.**
+**A human-governed adaptive course compiler for instructor-owned teaching.**
 
-Manifold is a video-native adaptive learning platform that turns an instructor's
-existing lecture recordings into a structured, mastery-based course. AI agents
-propose the course outline, concept graph, reusable clips, assessments, and
-remediation paths; the instructor reviews every learner-facing artifact before it
-is published.
+Manifold turns a lecture recording into a reviewable adaptive course system:
+topics, concepts, prerequisite relationships, reusable teaching clips,
+assessments, remediation, learner routes, dashboard signals, and private course
+revisions. AI prepares the system; the instructor remains the publishing
+authority.
 
-The product is designed for independent experts, tutors, corporate trainers, and
-small teaching teams that want to offer personalized learning without assembling
-an instructional-design, video-editing, assessment-writing, and analytics team.
+The core product claim is not “AI writes a course.” It is that one instructor can
+operate a closed teaching loop without surrendering pedagogical control:
 
-## Objective
+```text
+source → course model → reviewed teaching → learner evidence
+       → adaptive route → instructor signal → reviewed revision
+```
 
-Manifold aims to let one subject-matter expert operate an adaptive course platform
-that would traditionally require an institution. For a two-hour lecture, the
-current product target is to move from raw video to a reviewed, publishable course
-in under 60 minutes of active instructor time, excluding asynchronous processing.
+## Why it exists
 
-The longer-term objective is not to replace the instructor. It is to multiply the
-instructor's reach while preserving their expertise, judgment, and pedagogical
-intent in every path a learner can take.
+A lecture video is normally one path for every learner. Making it adaptive
+traditionally involves several separate jobs: instructional design, video
+editing, assessment writing, learning analytics, and ongoing course maintenance.
+Generic AI authoring can accelerate drafting, but speed alone does not answer:
 
-## The Problem
+- Which source moment supports this concept?
+- Why did a learner receive this route?
+- Which evidence produced an instructor alert?
+- What course change is proposed, and who approved it?
+- Will an AI-authored change reach learners before review?
 
-Long-form lecture video is usually passive and linear: every learner receives the
-same material in the same order, regardless of prior knowledge, confidence, or
-misconceptions. Turning that video into an adaptive course is expensive because it
-normally requires several specialized roles:
+Manifold makes those questions part of the product contract.
 
-- an instructional designer to structure topics and prerequisites;
-- a video editor to extract clean, reusable explanations and examples;
-- an assessment writer to create questions and remediation logic;
-- an analyst or teaching team to identify where learners are struggling; and
-- engineering infrastructure to deliver video, track mastery, and route learners.
+## What is working
 
-Independent experts and small teams often have valuable teaching material but not
-the staff or systems required to perform this work. Fully autonomous AI course
-generators create a different problem: they can discard the instructor's original
-material and make pedagogical decisions without accountable human review.
+- asynchronous lecture ingestion and timestamped transcription;
+- semantic topic segmentation and editable course outlines;
+- concept extraction, sparse prerequisite graphs, and direct graph editing;
+- reusable clip extraction and local zero-based media materialization;
+- concept-grounded assessments, confidence prompts, and remediation rules;
+- deterministic prerequisite-, correctness-, confidence-, and mastery-aware routing;
+- immutable route events, attempts, mastery transitions, and audit records;
+- evidence-driven instructor signals and private specialist proposal packs;
+- versioned active/working course revisions with atomic publication;
+- a bounded learner assistant that can use only reviewed course artifacts;
+- Course Director coordination with independent `Accept / Edit / Dismiss` review;
+- a judge-facing **Trace decision** view that follows persisted lineage from the
+  source moment through learner evidence and a proposed revision.
 
-## The Solution
+`implementation.md` is the live source of truth for exact phase status. Several
+late phases have automated verification but still await the user's human
+checklist confirmation; this README does not relabel them complete.
 
-Manifold coordinates specialized AI-assisted stages around a reviewed source of
-truth: the instructor's own teaching.
+## The non-negotiable review boundary
 
-1. **Ingest:** upload a lecture or provide a supported media URL.
-2. **Transcribe:** create a time-aligned transcript with word-level timestamps.
-3. **Structure:** propose semantic topics and an editable course outline.
-4. **Model:** extract concepts and propose a directed prerequisite graph.
-5. **Compose:** identify independently playable definitions, examples,
-   explanations, misconception corrections, and prerequisite recaps.
-6. **Assess:** generate comprehension checks, confidence prompts, and remediation
-   mappings.
-7. **Review and publish:** require instructor approval before generated material
-   can reach a learner.
-8. **Adapt:** route each learner according to correctness, confidence, mastery,
-   prerequisites, and instructor-configured policy.
-9. **Improve:** surface cohort, content-performance, and graph-drift signals so the
-   instructor can accept, edit, or dismiss proposed corrections.
+Every AI-generated learner-facing artifact is private until reviewed. The common
+checkpoint is:
 
-## AI Proposes, the Instructor Decides
+1. **Accept AI suggestion**
+2. **Edit manually**
+3. **Dismiss**
 
-Human review is a system invariant, not an optional approval screen. Topic
-boundaries, concepts, prerequisite edges, clips, questions, remediation rules, and
-dashboard corrections retain their AI rationale and instructor review state.
+Publishing is a separate learner-facing commit. Runtime routing is the bounded
+exception: it may act automatically only over reviewed artifacts and
+instructor-controlled policy, and it persists its evidence and rationale.
 
-Every learner-facing AI artifact passes through a defined checkpoint. Review
-surfaces use the same interaction model:
+## Measured evidence
 
-- **Accept AI suggestion**
-- **Edit manually**
-- **Dismiss**
+The repository includes a reproducible competition harness. On the recorded
+2026-07-28 run it:
 
-Per-learner routing is the intentional exception: it runs autonomously at
-interaction time, but it can use only reviewed artifacts and instructor-controlled
-routing policy. Audit records preserve what changed, who acted, why it was
-suggested, and whether a dashboard action applies going forward, retroactively, or
-to one learner.
+- passed **294 reported automated tests** (196 Python, 98 web/shared);
+- built and started the production containers;
+- measured warm p95 of **17.55 ms** for the active Blueprint and **29.43 ms**
+  for the decision trace on the local Docker environment;
+- compiled one disposable transcript-backed course to `waiting_review` in
+  **213.91 seconds**;
+- generated **5 topics, 4 concepts, 5 clips, and 5 questions**;
+- captured **17 GPT-5.4 calls**, 44,163 input tokens, 16,896 cached input tokens,
+  and 8,183 output tokens, including a failed/retried attempt;
+- calculated **$0.1951 USD** in token cost using current official GPT-5.4 pricing;
+- recovered from one persisted clip-boundary validation failure on the second
+  durable attempt;
+  and
+- deleted the disposable benchmark course afterward.
 
-## What Exists Today
+Read the generated [metrics report](competition/metrics.md) and
+[machine-readable evidence](competition/metrics.json). These figures measure
+asynchronous compilation wall time and model cost, not active instructor review
+time or learner outcomes.
 
-The core instructor-to-learner loop is implemented:
+Run the same evaluation:
 
-- asynchronous video ingestion from files and supported URLs;
-- OpenAI-backed transcription with large-file audio extraction and chunking;
-- editable AI topic segmentation with coverage-gap detection;
-- concept and prerequisite graph generation with DAG enforcement;
-- concept and edge review, including duplicate-concept merging;
-- transcript-aware clip extraction, boundary snapping, flagging, and re-cutting;
-- assessment generation, regeneration, remediation mapping, and learner gates;
-- adaptive routing based on correctness, confidence, mastery, and prerequisites;
-- learner progress and concept-level mastery views;
-- cohort, content-performance, stuck-loop, and graph-drift dashboard signals;
-- instructor correction actions and per-learner routing overrides;
-- immutable audit trails for AI proposals and instructor decisions;
-- explicit draft/published course state and learner enrollment; and
-- Mux production delivery behind a provider abstraction, with local video delivery
-  for development and CI.
+```bash
+npm run eval:launchpad
+```
 
-Phase 10 polish, accessibility, performance validation, and the production UI
-redesign are still in progress. See [`implementation.md`](implementation.md) for
-the live status rather than relying on this summary for phase completion.
+Run a disposable real-provider compilation as well:
 
-## Technical Architecture
+```bash
+npm run eval:launchpad:generation
+```
+
+The evaluator keeps measured values, calculated costs, vendor claims, and
+unmeasured gaps separate. It does not substitute a generic industry ratio for a
+matched manual-authoring study.
+
+## Judge-facing materials
+
+- [LaunchPad five-pillar write-up](competition/launchpad-writeup.md)
+- [Three-minute demo outline](competition/demo-outline.md)
+- [Clean competition course/reset plan](competition/clean-course-plan.md)
+- [Measured evaluation report](competition/metrics.md)
+- [Product requirements](prd.md)
+- [Phased implementation plan](plan.md)
+- [Live implementation status](implementation.md)
+
+## Architecture
 
 ```mermaid
 flowchart LR
-    Instructor[Instructor] --> Web[Next.js web application]
-    Learner[Learner] --> Web
-    Web <--> API[FastAPI orchestration]
+    S["Instructor-owned source"] --> G["Durable AI compilation"]
+    G --> R["Private review gates"]
+    R --> B["Published Blueprint"]
+    B --> L["Learner session"]
+    L --> E["Attempt + confidence + mastery"]
+    E --> T["Deterministic route event"]
+    T --> D["Dashboard signal"]
+    D --> P["Private proposed revision"]
+    P --> R
 
-    subgraph AI[AI-assisted pipeline]
-        direction TB
-        ASR[Transcription<br/>word timestamps]
-        Segment[Segmentation<br/>topics and summaries]
-        Graph[Concept graph<br/>prerequisites and rationale]
-        Clips[Clip extraction<br/>boundaries and concept tags]
-        Assess[Assessment and grading<br/>questions, feedback, remediation]
-        Review[Instructor review gates<br/>Accept / Edit / Dismiss]
-        ASR --> Segment --> Graph --> Clips --> Assess --> Review
-    end
-
-    API --> ASR
-
-    subgraph Platform[Storage and delivery]
-        direction TB
-        DB[(PostgreSQL<br/>content, graph and mastery)]
-        Video[Mux or local<br/>video provider]
-    end
-
-    Review --> DB
-    API <--> DB
-    API --> Video
+    B <--> DB[("PostgreSQL system of record")]
+    G <--> DB
+    E <--> DB
+    T <--> DB
+    D <--> DB
 ```
 
-The AI pipeline is deliberately not a single autonomous course generator. Each
-agent receives structured, reviewed inputs and returns schema-validated proposals
-with evidence or rationale. Those proposals stop at the instructor review gate;
-only accepted or edited artifacts are available to the learner and routing
-engine. GPT-5.4 handles the proposal and semantic-grading tasks shown in the AI
-block; adaptive routing remains deterministic and instructor-policy-controlled.
-Local deterministic agent implementations keep development and automated tests
-independent of external model calls.
+| Layer | Current implementation |
+|---|---|
+| Web | Next.js 15, React 19, TypeScript, React Flow, ELK, Motion |
+| API and orchestration | Python 3.12, FastAPI, Pydantic |
+| Durable work | PostgreSQL-backed task queue with leases, retries, and recovery |
+| AI | OpenAI GPT-5.4 behind task-specific agent interfaces |
+| Transcription | OpenAI ASR adapter with ffmpeg extraction/chunking |
+| Data and graph | PostgreSQL 16 adjacency tables, recursive CTEs, revisioned artifacts |
+| Video | Mux adapter plus local development/CI provider |
+| Verification | Pytest, Vitest, Playwright, axe, Ruff, mypy, ESLint, TypeScript |
 
-The application is a monorepo with a React web client, a Python processing and
-application service, shared TypeScript schemas, and PostgreSQL as the durable
-system of record. Long-running media work is asynchronous. Provider interfaces
-isolate transcription, AI agents, graph persistence, and video delivery from their
-current implementations.
+Generation task outputs persist wall time and provider-returned usage. The
+competition harness uses those records to calculate cost rather than estimating
+tokens from prompts.
 
-### Technology Stack
+## Local setup
 
-| Layer | Technology | How it is used |
-|---|---|---|
-| Web application | Next.js 15, React 19, TypeScript | Instructor workspaces, learner experience, API proxying, and application shell |
-| UI system | Tailwind CSS 4, shadcn/ui, Base UI, Lucide | Semantic design tokens, accessible primitives, review controls, and desktop/laptop layouts |
-| Graph editor | React Flow (`@xyflow/react`) | Full-canvas concept and prerequisite graph editing |
-| Video player | Mux Player React | Adaptive playback using persisted public playback identifiers |
-| Pipeline/API | Python 3.12, FastAPI, Pydantic | Ingestion APIs, AI orchestration, validation, review services, routing, analytics, and audit APIs |
-| AI reasoning | OpenAI GPT-5.4 | Topic segmentation, concept-graph proposals, clip proposals, and assessment generation |
-| Transcription | OpenAI ASR behind an `ASRProvider` interface; ffmpeg preprocessing | Word-timestamp transcription, compressed audio extraction, chunking, and timestamp merging for long lectures |
-| Relational storage | PostgreSQL 16, psycopg 3, psycopg pool | Courses, videos, review states, enrollments, attempts, mastery, signals, policies, and audit events |
-| Graph storage | PostgreSQL adjacency tables and recursive CTEs | DAG validation, prerequisite traversal, and eligible-next-concept queries without a second datastore |
-| Video delivery | Mux in production; local provider in development/CI | Direct uploads, on-demand assets, adaptive delivery, playback metadata, and capacity enforcement |
-| Validation/contracts | Pydantic, Zod, shared TypeScript package | Structured AI output, API models, and cross-package health contracts |
-| Local infrastructure | Docker Compose | PostgreSQL, pipeline, and web services with health checks and persistent volumes |
-| Automated testing | Pytest, Vitest, Playwright, axe-core, Ruff, mypy, ESLint | Unit, integration, end-to-end, accessibility, lint, and type checks |
-| Performance testing | Custom async PostgreSQL load harness and Playwright | Routing, graph, dashboard, concurrency, and external playback measurements |
+Prerequisites:
 
-### Repository Layout
+- Docker with Docker Compose;
+- Node.js 22+ and Python 3.12+ for host-side checks;
+- an OpenAI API key for real AI generation;
+- optional Mux credentials for production-style video delivery.
 
-```text
-.
-├── web/                 Next.js instructor and learner application
-├── pipeline/            FastAPI service, AI/video agents, migrations, and tests
-├── shared/              Shared TypeScript and Zod contracts
-├── scripts/             Repository-level health and utility scripts
-├── .github/workflows/   Continuous-integration configuration
-├── docker-compose.yml   Local application stack
-├── prd.md               Product requirements and rationale
-├── plan.md              Phased implementation and test plan
-└── implementation.md    Live source of truth for current implementation status
-```
-
-## Local Setup with Docker
-
-### Prerequisites
-
-- Docker with Docker Compose
-- an OpenAI API key for the default AI and transcription providers
-- optional Mux credentials when testing production-style video delivery
-
-### Start the application
-
-1. Copy the environment defaults on first run:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Add `OPENAI_API_KEY` to `.env`.
-
-3. Start the stack:
-
-   ```bash
-   docker compose up --build
-   ```
-
-4. Open the services:
-
-   - Public landing page: <http://localhost:3000>
-   - Instructor/learner application: <http://localhost:3000/manifold>
-   - Pipeline health endpoint: <http://localhost:8000/health>
-
-PostgreSQL migrations are applied by the pipeline container at startup.
-
-### Video provider configuration
-
-Local delivery is the default and requires no Mux account:
-
-```dotenv
-VIDEO_PROVIDER=local
-```
-
-To use Mux on-demand delivery:
-
-```dotenv
-VIDEO_PROVIDER=mux
-MUX_TOKEN_ID=your-token-id
-MUX_TOKEN_SECRET=your-token-secret
-MUX_MAX_STORED_VIDEOS=10
-```
-
-The configured capacity is checked before a new upload. The application does not
-silently delete or overwrite an existing Mux asset when the limit is reached.
-
-## Host Development
-
-Docker is sufficient to run the application. Install host dependencies only when
-running development tools or tests directly:
+Create local configuration:
 
 ```bash
-npm install
-cd pipeline
-uv sync --extra dev --python 3.12
-cd ..
+cp .env.example .env
 ```
 
-Useful commands:
+Set `OPENAI_API_KEY` in `.env`, then start:
 
 ```bash
-# Run the Next.js development server through the root workspace
-npm run dev --workspace @coursefoundry/web
+docker compose up --build
+```
 
-# Run JavaScript/TypeScript linting, type checks, and unit tests
-npm run ci
+Open:
 
-# Run the web production build
-npm run build --workspace @coursefoundry/web
+- app: <http://localhost:3000/login>
+- API health: <http://localhost:8000/health>
+- web health: <http://localhost:3000/api/health>
 
-# Run the Playwright end-to-end suite
+Migrations apply at pipeline startup. Local development uses persisted
+instructor/learner identities and an `X-User-ID` context; this is deliberately
+not represented as production authentication.
+
+## Verification
+
+```bash
+npm run lint
+npm run typecheck
+npm test
+(cd pipeline && uv run pytest -q)
 npm run test:e2e
-
-# Run Python checks and tests
-cd pipeline
-uv run ruff check .
-uv run mypy app
-uv run pytest
 ```
 
-After starting the full local stack, verify cross-service health with:
+Human quality checks remain essential for pedagogical correctness, clip
+boundaries, graph usefulness, assessment quality, and review time. Phase
+completion requires the automated suite and the corresponding user-confirmed
+checklist in `plan.md`.
 
-```bash
-npm run test:health
-```
+## Honest current limits
 
-The `@coursefoundry/*`, database, test-email, and temporary-directory names that
-remain in the repository are legacy internal compatibility identifiers. The public
-product name is **Manifold**. Renaming those identifiers requires a coordinated
-package, database, migration, environment, and deployment change; it should not be
-performed as a documentation-only replacement.
+- Active instructor review time is not instrumented yet, so the under-60-minute
+  product target is not claimed as achieved.
+- Current learner evidence is demonstration data, not a real outcome study.
+- The recorded portfolio contains stale untitled courses and is not yet the clean
+  competition reset dataset.
+- The current showcased course exposes six of eight persisted trace stages; the
+  clean competition dataset must add the signal-linked proposed revision.
+- Production authentication, multi-tenancy, billing, and enterprise operations
+  are out of scope for the current system.
+- Real course-quality and learning-effect claims require instructor review and a
+  real learner cohort, respectively.
 
-## Current Production Boundaries
-
-Manifold is not yet represented as production-ready SaaS. In particular:
-
-- selectable development identities are not production authentication;
-- credentials, secure sessions, account recovery, and security hardening remain;
-- multi-tenant organizations, subscription billing, and payments are not built;
-- the public learner marketplace and discovery experience are future work;
-- the current production UI redesign targets desktop and laptop web, not tablet or
-  mobile layouts; and
-- learner-efficiency claims require a controlled real-cohort study. Existing load
-  and end-to-end tests validate engineering behavior, not learning outcomes.
-
-These boundaries are intentional and tracked in [`prd.md`](prd.md) and
-[`implementation.md`](implementation.md).
-
-## Product and Engineering Documents
-
-Read project documents in this order:
-
-1. [`implementation.md`](implementation.md) — what exists now, current status, and
-   confirmed architecture decisions.
-2. [`plan.md`](plan.md) — phase deliverables and automated/human test gates.
-3. [`prd.md`](prd.md) — product rationale, requirements, success criteria, and
-   risks.
-
-`implementation.md` is the source of truth if these documents ever disagree about
-the current implementation.
+That honesty is intentional: Manifold is designed to make uncertainty,
+provenance, review state, and missing evidence visible rather than laundering
+them into an autonomous-AI story.
