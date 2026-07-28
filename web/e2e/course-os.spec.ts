@@ -1042,24 +1042,65 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
   await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
   await expect(page.getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".react-flow__node")).toHaveCount(6);
+  await expect(page.locator('[class*="blueprintLayoutLoading"]')).toHaveCount(0);
 
   const conceptNode = page.getByTestId("rf__node-concept-1");
   const questionNode = page.getByTestId("rf__node-question-1");
   await blueprintCanvas.evaluate((canvas) => {
+    const hasVisibleBlockingLoader = () => {
+      const loader = canvas.querySelector('[class*="blueprintLayoutLoading"]');
+      if (!loader) return false;
+      const style = window.getComputedStyle(loader);
+      const bounds = loader.getBoundingClientRect();
+      return style.display !== "none"
+        && style.visibility !== "hidden"
+        && Number.parseFloat(style.opacity) > 0.05
+        && bounds.width > 0
+        && bounds.height > 0;
+    };
     const trace = {
+      animationFrame: 0,
+      maxReactFlowLayers: canvas.querySelectorAll(".react-flow").length,
       motionStates: [canvas.getAttribute("data-motion-state")],
-      sawBlockingLoader: canvas.textContent?.includes("Arranging the course system") ?? false,
+      positions: [] as Array<{ x: number; y: number }>,
+      sawBlockingLoader: hasVisibleBlockingLoader(),
       sawOutgoingLayer: Boolean(canvas.querySelector('[data-motion-layer="outgoing"]')),
+      viewportStates: [canvas.getAttribute("data-viewport-state")],
     };
     const traceWindow = window as Window & {
       __blueprintMotionTrace?: typeof trace;
       __blueprintMotionObserver?: MutationObserver;
     };
+    const samplePosition = () => {
+      trace.maxReactFlowLayers = Math.max(
+        trace.maxReactFlowLayers,
+        canvas.querySelectorAll(".react-flow").length,
+      );
+      trace.sawBlockingLoader ||= hasVisibleBlockingLoader();
+      const node = canvas.querySelector('[data-testid="rf__node-concept-1"]');
+      if (node) {
+        const bounds = node.getBoundingClientRect();
+        const position = { x: bounds.x, y: bounds.y };
+        const previous = trace.positions.at(-1);
+        if (
+          !previous
+          || Math.abs(previous.x - position.x) > 0.25
+          || Math.abs(previous.y - position.y) > 0.25
+        ) {
+          trace.positions.push(position);
+        }
+      }
+      trace.animationFrame = window.requestAnimationFrame(samplePosition);
+    };
     traceWindow.__blueprintMotionTrace = trace;
     traceWindow.__blueprintMotionObserver = new MutationObserver(() => {
       const nextState = canvas.getAttribute("data-motion-state");
       if (trace.motionStates.at(-1) !== nextState) trace.motionStates.push(nextState);
-      trace.sawBlockingLoader ||= canvas.textContent?.includes("Arranging the course system") ?? false;
+      const nextViewportState = canvas.getAttribute("data-viewport-state");
+      if (trace.viewportStates.at(-1) !== nextViewportState) {
+        trace.viewportStates.push(nextViewportState);
+      }
+      trace.sawBlockingLoader ||= hasVisibleBlockingLoader();
       trace.sawOutgoingLayer ||= Boolean(canvas.querySelector('[data-motion-layer="outgoing"]'));
     });
     traceWindow.__blueprintMotionObserver.observe(canvas, {
@@ -1067,6 +1108,7 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
       childList: true,
       subtree: true,
     });
+    samplePosition();
   });
   await conceptNode.click();
   await expect(blueprintCanvas).toHaveAttribute("data-focus-state", "connections");
@@ -1079,18 +1121,27 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
   const motionTrace = await page.evaluate(() => {
     const traceWindow = window as Window & {
       __blueprintMotionTrace?: {
+        animationFrame: number;
+        maxReactFlowLayers: number;
         motionStates: Array<string | null>;
+        positions: Array<{ x: number; y: number }>;
         sawBlockingLoader: boolean;
         sawOutgoingLayer: boolean;
+        viewportStates: Array<string | null>;
       };
       __blueprintMotionObserver?: MutationObserver;
     };
     traceWindow.__blueprintMotionObserver?.disconnect();
+    if (traceWindow.__blueprintMotionTrace) {
+      window.cancelAnimationFrame(traceWindow.__blueprintMotionTrace.animationFrame);
+    }
     return traceWindow.__blueprintMotionTrace;
   });
-  expect(motionTrace?.motionStates).toContain("preparing");
   expect(motionTrace?.motionStates).toContain("morphing");
-  expect(motionTrace?.sawOutgoingLayer).toBe(true);
+  expect(motionTrace?.positions.length).toBeGreaterThanOrEqual(4);
+  expect(motionTrace?.maxReactFlowLayers).toBe(1);
+  expect(motionTrace?.sawOutgoingLayer).toBe(false);
+  expect(motionTrace?.viewportStates).toEqual(["ready"]);
   expect(motionTrace?.sawBlockingLoader).toBe(false);
 
   await questionNode.click();

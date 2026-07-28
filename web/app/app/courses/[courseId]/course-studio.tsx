@@ -4,6 +4,7 @@ import {
   BaseEdge,
   Background,
   Controls,
+  getViewportForBounds,
   Handle,
   MarkerType,
   Position,
@@ -13,13 +14,12 @@ import {
   type Node,
   type NodeProps,
   type ReactFlowInstance,
-  type Viewport,
 } from "@xyflow/react";
 import ELK from "elkjs/lib/elk.bundled.js";
 import {
   AnimatePresence,
-  LayoutGroup,
   MotionConfig,
+  animate,
   motion,
   useIsPresent,
   useReducedMotion,
@@ -2456,7 +2456,6 @@ type BlueprintGraphNodeData = {
   conceptCount: number | null;
   evidence: BlueprintConceptEvidence | null;
   designMode?: boolean;
-  motionLayoutId?: string | null;
   muted: boolean;
   onStartRelationship?: (node: BlueprintNode, side: BlueprintPortSide) => void;
   relationshipTargetState?: "valid" | "invalid" | null;
@@ -2471,27 +2470,140 @@ type BlueprintGraphEdgeData = {
   visible: boolean;
 };
 type BlueprintGraphEdge = Edge<BlueprintGraphEdgeData, "blueprintRelation">;
-type BlueprintFlowSnapshot = {
+type BlueprintFlowPresentation = {
   connectionFocused: boolean;
   contextKey: string;
   edges: BlueprintGraphEdge[];
   nodes: BlueprintGraphNode[];
-  viewport: Viewport;
 };
 
-function blueprintNodesWithSharedMotion(
-  nodes: BlueprintGraphNode[],
-  courseId: string,
-  enabled: boolean,
-): BlueprintGraphNode[] {
-  if (!enabled) return nodes;
-  return nodes.map((node) => ({
-    ...node,
-    data: {
-      ...node.data,
-      motionLayoutId: `blueprint:${courseId}:${node.data.artifact.logical_id}`,
-    },
+function interpolateBlueprintNumber(start: number, end: number, progress: number) {
+  return start + (end - start) * progress;
+}
+
+function blueprintStyleOpacity(
+  style: BlueprintGraphNode["style"] | BlueprintGraphEdge["style"],
+  fallback = 1,
+) {
+  const opacity = style?.opacity;
+  if (typeof opacity === "number") return opacity;
+  if (typeof opacity === "string") {
+    const parsed = Number.parseFloat(opacity);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function interpolateBlueprintPresentation(
+  start: BlueprintFlowPresentation,
+  target: BlueprintFlowPresentation,
+  progress: number,
+): BlueprintFlowPresentation {
+  const clamped = Math.max(0, Math.min(1, progress));
+  const startNodes = new Map(start.nodes.map((node) => [node.id, node]));
+  const targetNodes = new Map(target.nodes.map((node) => [node.id, node]));
+  const nodeIds = new Set([...startNodes.keys(), ...targetNodes.keys()]);
+  const nodes = [...nodeIds].map((id) => {
+    const startNode = startNodes.get(id);
+    const targetNode = targetNodes.get(id);
+    if (startNode && targetNode) {
+      return {
+        ...targetNode,
+        position: {
+          x: interpolateBlueprintNumber(startNode.position.x, targetNode.position.x, clamped),
+          y: interpolateBlueprintNumber(startNode.position.y, targetNode.position.y, clamped),
+        },
+        style: {
+          ...targetNode.style,
+          opacity: 1,
+        },
+      };
+    }
+    if (targetNode) {
+      return {
+        ...targetNode,
+        style: {
+          ...targetNode.style,
+          opacity: clamped,
+        },
+      };
+    }
+    return {
+      ...startNode!,
+      style: {
+        ...startNode!.style,
+        opacity: 1 - clamped,
+        pointerEvents: "none" as const,
+      },
+    };
+  });
+  const startEdges = new Map(start.edges.map((edge) => [edge.id, edge]));
+  const targetEdges = new Map(target.edges.map((edge) => [edge.id, edge]));
+  const edgeIds = new Set([...startEdges.keys(), ...targetEdges.keys()]);
+  const edges = [...edgeIds].map((id) => {
+    const startEdge = startEdges.get(id);
+    const targetEdge = targetEdges.get(id);
+    if (startEdge && targetEdge) {
+      return {
+        ...targetEdge,
+        data: targetEdge.data ? { ...targetEdge.data, points: null } : targetEdge.data,
+        style: {
+          ...targetEdge.style,
+          opacity: interpolateBlueprintNumber(
+            blueprintStyleOpacity(startEdge.style),
+            blueprintStyleOpacity(targetEdge.style),
+            clamped,
+          ),
+        },
+      };
+    }
+    if (targetEdge) {
+      return {
+        ...targetEdge,
+        data: targetEdge.data ? { ...targetEdge.data, points: null } : targetEdge.data,
+        style: {
+          ...targetEdge.style,
+          opacity: blueprintStyleOpacity(targetEdge.style) * clamped,
+          pointerEvents: "none" as const,
+        },
+      };
+    }
+    return {
+      ...startEdge!,
+      data: startEdge!.data ? { ...startEdge!.data, points: null } : startEdge!.data,
+      style: {
+        ...startEdge!.style,
+        opacity: blueprintStyleOpacity(startEdge!.style) * (1 - clamped),
+        pointerEvents: "none" as const,
+      },
+    };
+  });
+  return {
+    connectionFocused: start.connectionFocused,
+    contextKey: start.contextKey,
+    edges,
+    nodes,
+  };
+}
+
+function blueprintPresentationBounds(nodes: BlueprintGraphNode[]) {
+  if (!nodes.length) return { x: 0, y: 0, width: 0, height: 0 };
+  const left = Math.min(...nodes.map((node) => node.position.x));
+  const top = Math.min(...nodes.map((node) => node.position.y));
+  const right = Math.max(...nodes.map((node) => {
+    const dimensions = blueprintNodeDimensions(node.data.artifact);
+    return node.position.x + dimensions.width;
   }));
+  const bottom = Math.max(...nodes.map((node) => {
+    const dimensions = blueprintNodeDimensions(node.data.artifact);
+    return node.position.y + dimensions.height;
+  }));
+  return {
+    x: left,
+    y: top,
+    width: right - left,
+    height: bottom - top,
+  };
 }
 
 const blueprintRelationshipLabels: Record<BlueprintEdgeKind, string> = {
@@ -2549,16 +2661,13 @@ function BlueprintArtifactNode({ data }: NodeProps<BlueprintGraphNode>) {
     ? `${conceptCount} ${conceptCount === 1 ? "concept" : "concepts"}`
     : null;
   return (
-    <motion.article
+    <article
       className={styles.blueprintTypedNode}
       data-kind={artifact.kind}
       data-muted={muted}
       data-relationship-target={relationshipTargetState ?? undefined}
       data-risk={risk != null && risk >= 40}
       data-selected={selected}
-      layout={data.motionLayoutId ? "position" : false}
-      layoutId={data.motionLayoutId ?? undefined}
-      transition={data.motionLayoutId ? sharedSurfaceSpringTransition : undefined}
     >
       <Handle className={styles.blueprintFlowHandle} id="flow-in" position={Position.Top} type="target" />
       <Handle className={styles.blueprintFlowHandle} id="flow-out" position={Position.Bottom} type="source" />
@@ -2597,7 +2706,7 @@ function BlueprintArtifactNode({ data }: NodeProps<BlueprintGraphNode>) {
           ))}
         </div>
       ) : null}
-    </motion.article>
+    </article>
   );
 }
 
@@ -2615,16 +2724,16 @@ function BlueprintArtifactInspectorSurface({
   const isPresent = useIsPresent();
   return (
     <motion.aside
-      animate={{ opacity: 1, scale: 1, x: 0 }}
+      animate={{ scale: 1, x: 0 }}
       aria-hidden={isPresent ? undefined : true}
       aria-label={isPresent ? label : undefined}
       className={styles.blueprintInspector}
       exit={reducedMotion
-        ? { opacity: 0 }
-        : { opacity: 0, scale: 0.99, x: 18 }}
+        ? undefined
+        : { scale: 0.99, x: 18 }}
       initial={reducedMotion
         ? false
-        : { opacity: 0, scale: 0.99, x: 18 }}
+        : { scale: 0.99, x: 18 }}
       inert={!isPresent}
       layout
       layoutId={`blueprint-inspector-${motionScope}`}
@@ -3995,11 +4104,14 @@ function BlueprintWorkspace({
   const [selectedLogicalId, setSelectedLogicalId] = useState<string | null>(null);
   const [focusTopicLogicalId, setFocusTopicLogicalId] = useState<string | null>(null);
   const [connectionFocusLogicalId, setConnectionFocusLogicalId] = useState<string | null>(null);
-  const [flowInstance, setFlowInstance] = useState<
-    ReactFlowInstance<BlueprintGraphNode, BlueprintGraphEdge> | null
-  >(null);
+  const [flowInstanceRegistration, setFlowInstanceRegistration] = useState<{
+    instance: ReactFlowInstance<BlueprintGraphNode, BlueprintGraphEdge>;
+    mountKey: string;
+  } | null>(null);
   const [settledViewportKey, setSettledViewportKey] = useState<string | null>(null);
-  const [settledFlowSnapshot, setSettledFlowSnapshot] = useState<BlueprintFlowSnapshot | null>(null);
+  const settledViewportKeyRef = useRef<string | null>(null);
+  const [presentedLiveFlow, setPresentedLiveFlow] = useState<BlueprintFlowPresentation | null>(null);
+  const [neighborhoodMotionActive, setNeighborhoodMotionActive] = useState(false);
   const [enabledRelationships, setEnabledRelationships] = useState<Set<BlueprintEdgeKind>>(
     () => new Set(coreBlueprintEdgeKinds),
   );
@@ -4023,6 +4135,8 @@ function BlueprintWorkspace({
   } | null>(null);
   const [cleanupAnchorLogicalId, setCleanupAnchorLogicalId] = useState<string | null>(null);
   const [cleanupRunning, setCleanupRunning] = useState(false);
+  const blueprintCanvasRef = useRef<HTMLDivElement>(null);
+  const presentedLiveFlowRef = useRef<BlueprintFlowPresentation | null>(null);
   const dragStartPositions = useRef<Record<string, { x: number; y: number }>>({});
   const blueprint = mode === "live"
     ? (activeBlueprint ?? workingBlueprint)
@@ -4075,81 +4189,15 @@ function BlueprintWorkspace({
   const viewportContextKey = `${mode}:${connectionFocusLogicalId
     ? `connections:${connectionFocusLogicalId}`
     : focusTopicLogicalId ?? "course"}:${autoArrangeVersion}`;
+  const reactFlowMountKey = mode === "live"
+    ? `live:${focusTopicLogicalId ?? "course"}:${autoArrangeVersion}`
+    : viewportContextKey;
+  const flowInstance = flowInstanceRegistration?.mountKey === reactFlowMountKey
+    ? flowInstanceRegistration.instance
+    : null;
   const viewportFitKey = `${viewportContextKey}:${flow.layoutKey ?? "pending"}`;
   const viewportReady = flow.layoutReady
     && (!flow.nodes.length || settledViewportKey === viewportFitKey);
-  const isNeighborhoodTransition = Boolean(
-    mode === "live"
-    && settledFlowSnapshot
-    && settledFlowSnapshot.contextKey !== viewportContextKey
-    && (settledFlowSnapshot.connectionFocused || connectionFocusLogicalId),
-  );
-  const canReuseSettledLiveGraph = Boolean(
-    mode === "live"
-    && settledFlowSnapshot
-    && settledFlowSnapshot.contextKey === viewportContextKey,
-  );
-  const outgoingFlowSnapshot = !viewportReady
-    && settledFlowSnapshot
-    && (isNeighborhoodTransition || canReuseSettledLiveGraph)
-    ? settledFlowSnapshot
-    : null;
-  const currentFlowNodes = useMemo(
-    () => blueprintNodesWithSharedMotion(
-      flow.nodes,
-      blueprintMotionScope,
-      isNeighborhoodTransition && viewportReady && !reducedMotion,
-    ),
-    [
-      blueprintMotionScope,
-      flow.nodes,
-      isNeighborhoodTransition,
-      reducedMotion,
-      viewportReady,
-    ],
-  );
-  const outgoingFlowNodes = useMemo(
-    () => blueprintNodesWithSharedMotion(
-      outgoingFlowSnapshot?.nodes ?? [],
-      blueprintMotionScope,
-      isNeighborhoodTransition && !reducedMotion,
-    ),
-    [
-      blueprintMotionScope,
-      isNeighborhoodTransition,
-      outgoingFlowSnapshot?.nodes,
-      reducedMotion,
-    ],
-  );
-  const latestFlowSnapshotSource = useRef<{
-    connectionFocused: boolean;
-    contextKey: string;
-    edges: BlueprintGraphEdge[];
-    instance: ReactFlowInstance<BlueprintGraphNode, BlueprintGraphEdge> | null;
-    mode: BlueprintMode;
-    nodes: BlueprintGraphNode[];
-    ready: boolean;
-  } | null>(null);
-  latestFlowSnapshotSource.current = {
-    connectionFocused: Boolean(connectionFocusLogicalId),
-    contextKey: viewportContextKey,
-    edges: flow.edges,
-    instance: flowInstance,
-    mode,
-    nodes: flow.nodes,
-    ready: viewportReady,
-  };
-  const captureSettledFlow = useCallback(() => {
-    const source = latestFlowSnapshotSource.current;
-    if (source?.mode !== "live" || !source.ready || !source.instance) return;
-    setSettledFlowSnapshot({
-      connectionFocused: source.connectionFocused,
-      contextKey: source.contextKey,
-      edges: source.edges,
-      nodes: source.nodes,
-      viewport: source.instance.getViewport(),
-    });
-  }, []);
   const blueprintFitPadding = useMemo(() => (
     connectionFocusLogicalId
       ? {
@@ -4160,6 +4208,45 @@ function BlueprintWorkspace({
       } as const
       : 0.14
   ), [connectionFocusLogicalId]);
+  const isNeighborhoodTransition = Boolean(
+    mode === "live"
+    && presentedLiveFlow
+    && presentedLiveFlow.contextKey !== viewportContextKey
+    && (presentedLiveFlow.connectionFocused || connectionFocusLogicalId),
+  );
+  const graphVisible = viewportReady || Boolean(
+    mode === "live"
+    && presentedLiveFlow
+    && (isNeighborhoodTransition || neighborhoodMotionActive),
+  );
+  const renderedFlowNodes = mode === "live" && isNeighborhoodTransition && presentedLiveFlow
+    ? presentedLiveFlow.nodes
+    : flow.nodes;
+  const renderedFlowEdges = mode === "live" && isNeighborhoodTransition && presentedLiveFlow
+    ? presentedLiveFlow.edges
+    : flow.edges;
+  const latestLiveFlowTarget = useRef<{
+    connectionFocused: boolean;
+    contextKey: string;
+    edges: BlueprintGraphEdge[];
+    fitKey: string;
+    nodes: BlueprintGraphNode[];
+  } | null>(null);
+  latestLiveFlowTarget.current = {
+    connectionFocused: Boolean(connectionFocusLogicalId),
+    contextKey: viewportContextKey,
+    edges: flow.edges,
+    fitKey: viewportFitKey,
+    nodes: flow.nodes,
+  };
+  const settleViewport = useCallback((key: string | null) => {
+    settledViewportKeyRef.current = key;
+    setSettledViewportKey(key);
+  }, []);
+  const presentLiveFlow = useCallback((presentation: BlueprintFlowPresentation) => {
+    presentedLiveFlowRef.current = presentation;
+    setPresentedLiveFlow(presentation);
+  }, []);
   const evidence = selected?.kind === "concept"
     ? blueprintEvidence.find((item) => item.concept_id === selected.id) ?? null
     : null;
@@ -4254,33 +4341,51 @@ function BlueprintWorkspace({
   }, [disabled, mode, performUndo, undoing, undoLabel]);
 
   useEffect(() => {
-    if (!flowInstance || !flow.layoutReady || !flow.nodes.length) return;
+    if (
+      !flowInstance
+      || !flow.layoutReady
+      || !flow.nodes.length
+      || isNeighborhoodTransition
+      || settledViewportKeyRef.current === viewportFitKey
+    ) return;
     let cancelled = false;
     let frame = 0;
     let attempts = 0;
-    setSettledViewportKey(null);
-    // Keep intermediate ELK positions invisible, let React Flow measure the
-    // completed nodes, then perform one authoritative fit before revealing the
-    // graph. This prevents the mount fit and completed-layout fit from racing.
+    const nodesForFit = latestLiveFlowTarget.current?.nodes ?? [];
+    settleViewport(null);
+    // Keep intermediate ELK positions invisible, calculate one viewport from
+    // the completed graph-space bounds, then reveal on the following frame.
+    // React Flow's fitView promise can remain pending when a controlled graph
+    // swaps topology, so readiness must not depend on that promise resolving.
     const fitWhenSynchronized = () => {
       if (cancelled) return;
-      const renderedNodes = flowInstance.getNodes();
-      const nodesReady = renderedNodes.length === flow.nodes.length
-        && renderedNodes.every((node) => (
-          Boolean(node.measured?.width) && Boolean(node.measured?.height)
-        ));
-      if (!nodesReady && attempts < 60) {
+      const canvasBounds = blueprintCanvasRef.current?.getBoundingClientRect();
+      if ((!canvasBounds?.width || !canvasBounds.height) && attempts < 60) {
         attempts += 1;
         frame = window.requestAnimationFrame(fitWhenSynchronized);
         return;
       }
-      void flowInstance.fitView({
-        duration: 0,
-        maxZoom: 1,
-        padding: blueprintFitPadding,
-      });
+      const targetViewport = getViewportForBounds(
+        blueprintPresentationBounds(nodesForFit),
+        canvasBounds?.width ?? 1,
+        canvasBounds?.height ?? 1,
+        0.1,
+        1,
+        blueprintFitPadding,
+      );
+      void flowInstance.setViewport(targetViewport, { duration: 0 });
       frame = window.requestAnimationFrame(() => {
-        if (!cancelled) setSettledViewportKey(viewportFitKey);
+        if (cancelled) return;
+        const target = latestLiveFlowTarget.current;
+        if (mode === "live" && target?.fitKey === viewportFitKey) {
+          presentLiveFlow({
+            connectionFocused: target.connectionFocused,
+            contextKey: target.contextKey,
+            edges: target.edges,
+            nodes: target.nodes,
+          });
+        }
+        settleViewport(viewportFitKey);
       });
     };
     const timer = window.setTimeout(() => {
@@ -4296,33 +4401,155 @@ function BlueprintWorkspace({
     flow.layoutReady,
     flow.nodes.length,
     flowInstance,
+    isNeighborhoodTransition,
+    mode,
+    presentLiveFlow,
+    settleViewport,
     viewportFitKey,
   ]);
 
   useEffect(() => {
     if (mode !== "live") {
-      setSettledFlowSnapshot(null);
+      presentedLiveFlowRef.current = null;
+      setPresentedLiveFlow(null);
+      setNeighborhoodMotionActive(false);
       return;
     }
-    if (viewportReady && !isNeighborhoodTransition) {
-      captureSettledFlow();
+    if (viewportReady && !isNeighborhoodTransition && !neighborhoodMotionActive) {
+      const target = latestLiveFlowTarget.current;
+      if (!target) return;
+      presentLiveFlow({
+        connectionFocused: target.connectionFocused,
+        contextKey: target.contextKey,
+        edges: target.edges,
+        nodes: target.nodes,
+      });
     }
   }, [
-    captureSettledFlow,
+    enabledRelationships,
+    flow.layoutKey,
     isNeighborhoodTransition,
     mode,
+    neighborhoodMotionActive,
+    presentLiveFlow,
+    selectedLogicalId,
     viewportFitKey,
     viewportReady,
   ]);
 
+  useEffect(() => {
+    if (
+      mode !== "live"
+      || !isNeighborhoodTransition
+      || !flow.layoutReady
+      || !flow.nodes.length
+      || !flowInstance
+      || !blueprintCanvasRef.current
+    ) return;
+    const start = presentedLiveFlowRef.current;
+    const target = latestLiveFlowTarget.current;
+    if (!start || !target || target.contextKey !== viewportContextKey) return;
+    const targetPresentation: BlueprintFlowPresentation = {
+      connectionFocused: target.connectionFocused,
+      contextKey: target.contextKey,
+      edges: target.edges,
+      nodes: target.nodes,
+    };
+    const canvasBounds = blueprintCanvasRef.current.getBoundingClientRect();
+    const targetViewport = getViewportForBounds(
+      blueprintPresentationBounds(target.nodes),
+      canvasBounds.width,
+      canvasBounds.height,
+      0.1,
+      1,
+      blueprintFitPadding,
+    );
+    const startViewport = flowInstance.getViewport();
+    if (reducedMotion) {
+      presentLiveFlow(targetPresentation);
+      void flowInstance.setViewport(targetViewport, { duration: 0 });
+      settleViewport(target.fitKey);
+      setNeighborhoodMotionActive(false);
+      return;
+    }
+    let completed = false;
+    setNeighborhoodMotionActive(true);
+    const controls = animate(0, 1, {
+      ...sharedSurfaceSpringTransition,
+      onUpdate: (progress) => {
+        if (latestLiveFlowTarget.current?.contextKey !== target.contextKey) return;
+        const clamped = Math.max(0, Math.min(1, progress));
+        const presentation = interpolateBlueprintPresentation(start, targetPresentation, clamped);
+        presentedLiveFlowRef.current = presentation;
+        flowInstance.setNodes(presentation.nodes);
+        flowInstance.setEdges(presentation.edges);
+        void flowInstance.setViewport({
+          x: interpolateBlueprintNumber(startViewport.x, targetViewport.x, clamped),
+          y: interpolateBlueprintNumber(startViewport.y, targetViewport.y, clamped),
+          zoom: interpolateBlueprintNumber(startViewport.zoom, targetViewport.zoom, clamped),
+        }, { duration: 0 });
+      },
+      onComplete: () => {
+        if (latestLiveFlowTarget.current?.contextKey !== target.contextKey) return;
+        completed = true;
+        presentLiveFlow(targetPresentation);
+        void flowInstance.setViewport(targetViewport, { duration: 0 });
+        settleViewport(target.fitKey);
+        setNeighborhoodMotionActive(false);
+      },
+    });
+    return () => {
+      controls.stop();
+      if (!completed) {
+        const interruptedPresentation = presentedLiveFlowRef.current;
+        if (interruptedPresentation) setPresentedLiveFlow(interruptedPresentation);
+        setNeighborhoodMotionActive(false);
+      }
+    };
+  }, [
+    blueprintFitPadding,
+    flow.layoutKey,
+    flow.layoutReady,
+    flow.nodes.length,
+    flowInstance,
+    isNeighborhoodTransition,
+    mode,
+    presentLiveFlow,
+    reducedMotion,
+    settleViewport,
+    viewportContextKey,
+  ]);
+
+  const captureLiveFlowPresentation = useCallback(() => {
+    if (mode !== "live") return;
+    const target = latestLiveFlowTarget.current;
+    const current = presentedLiveFlowRef.current ?? (target
+      ? {
+        connectionFocused: target.connectionFocused,
+        contextKey: target.contextKey,
+        edges: target.edges,
+        nodes: target.nodes,
+      }
+      : null);
+    if (!current) return;
+    const presentation: BlueprintFlowPresentation = {
+      connectionFocused: Boolean(connectionFocusLogicalId),
+      contextKey: viewportContextKey,
+      edges: flowInstance?.getEdges() ?? current.edges,
+      nodes: flowInstance?.getNodes() ?? current.nodes,
+    };
+    presentedLiveFlowRef.current = presentation;
+    setPresentedLiveFlow(presentation);
+  }, [connectionFocusLogicalId, flowInstance, mode, viewportContextKey]);
+
   const closeArtifactInspector = useCallback(() => {
-    captureSettledFlow();
+    captureLiveFlowPresentation();
     setSelectedLogicalId(null);
     if (mode === "live") {
       setConnectionFocusLogicalId(null);
       setFocusTopicLogicalId(null);
     }
-  }, [captureSettledFlow, mode]);
+  }, [captureLiveFlowPresentation, mode]);
 
   async function chooseRelationshipTarget(target: BlueprintNode) {
     if (!relationshipDraft?.kind || !blueprint) return;
@@ -4522,11 +4749,12 @@ function BlueprintWorkspace({
           className={styles.blueprintCanvas}
           data-focus-state={connectionFocusLogicalId ? "connections" : focusTopicLogicalId ? "topic" : "course"}
           data-motion-state={isNeighborhoodTransition
-            ? viewportReady
+            ? neighborhoodMotionActive
               ? "morphing"
               : "preparing"
             : "idle"}
-          data-viewport-state={viewportReady ? "ready" : "settling"}
+          data-viewport-state={graphVisible ? "ready" : "settling"}
+          ref={blueprintCanvasRef}
         >
           <section aria-label="Blueprint graph controls" className={styles.blueprintFloatingChrome}>
             <div className={styles.blueprintFloatingToolbar}>
@@ -4859,58 +5087,11 @@ function BlueprintWorkspace({
           </div>
 
           <MotionConfig reducedMotion="user">
-            <LayoutGroup id={`blueprint-flow-${blueprint.course_id}`}>
-              <AnimatePresence
-                initial={false}
-                onExitComplete={captureSettledFlow}
-              >
-                {outgoingFlowSnapshot ? (
-                  <motion.div
-                    animate={{ opacity: 1, scale: 1 }}
-                    aria-hidden="true"
-                    className={styles.blueprintGraphStage}
-                    data-motion-layer="outgoing"
-                    exit={reducedMotion
-                      ? { opacity: 0 }
-                      : { opacity: 0, scale: 0.992 }}
-                    initial={false}
-                    inert
-                    key={`outgoing-${outgoingFlowSnapshot.contextKey}`}
-                    transition={reducedMotion
-                      ? { duration: 0 }
-                      : { duration: 0.2, ease: interfaceEase }}
-                  >
-                    <ReactFlow
-                      defaultViewport={outgoingFlowSnapshot.viewport}
-                      edges={outgoingFlowSnapshot.edges}
-                      edgeTypes={blueprintEdgeTypes}
-                      edgesFocusable={false}
-                      elementsSelectable={false}
-                      nodes={outgoingFlowNodes}
-                      nodeTypes={blueprintNodeTypes}
-                      nodesConnectable={false}
-                      nodesDraggable={false}
-                      nodesFocusable={false}
-                      panOnDrag={false}
-                      panOnScroll={false}
-                      proOptions={{ hideAttribution: true }}
-                      zoomOnDoubleClick={false}
-                      zoomOnPinch={false}
-                      zoomOnScroll={false}
-                    >
-                      <Background color="#e2ded6" gap={22} size={1} />
-                      <Controls orientation="horizontal" position="bottom-left" showInteractive={false} />
-                    </ReactFlow>
-                  </motion.div>
-                ) : null}
-              </AnimatePresence>
-
-              <AnimatePresence>
-                {!viewportReady && !outgoingFlowSnapshot ? (
+              {!graphVisible ? (
                   <motion.div
                     animate={{ opacity: 1 }}
+                    aria-hidden="true"
                     className={styles.blueprintLayoutLoading}
-                    exit={reducedMotion ? undefined : { opacity: 0 }}
                     initial={reducedMotion ? false : { opacity: 0 }}
                     transition={reducedMotion
                       ? { duration: 0 }
@@ -4920,13 +5101,12 @@ function BlueprintWorkspace({
                     <span>Arranging the course system…</span>
                   </motion.div>
                 ) : null}
-              </AnimatePresence>
 
               <motion.div
-                animate={{ opacity: viewportReady ? 1 : 0 }}
-                aria-hidden={!viewportReady}
+                animate={{ opacity: graphVisible ? 1 : 0 }}
+                aria-hidden={!graphVisible}
                 className={styles.blueprintGraphStage}
-                data-motion-layer="incoming"
+                data-motion-layer="current"
                 initial={false}
                 transition={reducedMotion
                   ? { duration: 0 }
@@ -4934,14 +5114,17 @@ function BlueprintWorkspace({
               >
                 <ReactFlow
                   edgeTypes={blueprintEdgeTypes}
-                  edges={flow.edges}
-                  key={viewportContextKey}
+                  edges={renderedFlowEdges}
+                  key={reactFlowMountKey}
                   nodeTypes={blueprintNodeTypes}
-                  nodes={currentFlowNodes}
+                  nodes={renderedFlowNodes}
                   nodesConnectable={false}
                   nodesDraggable={mode === "design"}
                   onInit={(instance) => {
-                    setFlowInstance(instance);
+                    setFlowInstanceRegistration({
+                      instance,
+                      mountKey: reactFlowMountKey,
+                    });
                   }}
                   onNodesChange={(changes) => {
                     changes.forEach((change) => {
@@ -4972,7 +5155,7 @@ function BlueprintWorkspace({
                       void chooseRelationshipTarget(selectedNode);
                       return;
                     }
-                    captureSettledFlow();
+                    captureLiveFlowPresentation();
                     setSelectedRelationship(null);
                     setSelectedLogicalId(selectedNode?.logical_id ?? null);
                     if (mode === "live" && selectedNode) {
@@ -4989,7 +5172,7 @@ function BlueprintWorkspace({
                     setSelectedRelationship(relationship);
                   }}
                   onPaneClick={() => {
-                    captureSettledFlow();
+                    captureLiveFlowPresentation();
                     setSelectedLogicalId(null);
                     setSelectedRelationship(null);
                     setRelationshipDraft(null);
@@ -5006,7 +5189,6 @@ function BlueprintWorkspace({
                   <Controls orientation="horizontal" position="bottom-left" showInteractive={false} />
                 </ReactFlow>
               </motion.div>
-            </LayoutGroup>
           </MotionConfig>
           {mode === "design" ? <p className={styles.blueprintCanvasHint}><GitFork />Move an artifact, hover a node edge to connect it, or select any relationship to change it.</p> : null}
           {relationshipDraft?.kind ? (

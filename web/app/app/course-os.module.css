@@ -1782,7 +1782,6 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintFloatingMessages .blueprintCleanupPrompt { background: rgb(255 255 255 / 97%); border: 1px solid #d8d4cc; border-radius: 10px; box-shadow: 0 9px 28px rgb(31 32 36 / 12%); padding: 10px 12px; width: min(590px, calc(100vw - 48px)); }
 .blueprintGraphStage { inset: 0; pointer-events: none; position: absolute; }
 .blueprintCanvas[data-viewport-state="ready"] .blueprintGraphStage { pointer-events: auto; }
-.blueprintGraphStage[data-motion-layer="outgoing"] { pointer-events: none; }
 .blueprintGraphStage > :global(.react-flow) { height: 100%; width: 100%; }
 .blueprintLayoutLoading { align-items: center; color: #68666d; display: flex; font-size: 12px; gap: 9px; left: 50%; pointer-events: none; position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 6; }
 .blueprintLayoutLoading svg { height: 17px; width: 17px; }
