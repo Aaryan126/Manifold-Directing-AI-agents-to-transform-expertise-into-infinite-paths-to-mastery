@@ -95,6 +95,7 @@ import {
   canPrepareImprovement,
   compareBlueprintSequence,
   coreBlueprintEdgeKinds,
+  directBlueprintNeighborhood,
   evidenceTitle,
   findBlueprintClip,
   generationPhaseLabel,
@@ -3007,6 +3008,7 @@ function StructuredBlueprintFlow({
     evidence,
     "live",
     visibleNodeIds,
+    null,
     selectedId,
     coreBlueprintEdgeKinds,
     false,
@@ -3921,6 +3923,7 @@ function BlueprintWorkspace({
   const reducedMotion = useReducedMotion();
   const [selectedLogicalId, setSelectedLogicalId] = useState<string | null>(null);
   const [focusTopicLogicalId, setFocusTopicLogicalId] = useState<string | null>(null);
+  const [connectionFocusLogicalId, setConnectionFocusLogicalId] = useState<string | null>(null);
   const [flowInstance, setFlowInstance] = useState<
     ReactFlowInstance<BlueprintGraphNode, BlueprintGraphEdge> | null
   >(null);
@@ -3964,15 +3967,24 @@ function BlueprintWorkspace({
     () => (blueprint?.nodes.filter((node) => node.kind === "concept") ?? []).sort(compareBlueprintSequence),
     [blueprint],
   );
+  const connectionFocus = useMemo(() => {
+    if (mode !== "live" || !blueprint || !connectionFocusLogicalId) return null;
+    const focalNode = blueprint.nodes.find(
+      (node) => node.logical_id === connectionFocusLogicalId,
+    );
+    return focalNode ? directBlueprintNeighborhood(blueprint, focalNode.id) : null;
+  }, [blueprint, connectionFocusLogicalId, mode]);
   const visibleNodeIds = useMemo(
-    () => blueprint ? visibleBlueprintNodeIds(blueprint, focusTopicLogicalId) : null,
-    [blueprint, focusTopicLogicalId],
+    () => connectionFocus?.nodeIds
+      ?? (blueprint ? visibleBlueprintNodeIds(blueprint, focusTopicLogicalId) : null),
+    [blueprint, connectionFocus, focusTopicLogicalId],
   );
   const flow = useBlueprintFlow(
     blueprint,
     blueprintEvidence,
     mode,
     visibleNodeIds,
+    connectionFocus?.edgeIds ?? null,
     selected?.id ?? null,
     enabledRelationships,
     mode === "design" && autoArrangeVersion === 0,
@@ -3987,10 +3999,22 @@ function BlueprintWorkspace({
       relationshipDraft,
     },
   );
-  const viewportContextKey = `${mode}:${focusTopicLogicalId ?? "course"}:${autoArrangeVersion}`;
+  const viewportContextKey = `${mode}:${connectionFocusLogicalId
+    ? `connections:${connectionFocusLogicalId}`
+    : focusTopicLogicalId ?? "course"}:${autoArrangeVersion}`;
   const viewportFitKey = `${viewportContextKey}:${flow.layoutKey ?? "pending"}`;
   const viewportReady = flow.layoutReady
     && (!flow.nodes.length || settledViewportKey === viewportFitKey);
+  const blueprintFitPadding = useMemo(() => (
+    connectionFocusLogicalId
+      ? {
+        top: "12%",
+        right: "410px",
+        bottom: "12%",
+        left: "12%",
+      } as const
+      : 0.14
+  ), [connectionFocusLogicalId]);
   const evidence = selected?.kind === "concept"
     ? blueprintEvidence.find((item) => item.concept_id === selected.id) ?? null
     : null;
@@ -4022,10 +4046,36 @@ function BlueprintWorkspace({
     if (selectedLogicalId && !blueprint?.nodes.some((node) => node.logical_id === selectedLogicalId)) {
       setSelectedLogicalId(null);
     }
+    if (
+      connectionFocusLogicalId
+      && !blueprint?.nodes.some((node) => node.logical_id === connectionFocusLogicalId)
+    ) {
+      setConnectionFocusLogicalId(null);
+    }
     if (focusTopicLogicalId && !topics.some((topic) => topic.logical_id === focusTopicLogicalId)) {
       setFocusTopicLogicalId(null);
     }
-  }, [blueprint, concepts, focusTopicLogicalId, selectedLogicalId, topics]);
+  }, [
+    blueprint,
+    concepts,
+    connectionFocusLogicalId,
+    focusTopicLogicalId,
+    selectedLogicalId,
+    topics,
+  ]);
+
+  const previousRevisionId = useRef<string | null>(null);
+  useEffect(() => {
+    const revisionId = blueprint?.revision_id ?? null;
+    if (previousRevisionId.current && previousRevisionId.current !== revisionId) {
+      setConnectionFocusLogicalId(null);
+      if (mode === "live" && connectionFocusLogicalId) {
+        setSelectedLogicalId(null);
+        setSelectedRelationship(null);
+      }
+    }
+    previousRevisionId.current = revisionId;
+  }, [blueprint?.revision_id, connectionFocusLogicalId, mode]);
 
   const performUndo = useCallback(async () => {
     setSelectedLogicalId(null);
@@ -4079,7 +4129,11 @@ function BlueprintWorkspace({
         frame = window.requestAnimationFrame(fitWhenSynchronized);
         return;
       }
-      void flowInstance.fitView({ duration: 0, maxZoom: 1, padding: 0.14 });
+      void flowInstance.fitView({
+        duration: 0,
+        maxZoom: 1,
+        padding: blueprintFitPadding,
+      });
       frame = window.requestAnimationFrame(() => {
         if (!cancelled) setSettledViewportKey(viewportFitKey);
       });
@@ -4092,11 +4146,21 @@ function BlueprintWorkspace({
       window.clearTimeout(timer);
       window.cancelAnimationFrame(frame);
     };
-  }, [flow.layoutReady, flow.nodes.length, flowInstance, viewportFitKey]);
+  }, [
+    blueprintFitPadding,
+    flow.layoutReady,
+    flow.nodes.length,
+    flowInstance,
+    viewportFitKey,
+  ]);
 
   const closeArtifactInspector = useCallback(() => {
     setSelectedLogicalId(null);
-  }, []);
+    if (mode === "live") {
+      setConnectionFocusLogicalId(null);
+      setFocusTopicLogicalId(null);
+    }
+  }, [mode]);
 
   async function chooseRelationshipTarget(target: BlueprintNode) {
     if (!relationshipDraft?.kind || !blueprint) return;
@@ -4294,6 +4358,7 @@ function BlueprintWorkspace({
       >
         <div
           className={styles.blueprintCanvas}
+          data-focus-state={connectionFocusLogicalId ? "connections" : focusTopicLogicalId ? "topic" : "course"}
           data-viewport-state={viewportReady ? "ready" : "settling"}
         >
           <section aria-label="Blueprint graph controls" className={styles.blueprintFloatingChrome}>
@@ -4306,10 +4371,14 @@ function BlueprintWorkspace({
                     onClick={() => {
                       setAutoArrangeVersion(0);
                       setAddNodeOpen(false);
+                      setConnectionFocusLogicalId(null);
                       setEvidenceLensOpen(false);
                       setTraceOpen(false);
                       setJumpOpen(false);
                       setRelationshipFiltersOpen(false);
+                      if (connectionFocusLogicalId) {
+                        setSelectedLogicalId(null);
+                      }
                       onModeChange(item.id);
                     }}
                     type="button"
@@ -4341,6 +4410,7 @@ function BlueprintWorkspace({
                       aria-pressed={!focusTopicLogicalId}
                       onClick={() => {
                         setAutoArrangeVersion(0);
+                        setConnectionFocusLogicalId(null);
                         setFocusTopicLogicalId(null);
                         setSelectedLogicalId(null);
                         setJumpOpen(false);
@@ -4362,6 +4432,7 @@ function BlueprintWorkspace({
                             aria-pressed={focusTopicLogicalId === topic.logical_id}
                             onClick={() => {
                               setAutoArrangeVersion(0);
+                              setConnectionFocusLogicalId(null);
                               setFocusTopicLogicalId(topic.logical_id);
                               setSelectedLogicalId(topic.logical_id);
                               setJumpOpen(false);
@@ -4376,6 +4447,7 @@ function BlueprintWorkspace({
                               aria-current={selectedLogicalId === concept.logical_id ? "true" : undefined}
                               key={concept.id}
                               onClick={() => {
+                                setConnectionFocusLogicalId(null);
                                 setSelectedLogicalId(concept.logical_id);
                                 setJumpOpen(false);
                               }}
@@ -4570,7 +4642,7 @@ function BlueprintWorkspace({
                 onClick={() => void flowInstance?.fitView({
                   duration: reducedMotion ? 0 : 180,
                   maxZoom: 1,
-                  padding: 0.14,
+                  padding: blueprintFitPadding,
                 })}
                 title="Fit whole lecture"
                 type="button"
@@ -4585,7 +4657,9 @@ function BlueprintWorkspace({
               type="button"
             >
               <BookOpenCheck />
-              {focusTopicLogicalId
+              {connectionFocusLogicalId
+                ? `Connections · ${selected?.title ?? "Selected artifact"}`
+                : focusTopicLogicalId
                 ? topics.find((topic) => topic.logical_id === focusTopicLogicalId)?.title ?? "Focused topic"
                 : `Whole lecture · ${topics.length} topics · ${concepts.length} concepts`}
             </button>
@@ -4684,6 +4758,10 @@ function BlueprintWorkspace({
                 }
                 setSelectedRelationship(null);
                 setSelectedLogicalId(selectedNode?.logical_id ?? null);
+                if (mode === "live" && selectedNode) {
+                  setFocusTopicLogicalId(null);
+                  setConnectionFocusLogicalId(selectedNode.logical_id);
+                }
               }}
               onEdgeClick={(_, edge) => {
                 if (mode !== "design") return;
@@ -4698,6 +4776,10 @@ function BlueprintWorkspace({
                 setSelectedRelationship(null);
                 setRelationshipDraft(null);
                 setRelationshipError(null);
+                if (mode === "live") {
+                  setConnectionFocusLogicalId(null);
+                  setFocusTopicLogicalId(null);
+                }
               }}
               panOnScroll
               proOptions={{ hideAttribution: true }}
@@ -4981,6 +5063,7 @@ function useBlueprintFlow(
   evidence: BlueprintConceptEvidence[],
   mode: BlueprintMode,
   visibleNodeIds: Set<string> | null,
+  focusedEdgeIds: Set<string> | null,
   selectedId: string | null,
   enabledRelationships: ReadonlySet<BlueprintEdgeKind>,
   respectSavedLayout = true,
@@ -5003,8 +5086,12 @@ function useBlueprintFlow(
   );
   const layoutEdges = useMemo(() => {
     const visibleIds = new Set(visibleNodes.map((node) => node.id));
-    return blueprint?.edges.filter((edge) => visibleIds.has(edge.source_id) && visibleIds.has(edge.target_id)) ?? [];
-  }, [blueprint, visibleNodes]);
+    return blueprint?.edges.filter((edge) => (
+      (!focusedEdgeIds || focusedEdgeIds.has(edge.id))
+      && visibleIds.has(edge.source_id)
+      && visibleIds.has(edge.target_id)
+    )) ?? [];
+  }, [blueprint, focusedEdgeIds, visibleNodes]);
   const hierarchyEdges = useMemo(
     () => blueprintHierarchyEdges(visibleNodes, layoutEdges),
     [layoutEdges, visibleNodes],

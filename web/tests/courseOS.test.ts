@@ -11,6 +11,7 @@ import {
   canPrepareImprovement,
   compareBlueprintSequence,
   courseState,
+  directBlueprintNeighborhood,
   evidenceTitle,
   findBlueprintClip,
   generationPhaseLabel,
@@ -135,6 +136,70 @@ describe("Course OS presentation", () => {
       .toEqual(["contains"]);
     expect(visibleBlueprintEdges(edges, coreBlueprintEdgeKinds, "concept").map((edge) => edge.id))
       .toEqual(["contains", "cites"]);
+  });
+
+  it("isolates only a Blueprint artifact's direct, non-dismissed relationships", () => {
+    const node = (id: string, kind: BlueprintNode["kind"] = "concept"): BlueprintNode => ({
+      id,
+      logical_id: `logical-${id}`,
+      kind,
+      title: id,
+      status: "accepted",
+      parent_id: null,
+      metadata: {},
+    });
+    const blueprint: CourseBlueprint = {
+      course_id: "course",
+      revision_id: "revision",
+      revision_kind: "active",
+      nodes: [
+        node("focus"),
+        node("topic", "topic"),
+        node("prerequisite"),
+        node("clip", "clip"),
+        node("question", "question"),
+        node("source", "source"),
+        node("second-degree"),
+        node("dismissed"),
+        node("isolated"),
+      ],
+      edges: [
+        { id: "contains", source_id: "topic", target_id: "focus", kind: "contains", status: "accepted" },
+        { id: "requires", source_id: "focus", target_id: "prerequisite", kind: "requires", status: "accepted" },
+        { id: "teaches", source_id: "clip", target_id: "focus", kind: "teaches", status: "accepted" },
+        { id: "assesses", source_id: "question", target_id: "focus", kind: "assesses", status: "proposed" },
+        { id: "cites", source_id: "source", target_id: "focus", kind: "cites", status: "accepted" },
+        { id: "second-degree", source_id: "prerequisite", target_id: "second-degree", kind: "next", status: "accepted" },
+        { id: "dismissed", source_id: "focus", target_id: "dismissed", kind: "requires", status: "dismissed" },
+      ],
+      uncovered_concept_ids: [],
+    };
+
+    const neighborhood = directBlueprintNeighborhood(blueprint, "focus");
+
+    expect([...neighborhood.nodeIds].sort()).toEqual([
+      "clip",
+      "focus",
+      "prerequisite",
+      "question",
+      "source",
+      "topic",
+    ]);
+    expect([...neighborhood.edgeIds].sort()).toEqual([
+      "assesses",
+      "cites",
+      "contains",
+      "requires",
+      "teaches",
+    ]);
+    expect(directBlueprintNeighborhood(blueprint, "isolated")).toEqual({
+      edgeIds: new Set(),
+      nodeIds: new Set(["isolated"]),
+    });
+    expect(directBlueprintNeighborhood(blueprint, "missing")).toEqual({
+      edgeIds: new Set(),
+      nodeIds: new Set(),
+    });
   });
 
   it("uses only the instructional hierarchy as the Blueprint layout spine", () => {

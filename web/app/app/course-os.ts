@@ -1031,6 +1031,36 @@ export function visibleBlueprintNodeIds(
   return ids;
 }
 
+export type BlueprintDirectNeighborhood = {
+  edgeIds: Set<string>;
+  nodeIds: Set<string>;
+};
+
+export function directBlueprintNeighborhood(
+  blueprint: CourseBlueprint,
+  artifactId: string,
+): BlueprintDirectNeighborhood {
+  const artifactExists = blueprint.nodes.some((node) => node.id === artifactId);
+  if (!artifactExists) {
+    return {
+      edgeIds: new Set<string>(),
+      nodeIds: new Set<string>(),
+    };
+  }
+  const nodeIds = new Set<string>([artifactId]);
+  const edgeIds = new Set<string>();
+  blueprint.edges.forEach((edge) => {
+    if (
+      edge.status === "dismissed"
+      || (edge.source_id !== artifactId && edge.target_id !== artifactId)
+    ) return;
+    edgeIds.add(edge.id);
+    nodeIds.add(edge.source_id);
+    nodeIds.add(edge.target_id);
+  });
+  return { edgeIds, nodeIds };
+}
+
 export type BlueprintConceptOccurrence = {
   id: string;
   concept: BlueprintNode;

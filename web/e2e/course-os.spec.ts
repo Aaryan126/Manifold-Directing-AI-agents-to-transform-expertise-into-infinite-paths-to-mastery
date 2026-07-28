@@ -1032,6 +1032,56 @@ test("course deletion requires a separate destructive confirmation", async ({ pa
   expect(state.deleted()).toBe(true);
 });
 
+test("Live Blueprint focuses direct connections and restores the whole lecture", async ({ page }) => {
+  const { published } = await mockPublishedCourseOS(page);
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto(`/app/courses/${published.id}`);
+  await page.getByText("Forces lecture", { exact: true }).click();
+
+  const blueprintCanvas = page.locator("[data-viewport-state]");
+  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
+  await expect(page.getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".react-flow__node")).toHaveCount(6);
+
+  const conceptNode = page.getByTestId("rf__node-concept-1");
+  const questionNode = page.getByTestId("rf__node-question-1");
+  await conceptNode.click();
+  await expect(blueprintCanvas).toHaveAttribute("data-focus-state", "connections");
+  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
+  await expect(page.getByRole("dialog", { name: "Net force artifact inspector" })).toBeVisible();
+  await expect(page.locator(".react-flow__node")).toHaveCount(6);
+  await expect(page.locator(".react-flow__edge")).toHaveCount(5);
+  await expect(page.getByRole("button", { name: /Connections · Net force/ })).toBeVisible();
+
+  await questionNode.click();
+  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
+  await expect(page.getByRole("dialog", {
+    name: /In the ukulele example, why did the speaker focus on learning only a small set of chords before performing\? artifact inspector/,
+  })).toBeVisible();
+  await expect(page.locator(".react-flow__node")).toHaveCount(2);
+  await expect(page.locator(".react-flow__edge")).toHaveCount(1);
+  await expect(page.getByTestId("rf__node-concept-1")).toBeVisible();
+
+  await page.locator(".react-flow__pane").click({ position: { x: 8, y: 8 } });
+  await expect(blueprintCanvas).toHaveAttribute("data-focus-state", "course");
+  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
+  await expect(page.getByRole("dialog", { name: /artifact inspector/ })).toHaveCount(0);
+  await expect(page.locator(".react-flow__node")).toHaveCount(6);
+
+  await conceptNode.click();
+  await expect(blueprintCanvas).toHaveAttribute("data-focus-state", "connections");
+  await page.getByRole("button", { name: "Close artifact inspector" }).click();
+  await expect(blueprintCanvas).toHaveAttribute("data-focus-state", "course");
+  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
+  await expect(page.locator(".react-flow__node")).toHaveCount(6);
+
+  await page.getByRole("button", { name: "Design" }).click();
+  await expect(blueprintCanvas).toHaveAttribute("data-focus-state", "course");
+  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
+  await page.getByTestId("rf__node-question-1").click();
+  await expect(page.locator(".react-flow__node")).toHaveCount(6);
+});
+
 test("Blueprint uses the hierarchy-first detailed graph and atomic proposal workflow", async ({ page }) => {
   test.setTimeout(60_000);
   const state = await mockPublishedCourseOS(page);
@@ -1129,6 +1179,7 @@ test("Blueprint uses the hierarchy-first detailed graph and atomic proposal work
   expect(await readBlueprintTransform()).toBe(liveBlueprintTransform);
   await page.getByRole("button", { name: "Design" }).click();
   await expect(page.getByText("Private revision", { exact: true })).toBeVisible();
+  await expect(blueprintCanvas).toHaveAttribute("data-focus-state", "course");
   await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
   const blueprintMode = page.getByRole("navigation", { name: "Blueprint mode" });
   expect(await blueprintMode.evaluate((element) => element.parentElement?.className.includes("blueprintFloatingToolbar")))
@@ -1184,6 +1235,7 @@ test("Blueprint uses the hierarchy-first detailed graph and atomic proposal work
   await expect(clipNode.locator("article[data-kind='clip']")).toHaveCSS("background-color", "rgb(226, 240, 223)");
   await expect(sourceNode.locator("article[data-kind='source']")).toHaveCSS("background-color", "rgb(238, 234, 226)");
   await clipNode.click();
+  await expect(page.locator(".react-flow__node")).toHaveCount(6);
   await expect(page.getByRole("heading", { name: "Vector direction" })).toBeVisible();
   await expect(page.getByLabel("Force systems clip")).toBeVisible();
   await page.getByRole("button", { name: "Close artifact inspector" }).click();
