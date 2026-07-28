@@ -982,6 +982,7 @@ test("course studio exposes Blueprint, review decisions, and a mobile-safe layou
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/app/courses/${course.id}`);
 
+  await expect(page.locator('[class*="studioStatus"]').getByText("Private", { exact: true })).toHaveCount(0);
   const openLecture = page.getByRole("button", { name: "Open Blueprint for Forces lecture" });
   await openLecture.focus();
   await openLecture.press("Enter");
@@ -1162,6 +1163,7 @@ test("Blueprint uses the hierarchy-first detailed graph and atomic proposal work
   await expect(conceptNode.locator("article[data-kind='concept']")).toBeVisible();
   await expect(sourceNode.locator("article[data-kind='source']")).toBeVisible();
   await expect(conceptNode.locator("article[data-kind='concept']")).toHaveCSS("background-color", "rgb(227, 237, 242)");
+  await expect(topicNode.locator("article[data-kind='topic']")).toHaveCSS("background-color", "rgb(245, 231, 174)");
   await expect(clipNode.locator("article[data-kind='clip']")).toHaveCSS("background-color", "rgb(226, 240, 223)");
   await expect(sourceNode.locator("article[data-kind='source']")).toHaveCSS("background-color", "rgb(238, 234, 226)");
   await clipNode.click();

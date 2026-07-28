@@ -1789,8 +1789,8 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintTypedNode::before { background: #98958e; border-radius: 10px 10px 0 0; content: ""; height: 4px; left: -1px; position: absolute; right: -1px; top: -1px; }
 .blueprintTypedNode[data-kind="source"] { background: #eeeae2; border-color: #aaa39a; border-style: dashed; }
 .blueprintTypedNode[data-kind="source"]::before { background: #77736b; }
-.blueprintTypedNode[data-kind="topic"] { background: #e4e1da; border-color: #8d887f; }
-.blueprintTypedNode[data-kind="topic"]::before { background: #25262b; }
+.blueprintTypedNode[data-kind="topic"] { background: #f5e7ae; border-color: #b59132; }
+.blueprintTypedNode[data-kind="topic"]::before { background: #967017; }
 .blueprintTypedNode[data-kind="concept"] { background: #e3edf2; border-color: #8fa8b5; }
 .blueprintTypedNode[data-kind="concept"]::before { background: #55768f; }
 .blueprintTypedNode[data-kind="clip"] { background: #e2f0df; border-color: #82a77b; }

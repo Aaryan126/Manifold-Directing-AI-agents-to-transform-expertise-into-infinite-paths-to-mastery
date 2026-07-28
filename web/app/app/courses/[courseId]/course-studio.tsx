@@ -1973,8 +1973,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     <ClipboardCheck /><span>Review draft</span><i>{course.pending_review_count}</i>
                   </button>
                 )
-                  : course?.status !== "published" ? <span><Activity />Private</span>
-                    : null}
+                  : null}
               {!editingLocked && (course?.status !== "published" || hasUnpublishedChanges) ? (
                 <button className={styles.studioPublishButton} disabled={!canPublish || sending} onClick={() => void publishRevision()} type="button">
                   {course?.status === "published" ? "Publish updates" : "Publish course"}
