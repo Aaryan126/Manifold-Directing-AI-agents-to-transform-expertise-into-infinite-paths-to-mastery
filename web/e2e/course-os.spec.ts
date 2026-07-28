@@ -1161,7 +1161,18 @@ test("Blueprint uses the hierarchy-first detailed graph and atomic proposal work
   expect(conceptBounds!.y).toBeLessThan(clipBounds!.y);
   expect(conceptBounds!.y).toBeLessThan(questionBounds!.y);
   expect(await topicNode.evaluate((node) => parseFloat(getComputedStyle(node).height))).toBeGreaterThan(108);
+  expect(await questionNode.evaluate((node) => parseFloat(getComputedStyle(node).width))).toBeGreaterThan(210);
   expect(await questionNode.evaluate((node) => parseFloat(getComputedStyle(node).height))).toBeGreaterThan(98);
+  expect(await page.locator(".react-flow__node").evaluateAll((nodes) => nodes.every((node, index) => {
+    const bounds = node.getBoundingClientRect();
+    return nodes.slice(index + 1).every((candidate) => {
+      const candidateBounds = candidate.getBoundingClientRect();
+      return bounds.right <= candidateBounds.left
+        || candidateBounds.right <= bounds.left
+        || bounds.bottom <= candidateBounds.top
+        || candidateBounds.bottom <= bounds.top;
+    });
+  }))).toBe(true);
   await expect(conceptNode.locator("article[data-kind='concept']")).toBeVisible();
   await expect(sourceNode.locator("article[data-kind='source']")).toBeVisible();
   await expect(conceptNode.locator("article[data-kind='concept']")).toHaveCSS("background-color", "rgb(227, 237, 242)");

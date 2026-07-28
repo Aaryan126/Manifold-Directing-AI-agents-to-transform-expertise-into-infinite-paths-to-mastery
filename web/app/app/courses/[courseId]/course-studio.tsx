@@ -105,6 +105,7 @@ import {
   shouldHydrateGenerationRun,
   topicLogicalIdsForConcept,
   reorderBlueprintConcepts,
+  resolveBlueprintNodeOverlaps,
   visibleBlueprintNodeIds,
   visibleBlueprintEdges,
   type CourseMap,
@@ -5093,7 +5094,7 @@ function useBlueprintFlow(
         const saved = isRecord(artifact.metadata.layout) ? artifact.metadata.layout : null;
         return typeof saved?.x === "number" && typeof saved?.y === "number";
       });
-      setPositions(Object.fromEntries((layout.children ?? []).map((node) => {
+      const calculatedPositions = Object.fromEntries((layout.children ?? []).map((node) => {
         const artifact = visibleNodes.find((item) => item.id === node.id);
         const saved = respectSavedLayout && artifact && isRecord(artifact.metadata.layout)
           ? artifact.metadata.layout
@@ -5102,7 +5103,10 @@ function useBlueprintFlow(
           x: typeof saved?.x === "number" ? saved.x : node.x ?? 0,
           y: typeof saved?.y === "number" ? saved.y : node.y ?? 0,
         }];
-      })));
+      }));
+      setPositions(hasSavedPositions
+        ? resolveBlueprintNodeOverlaps(visibleNodes, calculatedPositions)
+        : calculatedPositions);
       setEdgePoints(Object.fromEntries((layout.edges ?? []).map((edge) => {
         const laidOutEdge = edge as typeof edge & {
           sections?: Array<{
@@ -5135,7 +5139,9 @@ function useBlueprintFlow(
     }).catch(() => {
       if (cancelled) return;
       const layerIndexes = new Map<number, number>();
-      setPositions((current) => Object.fromEntries(visibleNodes.map((node) => {
+      setPositions((current) => resolveBlueprintNodeOverlaps(
+        visibleNodes,
+        Object.fromEntries(visibleNodes.map((node) => {
         const saved = respectSavedLayout && isRecord(node.metadata.layout)
           ? node.metadata.layout
           : null;
@@ -5146,7 +5152,8 @@ function useBlueprintFlow(
           x: typeof saved?.x === "number" ? saved.x : current[node.id]?.x ?? layerIndex * 300,
           y: typeof saved?.y === "number" ? saved.y : current[node.id]?.y ?? layer * 210,
         }];
-      })));
+        })),
+      ));
       setEdgePoints({});
       setCompletedLayoutKey(requestedLayoutKey);
     });

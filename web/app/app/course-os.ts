@@ -282,17 +282,94 @@ function estimatedBlueprintTitleLines(title: string, charactersPerLine: number):
 
 export function blueprintNodeDimensions(node: BlueprintNode) {
   const sizing = node.kind === "topic"
-    ? { width: 260, minimumHeight: 108, baseHeight: 72, charactersPerLine: 31 }
+    ? {
+      minimumWidth: 260,
+      maximumWidth: 340,
+      preferredTitleLines: 3,
+      minimumHeight: 108,
+      baseHeight: 72,
+    }
     : node.kind === "concept"
-      ? { width: 232, minimumHeight: 118, baseHeight: 66, charactersPerLine: 27 }
+      ? {
+        minimumWidth: 232,
+        maximumWidth: 300,
+        preferredTitleLines: 3,
+        minimumHeight: 118,
+        baseHeight: 66,
+      }
       : node.kind === "source"
-        ? { width: 210, minimumHeight: 88, baseHeight: 54, charactersPerLine: 25 }
-        : { width: 210, minimumHeight: 98, baseHeight: 64, charactersPerLine: 24 };
-  const titleLines = estimatedBlueprintTitleLines(node.title, sizing.charactersPerLine);
+        ? {
+          minimumWidth: 210,
+          maximumWidth: 280,
+          preferredTitleLines: 2,
+          minimumHeight: 88,
+          baseHeight: 54,
+        }
+        : {
+          minimumWidth: 210,
+          maximumWidth: 320,
+          preferredTitleLines: 3,
+          minimumHeight: 98,
+          baseHeight: 64,
+        };
+  const approximateCharacterWidth = 6.8;
+  const horizontalTitlePadding = 26;
+  const naturalWidth = horizontalTitlePadding
+    + Math.ceil(node.title.length / sizing.preferredTitleLines) * approximateCharacterWidth;
+  const width = Math.ceil(Math.max(
+    sizing.minimumWidth,
+    Math.min(sizing.maximumWidth, naturalWidth),
+  ) / 2) * 2;
+  const charactersPerLine = Math.max(
+    1,
+    Math.floor((width - horizontalTitlePadding) / approximateCharacterWidth),
+  );
+  const titleLines = estimatedBlueprintTitleLines(node.title, charactersPerLine);
   return {
-    width: sizing.width,
+    width,
     height: Math.max(sizing.minimumHeight, sizing.baseHeight + titleLines * 17),
   };
+}
+
+export type BlueprintPosition = { x: number; y: number };
+
+export function resolveBlueprintNodeOverlaps(
+  nodes: BlueprintNode[],
+  positions: Record<string, BlueprintPosition>,
+  gap = 32,
+): Record<string, BlueprintPosition> {
+  const resolved = { ...positions };
+  const placed: Array<{
+    id: string;
+    height: number;
+    width: number;
+    x: number;
+    y: number;
+  }> = [];
+  [...nodes]
+    .sort((left, right) => blueprintNodeLayer(left.kind) - blueprintNodeLayer(right.kind)
+      || compareBlueprintSequence(left, right)
+      || left.title.localeCompare(right.title))
+    .forEach((node) => {
+      const preferred = positions[node.id];
+      if (!preferred) return;
+      const dimensions = blueprintNodeDimensions(node);
+      let x = preferred.x;
+      const y = preferred.y;
+      for (let attempt = 0; attempt < nodes.length + 1; attempt += 1) {
+        const collisions = placed.filter((candidate) => (
+          x < candidate.x + candidate.width + gap
+          && x + dimensions.width + gap > candidate.x
+          && y < candidate.y + candidate.height + gap
+          && y + dimensions.height + gap > candidate.y
+        ));
+        if (!collisions.length) break;
+        x = Math.max(...collisions.map((candidate) => candidate.x + candidate.width + gap));
+      }
+      resolved[node.id] = { x, y };
+      placed.push({ id: node.id, ...dimensions, x, y });
+    });
+  return resolved;
 }
 
 export type BlueprintHierarchyEdge = {

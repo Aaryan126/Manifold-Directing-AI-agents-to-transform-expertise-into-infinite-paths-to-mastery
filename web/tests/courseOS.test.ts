@@ -18,6 +18,7 @@ import {
   orderedGenerationTasks,
   performancePercent,
   reorderBlueprintConcepts,
+  resolveBlueprintNodeOverlaps,
   masteryStateForConcept,
   shouldHydrateGenerationRun,
   shouldCenterCreationComposer,
@@ -228,10 +229,41 @@ describe("Course OS presentation", () => {
       "Audience composition, expectations, teaching team, and case study introduction",
       "topic",
     )).height).toBeGreaterThan(108);
-    expect(blueprintNodeDimensions(node(
+    const longQuestion = blueprintNodeDimensions(node(
       "In the ukulele example, why did the speaker focus on learning only a small set of chords before performing?",
       "question",
-    )).height).toBeGreaterThan(98);
+    ));
+    expect(longQuestion.width).toBeGreaterThan(210);
+    expect(longQuestion.width).toBeLessThanOrEqual(320);
+    expect(longQuestion.height).toBeGreaterThan(98);
+  });
+
+  it("separates saved Blueprint positions when dynamic nodes would overlap", () => {
+    const node = (id: string, title: string): BlueprintNode => ({
+      id,
+      logical_id: `logical-${id}`,
+      kind: "question",
+      title,
+      status: "accepted",
+      parent_id: null,
+      metadata: {},
+    });
+    const first = node("first", "A long assessment question that needs a wider card");
+    const second = node("second", "Another long assessment question that starts in the same position");
+    const resolved = resolveBlueprintNodeOverlaps(
+      [first, second],
+      {
+        first: { x: 100, y: 200 },
+        second: { x: 100, y: 200 },
+      },
+    );
+    const firstDimensions = blueprintNodeDimensions(first);
+
+    expect(resolved.first).toEqual({ x: 100, y: 200 });
+    expect(resolved.second.x).toBeGreaterThanOrEqual(
+      resolved.first.x + firstDimensions.width + 32,
+    );
+    expect(resolved.second.y).toBe(200);
   });
 
   it("offers only meaningful Blueprint relationships and valid typed targets", () => {
