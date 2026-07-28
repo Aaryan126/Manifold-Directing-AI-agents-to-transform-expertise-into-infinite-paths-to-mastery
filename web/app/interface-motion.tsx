@@ -10,6 +10,17 @@ import type { ReactNode } from "react";
 
 export const interfaceEase = [0.22, 1, 0.36, 1] as const;
 
+export const sharedSurfaceSpringTransition = {
+  type: "spring" as const,
+  stiffness: 315,
+  damping: 32,
+  mass: 0.82,
+};
+
+export function sharedSurfaceTransition(reducedMotion: boolean) {
+  return reducedMotion ? { duration: 0 } : sharedSurfaceSpringTransition;
+}
+
 export const pageEntranceInitial = {
   opacity: 0,
   y: 10,

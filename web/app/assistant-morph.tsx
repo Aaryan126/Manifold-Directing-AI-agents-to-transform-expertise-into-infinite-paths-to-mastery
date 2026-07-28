@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import { X } from "lucide-react";
+import { sharedSurfaceTransition } from "./interface-motion";
 
 type AssistantMorphProps = {
   children: ReactNode;
@@ -29,13 +30,6 @@ type AssistantMorphProps = {
   subtitle?: string;
   surfaceId: string;
   titleId?: string;
-};
-
-const springTransition = {
-  type: "spring" as const,
-  stiffness: 315,
-  damping: 32,
-  mass: 0.82,
 };
 
 // Shared-surface pattern adapted from Motion's maintained Create Button and
@@ -62,7 +56,7 @@ export function AssistantMorph({
   const closeRef = useRef<HTMLButtonElement>(null);
   const panelId = `${surfaceId}-panel`;
   const titleId = providedTitleId ?? `${surfaceId}-title`;
-  const layoutTransition = reduceMotion ? { duration: 0 } : springTransition;
+  const layoutTransition = sharedSurfaceTransition(Boolean(reduceMotion));
 
   useEffect(() => {
     if (!open) return;

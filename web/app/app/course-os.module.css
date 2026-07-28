@@ -1782,6 +1782,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintFloatingMessages .blueprintCleanupPrompt { background: rgb(255 255 255 / 97%); border: 1px solid #d8d4cc; border-radius: 10px; box-shadow: 0 9px 28px rgb(31 32 36 / 12%); padding: 10px 12px; width: min(590px, calc(100vw - 48px)); }
 .blueprintGraphStage { inset: 0; pointer-events: none; position: absolute; }
 .blueprintCanvas[data-viewport-state="ready"] .blueprintGraphStage { pointer-events: auto; }
+.blueprintGraphStage[data-motion-layer="outgoing"] { pointer-events: none; }
 .blueprintGraphStage > :global(.react-flow) { height: 100%; width: 100%; }
 .blueprintLayoutLoading { align-items: center; color: #68666d; display: flex; font-size: 12px; gap: 9px; left: 50%; pointer-events: none; position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 6; }
 .blueprintLayoutLoading svg { height: 17px; width: 17px; }
@@ -1847,7 +1848,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintNodeLabel span { font-size: 11px; opacity: .72; }
 .blueprintCanvasHint { align-items: center; background: rgb(255 255 255 / 92%); border: 1px solid #dcd8d0; border-radius: 8px; bottom: 18px; box-shadow: 0 4px 14px rgb(20 20 20 / 7%); display: flex; font-size: 11px; gap: 8px; left: 50%; margin: 0; padding: 9px 12px; position: absolute; transform: translateX(-50%); z-index: 5; }
 .blueprintCanvasHint svg { height: 15px; width: 15px; }
-.blueprintInspector { animation: blueprintInspectorIn 150ms ease-out; background: #fff; border: 1px solid #d8d4cb; border-radius: 15px; box-shadow: 0 18px 48px rgb(28 29 33 / 18%); box-sizing: border-box; max-height: calc(100% - 86px); overflow: auto; padding: 20px; position: absolute; right: 18px; top: 68px; width: min(380px, calc(100% - 36px)); z-index: 10; }
+.blueprintInspector { background: #fff; border: 1px solid #d8d4cb; border-radius: 15px; box-shadow: 0 18px 48px rgb(28 29 33 / 18%); box-sizing: border-box; max-height: calc(100% - 86px); overflow: auto; padding: 20px; position: absolute; right: 18px; top: 68px; width: min(380px, calc(100% - 36px)); z-index: 10; }
 .blueprintInspector > header { align-items: flex-start; border-bottom: 1px solid #e3e0d9; display: flex; gap: 12px; padding-bottom: 17px; }
 .blueprintInspector > header > span { align-items: center; background: #f0eee9; border-radius: 9px; display: flex; height: 40px; justify-content: center; width: 40px; }
 .blueprintInspector > header > span svg { height: 19px; width: 19px; }
@@ -1858,7 +1859,6 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .inspectorClose { align-items: center; background: transparent; border: 0; border-radius: 7px; color: #6f6d74; display: flex; flex: 0 0 auto; height: 30px; justify-content: center; margin: -4px -5px 0 0; padding: 0; width: 30px; }
 .inspectorClose:hover { background: #f0eee9; color: #202126; }
 .inspectorClose svg { height: 17px; width: 17px; }
-@keyframes blueprintInspectorIn { from { opacity: 0; transform: translateY(-6px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .conceptEvidence,.artifactCoverage { border-bottom: 1px solid #e3e0d9; padding: 18px 0; }
 .conceptEvidence h4,.artifactCoverage h4 { font-size: 12px; margin: 0 0 12px; }
 .conceptEvidence > div { display: grid; gap: 6px; grid-template-columns: repeat(3, 1fr); }

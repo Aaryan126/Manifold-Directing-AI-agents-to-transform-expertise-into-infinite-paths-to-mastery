@@ -1045,6 +1045,29 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
 
   const conceptNode = page.getByTestId("rf__node-concept-1");
   const questionNode = page.getByTestId("rf__node-question-1");
+  await blueprintCanvas.evaluate((canvas) => {
+    const trace = {
+      motionStates: [canvas.getAttribute("data-motion-state")],
+      sawBlockingLoader: canvas.textContent?.includes("Arranging the course system") ?? false,
+      sawOutgoingLayer: Boolean(canvas.querySelector('[data-motion-layer="outgoing"]')),
+    };
+    const traceWindow = window as Window & {
+      __blueprintMotionTrace?: typeof trace;
+      __blueprintMotionObserver?: MutationObserver;
+    };
+    traceWindow.__blueprintMotionTrace = trace;
+    traceWindow.__blueprintMotionObserver = new MutationObserver(() => {
+      const nextState = canvas.getAttribute("data-motion-state");
+      if (trace.motionStates.at(-1) !== nextState) trace.motionStates.push(nextState);
+      trace.sawBlockingLoader ||= canvas.textContent?.includes("Arranging the course system") ?? false;
+      trace.sawOutgoingLayer ||= Boolean(canvas.querySelector('[data-motion-layer="outgoing"]'));
+    });
+    traceWindow.__blueprintMotionObserver.observe(canvas, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+    });
+  });
   await conceptNode.click();
   await expect(blueprintCanvas).toHaveAttribute("data-focus-state", "connections");
   await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
@@ -1052,6 +1075,23 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
   await expect(page.locator(".react-flow__node")).toHaveCount(6);
   await expect(page.locator(".react-flow__edge")).toHaveCount(5);
   await expect(page.getByRole("button", { name: /Connections · Net force/ })).toBeVisible();
+  await expect(blueprintCanvas).toHaveAttribute("data-motion-state", "idle");
+  const motionTrace = await page.evaluate(() => {
+    const traceWindow = window as Window & {
+      __blueprintMotionTrace?: {
+        motionStates: Array<string | null>;
+        sawBlockingLoader: boolean;
+        sawOutgoingLayer: boolean;
+      };
+      __blueprintMotionObserver?: MutationObserver;
+    };
+    traceWindow.__blueprintMotionObserver?.disconnect();
+    return traceWindow.__blueprintMotionTrace;
+  });
+  expect(motionTrace?.motionStates).toContain("preparing");
+  expect(motionTrace?.motionStates).toContain("morphing");
+  expect(motionTrace?.sawOutgoingLayer).toBe(true);
+  expect(motionTrace?.sawBlockingLoader).toBe(false);
 
   await questionNode.click();
   await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");

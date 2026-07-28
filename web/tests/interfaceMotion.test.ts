@@ -6,6 +6,8 @@ import {
   pageEntranceTarget,
   sectionCascadeVariants,
   sectionItemVariants,
+  sharedSurfaceSpringTransition,
+  sharedSurfaceTransition,
   workspaceViewMotion,
 } from "../app/interface-motion";
 
@@ -56,5 +58,16 @@ describe("interface motion", () => {
       exit: { opacity: 0, x: -8 },
       transition: { duration: 0.28 },
     });
+  });
+
+  it("shares the Course Director spring with graph and inspector morphs", () => {
+    expect(sharedSurfaceSpringTransition).toEqual({
+      type: "spring",
+      stiffness: 315,
+      damping: 32,
+      mass: 0.82,
+    });
+    expect(sharedSurfaceTransition(false)).toBe(sharedSurfaceSpringTransition);
+    expect(sharedSurfaceTransition(true)).toEqual({ duration: 0 });
   });
 });
