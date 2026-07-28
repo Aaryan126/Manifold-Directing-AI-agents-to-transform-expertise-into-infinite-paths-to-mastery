@@ -669,7 +669,7 @@ export function courseState(course: CourseSummary): {
     };
   }
   if (course.pending_review_count > 0 || course.generation_status === "waiting_review") {
-    return { label: "Ready to review", tone: "review", action: "Review course" };
+    return { label: "Draft ready", tone: "neutral", action: "Open course" };
   }
   if (course.status === "published") {
     return { label: "Live", tone: "live", action: "Open workspace" };
@@ -687,8 +687,9 @@ export function generationPhaseLabel(phase: string | null): string {
     concept_graph: "Mapping concepts and prerequisites",
     clips: "Preparing focused teaching moments",
     assessments: "Designing checks for understanding",
-    review_bundles: "Assembling your review",
-    review: "Your private draft is ready",
+    review_bundles: "Finalizing your editable draft",
+    review: "Your editable private draft is ready",
+    draft_ready: "Your editable private draft is ready",
     complete: "Course published",
   };
   return phase ? labels[phase] ?? "Building your course" : "Ready when you are";

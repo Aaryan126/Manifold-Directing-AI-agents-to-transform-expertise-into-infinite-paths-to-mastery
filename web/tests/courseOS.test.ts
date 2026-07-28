@@ -86,9 +86,9 @@ describe("Course OS presentation", () => {
     expect(findBlueprintClip(node, clips)?.id).toBe("clip-working");
   });
 
-  it("prioritizes failed and review states over a generic draft label", () => {
+  it("prioritizes failed and finalized-draft states over a generic draft label", () => {
     expect(courseState({ ...course, generation_status: "failed" }).label).toBe("Needs help");
-    expect(courseState({ ...course, pending_review_count: 12 }).label).toBe("Ready to review");
+    expect(courseState({ ...course, pending_review_count: 12 }).label).toBe("Draft ready");
   });
 
   it("keeps Blueprint order and mastery presentation grounded in saved evidence", () => {
@@ -302,7 +302,8 @@ describe("Course OS presentation", () => {
 
   it("turns durable task names into teacher-facing activity", () => {
     expect(generationPhaseLabel("concept_graph")).toBe("Mapping concepts and prerequisites");
-    expect(generationPhaseLabel("review")).toBe("Your private draft is ready");
+    expect(generationPhaseLabel("review_bundles")).toBe("Finalizing your editable draft");
+    expect(generationPhaseLabel("draft_ready")).toBe("Your editable private draft is ready");
     expect(generationPhaseLabel("complete")).toBe("Course published");
   });
 

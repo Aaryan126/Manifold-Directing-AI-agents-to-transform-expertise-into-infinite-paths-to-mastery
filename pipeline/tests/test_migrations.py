@@ -72,6 +72,9 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     guide_migration = Path("migrations/025_learner_guide_conversation.sql").read_text(
         encoding="utf-8"
     )
+    auto_accept_migration = Path("migrations/026_auto_accept_private_drafts.sql").read_text(
+        encoding="utf-8"
+    )
 
     for table_name in [
         "users",
@@ -180,6 +183,10 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     assert "alter column estimated_minutes drop not null" in mode_migration
     assert "create table learner_guide_messages" in guide_migration
     assert "learner_guide_messages_conversation_idx" in guide_migration
+    assert "auto_accept_private_draft" in auto_accept_migration
+    assert "publication_required" in auto_accept_migration
+    assert "phase = 'draft_ready'" in auto_accept_migration
+    assert "insert into routing_policies" in auto_accept_migration
 
 
 def test_legacy_schema_baseline_covers_every_migration() -> None:

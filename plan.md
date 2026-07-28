@@ -13,10 +13,10 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 **Goal:** Stand up the repo structure, tooling, and make/record the concrete stack decisions that `prd.md` Section 8 leaves as recommendations.
 
 **Deliverables:**
-- Replace the guided wizard as the primary instructor model with the Agent-led Course OS defined in `ui-redesign-plan.md`: Teacher Command Center, conversational Course Studio, complete private-draft generation, review bundles, semantic Course Map, published-course workspace, and versioned `Publish updates`.
+- Replace the guided wizard as the primary instructor model with the Agent-led Course OS defined in `ui-redesign-plan.md`: Teacher Command Center, conversational Course Studio, automatic editable-private-draft generation, semantic Course Map, published-course workspace, and versioned `Publish updates`.
 - Add durable Postgres-backed generation runs/tasks owned by the pipeline service so transcription through quality review continues without an open browser, survives restart, retries safely, and exposes isolated failures.
 - Add active/working course revisions and stable logical artifact identities. Existing courses are backfilled without losing audit history; published updates preserve completed learner work and apply new content to future routing.
-- Add instructor course-list/attention APIs, login-runtime course conversations, durable typed change proposals, review bundles, and evidence-grounded course/insights copilot behavior. Legacy conversation tables remain compatible but current assistant turns do not read or write them.
+- Add instructor course-list/attention APIs, login-runtime course conversations, auditable automatic draft finalization, durable typed later-change proposals, and evidence-grounded course/insights copilot behavior. Legacy conversation tables remain compatible but current assistant turns do not read or write them.
 - Build the new product in parallel under `/app`, retain `/manifold` as rollback until parity and human approval, then switch landing CTAs and remove the legacy mode after the rollback window.
 - Monorepo structure: `/web` (Next.js app), `/pipeline` (Python AI/video service), `/shared` (shared types/schemas if applicable).
 - Postgres schema migration tooling set up (matching `prd.md` Section 9 entities, minus anything decided against in this phase).
@@ -56,30 +56,30 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 
 ---
 
-## Phase 2 — Topic Segmentation + Editable Outline (first HITL checkpoint)
+## Phase 2 — Topic Segmentation + Editable Outline
 
-**Goal:** AI proposes topic boundaries; instructor can review and edit them before anything downstream happens.
+**Goal:** AI creates topic boundaries for the private draft; the instructor can optionally inspect and edit them while downstream generation proceeds.
 
 **Deliverables:**
 - Segmentation agent using OpenAI GPT-5.4: transcript → proposed topics (title, time range, summary) targeting 10–20 min chunks based on semantic shifts, not fixed windows.
 - Editable outline UI: merge/split/rename/re-time/delete/add topics, backed by the Topic entity.
-- Persisting instructor edits distinctly from the original AI proposal (for traceability, per `prd.md` Section 5).
+- Automatically finalize generated topics into the private revision while persisting the original AI proposal and later instructor edits distinctly for traceability.
 
 **Automated tests:**
 - Unit: boundary-merge/split logic, time-range validation (no overlaps, no gaps beyond a defined tolerance).
 - Integration: fixture transcript → segmentation produces topics within the target length range for a "well-behaved" lecture structure.
-- Regression: instructor edits persist correctly and are distinguishable from AI-original proposals in the data layer.
+- Regression: automatic private-draft finalization is audited, and later instructor edits persist distinctly from AI-original proposals.
 
 **Human test checklist:**
-- [ ] Run segmentation on a real lecture; time how long a full review/edit pass takes (target: well under 10 min for a 2-hour lecture — flag if this is unrealistic once you've tried it).
+- [ ] Run segmentation on a real lecture; confirm the outline is understandable without requiring a review pass, then make one optional correction and confirm it is fast.
 - [ ] Deliberately test the edit interactions (merge two topics, split one, rename, drag a boundary) — confirm each feels fast and doesn't lose data.
 - [ ] Judge subjectively: do the AI's proposed boundaries make pedagogical sense, or does it default to naive time-slicing?
 
 ---
 
-## Phase 3 — Concept & Prerequisite Graph + Graph Editor (second HITL checkpoint)
+## Phase 3 — Concept & Prerequisite Graph + Graph Editor
 
-**Goal:** AI proposes a cross-topic concept graph; instructor can visually review/edit it. This is called out in `prd.md` as the single most important review step — treat UI quality here as a first-class concern, not an afterthought.
+**Goal:** AI creates a cross-topic concept graph in the private draft; the instructor can understand and optionally edit it. Treat initial graph comprehension and editing quality as first-class concerns.
 
 **Deliverables:**
 - Graph-building agent using OpenAI GPT-5.4: topics + transcript → Concept nodes + ConceptEdge (`requires`) relationships, spanning the whole course (not just within-topic).
@@ -91,7 +91,7 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 
 **Automated tests:**
 - Unit: cycle detection (a prerequisite graph must be a DAG — reject/flag edges that would create cycles), edge CRUD operations.
-- Integration: fixture course → graph-building produces a sparse, acyclic graph with one to three concepts covering every reviewed topic; regeneration preserves all instructor-reviewed graph decisions.
+- Integration: fixture course → graph-building produces a sparse, acyclic graph with one to three concepts covering every generated topic; regeneration preserves all later instructor graph decisions.
 - Performance: "eligible next concepts" query returns within an acceptable latency bound (define the bound in `implementation.md` once real data volumes are known) since this is called on every learner interaction later.
 
 **Human test checklist:**
@@ -108,7 +108,7 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 **Deliverables:**
 - Clip extraction agent using OpenAI GPT-5.4: topic + transcript + concept tags → clip boundaries (clean in/out points) and type classification (`definition`, `worked_example`, `explanation`, `misconception_correction`, `prerequisite_recap`).
 - Clip storage behind the delivery abstraction: local-provider clips are materialized as accurate, zero-based MP4 files with FFmpeg and served independently; source timestamp references remain a fallback for existing/failed/non-local assets, while Mux delivery remains optional.
-- Automatic proposal preparation: once topic review and reviewed concept coverage are valid, clip generation starts without an instructor command; failures remain isolated and explicitly retryable.
+- Automatic clip preparation: once generated topics and concept coverage are structurally valid, clip generation starts without an instructor command; failures remain isolated and explicitly retryable.
 - Lightweight clip review embedded in the topic-production workspace: spot-check independently playable learner media directly beneath its approved topic (not full per-clip approval, per `prd.md` 6.3). A single topic-level regenerate action is the correction path; historical flag/re-cut records remain in the audit backend but are not exposed as a second editing workflow. Boundary, split/merge/dismiss, and concept-link changes invalidate affected clips until regeneration.
 
 **Automated tests:**
@@ -121,24 +121,24 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 
 ---
 
-## Phase 5 — Assessment Generation + Approve/Edit UI (third HITL checkpoint)
+## Phase 5 — Assessment Generation + Editable Assessment UI
 
-**Goal:** Generate a comprehension check + confidence prompt per topic, plus a remediation map, all instructor-approved before going live.
+**Goal:** Generate a comprehension check + confidence prompt per topic, plus a remediation map, as part of the editable private draft; publication remains the learner-facing boundary.
 
 **Deliverables:**
 - Assessment generation agent using OpenAI GPT-5.4: topic + concepts → question (MCQ/short-answer/worked-problem as appropriate), confidence prompt, and a remediation map (wrong-answer pattern → target clip/concept).
-- Automatic proposal preparation after reviewed clips become usable; dismissed questions are not silently recreated.
-- Focused two-column Approve/Edit/Regenerate/Dismiss UI. The primary editor shows the learner-facing question, answer, and choices; confidence/remediation and AI context are collapsed until needed.
-- "Unapproved question" state that blocks a topic from being learner-visible.
+- Automatic assessment preparation after private-draft clips become usable; instructor-deleted questions are not silently recreated.
+- Focused two-column Edit/Regenerate/Remove UI. The primary editor shows the learner-facing question, answer, and choices; confidence/remediation and AI context are collapsed until needed.
+- Draft-question completeness that blocks publication when a topic has no usable question, without requiring per-question approval.
 
 **Automated tests:**
 - Unit: remediation map completeness (every plausible wrong-answer pattern maps to a valid target).
 - Integration: fixture topic → generated question + remediation map validates against schema; regeneration produces a genuinely different variant, not a near-duplicate.
 
 **Human test checklist:**
-- [ ] Review generated questions for several real topics — track how many need only light edits vs. full rewrites (compare against the >90% light-edit target in `prd.md` Section 10).
+- [ ] Inspect generated questions for several real topics — track how many need no change, light edits, or full rewrites (compare against the >90% no/light-edit target in `prd.md` Section 10).
 - [ ] Test the regenerate flow — are the alternate variants actually meaningfully different and still correct?
-- [ ] Confirm an unapproved question genuinely blocks learner access to that topic (not just a UI warning).
+- [ ] Confirm a missing or structurally invalid question blocks publication, while a complete generated question does not require an approval click.
 
 ---
 
@@ -210,15 +210,15 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 
 ## Phase 9 — Feedback Loop Hardening & Traceability
 
-**Goal:** Make the "AI proposes, human decides, system remembers why" principle fully auditable, and make sure dashboard-driven changes propagate correctly and only where intended.
+**Goal:** Make private-draft generation, instructor edits, publication, and later AI proposals fully auditable, and make sure dashboard-driven changes propagate correctly and only where intended.
 
 **Deliverables:**
-- Full audit trail: every AI-generated artifact and every instructor edit/accept/dismiss action is logged with what triggered it and when.
-- Persist proposal evidence and instructor actions for every AI artifact. Surface "Why did the AI suggest this" on graph, clip, question, and dashboard proposals; Topic Outline is the explicit compact-review exception and relies on title, summary, and timing as its review context.
+- Full audit trail: every AI-generated artifact, automatic private-draft finalization, instructor edit, later proposal decision, and publication is logged with what triggered it and when.
+- Persist original generation evidence, automatic-finalization events, and later instructor/proposal actions. Surface "Why did the AI suggest this" on graph, clip, question, and dashboard proposals without turning initial generation into a required review queue.
 - Verification that dashboard-driven changes correctly distinguish "applies going forward" vs. "applies retroactively" per learner, and that this is never ambiguous to the instructor.
 
 **Automated tests:**
-- Integration: audit log completeness check across a full simulated instructor + learner session covering every phase's checkpoint.
+- Integration: audit log completeness check across a full simulated instructor + learner session covering initial automatic finalization, publication, learner routing, and a later proposal checkpoint.
 - Regression: a dashboard-driven edit that should only affect future learners does not silently alter in-progress learner state.
 
 **Human test checklist:**
@@ -243,7 +243,7 @@ A phase is only complete when: (1) its deliverables exist, (2) its automated tes
 - Render the instructor navigation rail in Manifold orange across expanded, collapsed, and mobile-bottom-navigation states, with dark-ink controls, a translucent cream active/hover treatment, and a cream identity chip containing a neutral person silhouette instead of name initials, all retaining accessible contrast. Place the three-bar Manifold mark inside a compact non-rotating white tile while preserving its black/orange/grey logo colors. Learner-insight speech bubbles in `Needs your judgment` use orange line art without a filled icon tile.
 - Enrich the Teacher Command Center course portfolio with professional orange/clay/brown/warm-grey geometric cover fields, a compact palette marker, and a coordinated neutral search treatment while retaining the light canvas. Keep the intelligence brief, suggested commands, `Needs your judgment`, and learner-activity panel on their neutral white surfaces. Dense instructional graphs retain their separate multicolor semantic system.
 - Treat dense instructional graphs as the deliberate exception to the logo-derived chrome palette. Instructor Course Flow/Blueprint graphs and learner mastery/prerequisite maps retain the prior multicolor semantic system for artifact kinds, topic groupings, mastery states, and route actions; labels, icons, edge patterns, and accessible names remain redundant encodings so color is never the sole carrier of meaning.
-- Consolidate published operations around focused workspaces: Overview merges the former Insights surface with persisted activity/mastery/answer/concept/question evidence. Diagnosis `Acknowledge`/`Dismiss` actions only resolve the evidence item; `Prepare improvement` creates a private typed proposal that then uses the standard Accept/Edit/Dismiss artifact checkpoint. Assessments always lists current-revision questions, supports audited teacher add/edit/remove, and previews clip-target remediation routes inline; Learner Preview lists and plays the actual current-revision teaching clips in learner order; Settings always lists durable default/per-concept routing policy records with add/edit/remove plus a side-effect-free routing preview. The three generated Review bundles are a first-publication checkpoint only: published working revisions neither regenerate nor count them, and `Publish updates` appears only for a real revision diff. Contextual artifact controls replace the global Edit button and separate Changes page; all first saves to a live course open a private working revision automatically.
+- Consolidate published operations around focused workspaces: Overview merges the former Insights surface with persisted activity/mastery/answer/concept/question evidence. Diagnosis `Acknowledge`/`Dismiss` actions only resolve the evidence item; `Prepare improvement` creates a private typed proposal that then uses the standard Accept/Edit/Dismiss artifact checkpoint. Assessments always lists current-revision questions, supports audited teacher add/edit/remove, and previews clip-target remediation routes inline; Learner Preview lists and plays the actual current-revision teaching clips in learner order; Settings always lists durable default/per-concept routing policy records with add/edit/remove plus a side-effect-free routing preview. Initial generation automatically finalizes into the editable private revision without generated Review bundles; `Publish course` is the first learner-facing boundary, and `Publish updates` appears only for a real revision diff. Contextual artifact controls replace the global Edit button and separate Changes page; all first saves to a live course open a private working revision automatically.
 - Rebuild published Overview as an intelligence cockpit: deterministic ranked priorities, course-design and learner-evidence health, persisted Course Director specialist activity, topic/concept matrix, synchronized evidence inspector, meaningful accessible charts, and a compact read-only Course Map overlay. Contextual actions prepare typed private proposals for clip, assessment, graph, topic/concept, remediation, and routing changes; each atomic proposal still requires Accept/Edit/Dismiss.
 - Add revision-aware supplemental sources. PDF/PPTX extraction covers native text, PowerPoint notes, rendered-page/slide visual analysis, PostgreSQL full-text retrieval, exact citations, explicit AI-context versus learner-resource purpose, asynchronous failure/retry, and a Sources & materials drawer. Learner payloads include only accepted resources from the active published revision.
 - Complete the staged production UI/UX redesign defined in `ui-redesign-plan.md`: visual concepts and design system; shared application shell; instructor onboarding/course builder; instructor review workspaces; graph/routing workspace; instructor insights; learner player/path/mastery experience; and final hardening. Desktop and laptop web are in scope for the application workspace; tablet and mobile remain excluded there by user decision. The separate public landing page must be responsive from mobile through wide desktop and route its primary CTA into the working Manifold application. During Stages 2-7, run lint/typecheck/focused unit/build checks plus targeted desktop visual checks; run paired full-Playwright gates after Stages 4+5 and 6+7, then the final axe/visual-regression batch in Stage 8 before human sign-off.

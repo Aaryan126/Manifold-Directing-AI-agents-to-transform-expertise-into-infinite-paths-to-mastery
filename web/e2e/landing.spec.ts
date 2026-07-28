@@ -25,6 +25,7 @@ test("public landing page leads through role-aware development login", async ({ 
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto("/");
 
+  await expect(page.locator('link[rel="icon"]').first()).toHaveAttribute("href", /icon\.svg/);
   await expect(
     page.getByRole("heading", { name: "Turn lectures into adaptive learning journeys" }),
   ).toBeVisible();

@@ -123,6 +123,13 @@ class CourseOSRepository(ABC):
     ) -> str | None: ...
 
     @abstractmethod
+    async def finalize_generated_private_draft(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+    ) -> dict[str, int]: ...
+
+    @abstractmethod
     async def assemble_review_bundles(
         self,
         course_id: UUID,

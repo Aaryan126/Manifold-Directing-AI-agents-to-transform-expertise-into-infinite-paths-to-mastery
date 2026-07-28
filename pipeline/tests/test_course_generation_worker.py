@@ -119,7 +119,7 @@ async def test_source_task_runs_transcription_inside_the_durable_worker() -> Non
 
 
 @pytest.mark.anyio
-async def test_outline_task_applies_reviewable_course_title_proposal() -> None:
+async def test_outline_task_prepares_an_editable_private_course_title() -> None:
     repository = create_autospec(CourseOSRepository, instance=True)
     task = _task("outline")
     run = _run(task)
@@ -148,7 +148,7 @@ async def test_outline_task_applies_reviewable_course_title_proposal() -> None:
 
 
 @pytest.mark.anyio
-async def test_graph_task_generates_private_proposals_before_review() -> None:
+async def test_graph_task_generates_private_draft_artifacts() -> None:
     repository = create_autospec(CourseOSRepository, instance=True)
     task = _task("concept_graph")
     run = _run(task)
@@ -230,6 +230,37 @@ async def test_assessment_task_resumes_only_topics_without_questions() -> None:
     )
     output = repository.complete_generation_task.await_args.args[1]
     assert output["question_ids"] == [str(question_id)]
+
+
+@pytest.mark.anyio
+async def test_final_task_auto_accepts_the_editable_private_draft() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    task = _task("review_bundles")
+    run = _run(task)
+    repository.claim_generation_task = AsyncMock(return_value=task)
+    repository.get_generation_run = AsyncMock(return_value=run)
+    repository.complete_generation_task = AsyncMock()
+    repository.finalize_generated_private_draft = AsyncMock(
+        return_value={
+            "topic": 4,
+            "concept": 6,
+            "concept_edge": 3,
+            "clip": 4,
+            "question": 4,
+            "course_unit": 1,
+        }
+    )
+
+    worked = await _worker(repository).run_once()
+
+    assert worked is True
+    repository.finalize_generated_private_draft.assert_awaited_once_with(
+        run.course_id,
+        run.revision_id,
+    )
+    output = repository.complete_generation_task.await_args.args[1]
+    assert output["artifact_count"] == 22
+    assert output["auto_accepted_private_draft"]["question"] == 4
 
 
 @pytest.mark.anyio

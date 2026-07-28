@@ -697,10 +697,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     (working_revision_id,) * 13,
                 )
             ).fetchone()
-            blockers = _publication_blockers(
-                readiness,
-                is_update=active_revision_id is not None,
-            )
+            blockers = _publication_blockers(readiness)
             if blockers:
                 raise ValueError(" ".join(blockers))
 
@@ -774,7 +771,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
                 """
                 update generation_runs
                 set status = 'complete', phase = 'complete', progress = 100, updated_at = now()
-                where revision_id = %s and status = 'waiting_review'
+                where revision_id = %s and status in ('waiting_review', 'complete')
                 """,
                 (working_revision_id,),
             )
@@ -1602,6 +1599,269 @@ class PostgresCourseOSRepository(CourseOSRepository):
                 ),
             )
         return proposed_title
+
+    async def finalize_generated_private_draft(
+        self,
+        course_id: UUID,
+        revision_id: UUID,
+    ) -> dict[str, int]:
+        """Make a completed generation run an editable private draft.
+
+        Generation proposals remain preserved in their ``ai_proposal`` fields and
+        in the audit log, but they no longer create a clerical approval queue.
+        Explicit publication remains the boundary that exposes this revision to
+        learners.
+        """
+        counts: dict[str, int] = {}
+        async with await psycopg.AsyncConnection.connect(
+            self._database_url,
+            row_factory=dict_row,
+        ) as conn:
+            owned = await (
+                await conn.execute(
+                    """
+                    select 1 from course_revisions
+                    where id = %s and course_id = %s
+                    for update
+                    """,
+                    (revision_id, course_id),
+                )
+            ).fetchone()
+            if owned is None:
+                raise ValueError("The generated private revision was not found.")
+
+            await conn.execute(
+                """
+                insert into routing_policies (course_id, concept_id, revision_id, policy)
+                select %s, c.id, %s, %s::jsonb
+                from concepts c
+                where c.revision_id = %s and c.review_status <> 'dismissed'
+                on conflict (revision_id, concept_id) do nothing
+                """,
+                (
+                    course_id,
+                    revision_id,
+                    Jsonb(
+                        {
+                            "confidence_threshold": 3,
+                            "correct_attempts_for_mastery": 1,
+                            "advancement_mode": "require_mastery",
+                            "max_remediation_attempts": 2,
+                            "recommendation": "standard",
+                        }
+                    ),
+                    revision_id,
+                ),
+            )
+
+            review_tables = (
+                ("topic", "topics", True),
+                ("concept", "concepts", True),
+                ("concept_edge", "concept_edges", True),
+                ("question", "questions", True),
+                ("hint_ladder", "question_hint_ladders", True),
+                ("course_module", "course_modules", False),
+                ("course_unit", "course_units", False),
+                ("course_unit_edge", "course_unit_edges", False),
+            )
+            for artifact_type, table, has_approved_at in review_tables:
+                approved = ", approved_at = now()" if has_approved_at else ""
+                rows = await (
+                    await conn.execute(
+                        f"""
+                        update {table}
+                        set review_status = 'accepted'{approved},
+                            dismissed_at = null,
+                            updated_at = now()
+                        where revision_id = %s and review_status = 'proposed'
+                        returning id
+                        """,
+                        (revision_id,),
+                    )
+                ).fetchall()
+                counts[artifact_type] = len(rows)
+                for row in rows:
+                    await conn.execute(
+                        """
+                        insert into audit_events (
+                          course_id, actor_type, artifact_type, artifact_id,
+                          action, source, previous_state, new_state, scope, revision_id
+                        ) values (
+                          %s, 'ai', %s, %s, 'auto_accept_private_draft', 'generation',
+                          %s::jsonb, %s::jsonb, 'revision', %s
+                        )
+                        """,
+                        (
+                            course_id,
+                            artifact_type,
+                            row["id"],
+                            Jsonb({"review_status": "proposed"}),
+                            Jsonb(
+                                {
+                                    "review_status": "accepted",
+                                    "learner_visible": False,
+                                    "publication_required": True,
+                                }
+                            ),
+                            revision_id,
+                        ),
+                    )
+
+            clip_rows = await (
+                await conn.execute(
+                    """
+                    update clips
+                    set status = 'active', approved_at = coalesce(approved_at, now()),
+                        updated_at = now()
+                    where revision_id = %s and status <> 'superseded'
+                      and approved_at is null
+                    returning id
+                    """,
+                    (revision_id,),
+                )
+            ).fetchall()
+            counts["clip"] = len(clip_rows)
+            for row in clip_rows:
+                await conn.execute(
+                    """
+                    insert into audit_events (
+                      course_id, actor_type, artifact_type, artifact_id,
+                      action, source, previous_state, new_state, scope, revision_id
+                    ) values (
+                      %s, 'ai', 'clip', %s, 'auto_accept_private_draft', 'generation',
+                      %s::jsonb, %s::jsonb, 'revision', %s
+                    )
+                    """,
+                    (
+                        course_id,
+                        row["id"],
+                        Jsonb({"status": "generated"}),
+                        Jsonb(
+                            {
+                                "status": "active",
+                                "learner_visible": False,
+                                "publication_required": True,
+                            }
+                        ),
+                        revision_id,
+                    ),
+                )
+
+            remediation_rows = await (
+                await conn.execute(
+                    """
+                    update remediation_rules
+                    set approved_at = coalesce(approved_at, now())
+                    where revision_id = %s and approved_at is null
+                    returning id
+                    """,
+                    (revision_id,),
+                )
+            ).fetchall()
+            counts["remediation_rule"] = len(remediation_rows)
+            for row in remediation_rows:
+                await conn.execute(
+                    """
+                    insert into audit_events (
+                      course_id, actor_type, artifact_type, artifact_id,
+                      action, source, previous_state, new_state, scope, revision_id
+                    ) values (
+                      %s, 'ai', 'remediation_rule', %s,
+                      'auto_accept_private_draft', 'generation',
+                      %s::jsonb, %s::jsonb, 'revision', %s
+                    )
+                    """,
+                    (
+                        course_id,
+                        row["id"],
+                        Jsonb({"status": "generated"}),
+                        Jsonb(
+                            {
+                                "status": "active",
+                                "learner_visible": False,
+                                "publication_required": True,
+                            }
+                        ),
+                        revision_id,
+                    ),
+                )
+
+            title_row = await (
+                await conn.execute(
+                    """
+                    select brief -> 'course_title' as proposal
+                    from course_revisions where id = %s
+                    """,
+                    (revision_id,),
+                )
+            ).fetchone()
+            if title_row and title_row["proposal"]:
+                title_proposal = _json_dict(title_row["proposal"])
+                if title_proposal.get("status") == "pending":
+                    title_proposal.update(
+                        {
+                            "status": "accepted",
+                            "accepted_automatically": True,
+                            "learner_visible": False,
+                        }
+                    )
+                    await conn.execute(
+                        """
+                        update course_revisions
+                        set brief = jsonb_set(brief, '{course_title}', %s::jsonb, true),
+                            updated_at = now()
+                        where id = %s
+                        """,
+                        (Jsonb(title_proposal), revision_id),
+                    )
+                    await conn.execute(
+                        """
+                        insert into audit_events (
+                          course_id, actor_type, artifact_type, artifact_id,
+                          action, source, previous_state, new_state, scope, revision_id
+                        ) values (
+                          %s, 'ai', 'course_title', %s,
+                          'auto_accept_private_draft', 'generation',
+                          %s::jsonb, %s::jsonb, 'revision', %s
+                        )
+                        """,
+                        (
+                            course_id,
+                            course_id,
+                            Jsonb({"status": "pending"}),
+                            Jsonb(
+                                {
+                                    "status": "accepted",
+                                    "learner_visible": False,
+                                    "publication_required": True,
+                                }
+                            ),
+                            revision_id,
+                        ),
+                    )
+                    counts["course_title"] = 1
+                else:
+                    counts["course_title"] = 0
+
+            await conn.execute(
+                """
+                update review_items ri
+                set status = 'accepted', updated_at = now()
+                from review_bundles rb
+                where ri.bundle_id = rb.id and rb.revision_id = %s
+                  and ri.status = 'pending'
+                """,
+                (revision_id,),
+            )
+            await conn.execute(
+                """
+                update review_bundles
+                set status = 'complete', updated_at = now()
+                where revision_id = %s
+                """,
+                (revision_id,),
+            )
+        return counts
 
     async def assemble_review_bundles(
         self,
@@ -6157,15 +6417,8 @@ left join lateral (
 
 def _publication_blockers(
     readiness: Mapping[str, object] | None,
-    *,
-    is_update: bool,
 ) -> list[str]:
     blockers: list[str] = []
-    if not is_update:
-        if readiness is None or _readiness_count(readiness, "bundle_count") < 3:
-            blockers.append("Review bundles have not been assembled.")
-        elif _readiness_count(readiness, "pending_items") > 0:
-            blockers.append("Resolve every remaining review decision before publishing.")
     if readiness is not None and any(
         _readiness_count(readiness, key) > 0
         for key in (
@@ -6178,15 +6431,15 @@ def _publication_blockers(
             "proposed_unit_edges",
         )
     ):
-        blockers.append("Accept, edit, or dismiss every AI proposal before publishing.")
+        blockers.append("The editable private draft is still being finalized.")
     if readiness is None or _readiness_count(readiness, "reviewed_topics") == 0:
-        blockers.append("At least one reviewed topic is required.")
+        blockers.append("At least one course topic is required.")
     if readiness is None or _readiness_count(readiness, "reviewed_concepts") == 0:
-        blockers.append("At least one reviewed concept is required.")
+        blockers.append("At least one course concept is required.")
     if readiness is not None and _readiness_count(readiness, "topics_without_question") > 0:
-        blockers.append("Every reviewed topic needs an accepted or edited question.")
+        blockers.append("Every course topic needs a usable question.")
     if readiness is not None and _readiness_count(readiness, "concepts_without_policy") > 0:
-        blockers.append("Every reviewed concept needs confirmed routing settings.")
+        blockers.append("Every course concept needs routing settings.")
     return blockers
 
 
@@ -6474,7 +6727,7 @@ async def _refresh_run(conn: Any, run_id: UUID) -> None:
         run = await (
             await conn.execute(
                 """
-                update generation_runs set status = 'waiting_review', phase = 'review',
+                update generation_runs set status = 'complete', phase = 'draft_ready',
                     progress = 100, completed_at = now(), updated_at = now()
                 where id = %s returning revision_id
                 """,

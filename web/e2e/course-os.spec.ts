@@ -17,13 +17,13 @@ const course = {
   working_revision_id: "33333333-3333-4333-8333-333333333333",
   revision_status: "review",
   generation_run_id: "44444444-4444-4444-8444-444444444444",
-  generation_status: "waiting_review",
-  generation_phase: "review",
+  generation_status: "complete",
+  generation_phase: "draft_ready",
   generation_progress: 100,
   source_count: 1,
   topic_count: 2,
   concept_count: 3,
-  pending_review_count: 2,
+  pending_review_count: 0,
   open_signal_count: 0,
   updated_at: "2026-07-21T00:00:00Z",
 };
@@ -86,7 +86,7 @@ async function mockCourseOS(page: Page) {
   const courseMessages = [{
     id: "55555555-5555-4555-8555-555555555555",
     role: "manifold",
-    content: "Your complete private draft is ready for review.",
+    content: "Your editable private draft is ready.",
     blocks: [],
     created_at: "2026-07-21T00:00:00Z",
   }];
@@ -124,14 +124,6 @@ async function mockCourseOS(page: Page) {
           courses: deleted ? [] : [course],
           attention: deleted ? [] : [
             {
-              id: `review:${course.id}`,
-              course_id: course.id,
-              kind: "review_ready",
-              title: "Forces and motion is ready for review",
-              detail: "2 decisions remain across the review bundles.",
-              urgency: "normal",
-            },
-            {
               id: `insight:${course.id}`,
               course_id: course.id,
               kind: "learner_insight",
@@ -142,7 +134,7 @@ async function mockCourseOS(page: Page) {
           ],
           total_courses: deleted ? 0 : 1,
           published_courses: 0,
-          courses_in_review: deleted ? 0 : 1,
+          courses_in_review: 0,
           active_learners: 0,
           new_learners: 0,
           activity_history: [
@@ -224,16 +216,12 @@ async function mockCourseOS(page: Page) {
       return;
     }
     if (path.endsWith("/course-flow")) {
-      const flow = oneLectureCourseFlow(
-        course.id,
-        course.working_revision_id,
-        "working",
-      );
       await route.fulfill({
-        json: {
-          ...flow,
-          units: flow.units.map((unit) => ({ ...unit, status: "proposed" })),
-        },
+        json: oneLectureCourseFlow(
+          course.id,
+          course.working_revision_id,
+          "working",
+        ),
       });
       return;
     }
@@ -268,32 +256,7 @@ async function mockCourseOS(page: Page) {
       return;
     }
     if (path.endsWith("/review-bundles")) {
-      await route.fulfill({
-        json: [{
-          id: "66666666-6666-4666-8666-666666666666",
-          kind: "course_structure",
-          title: "Course structure",
-          summary: "Review the outline and concepts.",
-          status: "in_review",
-          items: [{
-            id: "77777777-7777-4777-8777-777777777777",
-            artifact_type: "topic",
-            artifact_id: "88888888-8888-4888-8888-888888888888",
-            logical_artifact_id: "99999999-9999-4999-8999-999999999999",
-            status: "pending",
-            risk_level: "normal",
-            evidence: { title: "Net force", summary: "Combine forces as vectors." },
-          }, {
-            id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-            artifact_type: "concept_edge",
-            artifact_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-            logical_artifact_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-            status: "pending",
-            risk_level: "normal",
-            evidence: { title: "Vector addition requires force direction", relationship: "requires" },
-          }],
-        }],
-      });
+      await route.fulfill({ json: [] });
       return;
     }
     if (path.endsWith("/sources") || path.endsWith("/agent-tasks")) {
@@ -306,8 +269,8 @@ async function mockCourseOS(page: Page) {
           id: course.generation_run_id,
           course_id: course.id,
           revision_id: course.working_revision_id,
-          status: "waiting_review",
-          phase: "review",
+          status: "complete",
+          phase: "draft_ready",
           progress: 100,
           error_summary: null,
           created_at: "2026-07-21T00:00:00Z",
@@ -830,9 +793,9 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(learnerActivityPanel).toHaveCSS("background-color", "rgb(255, 255, 255)");
   await expect(learnerActivityPanel).toHaveCSS("border-top-width", "1px");
   await expect(learnerActivityPanel.locator("header")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-  await expect(page.locator("[class*='courseCover'][data-tone='review']").first()).toHaveCSS(
+  await expect(page.locator("[class*='courseCover'][data-tone='neutral']").first()).toHaveCSS(
     "background-color",
-    "rgb(217, 122, 43)",
+    "rgb(170, 168, 161)",
   );
   const priorityBounds = await priorityPanel.boundingBox();
   const activityBounds = await learnerActivityPanel.boundingBox();
@@ -864,7 +827,7 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
     .analyze();
   expect(dashboardAccessibility.violations).toEqual([]);
   await expect(page.getByRole("heading", { name: "Forces and motion", exact: true })).toBeVisible();
-  await expect(page.getByText("Ready to review", { exact: true })).toBeVisible();
+  await expect(page.getByText("Draft", { exact: true })).toBeVisible();
 
   await page.getByRole("heading", { name: "Forces and motion", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/app/courses/${course.id}$`), {
@@ -874,20 +837,13 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   await expect(page.getByRole("navigation", { name: "Course views" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Assessments" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Preview", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Review draft, 2 decisions remaining" })).toBeVisible();
-  await expect(page.getByText("First, confirm the lecture title and its place in this course.")).toBeVisible();
-  await expect(page.getByText("Course placement", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Review generated draft/ })).toBeVisible();
-  await page.getByRole("button", { name: /Review generated draft/ }).click();
-  const reviewOverview = page.locator("[class*='reviewBundleOverview']");
-  await expect(reviewOverview.getByText("2 decisions remaining")).toBeVisible();
-  await expect(reviewOverview.getByText(/grouped checkpoints, not separate errors/i)).toBeVisible();
-  await expect(reviewOverview.getByText(/Prerequisites are included in Course structure/i)).toBeVisible();
-  await reviewOverview.getByRole("button", { name: "Course Flow" }).click();
-  await expect(page.getByRole("heading", { name: "Design the whole learning journey" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Review draft/ })).toHaveCount(0);
+  await expect(page.getByText("Course placement", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Review generated draft/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Publish course" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Open Course Director" })).toBeVisible();
   await page.getByRole("button", { name: "Open Course Director" }).click();
-  await expect(page.getByText("Your complete private draft is ready for review.")).toHaveCount(0);
+  await expect(page.getByText("Your editable private draft is ready.")).toHaveCount(0);
   await expect(page.getByText("Right now:")).toHaveCount(0);
   await expect(page.getByText(/Welcome back, Ada/)).toBeVisible();
   await expect(page.locator('[data-motion-scope="page-enter"]')).toHaveCSS("opacity", "1");
@@ -1034,7 +990,7 @@ test("course studio exposes Blueprint, review decisions, and a mobile-safe layou
   await expect(page.getByRole("button", { name: "Assessments", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Preview", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Review", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Review draft, 2 decisions remaining" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Review draft/ })).toHaveCount(0);
   await expect(page.getByText("Lecture Blueprint", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Jump to/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Relationships" })).toBeVisible();

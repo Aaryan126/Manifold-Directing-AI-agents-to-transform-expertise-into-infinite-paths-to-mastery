@@ -10,15 +10,16 @@ Independent instructors and small training teams rarely have that stack.
 Existing authoring tools can accelerate course drafts, and adaptive platforms can
 personalize delivery, but the hard gap is the complete accountable loop:
 preserving the instructor's source, modeling what is taught, routing from learner
-evidence, diagnosing failures, and improving the course without letting AI publish
-unreviewed pedagogy.
+evidence, diagnosing failures, and improving the course without letting a private
+AI draft silently reach learners.
 
 We defined success before building: a two-hour lecture should become a
-publishable adaptive course in under 60 minutes of active instructor review,
-excluding asynchronous processing; every AI-authored learner artifact must pass a
-human checkpoint; runtime routing must be explainable; and at least one
-signal-to-revision loop must work end to end. The first target still requires a
-timed human review and is not claimed as achieved.
+publishable adaptive course in under 60 minutes of active instructor work,
+excluding asynchronous processing; initial generation must remain private,
+editable, and auditable until explicit publication; later AI-proposed changes
+must remain human-controlled; runtime routing must be explainable; and at least
+one signal-to-revision loop must work end to end. The first target still requires
+a matched timed instructor study and is not claimed as achieved.
 
 ## Approach
 
@@ -27,16 +28,18 @@ generator or free-form tutor.
 
 One durable pipeline converts an instructor-owned recording into timestamped
 topics, a sparse prerequisite graph, reusable clips, concept-grounded questions,
-confidence checks, and remediation routes. Each artifact retains provenance,
-review state, and stable identity across revisions. AI proposes; the instructor
-accepts, edits, or dismisses. Publishing is a separate learner-facing commit.
+confidence checks, and remediation routes. The coherent result automatically
+becomes an editable private draft, while each artifact retains provenance and
+stable identity across revisions. This removes clerical approval work without
+giving AI publication authority: the instructor still chooses when the revision
+reaches learners.
 
 At learner runtime, deterministic policy combines prerequisites, correctness,
 confidence, mastery, and reviewed content availability. Every decision persists
 an attempt, mastery transition, route action, target, evidence snapshot, and
 rationale. Cohort patterns become dashboard signals. Specialist agents may then
-prepare a private revision, but every atomic change returns to the same review
-gate.
+prepare a private revision, but these later evidence-driven changes return to the
+Accept/Edit/Dismiss gate.
 
 We chose PostgreSQL adjacency tables and recursive CTEs over a second graph
 database because our graph scale is bounded and transactional consistency with
@@ -57,8 +60,9 @@ The recorded 2026-07-28 run passed 196 Python and 98 web/shared tests. Across 20
 warm localhost trials, p95 latency was 17.55 ms for the active Blueprint and
 29.43 ms for the new decision trace.
 
-Using a cloned local transcript-backed lecture, the configured pipeline reached a
-review-ready private draft in 213.91 seconds. It produced 5 topics, 4 concepts, 5
+Using a cloned local transcript-backed lecture, the configured pipeline reached
+the then-current review-ready private state in 213.91 seconds. It produced 5
+topics, 4 concepts, 5
 clips, and 5 questions with zero coverage gaps. Seventeen GPT-5.4 calls consumed
 44,163 input tokens, 16,896 cached input tokens, and 8,183 output tokens. At
 official GPT-5.4 rates, calculated token cost was $0.1951. These totals include a

@@ -316,7 +316,7 @@ async def test_blueprint_evidence_aggregates_300_concepts_in_one_warm_query(
     assert elapsed_ms < 250
 
 
-def test_published_update_does_not_reuse_first_publication_bundle_gate() -> None:
+def test_publication_uses_draft_readiness_without_a_review_bundle_gate() -> None:
     readiness: dict[str, object] = {
         "bundle_count": 0,
         "pending_items": 64,
@@ -330,9 +330,11 @@ def test_published_update_does_not_reuse_first_publication_bundle_gate() -> None
         "concepts_without_policy": 0,
     }
 
-    assert _publication_blockers(readiness, is_update=True) == []
-    assert _publication_blockers(readiness, is_update=False) == [
-        "Review bundles have not been assembled.",
+    assert _publication_blockers(readiness) == []
+
+    readiness["proposed_questions"] = 1
+    assert _publication_blockers(readiness) == [
+        "The editable private draft is still being finalized.",
     ]
 
 

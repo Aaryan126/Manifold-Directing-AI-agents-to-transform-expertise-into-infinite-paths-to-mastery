@@ -51,18 +51,17 @@ Manifold makes those questions part of the product contract.
 late phases have automated verification but still await the user's human
 checklist confirmation; this README does not relabel them complete.
 
-## The non-negotiable review boundary
+## The non-negotiable publication boundary
 
-Every AI-generated learner-facing artifact is private until reviewed. The common
-checkpoint is:
+Initial generation is automatically assembled into an auditable, editable
+private draft. Instructors can inspect or change any artifact, but do not need to
+approve dozens of generated records. Nothing reaches learners until the
+instructor explicitly publishes.
 
-1. **Accept AI suggestion**
-2. **Edit manually**
-3. **Dismiss**
-
-Publishing is a separate learner-facing commit. Runtime routing is the bounded
-exception: it may act automatically only over reviewed artifacts and
-instructor-controlled policy, and it persists its evidence and rationale.
+Later AI improvements proposed from learner evidence retain the consistent
+**Accept AI suggestion / Edit manually / Dismiss** checkpoint. Runtime routing
+may act automatically only over published artifacts and instructor-controlled
+policy, and it persists its evidence and rationale.
 
 ## Measured evidence
 
@@ -73,7 +72,8 @@ The repository includes a reproducible competition harness. On the recorded
 - built and started the production containers;
 - measured warm p95 of **17.55 ms** for the active Blueprint and **29.43 ms**
   for the decision trace on the local Docker environment;
-- compiled one disposable transcript-backed course to `waiting_review` in
+- compiled one disposable transcript-backed course to the then-current
+  `waiting_review` terminal state in
   **213.91 seconds**;
 - generated **5 topics, 4 concepts, 5 clips, and 5 questions**;
 - captured **17 GPT-5.4 calls**, 44,163 input tokens, 16,896 cached input tokens,
@@ -84,7 +84,9 @@ The repository includes a reproducible competition harness. On the recorded
   and
 - deleted the disposable benchmark course afterward.
 
-Read the generated [metrics report](competition/metrics.md) and
+That recorded evaluation predates the automatic private-draft finalization
+change; a new run now terminates at `complete / draft_ready`. Read the generated
+[metrics report](competition/metrics.md) and
 [machine-readable evidence](competition/metrics.json). These figures measure
 asynchronous compilation wall time and model cost, not active instructor review
 time or learner outcomes.

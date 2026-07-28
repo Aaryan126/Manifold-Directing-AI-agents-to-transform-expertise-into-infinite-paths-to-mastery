@@ -463,7 +463,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       void request<GenerationRun>(`/courses/${courseId}/generation-runs/${run.id}`, identity)
         .then(async (nextRun) => {
           setRun(nextRun);
-          if (nextRun.status === "waiting_review") {
+          if (nextRun.status === "waiting_review" || nextRun.status === "complete") {
             const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
             setCourse(nextCourse);
             await refreshArtifacts(identity);
@@ -1660,8 +1660,6 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       course.status === "published"
         ? hasUnpublishedChanges
         : course.pending_review_count === 0
-          && bundles.length >= 3
-          && bundles.every((bundle) => bundle.status === "complete")
     )
   );
 
@@ -2316,7 +2314,7 @@ function GenerationActivity({ run, sourceLabel, onRetry }: { run: GenerationRun;
         <span>{failed ? <CircleAlert /> : cancelled ? <X /> : ready ? <Check /> : <LoaderCircle className={styles.spin} />}</span>
         <div>
           <strong>{failed ? "I hit a problem" : cancelled ? "Generation stopped" : generationPhaseLabel(run.phase)}</strong>
-          <small>{failed ? run.error_summary : cancelled ? "No agent work is running." : run.status === "complete" ? "This course has been published." : run.status === "waiting_review" ? "The complete private draft is waiting for your review." : sourceLabel ?? "Your work is safe. You can leave and return at any time."}</small>
+          <small>{failed ? run.error_summary : cancelled ? "No agent work is running." : run.status === "complete" ? "Your editable private draft is ready." : run.status === "waiting_review" ? "Your editable private draft is ready." : sourceLabel ?? "Your work is safe. You can leave and return at any time."}</small>
         </div>
       </div>
       {active ? <div className={styles.runProgress}><i style={{ width: `${run.progress}%` }} /></div> : null}

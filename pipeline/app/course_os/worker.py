@@ -156,13 +156,13 @@ class CourseGenerationWorker:
                 question_ids.append(str(question.id))
             return {"question_ids": question_ids, "count": len(question_ids)}
         if task.task_type == "review_bundles":
-            bundles = await self._repository.assemble_review_bundles(
+            accepted = await self._repository.finalize_generated_private_draft(
                 run.course_id,
                 run.revision_id,
             )
             return {
-                "bundle_ids": [str(bundle.id) for bundle in bundles],
-                "item_count": sum(len(bundle.items) for bundle in bundles),
+                "auto_accepted_private_draft": accepted,
+                "artifact_count": sum(accepted.values()),
             }
         raise RuntimeError(f"Unsupported generation task: {task.task_type}")
 
