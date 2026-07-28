@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const instructor = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -1046,6 +1046,33 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
 
   const conceptNode = page.getByTestId("rf__node-concept-1");
   const questionNode = page.getByTestId("rf__node-question-1");
+  const blueprintViewport = blueprintCanvas.locator(".react-flow__viewport");
+  const expectFocusedCamera = async (node: Locator, inspector: Locator) => {
+    const [canvasBounds, inspectorBounds, nodeBounds] = await Promise.all([
+      blueprintCanvas.boundingBox(),
+      inspector.boundingBox(),
+      node.boundingBox(),
+    ]);
+    expect(canvasBounds).not.toBeNull();
+    expect(inspectorBounds).not.toBeNull();
+    expect(nodeBounds).not.toBeNull();
+    const usableCenter = {
+      x: (canvasBounds!.x + inspectorBounds!.x) / 2,
+      y: canvasBounds!.y + canvasBounds!.height / 2,
+    };
+    const focalCenter = {
+      x: nodeBounds!.x + nodeBounds!.width / 2,
+      y: nodeBounds!.y + nodeBounds!.height / 2,
+    };
+    expect(Math.abs(focalCenter.x - usableCenter.x)).toBeLessThan(120);
+    expect(Math.abs(focalCenter.y - usableCenter.y)).toBeLessThan(150);
+    expect(await page.locator(".react-flow__node").evaluateAll((nodes, inspectorLeft) => (
+      nodes.every((candidate) => {
+        const bounds = candidate.getBoundingClientRect();
+        return bounds.right <= inspectorLeft - 8;
+      })
+    ), inspectorBounds!.x)).toBe(true);
+  };
   await blueprintCanvas.evaluate((canvas) => {
     const hasVisibleBlockingLoader = () => {
       const loader = canvas.querySelector('[class*="blueprintLayoutLoading"]');
@@ -1143,15 +1170,26 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
   expect(motionTrace?.sawOutgoingLayer).toBe(false);
   expect(motionTrace?.viewportStates).toEqual(["ready"]);
   expect(motionTrace?.sawBlockingLoader).toBe(false);
+  const conceptInspector = page.getByRole("dialog", { name: "Net force artifact inspector" });
+  await expectFocusedCamera(conceptNode, conceptInspector);
+  const conceptFocusTransform = await blueprintViewport.evaluate(
+    (element) => getComputedStyle(element).transform,
+  );
 
   await questionNode.click();
   await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
-  await expect(page.getByRole("dialog", {
+  const questionInspector = page.getByRole("dialog", {
     name: /In the ukulele example, why did the speaker focus on learning only a small set of chords before performing\? artifact inspector/,
-  })).toBeVisible();
+  });
+  await expect(questionInspector).toBeVisible();
+  await expect(blueprintCanvas).toHaveAttribute("data-motion-state", "idle");
   await expect(page.locator(".react-flow__node")).toHaveCount(2);
   await expect(page.locator(".react-flow__edge")).toHaveCount(1);
   await expect(page.getByTestId("rf__node-concept-1")).toBeVisible();
+  await expectFocusedCamera(questionNode, questionInspector);
+  expect(await blueprintViewport.evaluate(
+    (element) => getComputedStyle(element).transform,
+  )).not.toBe(conceptFocusTransform);
 
   await page.locator(".react-flow__pane").click({ position: { x: 8, y: 8 } });
   await expect(blueprintCanvas).toHaveAttribute("data-focus-state", "course");

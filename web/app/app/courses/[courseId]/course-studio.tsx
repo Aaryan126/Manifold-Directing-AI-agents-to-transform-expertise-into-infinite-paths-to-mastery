@@ -2606,6 +2606,66 @@ function blueprintPresentationBounds(nodes: BlueprintGraphNode[]) {
   };
 }
 
+function focusedBlueprintViewport(
+  nodes: BlueprintGraphNode[],
+  focalLogicalId: string,
+  canvasWidth: number,
+  canvasHeight: number,
+  inspectorWidth: number,
+) {
+  const bounds = blueprintPresentationBounds(nodes);
+  const focalNode = nodes.find(
+    (node) => node.data.artifact.logical_id === focalLogicalId,
+  );
+  if (!focalNode) {
+    return getViewportForBounds(bounds, canvasWidth, canvasHeight, 0.1, 1, 0.14);
+  }
+
+  const horizontalGutter = Math.max(28, Math.min(52, canvasWidth * 0.04));
+  const topInset = Math.max(82, Math.min(116, canvasHeight * 0.12));
+  const bottomInset = Math.max(42, Math.min(72, canvasHeight * 0.08));
+  const inspectorReserve = Math.min(
+    Math.max(inspectorWidth + 36, canvasWidth * 0.28),
+    canvasWidth * 0.46,
+  );
+  const availableLeft = horizontalGutter;
+  const availableRight = Math.max(
+    availableLeft + 160,
+    canvasWidth - inspectorReserve,
+  );
+  const availableTop = topInset;
+  const availableBottom = Math.max(
+    availableTop + 180,
+    canvasHeight - bottomInset,
+  );
+  const availableWidth = availableRight - availableLeft;
+  const availableHeight = availableBottom - availableTop;
+  const neighborhoodGutter = 28;
+  const zoom = Math.max(0.1, Math.min(
+    1.08,
+    (availableWidth - neighborhoodGutter * 2) / Math.max(1, bounds.width),
+    (availableHeight - neighborhoodGutter * 2) / Math.max(1, bounds.height),
+  ));
+
+  const focalDimensions = blueprintNodeDimensions(focalNode.data.artifact);
+  const focalCenter = {
+    x: focalNode.position.x + focalDimensions.width / 2,
+    y: focalNode.position.y + focalDimensions.height / 2,
+  };
+  const desiredX = availableLeft + availableWidth / 2 - focalCenter.x * zoom;
+  const desiredY = availableTop + availableHeight / 2 - focalCenter.y * zoom;
+  const minimumX = availableLeft + neighborhoodGutter - bounds.x * zoom;
+  const maximumX = availableRight - neighborhoodGutter - (bounds.x + bounds.width) * zoom;
+  const minimumY = availableTop + neighborhoodGutter - bounds.y * zoom;
+  const maximumY = availableBottom - neighborhoodGutter - (bounds.y + bounds.height) * zoom;
+
+  return {
+    x: Math.max(minimumX, Math.min(maximumX, desiredX)),
+    y: Math.max(minimumY, Math.min(maximumY, desiredY)),
+    zoom,
+  };
+}
+
 const blueprintRelationshipLabels: Record<BlueprintEdgeKind, string> = {
   contains: "Structure",
   next: "Sequence",
@@ -4456,14 +4516,25 @@ function BlueprintWorkspace({
       nodes: target.nodes,
     };
     const canvasBounds = blueprintCanvasRef.current.getBoundingClientRect();
-    const targetViewport = getViewportForBounds(
-      blueprintPresentationBounds(target.nodes),
-      canvasBounds.width,
-      canvasBounds.height,
-      0.1,
-      1,
-      blueprintFitPadding,
-    );
+    const inspectorWidth = blueprintCanvasRef.current
+      .querySelector(`.${styles.blueprintInspector}`)
+      ?.getBoundingClientRect().width ?? 380;
+    const targetViewport = connectionFocusLogicalId
+      ? focusedBlueprintViewport(
+        target.nodes,
+        connectionFocusLogicalId,
+        canvasBounds.width,
+        canvasBounds.height,
+        inspectorWidth,
+      )
+      : getViewportForBounds(
+        blueprintPresentationBounds(target.nodes),
+        canvasBounds.width,
+        canvasBounds.height,
+        0.1,
+        1,
+        blueprintFitPadding,
+      );
     const startViewport = flowInstance.getViewport();
     if (reducedMotion) {
       presentLiveFlow(targetPresentation);
@@ -4508,6 +4579,7 @@ function BlueprintWorkspace({
     };
   }, [
     blueprintFitPadding,
+    connectionFocusLogicalId,
     flow.layoutKey,
     flow.layoutReady,
     flow.nodes.length,
