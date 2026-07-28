@@ -87,6 +87,7 @@ import {
   answerOutcomeSummary,
   availableBlueprintRelationshipKinds,
   blueprintEdgeKinds,
+  blueprintHierarchyEdges,
   blueprintNodeLayer,
   blueprintConceptNeighborhoodIds,
   buildBlueprintTopicLanes,
@@ -395,7 +396,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       setIdentity(user);
       const courseResult = await request<CourseSummary>(`/courses/${courseId}/studio`, user);
       setCourse(courseResult);
-      setBlueprintMode(courseResult.status === "published" ? "live" : "design");
+      setBlueprintMode("live");
       setMessages(
         readRuntimeConversation<CourseMessage>("course-director", user.id, courseId),
       );
@@ -2020,10 +2021,12 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     onModeChange={setBlueprintMode}
                     onOpenReview={() => setCanvasView("review")}
                     onOpenLecture={(unit) => {
+                      setBlueprintMode("live");
                       setLectureFocusVideoId(unit.video_id);
                       setCanvasView("blueprint");
                     }}
                     onOpenWholeCourse={() => {
+                      setBlueprintMode("live");
                       setLectureFocusVideoId(null);
                       setCanvasView("blueprint");
                     }}
@@ -3118,7 +3121,9 @@ function CourseFlowWorkspace({
   const [graphPositions, setGraphPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [graphBusy, setGraphBusy] = useState(false);
   const graphInstance = useRef<ReactFlowInstance | null>(null);
-  const flow = mode === "design" ? (workingFlow ?? activeFlow) : activeFlow;
+  const flow = mode === "design"
+    ? (workingFlow ?? activeFlow)
+    : (activeFlow ?? workingFlow);
   const units = useMemo(() => [...(flow?.units ?? [])].sort(
     (left, right) => left.sequence_rank - right.sequence_rank,
   ), [flow]);
@@ -3127,6 +3132,11 @@ function CourseFlowWorkspace({
   ), [flow]);
   const lectureCount = units.filter((unit) => unit.kind === "lecture").length;
   const compactSequence = modules.length === 0 && units.length <= 2;
+  const showGraphGuidance = mode === "design" && (
+    Boolean(relationshipDraft?.relationship)
+    || units.some((unit) => unit.status === "proposed")
+    || pendingReviewCount > 0
+  );
   const viewportPolicy = useMemo(() => courseFlowViewportPolicy(units.length), [units.length]);
   const groups = useMemo(() => [
     ...modules.map((module) => ({
@@ -3407,10 +3417,10 @@ function CourseFlowWorkspace({
         </div>
         <div className={styles.courseFlowActions}>
           <button className={styles.courseFlowPrimaryAction} disabled={disabled} onClick={beginNewLecture} type="button"><Plus />New lecture</button>
-          <div className={styles.blueprintModeToggle}>
-            <button className={mode === "live" ? styles.activeMode : ""} onClick={() => onModeChange("live")} type="button">Live</button>
-            <button className={mode === "design" ? styles.activeMode : ""} onClick={() => onModeChange("design")} type="button">Design</button>
-          </div>
+          <nav aria-label="Course Flow mode" className={styles.blueprintModeToggle}>
+            <button aria-pressed={mode === "live"} className={mode === "live" ? styles.activeMode : ""} onClick={() => onModeChange("live")} type="button">Live</button>
+            <button aria-pressed={mode === "design"} className={mode === "design" ? styles.activeMode : ""} onClick={() => onModeChange("design")} type="button">Design</button>
+          </nav>
           {mode === "design" ? <button className={styles.secondaryAction} disabled={disabled || graphBusy} onClick={() => void autoArrangeCourseFlow()} type="button"><GitFork />Auto arrange</button> : null}
           {mode === "design" ? <button className={styles.secondaryAction} disabled={disabled || undoing || !undoLabel} onClick={() => void onUndo()} title={undoLabel ? `Undo ${undoLabel.toLowerCase()}` : "Nothing to undo"} type="button"><RotateCcw />Undo</button> : null}
           {lectureCount > 1 ? <button className={styles.secondaryAction} onClick={onOpenWholeCourse} type="button"><Network />Cross-lecture map</button> : null}
@@ -3516,13 +3526,13 @@ function CourseFlowWorkspace({
               <Background color="#dedad2" gap={22} size={1} />
               <Controls orientation="horizontal" position="bottom-left" showInteractive={false} />
             </ReactFlow>
-            {compactSequence ? (
+            {compactSequence && !showGraphGuidance ? (
               <button className={styles.courseFlowCompactAdd} disabled={disabled} onClick={beginNewLecture} type="button">
                 <Plus />Add next lecture
               </button>
             ) : null}
           </div>
-          {mode === "design" ? (
+          {showGraphGuidance ? (
             <div className={styles.courseFlowGraphSelection}>
               <span>
                 {relationshipDraft?.relationship
@@ -3531,7 +3541,7 @@ function CourseFlowWorkspace({
                     ? "First, confirm the lecture title and its place in this course."
                     : pendingReviewCount
                       ? "Lecture container confirmed. Next, review the generated learning decisions."
-                      : "Select a unit to open it. Hover its edge to connect it. Drag to organize."}
+                      : "Choose the next course action."}
               </span>
               {units.some((unit) => unit.status === "proposed") ? (
                 <div>
@@ -4586,11 +4596,6 @@ function BlueprintWorkspace({
                 : `Whole lecture · ${topics.length} topics · ${concepts.length} concepts`}
             </button>
 
-            {mode === "design" ? (
-              <span className={styles.blueprintFloatingSaveState} title="Changes are saved to the private revision. Publish updates is the learner-facing gate.">
-                <Check />Saved privately
-              </span>
-            ) : null}
           </section>
 
           <div className={styles.blueprintFloatingMessages}>
@@ -5006,13 +5011,17 @@ function useBlueprintFlow(
     const visibleIds = new Set(visibleNodes.map((node) => node.id));
     return blueprint?.edges.filter((edge) => visibleIds.has(edge.source_id) && visibleIds.has(edge.target_id)) ?? [];
   }, [blueprint, visibleNodes]);
+  const hierarchyEdges = useMemo(
+    () => blueprintHierarchyEdges(visibleNodes, layoutEdges),
+    [layoutEdges, visibleNodes],
+  );
   const renderedEdges = useMemo(
     () => visibleBlueprintEdges(layoutEdges, enabledRelationships, selectedId),
     [enabledRelationships, layoutEdges, selectedId],
   );
   const requestedLayoutKey = useMemo(
-    () => `${layoutVersion}:${respectSavedLayout ? "saved" : "arranged"}:${visibleNodes.map((node) => node.id).sort().join(":")}:${layoutEdges.map((edge) => edge.id).sort().join(":")}`,
-    [layoutEdges, layoutVersion, respectSavedLayout, visibleNodes],
+    () => `${layoutVersion}:${respectSavedLayout ? "saved" : "arranged"}:${visibleNodes.map((node) => node.id).sort().join(":")}:${hierarchyEdges.map((edge) => `${edge.id}:${edge.source_id}:${edge.target_id}`).sort().join(":")}`,
+    [hierarchyEdges, layoutVersion, respectSavedLayout, visibleNodes],
   );
 
   useEffect(() => {
@@ -5024,26 +5033,23 @@ function useBlueprintFlow(
     }
     let cancelled = false;
     const elk = new ELK();
-    const nodeById = new Map(visibleNodes.map((node) => [node.id, node]));
     const portId = (nodeId: string, handle: "flow-in" | "flow-out" | "relation-in" | "relation-out") => `${nodeId}:${handle}`;
-    const normalizedEdges = layoutEdges.map((edge) => {
-      const source = nodeById.get(edge.source_id);
-      const target = nodeById.get(edge.target_id);
+    const normalizedEdges = hierarchyEdges.map((edge) => {
+      const semanticEdge = edge.semantic_edge_id
+        ? layoutEdges.find((candidate) => candidate.id === edge.semantic_edge_id) ?? null
+        : null;
       const reversed = Boolean(
-        source
-        && target
-        && blueprintNodeLayer(source.kind) > blueprintNodeLayer(target.kind),
+        semanticEdge
+        && (
+          semanticEdge.source_id !== edge.source_id
+          || semanticEdge.target_id !== edge.target_id
+        ),
       );
-      const sourceId = reversed ? edge.target_id : edge.source_id;
-      const targetId = reversed ? edge.source_id : edge.target_id;
-      const relational = edge.kind === "requires" || edge.kind === "remediates_to" || edge.kind === "cites";
       return {
         edge,
         reversed,
-        sourceId,
-        sourcePort: portId(sourceId, relational ? "relation-out" : "flow-out"),
-        targetId,
-        targetPort: portId(targetId, relational ? "relation-in" : "flow-in"),
+        sourcePort: portId(edge.source_id, "flow-out"),
+        targetPort: portId(edge.target_id, "flow-in"),
       };
     });
     void elk.layout({
@@ -5052,15 +5058,16 @@ function useBlueprintFlow(
         "elk.algorithm": "layered",
         "elk.direction": "DOWN",
         "elk.edgeRouting": "ORTHOGONAL",
-        "elk.spacing.nodeNode": "42",
+        "elk.spacing.nodeNode": "48",
         "elk.spacing.edgeEdge": "12",
-        "elk.spacing.edgeNode": "18",
-        "elk.layered.spacing.nodeNodeBetweenLayers": "70",
+        "elk.spacing.edgeNode": "20",
+        "elk.layered.spacing.nodeNodeBetweenLayers": "88",
         "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
         "elk.layered.crossingMinimization.greedySwitch.type": "TWO_SIDED",
         "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
         "elk.layered.nodePlacement.favorStraightEdges": "true",
         "elk.layered.considerModelOrder.strategy": "PREFER_NODES",
+        "elk.layered.crossingMinimization.forceNodeModelOrder": "true",
         "elk.layered.thoroughness": "30",
       },
       children: visibleNodes.map((node) => ({
@@ -5068,6 +5075,12 @@ function useBlueprintFlow(
         ...blueprintNodeDimensions(node),
         layoutOptions: {
           "org.eclipse.elk.portConstraints": "FIXED_ORDER",
+          ...(node.kind === "source"
+            ? { "org.eclipse.elk.layered.layering.layerConstraint": "FIRST" }
+            : {}),
+          ...(["clip", "question"].includes(node.kind)
+            ? { "org.eclipse.elk.layered.layering.layerConstraint": "LAST" }
+            : {}),
         },
         ports: [
           { id: portId(node.id, "flow-in"), layoutOptions: { "org.eclipse.elk.port.side": "NORTH" }, width: 7, height: 7 },
@@ -5107,11 +5120,17 @@ function useBlueprintFlow(
         };
         const normalized = normalizedEdges.find((item) => item.edge.id === laidOutEdge.id);
         const section = laidOutEdge.sections?.[0];
-        if (hasSavedPositions || normalized?.reversed || !section?.startPoint || !section.endPoint) {
+        if (
+          !normalized?.edge.semantic_edge_id
+          || hasSavedPositions
+          || normalized.reversed
+          || !section?.startPoint
+          || !section.endPoint
+        ) {
           return [laidOutEdge.id, null];
         }
         return [
-          laidOutEdge.id,
+          normalized.edge.semantic_edge_id,
           [
             section.startPoint,
             ...(section.bendPoints ?? []),
@@ -5122,20 +5141,24 @@ function useBlueprintFlow(
       setCompletedLayoutKey(requestedLayoutKey);
     }).catch(() => {
       if (cancelled) return;
-      setPositions((current) => Object.fromEntries(visibleNodes.map((node, index) => {
+      const layerIndexes = new Map<number, number>();
+      setPositions((current) => Object.fromEntries(visibleNodes.map((node) => {
         const saved = respectSavedLayout && isRecord(node.metadata.layout)
           ? node.metadata.layout
           : null;
+        const layer = blueprintNodeLayer(node.kind);
+        const layerIndex = layerIndexes.get(layer) ?? 0;
+        layerIndexes.set(layer, layerIndex + 1);
         return [node.id, {
-          x: typeof saved?.x === "number" ? saved.x : current[node.id]?.x ?? (index % 4) * 300,
-          y: typeof saved?.y === "number" ? saved.y : current[node.id]?.y ?? Math.floor(index / 4) * 190,
+          x: typeof saved?.x === "number" ? saved.x : current[node.id]?.x ?? layerIndex * 300,
+          y: typeof saved?.y === "number" ? saved.y : current[node.id]?.y ?? layer * 210,
         }];
       })));
       setEdgePoints({});
       setCompletedLayoutKey(requestedLayoutKey);
     });
     return () => { cancelled = true; };
-  }, [layoutEdges, requestedLayoutKey, respectSavedLayout, visibleNodes]);
+  }, [hierarchyEdges, layoutEdges, requestedLayoutKey, respectSavedLayout, visibleNodes]);
 
   const layoutReady = completedLayoutKey === requestedLayoutKey;
   const evidenceByConcept = new Map(evidence.map((item) => [item.concept_id, item]));

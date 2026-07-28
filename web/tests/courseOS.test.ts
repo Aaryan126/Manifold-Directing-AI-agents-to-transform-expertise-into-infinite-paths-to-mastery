@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   answerOutcomeSummary,
   availableBlueprintRelationshipKinds,
+  blueprintHierarchyEdges,
   blueprintNodeLayer,
   blueprintConceptNeighborhoodIds,
   coreBlueprintEdgeKinds,
@@ -132,6 +133,79 @@ describe("Course OS presentation", () => {
       .toEqual(["contains"]);
     expect(visibleBlueprintEdges(edges, coreBlueprintEdgeKinds, "concept").map((edge) => edge.id))
       .toEqual(["contains", "cites"]);
+  });
+
+  it("uses only the instructional hierarchy as the Blueprint layout spine", () => {
+    const node = (
+      id: string,
+      kind: BlueprintNode["kind"],
+      parentId: string | null = null,
+      rank = 1,
+    ): BlueprintNode => ({
+      id,
+      logical_id: `logical-${id}`,
+      kind,
+      title: id,
+      status: "accepted",
+      parent_id: parentId,
+      metadata: { sequence_rank: rank },
+    });
+    const nodes = [
+      node("source", "source"),
+      node("topic-a", "topic", null, 1),
+      node("topic-b", "topic", null, 2),
+      node("concept-a", "concept", "topic-a", 1),
+      node("concept-b", "concept", "topic-b", 2),
+      node("clip", "clip", "topic-a"),
+      node("question", "question", "topic-a"),
+    ];
+    const edges = [
+      { id: "contains-a", source_id: "topic-a", target_id: "concept-a", kind: "contains", status: "accepted" },
+      { id: "teaches", source_id: "clip", target_id: "concept-a", kind: "teaches", status: "accepted" },
+      { id: "assesses", source_id: "question", target_id: "concept-a", kind: "assesses", status: "accepted" },
+      { id: "requires", source_id: "concept-a", target_id: "concept-b", kind: "requires", status: "accepted" },
+      { id: "next", source_id: "concept-a", target_id: "concept-b", kind: "next", status: "accepted" },
+      { id: "cites", source_id: "source", target_id: "concept-a", kind: "cites", status: "accepted" },
+    ] satisfies CourseBlueprint["edges"];
+
+    expect(blueprintHierarchyEdges(nodes, edges)).toEqual([
+      {
+        id: "contains-a",
+        source_id: "topic-a",
+        target_id: "concept-a",
+        semantic_edge_id: "contains-a",
+      },
+      {
+        id: "teaches",
+        source_id: "concept-a",
+        target_id: "clip",
+        semantic_edge_id: "teaches",
+      },
+      {
+        id: "assesses",
+        source_id: "concept-a",
+        target_id: "question",
+        semantic_edge_id: "assesses",
+      },
+      {
+        id: "layout:contains:topic-b:concept-b",
+        source_id: "topic-b",
+        target_id: "concept-b",
+        semantic_edge_id: null,
+      },
+      {
+        id: "layout:source:source:topic-a",
+        source_id: "source",
+        target_id: "topic-a",
+        semantic_edge_id: null,
+      },
+      {
+        id: "layout:source:source:topic-b",
+        source_id: "source",
+        target_id: "topic-b",
+        semantic_edge_id: null,
+      },
+    ]);
   });
 
   it("offers only meaningful Blueprint relationships and valid typed targets", () => {

@@ -1031,7 +1031,7 @@ test("course deletion requires a separate destructive confirmation", async ({ pa
   expect(state.deleted()).toBe(true);
 });
 
-test("Blueprint uses the detailed free-form graph and atomic proposal workflow", async ({ page }) => {
+test("Blueprint uses the hierarchy-first detailed graph and atomic proposal workflow", async ({ page }) => {
   test.setTimeout(60_000);
   const state = await mockPublishedCourseOS(page);
   const { published } = state;
@@ -1069,6 +1069,9 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   expect((await courseFlowModeToggle.boundingBox())?.height).toBeGreaterThanOrEqual(48);
   const courseFlowGraph = page.locator("[data-viewport-density='close']");
   await expect(courseFlowGraph).toBeVisible();
+  await expect(page.getByRole("button", { name: "Live", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Add next lecture" })).toBeVisible();
+  await expect(page.getByText("Select a unit to open it. Hover its edge to connect it. Drag to organize.")).toHaveCount(0);
   await expect.poll(async () => courseFlowGraph.locator(".react-flow__viewport").evaluate((element) => {
     return new DOMMatrix(getComputedStyle(element).transform).a;
   })).toBeGreaterThanOrEqual(1.29);
@@ -1091,7 +1094,7 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect(page.locator('[data-motion-scope="blueprint-enter"]')).toBeVisible();
   await expect(page.locator('[data-motion-scope="studio-context-title"]')).toHaveText("Forces lecture");
   await expect(page.getByRole("button", { name: "Old Blueprint" })).toHaveCount(0);
-  await expect(page.getByText("Private revision", { exact: true })).toBeVisible();
+  await expect(page.getByText("Published", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: /Course health/ }).click();
   const courseHealth = page.getByLabel("Course health");
   await expect(courseHealth.getByText("50%")).toBeVisible();
@@ -1108,7 +1111,7 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
     (element) => element.closest("header")?.className.includes("studioHeader"),
   )).toBe(true);
   await expect(page.getByText(/concepts are missing a reviewed assessment or teaching artifact/i)).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Design" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
   const blueprintCanvas = page.locator('[data-viewport-state]');
   const blueprintViewport = blueprintCanvas.locator(".react-flow__viewport");
   const readBlueprintTransform = () => blueprintViewport.evaluate(
@@ -1118,7 +1121,6 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   const initialBlueprintTransform = await readBlueprintTransform();
   await page.waitForTimeout(350);
   expect(await readBlueprintTransform()).toBe(initialBlueprintTransform);
-  await page.getByRole("button", { name: "Live" }).click();
   await expect(page.getByText("Published", { exact: true })).toBeVisible();
   await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
   const liveBlueprintTransform = await readBlueprintTransform();
@@ -1137,8 +1139,26 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   const conceptNode = page.getByTestId("rf__node-concept-1");
   const clipNode = page.getByTestId("rf__node-clip-1");
   const sourceNode = page.getByTestId("rf__node-source-1");
+  const topicNode = page.getByTestId("rf__node-topic-1");
+  const questionNode = page.getByTestId("rf__node-question-1");
   await expect(conceptNode).toBeInViewport();
   await expect(sourceNode).toBeInViewport();
+  const [sourceBounds, topicBounds, conceptBounds, clipBounds, questionBounds] = await Promise.all([
+    sourceNode.boundingBox(),
+    topicNode.boundingBox(),
+    conceptNode.boundingBox(),
+    clipNode.boundingBox(),
+    questionNode.boundingBox(),
+  ]);
+  expect(sourceBounds).not.toBeNull();
+  expect(topicBounds).not.toBeNull();
+  expect(conceptBounds).not.toBeNull();
+  expect(clipBounds).not.toBeNull();
+  expect(questionBounds).not.toBeNull();
+  expect(sourceBounds!.y).toBeLessThan(topicBounds!.y);
+  expect(topicBounds!.y).toBeLessThan(conceptBounds!.y);
+  expect(conceptBounds!.y).toBeLessThan(clipBounds!.y);
+  expect(conceptBounds!.y).toBeLessThan(questionBounds!.y);
   await expect(conceptNode.locator("article[data-kind='concept']")).toBeVisible();
   await expect(sourceNode.locator("article[data-kind='source']")).toBeVisible();
   await expect(conceptNode.locator("article[data-kind='concept']")).toHaveCSS("background-color", "rgb(227, 237, 242)");
@@ -1292,7 +1312,7 @@ test("Blueprint uses the detailed free-form graph and atomic proposal workflow",
   await expect.poll(() => state.createdRelationships.length).toBe(0);
   await expect(page.locator(".react-flow__node")).toHaveCount(6);
   await expect(designConceptNode).toBeInViewport();
-  await expect(page.getByText("Saved privately")).toBeVisible();
+  await expect(page.getByText("Saved privately")).toHaveCount(0);
   await page.getByRole("button", { name: "Learning order" }).click();
   await expect(page.getByRole("heading", { name: "Learning order" })).toBeVisible();
   await page.getByRole("button", { name: "Move Net force vectors later" }).click();

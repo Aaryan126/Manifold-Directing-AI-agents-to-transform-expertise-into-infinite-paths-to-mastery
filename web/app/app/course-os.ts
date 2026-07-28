@@ -253,6 +253,118 @@ export function blueprintNodeLayer(kind: BlueprintNodeKind): number {
   return 3;
 }
 
+export type BlueprintHierarchyEdge = {
+  id: string;
+  source_id: string;
+  target_id: string;
+  semantic_edge_id: string | null;
+};
+
+export function blueprintHierarchyEdges(
+  nodes: BlueprintNode[],
+  edges: BlueprintEdge[],
+): BlueprintHierarchyEdge[] {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const hierarchy: BlueprintHierarchyEdge[] = [];
+  const hierarchyPairs = new Set<string>();
+  const add = (
+    id: string,
+    sourceId: string,
+    targetId: string,
+    semanticEdgeId: string | null,
+  ) => {
+    if (sourceId === targetId || !nodeById.has(sourceId) || !nodeById.has(targetId)) return;
+    const pair = `${sourceId}:${targetId}`;
+    if (hierarchyPairs.has(pair)) return;
+    hierarchyPairs.add(pair);
+    hierarchy.push({
+      id,
+      source_id: sourceId,
+      target_id: targetId,
+      semantic_edge_id: semanticEdgeId,
+    });
+  };
+
+  edges
+    .filter((edge) => ["contains", "teaches", "assesses"].includes(edge.kind))
+    .forEach((edge) => {
+      const source = nodeById.get(edge.source_id);
+      const target = nodeById.get(edge.target_id);
+      if (!source || !target) return;
+      const sourceLayer = blueprintNodeLayer(source.kind);
+      const targetLayer = blueprintNodeLayer(target.kind);
+      add(
+        edge.id,
+        sourceLayer <= targetLayer ? source.id : target.id,
+        sourceLayer <= targetLayer ? target.id : source.id,
+        edge.id,
+      );
+    });
+
+  const topics = nodes
+    .filter((node) => node.kind === "topic")
+    .sort(compareBlueprintSequence);
+  const concepts = nodes
+    .filter((node) => node.kind === "concept")
+    .sort(compareBlueprintSequence);
+  const sources = nodes
+    .filter((node) => node.kind === "source")
+    .sort(compareBlueprintSequence);
+
+  concepts.forEach((concept) => {
+    if (!concept.parent_id || hierarchyPairs.has(`${concept.parent_id}:${concept.id}`)) return;
+    const parent = nodeById.get(concept.parent_id);
+    if (parent?.kind === "topic") {
+      add(
+        `layout:contains:${parent.id}:${concept.id}`,
+        parent.id,
+        concept.id,
+        null,
+      );
+    }
+  });
+
+  if (sources.length) {
+    const topicConceptIds = new Map<string, Set<string>>();
+    hierarchy.forEach((edge) => {
+      if (
+        nodeById.get(edge.source_id)?.kind === "topic"
+        && nodeById.get(edge.target_id)?.kind === "concept"
+      ) {
+        const current = topicConceptIds.get(edge.source_id) ?? new Set<string>();
+        current.add(edge.target_id);
+        topicConceptIds.set(edge.source_id, current);
+      }
+    });
+    const citationSourceForArtifact = new Map<string, BlueprintNode>();
+    edges
+      .filter((edge) => edge.kind === "cites")
+      .forEach((edge) => {
+        const source = nodeById.get(edge.source_id);
+        const target = nodeById.get(edge.target_id);
+        if (!source || !target) return;
+        if (source.kind === "source") citationSourceForArtifact.set(target.id, source);
+        if (target.kind === "source") citationSourceForArtifact.set(source.id, target);
+      });
+
+    topics.forEach((topic) => {
+      const citedSource = citationSourceForArtifact.get(topic.id)
+        ?? [...(topicConceptIds.get(topic.id) ?? [])]
+          .map((conceptId) => citationSourceForArtifact.get(conceptId))
+          .find((source): source is BlueprintNode => Boolean(source))
+        ?? sources[0];
+      add(
+        `layout:source:${citedSource.id}:${topic.id}`,
+        citedSource.id,
+        topic.id,
+        null,
+      );
+    });
+  }
+
+  return hierarchy;
+}
+
 export type CourseBlueprint = {
   course_id: string;
   revision_id: string;
