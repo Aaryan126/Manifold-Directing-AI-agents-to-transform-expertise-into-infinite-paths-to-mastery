@@ -88,6 +88,7 @@ import {
   availableBlueprintRelationshipKinds,
   blueprintEdgeKinds,
   blueprintHierarchyEdges,
+  blueprintNodeDimensions,
   blueprintNodeLayer,
   blueprintConceptNeighborhoodIds,
   buildBlueprintTopicLanes,
@@ -2490,13 +2491,6 @@ function relationshipSpec(
     source_logical_id: source.logical_id,
     target_logical_id: target.logical_id,
   };
-}
-
-function blueprintNodeDimensions(node: BlueprintNode) {
-  if (node.kind === "topic") return { width: 260, height: 108 };
-  if (node.kind === "concept") return { width: 232, height: 118 };
-  if (node.kind === "source") return { width: 210, height: 88 };
-  return { width: 210, height: 98 };
 }
 
 function BlueprintArtifactNode({ data }: NodeProps<BlueprintGraphNode>) {

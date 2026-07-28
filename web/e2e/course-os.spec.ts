@@ -666,7 +666,7 @@ async function mockPublishedCourseOS(page: Page, flowUnitCount = 1) {
       revision_id: working ? workingRevisionId : published.active_revision_id,
       revision_kind: revisionKind,
       nodes: [
-        { id: topicId, logical_id: "topic-logical", kind: "topic", title: "Force systems", status: "accepted", parent_id: null, metadata: { video_id: lectureVideoId } },
+        { id: topicId, logical_id: "topic-logical", kind: "topic", title: "Audience composition, expectations, teaching team, and case study introduction", status: "accepted", parent_id: null, metadata: { video_id: lectureVideoId } },
         { id: topicTwoId, logical_id: "topic-logical-2", kind: "topic", title: "Balanced systems", status: "accepted", parent_id: null, metadata: { sequence_rank: 2 } },
         { id: conceptId, logical_id: "concept-logical", kind: "concept", title: conceptEdit?.name ?? "Net force", status: "accepted", parent_id: topicId, metadata: { sequence_rank: 1, description: conceptEdit?.description ?? "Combine force vectors." } },
         { id: conceptTwoId, logical_id: "concept-logical-2", kind: "concept", title: "Balanced forces", status: "accepted", parent_id: topicId, metadata: { sequence_rank: 2, description: "Recognize equilibrium." } },
@@ -1160,10 +1160,16 @@ test("Blueprint uses the hierarchy-first detailed graph and atomic proposal work
   expect(topicBounds!.y).toBeLessThan(conceptBounds!.y);
   expect(conceptBounds!.y).toBeLessThan(clipBounds!.y);
   expect(conceptBounds!.y).toBeLessThan(questionBounds!.y);
+  expect(await topicNode.evaluate((node) => parseFloat(getComputedStyle(node).height))).toBeGreaterThan(108);
+  expect(await questionNode.evaluate((node) => parseFloat(getComputedStyle(node).height))).toBeGreaterThan(98);
   await expect(conceptNode.locator("article[data-kind='concept']")).toBeVisible();
   await expect(sourceNode.locator("article[data-kind='source']")).toBeVisible();
   await expect(conceptNode.locator("article[data-kind='concept']")).toHaveCSS("background-color", "rgb(227, 237, 242)");
   await expect(topicNode.locator("article[data-kind='topic']")).toHaveCSS("background-color", "rgb(255, 243, 166)");
+  expect(await topicNode.locator("strong").evaluate((title) => (
+    title.scrollHeight <= title.clientHeight + 1
+    && getComputedStyle(title).textOverflow !== "ellipsis"
+  ))).toBe(true);
   await expect(clipNode.locator("article[data-kind='clip']")).toHaveCSS("background-color", "rgb(226, 240, 223)");
   await expect(sourceNode.locator("article[data-kind='source']")).toHaveCSS("background-color", "rgb(238, 234, 226)");
   await clipNode.click();

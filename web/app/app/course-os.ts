@@ -253,6 +253,48 @@ export function blueprintNodeLayer(kind: BlueprintNodeKind): number {
   return 3;
 }
 
+function estimatedBlueprintTitleLines(title: string, charactersPerLine: number): number {
+  const words = title.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return 1;
+  let lines = 1;
+  let used = 0;
+  words.forEach((word) => {
+    if (word.length > charactersPerLine) {
+      if (used > 0) lines += 1;
+      const wordLines = Math.ceil(word.length / charactersPerLine);
+      lines += wordLines - 1;
+      used = word.length % charactersPerLine || charactersPerLine;
+      return;
+    }
+    if (used === 0) {
+      used = word.length;
+      return;
+    }
+    if (used + 1 + word.length <= charactersPerLine) {
+      used += 1 + word.length;
+      return;
+    }
+    lines += 1;
+    used = word.length;
+  });
+  return lines;
+}
+
+export function blueprintNodeDimensions(node: BlueprintNode) {
+  const sizing = node.kind === "topic"
+    ? { width: 260, minimumHeight: 108, baseHeight: 72, charactersPerLine: 31 }
+    : node.kind === "concept"
+      ? { width: 232, minimumHeight: 118, baseHeight: 66, charactersPerLine: 27 }
+      : node.kind === "source"
+        ? { width: 210, minimumHeight: 88, baseHeight: 54, charactersPerLine: 25 }
+        : { width: 210, minimumHeight: 98, baseHeight: 64, charactersPerLine: 24 };
+  const titleLines = estimatedBlueprintTitleLines(node.title, sizing.charactersPerLine);
+  return {
+    width: sizing.width,
+    height: Math.max(sizing.minimumHeight, sizing.baseHeight + titleLines * 17),
+  };
+}
+
 export type BlueprintHierarchyEdge = {
   id: string;
   source_id: string;

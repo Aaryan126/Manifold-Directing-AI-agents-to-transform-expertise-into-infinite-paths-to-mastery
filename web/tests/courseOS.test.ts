@@ -3,6 +3,7 @@ import {
   answerOutcomeSummary,
   availableBlueprintRelationshipKinds,
   blueprintHierarchyEdges,
+  blueprintNodeDimensions,
   blueprintNodeLayer,
   blueprintConceptNeighborhoodIds,
   coreBlueprintEdgeKinds,
@@ -206,6 +207,31 @@ describe("Course OS presentation", () => {
         semantic_edge_id: null,
       },
     ]);
+  });
+
+  it("expands Blueprint node height until long titles fit", () => {
+    const node = (title: string, kind: BlueprintNode["kind"]): BlueprintNode => ({
+      id: `${kind}-${title}`,
+      logical_id: `logical-${kind}-${title}`,
+      kind,
+      title,
+      status: "accepted",
+      parent_id: null,
+      metadata: {},
+    });
+
+    expect(blueprintNodeDimensions(node("Short topic", "topic"))).toEqual({
+      width: 260,
+      height: 108,
+    });
+    expect(blueprintNodeDimensions(node(
+      "Audience composition, expectations, teaching team, and case study introduction",
+      "topic",
+    )).height).toBeGreaterThan(108);
+    expect(blueprintNodeDimensions(node(
+      "In the ukulele example, why did the speaker focus on learning only a small set of chords before performing?",
+      "question",
+    )).height).toBeGreaterThan(98);
   });
 
   it("offers only meaningful Blueprint relationships and valid typed targets", () => {

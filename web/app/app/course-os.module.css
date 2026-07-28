@@ -1802,8 +1802,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintTypedNode > header small { font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
 .blueprintTypedNode > header em { color: #77747c; font-size: 9px; font-style: normal; justify-self: end; text-transform: capitalize; }
 .blueprintTypedNode[data-selected="true"] > header em { color: #cbc9ce; }
-.blueprintTypedNode > strong { align-self: center; display: -webkit-box; font-size: 13px; line-height: 1.3; max-width: 100%; min-height: 0; overflow: hidden; overflow-wrap: anywhere; text-overflow: ellipsis; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.blueprintTypedNode[data-kind="concept"] > strong { -webkit-line-clamp: 3; }
+.blueprintTypedNode > strong { align-self: center; display: block; font-size: 13px; line-height: 1.3; max-width: 100%; min-height: 0; overflow-wrap: anywhere; }
 .blueprintTypedNode > footer { align-items: end; color: #716f76; display: flex; font-size: 9px; gap: 8px; justify-content: space-between; line-height: 1.25; min-width: 0; overflow: hidden; }
 .blueprintTypedNode > footer span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .blueprintTypedNode[data-selected="true"] > footer { color: #cbc9ce; }
