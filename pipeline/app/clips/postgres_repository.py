@@ -66,11 +66,16 @@ class PostgresClipRepository(ClipRepository):
                 )
             ).fetchall()
             transcript = topic_row["transcript"]
-            words = transcript.get("words", [])
+            topic = _topic_context_from_row(topic_row)
+            transcript_text, words = _slice_transcript_for_topic(
+                transcript,
+                topic.start_seconds,
+                topic.end_seconds,
+            )
             return ClipContext(
-                topic=_topic_context_from_row(topic_row),
-                transcript_text=str(transcript.get("text", "")),
-                words=tuple(_word_from_json(word) for word in words if isinstance(word, dict)),
+                topic=topic,
+                transcript_text=transcript_text,
+                words=words,
                 concepts=tuple(_concept_from_row(row) for row in concept_rows),
             )
 
@@ -348,6 +353,26 @@ def _word_from_json(word: dict[str, object]) -> TranscriptWord:
         start_seconds=_float_from_row(word.get("start_seconds", 0)),
         end_seconds=_float_from_row(word.get("end_seconds", 0)),
     )
+
+
+def _slice_transcript_for_topic(
+    transcript: dict[str, Any],
+    start_seconds: float,
+    end_seconds: float,
+) -> tuple[str, tuple[TranscriptWord, ...]]:
+    all_words = tuple(
+        _word_from_json(word)
+        for word in transcript.get("words", [])
+        if isinstance(word, dict)
+    )
+    topic_words = tuple(
+        word
+        for word in all_words
+        if word.end_seconds >= start_seconds and word.start_seconds <= end_seconds
+    )
+    if not topic_words:
+        return str(transcript.get("text", "")), all_words
+    return " ".join(word.text.strip() for word in topic_words if word.text.strip()), topic_words
 
 
 async def _clip_from_row_with_concepts(

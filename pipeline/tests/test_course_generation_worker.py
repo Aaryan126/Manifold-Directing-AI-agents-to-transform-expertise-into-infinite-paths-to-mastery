@@ -173,6 +173,66 @@ async def test_graph_task_generates_private_proposals_before_review() -> None:
 
 
 @pytest.mark.anyio
+async def test_clip_task_resumes_only_topics_without_persisted_clips() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    task = _task("clips")
+    run = _run(task)
+    pending_topic_id = uuid4()
+    clip_id = uuid4()
+    repository.claim_generation_task = AsyncMock(return_value=task)
+    repository.get_generation_run = AsyncMock(return_value=run)
+    repository.generation_topic_ids = AsyncMock(return_value=(pending_topic_id,))
+    repository.complete_generation_task = AsyncMock()
+    clips = AsyncMock()
+    clips.generate_clips_for_topic.return_value = (SimpleNamespace(id=clip_id),)
+
+    worked = await _worker(repository, clips=clips).run_once()
+
+    assert worked is True
+    repository.generation_topic_ids.assert_awaited_once_with(
+        run.revision_id,
+        UUID(task.input["video_id"]),
+        missing_artifact="clip",
+    )
+    clips.generate_clips_for_topic.assert_awaited_once_with(
+        pending_topic_id,
+        provisional=True,
+    )
+    output = repository.complete_generation_task.await_args.args[1]
+    assert output["clip_ids"] == [str(clip_id)]
+
+
+@pytest.mark.anyio
+async def test_assessment_task_resumes_only_topics_without_questions() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    task = _task("assessments")
+    run = _run(task)
+    pending_topic_id = uuid4()
+    question_id = uuid4()
+    repository.claim_generation_task = AsyncMock(return_value=task)
+    repository.get_generation_run = AsyncMock(return_value=run)
+    repository.generation_topic_ids = AsyncMock(return_value=(pending_topic_id,))
+    repository.complete_generation_task = AsyncMock()
+    assessments = AsyncMock()
+    assessments.generate_question.return_value = SimpleNamespace(id=question_id)
+
+    worked = await _worker(repository, assessments=assessments).run_once()
+
+    assert worked is True
+    repository.generation_topic_ids.assert_awaited_once_with(
+        run.revision_id,
+        UUID(task.input["video_id"]),
+        missing_artifact="assessment",
+    )
+    assessments.generate_question.assert_awaited_once_with(
+        pending_topic_id,
+        provisional=True,
+    )
+    output = repository.complete_generation_task.await_args.args[1]
+    assert output["question_ids"] == [str(question_id)]
+
+
+@pytest.mark.anyio
 async def test_failed_attempt_persists_provider_usage_for_retry_cost_accounting() -> None:
     repository = create_autospec(CourseOSRepository, instance=True)
     task = _task("outline")

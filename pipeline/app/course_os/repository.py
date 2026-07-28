@@ -111,6 +111,7 @@ class CourseOSRepository(ABC):
         self,
         revision_id: UUID,
         video_id: UUID | None = None,
+        missing_artifact: str | None = None,
     ) -> tuple[UUID, ...]: ...
 
     @abstractmethod

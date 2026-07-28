@@ -1386,7 +1386,8 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     """
                     update generation_tasks
                     set status = 'complete', output = %s::jsonb, completed_at = now(),
-                        lease_owner = null, lease_expires_at = null, updated_at = now()
+                        error_message = null, lease_owner = null, lease_expires_at = null,
+                        updated_at = now()
                     where id = %s returning run_id
                     """,
                     (Jsonb(output), task_id),
@@ -1457,7 +1458,10 @@ class PostgresCourseOSRepository(CourseOSRepository):
         self,
         revision_id: UUID,
         video_id: UUID | None = None,
+        missing_artifact: str | None = None,
     ) -> tuple[UUID, ...]:
+        if missing_artifact not in {None, "clip", "assessment"}:
+            raise ValueError(f"Unsupported generation artifact filter: {missing_artifact}")
         async with pooled_connection(self._database_url) as conn:
             rows = await (
                 await conn.execute(
@@ -1466,9 +1470,37 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     where revision_id = %s
                       and (%s::uuid is null or video_id = %s)
                       and review_status <> 'dismissed'
+                      and (
+                        %s::text is null
+                        or (
+                          %s = 'clip'
+                          and not exists (
+                            select 1 from clips c
+                            where c.topic_id = topics.id
+                              and c.revision_id = topics.revision_id
+                              and c.status in ('active', 'flagged')
+                          )
+                        )
+                        or (
+                          %s = 'assessment'
+                          and not exists (
+                            select 1 from questions q
+                            where q.topic_id = topics.id
+                              and q.revision_id = topics.revision_id
+                              and q.review_status <> 'dismissed'
+                          )
+                        )
+                      )
                     order by start_seconds
                     """,
-                    (revision_id, video_id, video_id),
+                    (
+                        revision_id,
+                        video_id,
+                        video_id,
+                        missing_artifact,
+                        missing_artifact,
+                        missing_artifact,
+                    ),
                 )
             ).fetchall()
         return tuple(UUID(str(row[0])) for row in rows)

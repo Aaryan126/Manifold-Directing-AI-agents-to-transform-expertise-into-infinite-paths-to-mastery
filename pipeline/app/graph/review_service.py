@@ -16,10 +16,14 @@ from app.graph.models import (
     ConceptEdit,
     ConceptGraph,
     ConceptGraphEdge,
+    ConceptGraphProposal,
+    ConceptProposal,
+    CourseGraphContext,
     EdgeEdit,
+    EdgeProposal,
     GraphReviewStatus,
 )
-from app.graph.proposal_policy import normalize_graph_proposal
+from app.graph.proposal_policy import TopicCoverageError, normalize_graph_proposal
 from app.graph.review_repository import ConceptGraphRepository
 from app.graph.validator import GraphValidationError, validate_no_cycle
 
@@ -52,10 +56,27 @@ class ConceptGraphService:
         if context is None:
             raise ConceptGraphValidationError("No accepted or edited topics found for this course.")
         try:
-            proposal = normalize_graph_proposal(
-                context,
-                await self._agent.propose_graph(context),
-            )
+            raw_proposal = await self._agent.propose_graph(context)
+            try:
+                proposal = normalize_graph_proposal(context, raw_proposal)
+            except TopicCoverageError as coverage_error:
+                missing_ids = {topic_id for topic_id, _ in coverage_error.topics}
+                repair_context = CourseGraphContext(
+                    course_id=context.course_id,
+                    topics=tuple(
+                        topic for topic in context.topics if topic.id in missing_ids
+                    ),
+                )
+                repair = _namespace_repair_proposal(
+                    await self._agent.propose_graph(repair_context),
+                )
+                proposal = normalize_graph_proposal(
+                    context,
+                    ConceptGraphProposal(
+                        concepts=(*raw_proposal.concepts, *repair.concepts),
+                        edges=(*raw_proposal.edges, *repair.edges),
+                    ),
+                )
         except ValueError as exc:
             raise ConceptGraphValidationError(str(exc)) from exc
         graph = await self._repository.replace_ai_graph(course_id, proposal)
@@ -297,6 +318,39 @@ class ConceptGraphService:
             if concept is not None:
                 return concept.course_id
         return None
+
+
+def _namespace_repair_proposal(
+    proposal: ConceptGraphProposal,
+) -> ConceptGraphProposal:
+    keys = {
+        concept.key: f"coverage-repair-{index}-{concept.key}"
+        for index, concept in enumerate(proposal.concepts, start=1)
+    }
+    return ConceptGraphProposal(
+        concepts=tuple(
+            ConceptProposal(
+                key=keys[concept.key],
+                name=concept.name,
+                description=concept.description,
+                topic_ids=concept.topic_ids,
+                evidence=concept.evidence,
+                confidence=concept.confidence,
+            )
+            for concept in proposal.concepts
+        ),
+        edges=tuple(
+            EdgeProposal(
+                from_key=keys[edge.from_key],
+                to_key=keys[edge.to_key],
+                rationale=edge.rationale,
+                evidence=edge.evidence,
+                confidence=edge.confidence,
+            )
+            for edge in proposal.edges
+            if edge.from_key in keys and edge.to_key in keys
+        ),
+    )
 
 
 def graph_warnings(graph: ConceptGraph) -> list[str]:

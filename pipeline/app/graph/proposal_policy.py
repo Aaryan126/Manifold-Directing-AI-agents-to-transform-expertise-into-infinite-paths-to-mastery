@@ -16,6 +16,13 @@ MIN_EDGE_CONFIDENCE = 0.65
 MAX_EDGES_PER_CONCEPT = 1.5
 
 
+class TopicCoverageError(ValueError):
+    def __init__(self, topics: tuple[tuple[UUID, str], ...]) -> None:
+        self.topics = topics
+        titles = ", ".join(f'"{title}"' for _, title in topics)
+        super().__init__(f"Graph proposal has no usable concept for topic(s): {titles}.")
+
+
 def normalize_graph_proposal(
     context: CourseGraphContext,
     proposal: ConceptGraphProposal,
@@ -62,9 +69,25 @@ def _deduplicate_concepts(
             or not topic_ids
         ):
             continue
-        if any(
-            concept_names_match(concept.name, existing.name) for existing in best_by_name.values()
-        ):
+        duplicate_key = next(
+            (
+                key
+                for key, existing in best_by_name.items()
+                if concept_names_match(concept.name, existing.name)
+            ),
+            None,
+        )
+        if duplicate_key is not None:
+            existing = best_by_name[duplicate_key]
+            best_by_name[duplicate_key] = ConceptProposal(
+                key=existing.key,
+                name=existing.name,
+                description=existing.description,
+                topic_ids=tuple(dict.fromkeys((*existing.topic_ids, *topic_ids))),
+                evidence=existing.evidence,
+                confidence=existing.confidence,
+            )
+            seen_keys.add(concept.key)
             continue
         seen_keys.add(concept.key)
         best_by_name[normalized_name] = ConceptProposal(
@@ -98,6 +121,7 @@ def _select_concepts(
             counts[topic_id] += 1
 
     ranked = sorted(candidates, key=lambda item: item.confidence, reverse=True)
+    uncovered: list[tuple[UUID, str]] = []
     for topic in context.topics:
         if counts[topic.id] > 0:
             continue
@@ -106,8 +130,12 @@ def _select_concepts(
             None,
         )
         if candidate is None:
-            raise ValueError(f'Graph proposal has no usable concept for topic "{topic.title}".')
+            uncovered.append((topic.id, topic.title))
+            continue
         add(candidate)
+
+    if uncovered:
+        raise TopicCoverageError(tuple(uncovered))
 
     for concept in ranked:
         if concept.key not in selected_keys and can_add(concept):

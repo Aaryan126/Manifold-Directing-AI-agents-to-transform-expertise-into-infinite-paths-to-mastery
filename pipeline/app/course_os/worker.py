@@ -134,6 +134,7 @@ class CourseGenerationWorker:
             for topic_id in await self._repository.generation_topic_ids(
                 run.revision_id,
                 video_id,
+                missing_artifact="clip",
             ):
                 clips = await self._clips.generate_clips_for_topic(
                     topic_id,
@@ -146,6 +147,7 @@ class CourseGenerationWorker:
             for topic_id in await self._repository.generation_topic_ids(
                 run.revision_id,
                 video_id,
+                missing_artifact="assessment",
             ):
                 question = await self._assessments.generate_question(
                     topic_id,

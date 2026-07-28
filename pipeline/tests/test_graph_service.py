@@ -2,6 +2,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.graph.agent import ConceptGraphAgent
 from app.graph.models import (
     ConceptCreate,
     ConceptEdit,
@@ -110,6 +111,75 @@ async def test_graph_generation_limits_density_and_drops_uncertain_edges() -> No
 
     assert len(graph.concepts) == 3
     assert len(graph.edges) == 1
+
+
+@pytest.mark.anyio
+async def test_graph_generation_merges_duplicate_concept_topic_coverage() -> None:
+    course_id = uuid4()
+    first_topic_id = uuid4()
+    second_topic_id = uuid4()
+    context = _two_topic_context(course_id, first_topic_id, second_topic_id)
+    proposal = ConceptGraphProposal(
+        concepts=(
+            ConceptProposal(
+                key="value-creation",
+                name="Creating customer value",
+                description="Identify value from the customer's perspective.",
+                topic_ids=(first_topic_id,),
+                evidence="The first segment defines customer value.",
+                confidence=0.95,
+            ),
+            ConceptProposal(
+                key="customer-value",
+                name="Creating customer values",
+                description="Apply the same value test to the case.",
+                topic_ids=(second_topic_id,),
+                evidence="The second segment applies the value test.",
+                confidence=0.9,
+            ),
+        ),
+        edges=(),
+    )
+
+    graph = await ConceptGraphService(
+        MemoryConceptGraphRepository(context),
+        StaticConceptGraphAgent(proposal),
+    ).propose_graph(course_id)
+
+    assert len(graph.concepts) == 1
+    proposal_state = graph.concepts[0].ai_proposal
+    assert proposal_state is not None
+    topic_ids = proposal_state["topic_ids"]
+    assert isinstance(topic_ids, list)
+    assert {str(topic_id) for topic_id in topic_ids} == {
+        str(first_topic_id),
+        str(second_topic_id),
+    }
+
+
+@pytest.mark.anyio
+async def test_graph_generation_repairs_only_uncovered_topics() -> None:
+    course_id = uuid4()
+    first_topic_id = uuid4()
+    second_topic_id = uuid4()
+    context = _two_topic_context(course_id, first_topic_id, second_topic_id)
+    agent = CoverageRepairGraphAgent(first_topic_id, second_topic_id)
+
+    graph = await ConceptGraphService(
+        MemoryConceptGraphRepository(context),
+        agent,
+    ).propose_graph(course_id)
+
+    assert [len(call.topics) for call in agent.calls] == [2, 1]
+    assert len(graph.concepts) == 2
+    linked_topic_ids: set[str] = set()
+    for concept in graph.concepts:
+        proposal_state = concept.ai_proposal
+        assert proposal_state is not None
+        topic_ids = proposal_state["topic_ids"]
+        assert isinstance(topic_ids, list)
+        linked_topic_ids.update(str(topic_id) for topic_id in topic_ids)
+    assert linked_topic_ids == {str(first_topic_id), str(second_topic_id)}
 
 
 @pytest.mark.anyio
@@ -340,6 +410,69 @@ def _context(course_id: object, topic_id: object) -> CourseGraphContext:
             ),
         ),
     )
+
+
+def _two_topic_context(
+    course_id: object,
+    first_topic_id: object,
+    second_topic_id: object,
+) -> CourseGraphContext:
+    return CourseGraphContext(
+        course_id=course_id,  # type: ignore[arg-type]
+        topics=(
+            TopicContext(
+                id=first_topic_id,  # type: ignore[arg-type]
+                title="Create customer value",
+                summary="The lecture defines customer value.",
+                start_seconds=0,
+                end_seconds=600,
+            ),
+            TopicContext(
+                id=second_topic_id,  # type: ignore[arg-type]
+                title="Apply the value test",
+                summary="The case applies the value test.",
+                start_seconds=600,
+                end_seconds=1200,
+            ),
+        ),
+    )
+
+
+class CoverageRepairGraphAgent(ConceptGraphAgent):
+    def __init__(self, first_topic_id: object, second_topic_id: object) -> None:
+        self._first_topic_id = first_topic_id
+        self._second_topic_id = second_topic_id
+        self.calls: list[CourseGraphContext] = []
+
+    async def propose_graph(self, context: CourseGraphContext) -> ConceptGraphProposal:
+        self.calls.append(context)
+        if len(context.topics) > 1:
+            return ConceptGraphProposal(
+                concepts=(
+                    ConceptProposal(
+                        key="value",
+                        name="Creating value",
+                        description="Define customer value.",
+                        topic_ids=(self._first_topic_id,),  # type: ignore[arg-type]
+                        evidence="The first topic defines value.",
+                        confidence=0.9,
+                    ),
+                ),
+                edges=(),
+            )
+        return ConceptGraphProposal(
+            concepts=(
+                ConceptProposal(
+                    key="application",
+                    name="Applying the value test",
+                    description="Apply the value test to a venture.",
+                    topic_ids=(self._second_topic_id,),  # type: ignore[arg-type]
+                    evidence="The uncovered topic applies the value test.",
+                    confidence=0.88,
+                ),
+            ),
+            edges=(),
+        )
 
 
 def _proposal(topic_id: object) -> ConceptGraphProposal:

@@ -1,4 +1,5 @@
 import json
+import math
 from time import perf_counter
 from uuid import UUID
 
@@ -7,6 +8,8 @@ from openai import AsyncOpenAI
 from app.clips.agent import ClipExtractionAgent
 from app.clips.models import ClipContext, ClipProposal, ClipType
 from app.evaluation.telemetry import record_openai_usage
+
+RANGE_REPAIR_TOLERANCE_SECONDS = 15.0
 
 
 class OpenAIClipExtractionAgent(ClipExtractionAgent):
@@ -60,7 +63,11 @@ Return JSON only with this shape:
 
 Hard requirements:
 - Use only concept_ids from the reviewed concept list.
-- Keep clips inside the topic range.
+- start_seconds and end_seconds must use the original lecture's absolute timeline,
+  not a zero-based or topic-relative timeline.
+- Keep every clip inside the inclusive topic range
+  [{context.topic.start_seconds}, {context.topic.end_seconds}].
+- Before returning, verify every start/end pair against that exact numeric range.
 - Prefer semantic clip boundaries near sentence ends; the system will snap to timestamps.
 - Avoid tiny fragments; each clip should be independently useful.
 - Use instructor notes when present.
@@ -99,11 +106,16 @@ def _parse_response(text: str, context: ClipContext) -> tuple[ClipProposal, ...]
         )
         if not concept_ids:
             continue
+        start_seconds, end_seconds = _normalize_range(
+            float(item["start_seconds"]),
+            float(item["end_seconds"]),
+            context,
+        )
         proposals.append(
             ClipProposal(
                 title=str(item.get("title", "Untitled clip")),
-                start_seconds=float(item["start_seconds"]),
-                end_seconds=float(item["end_seconds"]),
+                start_seconds=start_seconds,
+                end_seconds=end_seconds,
                 type=ClipType(str(item.get("type", ClipType.EXPLANATION))),
                 difficulty=str(item.get("difficulty", "standard")),
                 concept_ids=concept_ids,
@@ -112,6 +124,30 @@ def _parse_response(text: str, context: ClipContext) -> tuple[ClipProposal, ...]
             )
         )
     return tuple(proposals)
+
+
+def _normalize_range(
+    start_seconds: float,
+    end_seconds: float,
+    context: ClipContext,
+) -> tuple[float, float]:
+    if not math.isfinite(start_seconds) or not math.isfinite(end_seconds):
+        return start_seconds, end_seconds
+    topic_start = context.topic.start_seconds
+    topic_end = context.topic.end_seconds
+    topic_duration = topic_end - topic_start
+    if (
+        topic_start > RANGE_REPAIR_TOLERANCE_SECONDS
+        and start_seconds < topic_start - RANGE_REPAIR_TOLERANCE_SECONDS
+        and 0 <= start_seconds < end_seconds <= topic_duration + RANGE_REPAIR_TOLERANCE_SECONDS
+    ):
+        start_seconds += topic_start
+        end_seconds += topic_start
+    if topic_start - RANGE_REPAIR_TOLERANCE_SECONDS <= start_seconds < topic_start:
+        start_seconds = topic_start
+    if topic_end < end_seconds <= topic_end + RANGE_REPAIR_TOLERANCE_SECONDS:
+        end_seconds = topic_end
+    return start_seconds, end_seconds
 
 
 def _is_valid_uuid(value: str, valid_concept_ids: set[UUID]) -> bool:
