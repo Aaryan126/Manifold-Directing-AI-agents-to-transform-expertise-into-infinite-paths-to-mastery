@@ -1786,20 +1786,13 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintLayoutLoading { align-items: center; color: #68666d; display: flex; font-size: 12px; gap: 9px; left: 50%; pointer-events: none; position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 6; }
 .blueprintLayoutLoading svg { height: 17px; width: 17px; }
 .blueprintTypedNode { background: #f0eee9; border: 1px solid #cfcac1; border-radius: 11px; box-shadow: 0 8px 22px rgb(34 35 39 / 7%); box-sizing: border-box; color: #202126; display: grid; gap: 8px; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; padding: 12px 13px 11px; position: relative; text-align: left; transition: border-color 120ms ease, box-shadow 120ms ease, opacity 120ms ease, transform 120ms ease; width: 100%; }
-.blueprintTypedNode::before { background: #98958e; border-radius: 10px 10px 0 0; content: ""; height: 4px; left: -1px; position: absolute; right: -1px; top: -1px; }
 .blueprintTypedNode[data-kind="source"] { background: #eeeae2; border-color: #aaa39a; border-style: dashed; }
-.blueprintTypedNode[data-kind="source"]::before { background: #77736b; }
-.blueprintTypedNode[data-kind="topic"] { background: #f5e7ae; border-color: #b59132; }
-.blueprintTypedNode[data-kind="topic"]::before { background: #967017; }
+.blueprintTypedNode[data-kind="topic"] { background: #fff3a6; border-color: #d3b52a; }
 .blueprintTypedNode[data-kind="concept"] { background: #e3edf2; border-color: #8fa8b5; }
-.blueprintTypedNode[data-kind="concept"]::before { background: #55768f; }
 .blueprintTypedNode[data-kind="clip"] { background: #e2f0df; border-color: #82a77b; }
-.blueprintTypedNode[data-kind="clip"]::before { background: #5e8c57; }
 .blueprintTypedNode[data-kind="question"] { background: #ffecd7; border-color: #d29860; }
-.blueprintTypedNode[data-kind="question"]::before { background: #c8752d; }
 .blueprintTypedNode[data-risk="true"] { border-color: #d67a2d; box-shadow: 0 0 0 2px rgb(214 122 45 / 12%), 0 8px 22px rgb(34 35 39 / 7%); }
 .blueprintTypedNode[data-selected="true"] { background: #222328; border-color: #222328; box-shadow: 0 0 0 3px rgb(34 35 40 / 16%), 0 12px 30px rgb(25 26 30 / 20%); color: #fff; transform: translateY(-1px); }
-.blueprintTypedNode[data-selected="true"]::before { background: #d77a25; }
 .blueprintTypedNode[data-muted="true"] { opacity: .24; }
 .blueprintTypedNode[data-relationship-target="valid"] { box-shadow: 0 0 0 4px rgb(94 140 87 / 20%), 0 10px 28px rgb(34 35 39 / 12%); cursor: crosshair; opacity: 1; transform: translateY(-1px); }
 .blueprintTypedNode[data-relationship-target="invalid"] { opacity: .2; }

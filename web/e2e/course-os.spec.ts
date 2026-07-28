@@ -1163,7 +1163,7 @@ test("Blueprint uses the hierarchy-first detailed graph and atomic proposal work
   await expect(conceptNode.locator("article[data-kind='concept']")).toBeVisible();
   await expect(sourceNode.locator("article[data-kind='source']")).toBeVisible();
   await expect(conceptNode.locator("article[data-kind='concept']")).toHaveCSS("background-color", "rgb(227, 237, 242)");
-  await expect(topicNode.locator("article[data-kind='topic']")).toHaveCSS("background-color", "rgb(245, 231, 174)");
+  await expect(topicNode.locator("article[data-kind='topic']")).toHaveCSS("background-color", "rgb(255, 243, 166)");
   await expect(clipNode.locator("article[data-kind='clip']")).toHaveCSS("background-color", "rgb(226, 240, 223)");
   await expect(sourceNode.locator("article[data-kind='source']")).toHaveCSS("background-color", "rgb(238, 234, 226)");
   await clipNode.click();
@@ -1171,6 +1171,9 @@ test("Blueprint uses the hierarchy-first detailed graph and atomic proposal work
   await expect(page.getByLabel("Force systems clip")).toBeVisible();
   await page.getByRole("button", { name: "Close artifact inspector" }).click();
   const blueprintFlow = page.locator(".react-flow").filter({ has: conceptNode });
+  expect(await blueprintFlow.locator("article[class*='blueprintTypedNode']").evaluateAll(
+    (nodes) => nodes.every((node) => getComputedStyle(node, "::before").content === "none"),
+  )).toBe(true);
   await expect(blueprintFlow.getByRole("button", { name: /zoom in/i })).toBeVisible();
   await expect(blueprintFlow.getByRole("button", { name: /zoom out/i })).toBeVisible();
   await expect(blueprintFlow.getByRole("button", { name: /fit view/i })).toBeVisible();
