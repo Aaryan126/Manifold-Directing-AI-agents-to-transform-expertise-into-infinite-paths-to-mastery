@@ -885,8 +885,11 @@
 .studioStatus > span[data-tone="review"] { background: #fff0e1; color: #96591f; }
 .studioStatus > span[data-tone="live"] { background: var(--manifold-brown-soft); color: var(--manifold-brown-strong); }
 .studioStatus svg { height: 12px; width: 12px; }
-.studioStatus > button { background: #24252b; border: 0; border-radius: 8px; color: #fff; cursor: pointer; font: inherit; font-size: 13px; font-weight: 650; min-height: 40px; padding: 0 16px; }
-.studioStatus > button:disabled { background: #d8d6d0; color: #929098; cursor: not-allowed; }
+.studioReviewButton { align-items: center; background: #fff0e1; border: 1px solid #f0d5b6; border-radius: 999px; color: #8f531d; cursor: pointer; display: flex; font: inherit; font-size: 11px; font-weight: 720; gap: 7px; min-height: 34px; padding: 0 8px 0 11px; }
+.studioReviewButton:hover,.studioReviewButton[aria-pressed="true"] { background: #fbe2c7; border-color: #e5b57e; color: #733f14; }
+.studioReviewButton > i { align-items: center; background: #fff; border-radius: 999px; display: flex; font-size: 9px; font-style: normal; height: 21px; justify-content: center; min-width: 21px; padding: 0 5px; }
+.studioPublishButton { background: #24252b; border: 0; border-radius: 8px; color: #fff; cursor: pointer; font: inherit; font-size: 13px; font-weight: 650; min-height: 40px; padding: 0 16px; }
+.studioPublishButton:disabled { background: #d8d6d0; color: #929098; cursor: not-allowed; }
 .studioError { align-items: center; background: var(--manifold-orange-soft); border-bottom: 1px solid #e6c6a9; color: var(--manifold-orange-strong); display: flex; flex: none; font-size: 13px; gap: 8px; min-height: 42px; padding: 8px 18px; }
 .studioError > svg { height: 15px; width: 15px; }
 .studioError span { flex: 1; }
@@ -1122,6 +1125,12 @@
 .reviewBundleNav strong { font-size: 13px; font-weight: 680; }
 .reviewBundleNav small { color: #66646b; font-size: 10px; }
 .reviewBundleNav svg { height: 11px; width: 11px; }
+.reviewBundleOverview { border-bottom: 1px solid #dfdcd5; display: grid; gap: 5px; margin: 0 4px 10px; padding: 0 5px 15px; }
+.reviewBundleOverview > button { align-items: center; color: #5f5d64; display: flex; font-size: 10px; font-weight: 700; gap: 5px; margin: -4px 0 7px; padding: 5px 0; }
+.reviewBundleOverview > button:hover { color: #222329; }
+.reviewBundleOverview > small { color: #9b581d; font-size: 9px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.reviewBundleOverview > strong { color: #25262b; font-size: 15px; letter-spacing: -.02em; }
+.reviewBundleOverview > p { color: #747178; font-size: 10px; line-height: 1.45; margin: 0; }
 .reviewWorkspace { min-height: 0; overflow: auto; padding: 24px; }
 .reviewWorkspace > header { align-items: flex-start; display: flex; gap: 20px; justify-content: space-between; margin-bottom: 22px; }
 .reviewWorkspace > header h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 25px; font-weight: 470; letter-spacing: -0.035em; margin: 0 0 4px; }
@@ -1498,7 +1507,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
   .studioViewTabs button > span { display: none; }
   .studioSourceButton { padding-inline: 10px; }
   .studioSourceButton > span { display: none; }
-  .studioStatus > button { display: none; }
+  .studioPublishButton { display: none; }
   .creationStage { padding: 0; }
   .conversationPanel { border-bottom: 1px solid var(--os-line); border-right: 0; height: calc(100dvh - 68px); }
   .workspaceStage,.canvasPanel { height: calc(100dvh - 68px); }
@@ -1527,6 +1536,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
   .studioViewTabs button { padding-inline: 8px; }
   .studioSourceButton { border-left: 0; padding-inline: 7px; }
   .studioStatus > span { font-size: 0; padding: 0; width: 28px; justify-content: center; }
+  .studioReviewButton > span { display: none; }
   .messageList { padding-inline: 13px; }
   .composer { margin-inline: 11px; }
   .creationConversation .composer {
@@ -2644,7 +2654,7 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
   z-index: 8;
 }
 
-.courseFlowGraphSelection > span { color: #716e75; font-size: 9px; white-space: nowrap; }
+.courseFlowGraphSelection > span { color: #716e75; font-size: 9px; max-width: 265px; white-space: normal; }
 .courseFlowGraphSelection > div { display: flex; gap: 6px; overflow-x: auto; }
 .courseFlowGraphSelection article {
   align-items: center;
@@ -2656,8 +2666,10 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
   padding: 5px 6px 5px 8px;
   white-space: nowrap;
 }
-.courseFlowGraphSelection article strong { font-size: 9px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
-.courseFlowGraphSelection button {
+.courseFlowProposalTitle { display: grid; gap: 2px; max-width: 180px; }
+.courseFlowProposalTitle small { color: #9a5a21; font-size: 7px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.courseFlowProposalTitle strong { font-size: 9px; overflow: hidden; text-overflow: ellipsis; }
+.courseFlowGraphSelection article button {
   align-items: center;
   background: #fff;
   border: 1px solid #d9d5cd;
@@ -2669,8 +2681,26 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
   gap: 3px;
   padding: 5px 6px;
 }
-.courseFlowGraphSelection button:first-of-type { background: #25262b; border-color: #25262b; color: #fff; }
+.courseFlowGraphSelection article button:first-of-type { background: #25262b; border-color: #25262b; color: #fff; }
 .courseFlowGraphSelection button svg { height: 10px; width: 10px; }
+.courseFlowReviewAction {
+  align-items: center;
+  background: #fff0e1;
+  border: 1px solid #e8c69f;
+  border-radius: 7px;
+  color: #86501e;
+  display: flex;
+  flex: none;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 760;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 7px 0 9px;
+  white-space: nowrap;
+}
+.courseFlowReviewAction:hover { background: #fbe3ca; border-color: #dfae77; }
+.courseFlowReviewAction i { align-items: center; background: #fff; border-radius: 999px; display: flex; font-size: 8px; font-style: normal; height: 20px; justify-content: center; min-width: 20px; padding: 0 5px; }
 
 .courseFlowLane {
   background: #fff;

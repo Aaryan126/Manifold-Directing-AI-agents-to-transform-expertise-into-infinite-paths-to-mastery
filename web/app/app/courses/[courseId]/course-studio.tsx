@@ -1713,6 +1713,11 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     (task) => ["queued", "running", "waiting_review"].includes(task.status),
   ).length;
   const focusedHealthIssues = focusedCoverageGaps + focusedPendingRelationships;
+  const focusedHealthLabel = focusedCoverageGaps === 0 && focusedPendingRelationships > 0
+    ? `${focusedPendingRelationships} ${focusedPendingRelationships === 1 ? "prerequisite" : "prerequisites"}`
+    : focusedPendingRelationships === 0 && focusedCoverageGaps > 0
+      ? `${focusedCoverageGaps} coverage ${focusedCoverageGaps === 1 ? "gap" : "gaps"}`
+      : "Course health";
   const courseDirector = (
     <section
       className={`${styles.conversationPanel} ${focusedCreation ? styles.creationConversation : styles.dockedConversation}`}
@@ -1874,6 +1879,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     </span>
                     <div className={styles.studioHealthMenu}>
                       <button
+                        aria-label={`Course health, ${focusedHealthLabel}`}
                         aria-expanded={courseHealthOpen}
                         className={styles.studioHealthButton}
                         onClick={() => {
@@ -1883,15 +1889,25 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                         type="button"
                       >
                         <Activity />
-                        <span>Course health</span>
-                        {focusedHealthIssues ? <i>{focusedHealthIssues}</i> : <Check />}
+                        <span>{focusedHealthLabel}</span>
+                        {focusedHealthIssues && focusedHealthLabel === "Course health"
+                          ? <i>{focusedHealthIssues}</i>
+                          : focusedHealthIssues
+                            ? null
+                            : <Check />}
                       </button>
                       {courseHealthOpen ? (
                         <section className={styles.studioHealthPopover} aria-label="Course health">
                           <header>
                             <div>
                               <small>Lecture health</small>
-                              <strong>{focusedHealthIssues ? `${focusedHealthIssues} issues to review` : "Ready and covered"}</strong>
+                              <strong>
+                                {focusedCoverageGaps === 0 && focusedPendingRelationships > 0
+                                  ? `${focusedPendingRelationships} prerequisite ${focusedPendingRelationships === 1 ? "relationship" : "relationships"} to confirm`
+                                  : focusedHealthIssues
+                                    ? `${focusedHealthIssues} health ${focusedHealthIssues === 1 ? "issue" : "issues"} to inspect`
+                                    : "Ready and covered"}
+                              </strong>
                             </div>
                             <button aria-label="Close course health" onClick={() => setCourseHealthOpen(false)} type="button"><X /></button>
                           </header>
@@ -1942,11 +1958,26 @@ export function CourseStudio({ courseId }: { courseId: string }) {
             ) : null}
             <div className={styles.studioStatus}>
               {isBuilding ? <span data-tone="building"><LoaderCircle className={styles.spin} />{Math.round(run?.progress ?? course?.generation_progress ?? 0)}% building</span>
-                : course?.status !== "published" && course?.pending_review_count ? <span data-tone="review"><ClipboardCheck />{course.pending_review_count} to review</span>
+                : course?.status !== "published" && course?.pending_review_count ? (
+                  <button
+                    aria-label={`Review draft, ${course.pending_review_count} decisions remaining`}
+                    aria-pressed={canvasView === "review"}
+                    className={styles.studioReviewButton}
+                    onClick={() => {
+                      setLectureFocusVideoId(null);
+                      setCanvasView("review");
+                      setCourseHealthOpen(false);
+                      setStudioMoreOpen(false);
+                    }}
+                    type="button"
+                  >
+                    <ClipboardCheck /><span>Review draft</span><i>{course.pending_review_count}</i>
+                  </button>
+                )
                   : course?.status !== "published" ? <span><Activity />Private</span>
                     : null}
               {!editingLocked && (course?.status !== "published" || hasUnpublishedChanges) ? (
-                <button disabled={!canPublish || sending} onClick={() => void publishRevision()} type="button">
+                <button className={styles.studioPublishButton} disabled={!canPublish || sending} onClick={() => void publishRevision()} type="button">
                   {course?.status === "published" ? "Publish updates" : "Publish course"}
                 </button>
               ) : null}
@@ -1989,6 +2020,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     }}
                     onAddModule={(title, summary) => void createCourseFlowModule(title, summary)}
                     onModeChange={setBlueprintMode}
+                    onOpenReview={() => setCanvasView("review")}
                     onOpenLecture={(unit) => {
                       setLectureFocusVideoId(unit.video_id);
                       setCanvasView("blueprint");
@@ -2003,6 +2035,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     onReview={reviewCourseFlowArtifact}
                     onSave={(draft, unit) => void saveCourseFlowUnit(draft, unit)}
                     onUndo={undoBlueprintChange}
+                    pendingReviewCount={course?.pending_review_count ?? 0}
                     undoLabel={latestBlueprintUndo?.label ?? null}
                     undoing={blueprintUndoing}
                     workingFlow={workingCourseFlow}
@@ -2052,7 +2085,14 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     workingBlueprint={focusedWorkingBlueprint}
                   />
                 ) : null}
-                {canvasView === "review" && course?.status !== "published" ? <ReviewCanvas bundles={bundles} onBundle={decideBundle} onItem={decideItem} /> : null}
+                {canvasView === "review" && course?.status !== "published" ? (
+                  <ReviewCanvas
+                    bundles={bundles}
+                    onBack={() => setCanvasView("flow")}
+                    onBundle={decideBundle}
+                    onItem={decideItem}
+                  />
+                ) : null}
                 {canvasView === "assessments" ? <AssessmentsCanvas courseFlow={null} disabled={sending} onRemove={removeAssessment} onSave={saveAssessment} workspace={focusedAssessmentWorkspace} /> : null}
                 {canvasView === "preview" ? <PreviewCanvas course={course} courseFlow={null} workspace={focusedAssessmentWorkspace} /> : null}
                   </motion.div>
@@ -3024,6 +3064,7 @@ function CourseFlowWorkspace({
   onAddLecture,
   onAddModule,
   onModeChange,
+  onOpenReview,
   onOpenLecture,
   onOpenWholeCourse,
   onLayout,
@@ -3032,6 +3073,7 @@ function CourseFlowWorkspace({
   onReview,
   onSave,
   onUndo,
+  pendingReviewCount,
   undoLabel,
   undoing,
   workingFlow,
@@ -3043,6 +3085,7 @@ function CourseFlowWorkspace({
   onAddLecture: () => void;
   onAddModule: (title: string, summary: string) => void;
   onModeChange: (mode: BlueprintMode) => void;
+  onOpenReview: () => void;
   onOpenLecture: (unit: CourseFlowUnit) => void;
   onOpenWholeCourse: () => void;
   onLayout: (
@@ -3060,6 +3103,7 @@ function CourseFlowWorkspace({
   ) => Promise<void>;
   onSave: (draft: CourseFlowDraftPayload, unit?: CourseFlowUnit) => void;
   onUndo: () => Promise<void>;
+  pendingReviewCount: number;
   undoLabel: string | null;
   undoing: boolean;
   workingFlow: CourseFlow | null;
@@ -3485,19 +3529,37 @@ function CourseFlowWorkspace({
               <span>
                 {relationshipDraft?.relationship
                   ? `Choose a destination for the ${relationshipDraft.relationship} relationship. Press Esc to cancel.`
-                  : "Select a unit to open it. Hover its edge to connect it. Drag to organize."}
+                  : units.some((unit) => unit.status === "proposed")
+                    ? "First, confirm the lecture title and its place in this course."
+                    : pendingReviewCount
+                      ? "Lecture container confirmed. Next, review the generated learning decisions."
+                      : "Select a unit to open it. Hover its edge to connect it. Drag to organize."}
               </span>
               {units.some((unit) => unit.status === "proposed") ? (
                 <div>
                   {units.filter((unit) => unit.status === "proposed").map((unit) => (
                     <article key={unit.logical_id}>
-                      <strong>{unit.title}</strong>
+                      <span className={styles.courseFlowProposalTitle}>
+                        <small>Course placement</small>
+                        <strong>{unit.title}</strong>
+                      </span>
                       <button onClick={() => onReview("unit", unit.logical_id, "accepted")} type="button"><Check />Accept</button>
                       <button onClick={() => setEditor({ kind: unit.kind, unit })} type="button"><Pencil />Edit</button>
                       <button onClick={() => onReview("unit", unit.logical_id, "dismissed")} type="button"><X />Dismiss</button>
                     </article>
                   ))}
                 </div>
+              ) : null}
+              {pendingReviewCount ? (
+                <button
+                  className={styles.courseFlowReviewAction}
+                  onClick={onOpenReview}
+                  type="button"
+                >
+                  <ClipboardCheck />
+                  <span>Review generated draft</span>
+                  <i>{pendingReviewCount}</i>
+                </button>
               ) : null}
             </div>
           ) : null}
@@ -5784,19 +5846,39 @@ export function CourseMapCanvas({ courseMap, onLayout, run }: {
   );
 }
 
-function ReviewCanvas({ bundles, onBundle, onItem }: { bundles: ReviewBundle[]; onBundle: (bundle: ReviewBundle) => void; onItem: (item: ReviewItem, decision: Decision, revision?: Record<string, unknown>) => void }) {
+function ReviewCanvas({
+  bundles,
+  onBack,
+  onBundle,
+  onItem,
+}: {
+  bundles: ReviewBundle[];
+  onBack: () => void;
+  onBundle: (bundle: ReviewBundle) => void;
+  onItem: (item: ReviewItem, decision: Decision, revision?: Record<string, unknown>) => void;
+}) {
   const [activeBundleId, setActiveBundleId] = useState<string | null>(null);
   const [editing, setEditing] = useState<ReviewItem | null>(null);
   const [revision, setRevision] = useState("");
   const active = bundles.find((bundle) => bundle.id === activeBundleId) ?? bundles[0];
-  if (!active) return <div className={styles.canvasEmpty}><ClipboardList /><h2>No review bundle yet</h2><p>Course Director will assemble a small set of high-leverage decisions after the full private draft is built.</p></div>;
+  if (!active) return <div className={styles.canvasEmpty}><ClipboardList /><h2>No review bundle yet</h2><p>Course Director will assemble a small set of high-leverage decisions after the full private draft is built.</p><button onClick={onBack} type="button"><ArrowLeft />Course Flow</button></div>;
   const pending = active.items.filter((item) => item.status === "pending");
+  const totalPending = bundles.reduce(
+    (total, bundle) => total + bundle.items.filter((item) => item.status === "pending").length,
+    0,
+  );
   return (
     <div className={styles.reviewCanvas}>
       <div className={styles.reviewBundleNav}>
+        <header className={styles.reviewBundleOverview}>
+          <button onClick={onBack} type="button"><ArrowLeft />Course Flow</button>
+          <small>Private draft</small>
+          <strong>{totalPending} {totalPending === 1 ? "decision" : "decisions"} remaining</strong>
+          <p>These are grouped checkpoints, not separate errors. Prerequisites are included in Course structure.</p>
+        </header>
         {bundles.map((bundle, index) => (
           <button aria-pressed={bundle.id === active.id} key={bundle.id} onClick={() => setActiveBundleId(bundle.id)} type="button">
-            <span>{index + 1}</span><div><strong>{bundle.title}</strong><small>{bundle.items.filter((item) => item.status === "pending").length} decisions</small></div>{bundle.status === "complete" ? <Check /> : <ChevronDown />}
+            <span>{index + 1}</span><div><strong>{bundle.title}</strong><small>{bundle.items.filter((item) => item.status === "pending").length} remaining</small></div>{bundle.status === "complete" ? <Check /> : <ChevronDown />}
           </button>
         ))}
       </div>
