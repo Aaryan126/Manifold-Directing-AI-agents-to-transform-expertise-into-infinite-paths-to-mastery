@@ -680,6 +680,7 @@ async function mockPublishedCourseOS(page: Page, flowUnitCount = 1) {
         { id: "next-1", source_id: conceptId, target_id: conceptTwoId, kind: "next", status: "accepted" },
         { id: "teaches-1", source_id: clipId, target_id: conceptId, kind: "teaches", status: "accepted" },
         { id: "assesses-1", source_id: questionId, target_id: conceptId, kind: "assesses", status: "accepted" },
+        { id: "remediates-1", source_id: questionId, target_id: clipId, kind: "remediates_to", status: "accepted" },
         { id: "cites-1", source_id: sourceId, target_id: conceptId, kind: "cites", status: "accepted" },
         ...createdRelationships.map((relationship, index) => ({
           id: `manual-${index}-${relationship.relationship}`,
@@ -1045,6 +1046,7 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
   await expect(page.locator('[class*="blueprintLayoutLoading"]')).toHaveCount(0);
 
   const conceptNode = page.getByTestId("rf__node-concept-1");
+  const clipNode = page.getByTestId("rf__node-clip-1");
   const questionNode = page.getByTestId("rf__node-question-1");
   const blueprintViewport = blueprintCanvas.locator(".react-flow__viewport");
   const expectFocusedCamera = async (node: Locator, inspector: Locator) => {
@@ -1158,8 +1160,8 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
     name: /In the ukulele example, why did the speaker focus on learning only a small set of chords before performing\? artifact inspector/,
   });
   await expect(questionInspector).toBeVisible();
-  await expect(page.locator(".react-flow__node")).toHaveCount(2);
-  await expect(page.locator(".react-flow__edge")).toHaveCount(1);
+  await expect(page.locator(".react-flow__node")).toHaveCount(3);
+  await expect(page.locator(".react-flow__edge")).toHaveCount(2);
   await expect(page.getByRole("button", { name: /Connections · In the ukulele example/ })).toBeVisible();
   await expect(blueprintCanvas).toHaveAttribute("data-motion-state", "idle");
   const motionTrace = await page.evaluate(() => {
@@ -1220,10 +1222,67 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
   expect(motionTrace?.viewportStates).toEqual(["ready"]);
   expect(motionTrace?.sawBlockingLoader).toBe(false);
   await expectFocusedCamera(questionNode, questionInspector);
+  const remediationPath = page
+    .getByTestId("rf__edge-remediates-1")
+    .locator(".react-flow__edge-path");
+  await expect(remediationPath).toBeVisible();
+  await expect(remediationPath).not.toHaveAttribute("marker-end", "none");
+  const arrowGeometry = await remediationPath.evaluate((element) => {
+    if (!(element instanceof SVGPathElement)) {
+      throw new Error("Expected the remediation relationship to render as an SVG path.");
+    }
+    const matrix = element.getScreenCTM();
+    if (!matrix) throw new Error("Expected a screen transform for the remediation path.");
+    const length = element.getTotalLength();
+    const before = element.getPointAtLength(Math.max(0, length - 2));
+    const end = element.getPointAtLength(length);
+    const toScreen = (point: DOMPoint) => {
+      const transformed = point.matrixTransform(matrix);
+      return { x: transformed.x, y: transformed.y };
+    };
+    return {
+      before: toScreen(before),
+      end: toScreen(end),
+    };
+  });
+  const clipRelationHandle = clipNode.locator('[data-handleid="relation-in"]');
+  const clipRelationHandleBounds = await clipRelationHandle.boundingBox();
+  expect(clipRelationHandleBounds).not.toBeNull();
+  const arrowDelta = {
+    x: arrowGeometry.end.x - arrowGeometry.before.x,
+    y: arrowGeometry.end.y - arrowGeometry.before.y,
+  };
+  expect(arrowDelta.x).toBeGreaterThan(0.5);
+  expect(Math.abs(arrowDelta.y)).toBeLessThan(Math.abs(arrowDelta.x));
+  const markerClearance = clipRelationHandleBounds!.x
+    + clipRelationHandleBounds!.width / 2
+    - arrowGeometry.end.x;
+  expect(markerClearance).toBeGreaterThan(3);
+  expect(markerClearance).toBeLessThan(18);
   const questionFocusTransform = await blueprintViewport.evaluate(
     (element) => getComputedStyle(element).transform,
   );
 
+  await blueprintCanvas.evaluate((canvas) => {
+    const trace = {
+      maxInspectors: canvas.querySelectorAll('aside[class*="blueprintInspector"]').length,
+    };
+    const traceWindow = window as Window & {
+      __blueprintInspectorTrace?: typeof trace;
+      __blueprintInspectorObserver?: MutationObserver;
+    };
+    traceWindow.__blueprintInspectorTrace = trace;
+    traceWindow.__blueprintInspectorObserver = new MutationObserver(() => {
+      trace.maxInspectors = Math.max(
+        trace.maxInspectors,
+        canvas.querySelectorAll('aside[class*="blueprintInspector"]').length,
+      );
+    });
+    traceWindow.__blueprintInspectorObserver.observe(canvas, {
+      childList: true,
+      subtree: true,
+    });
+  });
   await conceptNode.click();
   await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
   const conceptInspector = page.getByRole("dialog", { name: "Net force artifact inspector" });
@@ -1233,6 +1292,14 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
   await expect(page.locator(".react-flow__edge")).toHaveCount(5);
   await expect(page.getByTestId("rf__node-question-1")).toBeVisible();
   await expectFocusedCamera(conceptNode, conceptInspector);
+  expect(await page.evaluate(() => {
+    const traceWindow = window as Window & {
+      __blueprintInspectorTrace?: { maxInspectors: number };
+      __blueprintInspectorObserver?: MutationObserver;
+    };
+    traceWindow.__blueprintInspectorObserver?.disconnect();
+    return traceWindow.__blueprintInspectorTrace?.maxInspectors ?? 0;
+  })).toBe(1);
   expect(await blueprintViewport.evaluate(
     (element) => getComputedStyle(element).transform,
   )).not.toBe(questionFocusTransform);

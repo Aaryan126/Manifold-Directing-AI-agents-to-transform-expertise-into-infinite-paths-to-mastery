@@ -4,6 +4,7 @@ import {
   BaseEdge,
   Background,
   Controls,
+  getSmoothStepPath,
   getViewportForBounds,
   Handle,
   MarkerType,
@@ -2826,22 +2827,53 @@ function BlueprintRelationEdge({
   data,
   id,
   markerEnd,
+  sourcePosition,
   sourceX,
   sourceY,
   style,
+  targetPosition,
   targetX,
   targetY,
 }: EdgeProps<BlueprintGraphEdge>) {
-  const points = data?.points?.length
-    ? data.points
-    : [
-      { x: sourceX, y: sourceY },
-      { x: sourceX, y: sourceY + (targetY - sourceY) / 2 },
-      { x: targetX, y: sourceY + (targetY - sourceY) / 2 },
-      { x: targetX, y: targetY },
-    ];
-  const path = points.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
-  const labelPoint = points[Math.floor(points.length / 2)] ?? { x: sourceX, y: sourceY };
+  const markerClearance = markerEnd ? 8 : 0;
+  const clearedTarget = {
+    x: targetX + (
+      targetPosition === Position.Left
+        ? -markerClearance
+        : targetPosition === Position.Right
+          ? markerClearance
+          : 0
+    ),
+    y: targetY + (
+      targetPosition === Position.Top
+        ? -markerClearance
+        : targetPosition === Position.Bottom
+          ? markerClearance
+          : 0
+    ),
+  };
+  const routedPoints = data?.points?.length
+    ? data.points.map((point, index, points) => (
+      index === points.length - 1 ? clearedTarget : point
+    ))
+    : null;
+  const [fallbackPath, fallbackLabelX, fallbackLabelY] = getSmoothStepPath({
+    borderRadius: 6,
+    offset: 18,
+    sourcePosition,
+    sourceX,
+    sourceY,
+    targetPosition,
+    targetX: clearedTarget.x,
+    targetY: clearedTarget.y,
+  });
+  const path = routedPoints
+    ? routedPoints.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ")
+    : fallbackPath;
+  const labelPoint = routedPoints?.[Math.floor(routedPoints.length / 2)] ?? {
+    x: fallbackLabelX,
+    y: fallbackLabelY,
+  };
   const kind = data?.kind ?? "contains";
   return (
     <>
@@ -5351,7 +5383,6 @@ function BlueprintWorkspace({
             <AnimatePresence initial={false} mode="popLayout">
           {selected ? (
             <BlueprintArtifactInspectorSurface
-              key={selected.logical_id}
               label={`${selected.title} artifact inspector`}
               motionScope={blueprintMotionScope}
               reducedMotion={Boolean(reducedMotion)}
