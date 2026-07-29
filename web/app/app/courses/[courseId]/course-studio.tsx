@@ -4318,6 +4318,15 @@ function BlueprintWorkspace({
       ?? (blueprint ? visibleBlueprintNodeIds(blueprint, focusTopicLogicalId) : null),
     [blueprint, connectionFocus, focusTopicLogicalId],
   );
+  const startBlueprintRelationship = useCallback(
+    (node: BlueprintNode, side: BlueprintPortSide) => {
+      setSelectedLogicalId(null);
+      setSelectedRelationship(null);
+      setRelationshipError(null);
+      setRelationshipDraft({ source: node, side, kind: null, replacing: null });
+    },
+    [],
+  );
   const flow = useBlueprintFlow(
     blueprint,
     blueprintEvidence,
@@ -4329,12 +4338,7 @@ function BlueprintWorkspace({
     mode === "design" && autoArrangeVersion === 0,
     autoArrangeVersion,
     {
-      onStartRelationship: (node, side) => {
-        setSelectedLogicalId(null);
-        setSelectedRelationship(null);
-        setRelationshipError(null);
-        setRelationshipDraft({ source: node, side, kind: null, replacing: null });
-      },
+      onStartRelationship: startBlueprintRelationship,
       relationshipDraft,
     },
   );
@@ -5931,105 +5935,140 @@ function useBlueprintFlow(
   }, [hierarchyEdges, layoutEdges, requestedLayoutKey, respectSavedLayout, visibleNodes]);
 
   const layoutReady = completedLayoutKey === requestedLayoutKey;
-  const evidenceByConcept = new Map(evidence.map((item) => [item.concept_id, item]));
-  const selectedNeighbors = selectedId
-    ? new Set(layoutEdges.flatMap((edge) => {
-      if (edge.source_id === selectedId) return [edge.target_id];
-      if (edge.target_id === selectedId) return [edge.source_id];
-      return [];
-    }))
-    : new Set<string>();
-  const topicConceptCounts = new Map<string, number>();
-  layoutEdges.forEach((edge) => {
-    if (edge.kind === "contains") {
-      topicConceptCounts.set(edge.source_id, (topicConceptCounts.get(edge.source_id) ?? 0) + 1);
-    }
-  });
-  const nodes: BlueprintGraphNode[] = visibleNodes.map((node, index) => {
-    const conceptEvidence = evidenceByConcept.get(node.id) ?? null;
-    const risk = conceptEvidence?.correct_percent == null ? null : 100 - conceptEvidence.correct_percent;
-    const selected = selectedId === node.id;
-    const muted = Boolean(selectedId && !selected && !selectedNeighbors.has(node.id));
-    const dimensions = blueprintNodeDimensions(node);
-    return {
-      id: node.id,
-      type: "blueprintArtifact",
-      position: positions[node.id] ?? {
-        x: (index % 4) * 300,
-        y: Math.floor(index / 4) * 190,
-      },
-      data: {
-        artifact: node,
-        conceptCount: node.kind === "topic" ? topicConceptCounts.get(node.id) ?? 0 : null,
-        designMode: mode === "design",
-        evidence: conceptEvidence,
-        muted,
-        onStartRelationship: interaction?.onStartRelationship,
-        relationshipTargetState: interaction?.relationshipDraft?.kind
-          ? isValidBlueprintRelationshipTarget(
-            interaction.relationshipDraft.source,
-            node,
-            interaction.relationshipDraft.kind,
-          )
-            ? "valid"
-            : "invalid"
-          : null,
-        risk,
-        selected,
-      },
-      ariaLabel: `${node.kind}: ${node.title}. ${node.status}. ${node.kind === "concept" && conceptEvidence?.attempts ? `${Math.round(conceptEvidence.correct_percent ?? 0)} percent correct.` : coverageLabel(node)}`,
-      connectable: false,
-      style: dimensions,
+  // React Flow treats every new controlled-node object as an unmeasured node.
+  // Keep identities stable across unrelated parent renders (for example SSE
+  // status/message updates) so its measured dimensions and handle bounds are
+  // not repeatedly discarded while Course Director is working.
+  const nodes = useMemo<BlueprintGraphNode[]>(() => {
+    const evidenceByConcept = new Map(evidence.map((item) => [item.concept_id, item]));
+    const selectedNeighbors = selectedId
+      ? new Set(layoutEdges.flatMap((edge) => {
+        if (edge.source_id === selectedId) return [edge.target_id];
+        if (edge.target_id === selectedId) return [edge.source_id];
+        return [];
+      }))
+      : new Set<string>();
+    const topicConceptCounts = new Map<string, number>();
+    layoutEdges.forEach((edge) => {
+      if (edge.kind === "contains") {
+        topicConceptCounts.set(
+          edge.source_id,
+          (topicConceptCounts.get(edge.source_id) ?? 0) + 1,
+        );
+      }
+    });
+    return visibleNodes.map((node, index) => {
+      const conceptEvidence = evidenceByConcept.get(node.id) ?? null;
+      const risk = conceptEvidence?.correct_percent == null
+        ? null
+        : 100 - conceptEvidence.correct_percent;
+      const selected = selectedId === node.id;
+      const muted = Boolean(selectedId && !selected && !selectedNeighbors.has(node.id));
+      const dimensions = blueprintNodeDimensions(node);
+      return {
+        id: node.id,
+        type: "blueprintArtifact",
+        position: positions[node.id] ?? {
+          x: (index % 4) * 300,
+          y: Math.floor(index / 4) * 190,
+        },
+        data: {
+          artifact: node,
+          conceptCount: node.kind === "topic"
+            ? topicConceptCounts.get(node.id) ?? 0
+            : null,
+          designMode: mode === "design",
+          evidence: conceptEvidence,
+          muted,
+          onStartRelationship: interaction?.onStartRelationship,
+          relationshipTargetState: interaction?.relationshipDraft?.kind
+            ? isValidBlueprintRelationshipTarget(
+              interaction.relationshipDraft.source,
+              node,
+              interaction.relationshipDraft.kind,
+            )
+              ? "valid"
+              : "invalid"
+            : null,
+          risk,
+          selected,
+        },
+        ariaLabel: `${node.kind}: ${node.title}. ${node.status}. ${node.kind === "concept" && conceptEvidence?.attempts ? `${Math.round(conceptEvidence.correct_percent ?? 0)} percent correct.` : coverageLabel(node)}`,
+        connectable: false,
+        // These dimensions are the same authoritative values supplied to ELK.
+        // Supplying them to React Flow prevents a legitimate controlled-node
+        // update from becoming invisible while ResizeObserver remeasures it.
+        width: dimensions.width,
+        height: dimensions.height,
+        style: dimensions,
+      };
+    });
+  }, [
+    evidence,
+    interaction?.onStartRelationship,
+    interaction?.relationshipDraft,
+    layoutEdges,
+    mode,
+    positions,
+    selectedId,
+    visibleNodes,
+  ]);
+  const edges = useMemo<BlueprintGraphEdge[]>(() => {
+    const relationColor: Record<BlueprintEdgeKind, string> = {
+      contains: "#aaa69d",
+      next: "#292a2f",
+      requires: "#68656d",
+      teaches: "#55768f",
+      assesses: "#b96a26",
+      remediates_to: "#a45652",
+      cites: "#858179",
     };
-  });
-  const relationColor: Record<BlueprintEdgeKind, string> = {
-    contains: "#aaa69d",
-    next: "#292a2f",
-    requires: "#68656d",
-    teaches: "#55768f",
-    assesses: "#b96a26",
-    remediates_to: "#a45652",
-    cites: "#858179",
-  };
-  const relationHandles = (kind: BlueprintEdgeKind) => {
-    const relational = kind === "requires" || kind === "remediates_to" || kind === "cites";
-    return relational
-      ? { sourceHandle: "relation-out", targetHandle: "relation-in" }
-      : { sourceHandle: "flow-out", targetHandle: "flow-in" };
-  };
-  const visibleEdgeIds = new Set(renderedEdges.map((edge) => edge.id));
-  const edges: BlueprintGraphEdge[] = layoutEdges.map((edge) => {
-    const visible = visibleEdgeIds.has(edge.id);
-    const emphasized = Boolean(selectedId && (edge.source_id === selectedId || edge.target_id === selectedId));
-    const dimmed = Boolean(selectedId && !emphasized);
-    const color = edge.status === "proposed" ? "#d77a25" : relationColor[edge.kind];
-    return {
-      id: edge.id,
-      source: edge.source_id,
-      target: edge.target_id,
-      type: "blueprintRelation",
-      ...relationHandles(edge.kind),
-      ariaLabel: `${blueprintRelationshipLabels[edge.kind]} relationship`,
-      data: {
-        emphasized,
-        kind: edge.kind,
-        points: edgePoints[edge.id] ?? null,
-        visible,
-      },
-      focusable: visible,
-      markerEnd: !visible || edge.kind === "contains" || edge.kind === "cites"
-        ? undefined
-        : { type: MarkerType.ArrowClosed, color },
-      animated: edge.kind === "remediates_to",
-      style: {
-        opacity: !visible ? 0 : dimmed ? 0.16 : emphasized ? 1 : 0.62,
-        pointerEvents: visible ? "auto" : "none",
-        stroke: color,
-        strokeDasharray: edge.status === "proposed" || edge.kind === "cites" ? "6 5" : undefined,
-        strokeWidth: emphasized ? 2.2 : edge.kind === "next" ? 1.8 : 1.35,
-      },
+    const relationHandles = (kind: BlueprintEdgeKind) => {
+      const relational = kind === "requires"
+        || kind === "remediates_to"
+        || kind === "cites";
+      return relational
+        ? { sourceHandle: "relation-out", targetHandle: "relation-in" }
+        : { sourceHandle: "flow-out", targetHandle: "flow-in" };
     };
-  });
+    const visibleEdgeIds = new Set(renderedEdges.map((edge) => edge.id));
+    return layoutEdges.map((edge) => {
+      const visible = visibleEdgeIds.has(edge.id);
+      const emphasized = Boolean(
+        selectedId && (edge.source_id === selectedId || edge.target_id === selectedId),
+      );
+      const dimmed = Boolean(selectedId && !emphasized);
+      const color = edge.status === "proposed" ? "#d77a25" : relationColor[edge.kind];
+      return {
+        id: edge.id,
+        source: edge.source_id,
+        target: edge.target_id,
+        type: "blueprintRelation",
+        ...relationHandles(edge.kind),
+        ariaLabel: `${blueprintRelationshipLabels[edge.kind]} relationship`,
+        data: {
+          emphasized,
+          kind: edge.kind,
+          points: edgePoints[edge.id] ?? null,
+          visible,
+        },
+        focusable: visible,
+        markerEnd: !visible || edge.kind === "contains" || edge.kind === "cites"
+          ? undefined
+          : { type: MarkerType.ArrowClosed, color },
+        animated: edge.kind === "remediates_to",
+        style: {
+          opacity: !visible ? 0 : dimmed ? 0.16 : emphasized ? 1 : 0.62,
+          pointerEvents: visible ? "auto" : "none",
+          stroke: color,
+          strokeDasharray: edge.status === "proposed" || edge.kind === "cites"
+            ? "6 5"
+            : undefined,
+          strokeWidth: emphasized ? 2.2 : edge.kind === "next" ? 1.8 : 1.35,
+        },
+      };
+    });
+  }, [edgePoints, layoutEdges, renderedEdges, selectedId]);
   const setPosition = useCallback(
     (id: string, position: { x: number; y: number }) => {
       setPositions((current) => ({ ...current, [id]: position }));

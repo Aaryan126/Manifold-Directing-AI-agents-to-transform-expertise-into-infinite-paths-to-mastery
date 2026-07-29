@@ -1120,31 +1120,30 @@ test("Course Director proposals preserve the Live map before and during acceptan
   await expect(liveMode).toHaveAttribute("aria-pressed", "true");
   const blueprintRequestsBeforeProposal = state.blueprintRequests();
 
-  await page.getByRole("button", { name: "Open Course Director" }).click();
-  await page.getByLabel("Message Course Director").fill(
-    "Remove Vector addition from the Net force topic.",
-  );
-  await page.getByRole("button", { name: "Send message" }).click();
-  await expect(page.getByText("Remove Vector addition from Net force.")).toBeVisible();
-
-  // Preparing a proposal is not a graph mutation. It must not trigger another
-  // Blueprint fetch, hide the current nodes, change the camera, or enter Design.
-  expect(state.blueprintRequests()).toBe(blueprintRequestsBeforeProposal);
-  await expect(blueprintCanvas.locator(".react-flow__node")).toHaveCount(2);
-  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
-  await expect(blueprintCanvas).toHaveAttribute("data-update-state", "idle");
-  await expect(liveMode).toHaveAttribute("aria-pressed", "true");
-
   await blueprintCanvas.evaluate((canvas) => {
+    const initialNodes = [...canvas.querySelectorAll<HTMLElement>(".react-flow__node")];
     const trace = {
-      minNodeCount: canvas.querySelectorAll(".react-flow__node").length,
+      maxHiddenNodeCount: 0,
+      minNodeCount: initialNodes.length,
+      minPaintedNodeCount: initialNodes.filter(
+        (node) => getComputedStyle(node).visibility !== "hidden",
+      ).length,
       minStageOpacity: 1,
       frame: 0,
     };
     const sample = () => {
-      trace.minNodeCount = Math.min(
-        trace.minNodeCount,
-        canvas.querySelectorAll(".react-flow__node").length,
+      const nodes = [...canvas.querySelectorAll<HTMLElement>(".react-flow__node")];
+      const paintedNodeCount = nodes.filter(
+        (node) => getComputedStyle(node).visibility !== "hidden",
+      ).length;
+      trace.minNodeCount = Math.min(trace.minNodeCount, nodes.length);
+      trace.minPaintedNodeCount = Math.min(
+        trace.minPaintedNodeCount,
+        paintedNodeCount,
+      );
+      trace.maxHiddenNodeCount = Math.max(
+        trace.maxHiddenNodeCount,
+        nodes.length - paintedNodeCount,
       );
       const stage = canvas.querySelector<HTMLElement>('[data-motion-layer="current"]');
       if (stage) {
@@ -1161,6 +1160,24 @@ test("Course Director proposals preserve the Live map before and during acceptan
     traceWindow.__proposalMapTrace = trace;
     trace.frame = requestAnimationFrame(sample);
   });
+
+  await page.getByRole("button", { name: "Open Course Director" }).click();
+  await page.getByLabel("Message Course Director").fill(
+    "Remove Vector addition from the Net force topic.",
+  );
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.getByText("Remove Vector addition from Net force.")).toBeVisible();
+
+  // Preparing a proposal is not a graph mutation. It must not trigger another
+  // Blueprint fetch, hide the current nodes, change the camera, or enter Design.
+  expect(state.blueprintRequests()).toBe(blueprintRequestsBeforeProposal);
+  await expect(blueprintCanvas.locator(".react-flow__node")).toHaveCount(2);
+  expect(await blueprintCanvas.locator(".react-flow__node").evaluateAll(
+    (nodes) => nodes.every((node) => getComputedStyle(node).visibility !== "hidden"),
+  )).toBe(true);
+  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
+  await expect(blueprintCanvas).toHaveAttribute("data-update-state", "idle");
+  await expect(liveMode).toHaveAttribute("aria-pressed", "true");
 
   await page.getByRole("button", { name: "Accept", exact: true }).click();
   await expect(blueprintCanvas).toHaveAttribute("data-update-state", "updating");
@@ -1182,6 +1199,8 @@ test("Course Director proposals preserve the Live map before and during acceptan
     const traceWindow = window as Window & {
       __proposalMapTrace?: {
         minNodeCount: number;
+        minPaintedNodeCount: number;
+        maxHiddenNodeCount: number;
         minStageOpacity: number;
         frame: number;
       };
@@ -1191,7 +1210,46 @@ test("Course Director proposals preserve the Live map before and during acceptan
     return trace;
   });
   expect(transitionTrace?.minNodeCount).toBeGreaterThan(0);
+  expect(transitionTrace?.minPaintedNodeCount).toBeGreaterThan(0);
+  expect(transitionTrace?.maxHiddenNodeCount).toBe(0);
   expect(transitionTrace?.minStageOpacity).toBeGreaterThanOrEqual(0.8);
+});
+
+test("dismissing a Course Director proposal leaves the Live map painted", async ({ page }) => {
+  const state = await mockCourseOS(page, { directorProposal: true });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto(`/app/courses/${course.id}`);
+  await page.getByRole("button", { name: "Open Blueprint for Forces lecture" }).click();
+
+  const blueprintCanvas = page.locator("[data-viewport-state]");
+  const blueprintNodes = blueprintCanvas.locator(".react-flow__node");
+  const liveMode = page.getByRole("button", { name: "Live", exact: true });
+  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
+  await expect(blueprintNodes).toHaveCount(2);
+  const blueprintRequestsBeforeProposal = state.blueprintRequests();
+
+  await page.getByRole("button", { name: "Open Course Director" }).click();
+  await page.getByLabel("Message Course Director").fill(
+    "Remove Vector addition from the Net force topic.",
+  );
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.getByText("Remove Vector addition from Net force.")).toBeVisible();
+  expect(await blueprintNodes.evaluateAll(
+    (nodes) => nodes.every((node) => getComputedStyle(node).visibility !== "hidden"),
+  )).toBe(true);
+
+  await page.getByRole("button", { name: "Dismiss", exact: true }).click();
+  await expect(page.getByText("Proposal dismissed")).toBeVisible();
+
+  expect(state.blueprintRequests()).toBe(blueprintRequestsBeforeProposal);
+  expect(state.proposalDecisions).toEqual(["dismissed"]);
+  await expect(blueprintNodes).toHaveCount(2);
+  expect(await blueprintNodes.evaluateAll(
+    (nodes) => nodes.every((node) => getComputedStyle(node).visibility !== "hidden"),
+  )).toBe(true);
+  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
+  await expect(blueprintCanvas).toHaveAttribute("data-update-state", "idle");
+  await expect(liveMode).toHaveAttribute("aria-pressed", "true");
 });
 
 test("course deletion requires a separate destructive confirmation", async ({ page }) => {
