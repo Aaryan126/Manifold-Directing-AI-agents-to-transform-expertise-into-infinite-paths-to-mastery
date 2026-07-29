@@ -1308,6 +1308,7 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
   await expect(blueprintCanvas).toHaveAttribute("data-focus-state", "course");
   await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
   await expect(page.getByRole("dialog", { name: /artifact inspector/ })).toHaveCount(0);
+  await expect(blueprintCanvas.locator('aside[class*="blueprintInspector"]')).toHaveCount(0);
   await expect(page.locator(".react-flow__node")).toHaveCount(6);
 
   await conceptNode.click();
@@ -1315,6 +1316,7 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
   await page.getByRole("button", { name: "Close artifact inspector" }).click();
   await expect(blueprintCanvas).toHaveAttribute("data-focus-state", "course");
   await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
+  await expect(blueprintCanvas.locator('aside[class*="blueprintInspector"]')).toHaveCount(0);
   await expect(page.locator(".react-flow__node")).toHaveCount(6);
 
   await page.getByRole("button", { name: "Design" }).click();

@@ -22,7 +22,6 @@ import {
   MotionConfig,
   animate,
   motion,
-  useIsPresent,
   useReducedMotion,
 } from "motion/react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -2791,31 +2790,22 @@ function BlueprintArtifactNode({ data }: NodeProps<BlueprintGraphNode>) {
 function BlueprintArtifactInspectorSurface({
   children,
   label,
-  motionScope,
   reducedMotion,
 }: {
   children: ReactNode;
   label: string;
-  motionScope: string;
   reducedMotion: boolean;
 }) {
-  const isPresent = useIsPresent();
   return (
     <motion.aside
       animate={{ scale: 1, x: 0 }}
-      aria-hidden={isPresent ? undefined : true}
-      aria-label={isPresent ? label : undefined}
+      aria-label={label}
       className={styles.blueprintInspector}
-      exit={reducedMotion
-        ? undefined
-        : { scale: 0.99, x: 18 }}
       initial={reducedMotion
         ? false
         : { scale: 0.99, x: 18 }}
-      inert={!isPresent}
       layout
-      layoutId={`blueprint-inspector-${motionScope}`}
-      role={isPresent ? "dialog" : undefined}
+      role="dialog"
       transition={sharedSurfaceTransition(reducedMotion)}
     >
       {children}
@@ -4255,7 +4245,6 @@ function BlueprintWorkspace({
   const blueprint = mode === "live"
     ? (activeBlueprint ?? workingBlueprint)
     : (workingBlueprint ?? activeBlueprint);
-  const blueprintMotionScope = blueprint?.course_id ?? "pending-course";
   const selected = blueprint?.nodes.find((node) => node.logical_id === selectedLogicalId) ?? null;
   const selectedClip = selected?.kind === "clip"
     ? findBlueprintClip(selected, clips)
@@ -5380,11 +5369,9 @@ function BlueprintWorkspace({
             </section>
           ) : null}
           <MotionConfig reducedMotion="user">
-            <AnimatePresence initial={false} mode="popLayout">
           {selected ? (
             <BlueprintArtifactInspectorSurface
               label={`${selected.title} artifact inspector`}
-              motionScope={blueprintMotionScope}
               reducedMotion={Boolean(reducedMotion)}
             >
             <>
@@ -5474,7 +5461,6 @@ function BlueprintWorkspace({
             </>
             </BlueprintArtifactInspectorSurface>
           ) : null}
-            </AnimatePresence>
           </MotionConfig>
           {selectedRelationship ? (
             <BlueprintRelationshipInspector
