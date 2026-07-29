@@ -1089,9 +1089,11 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
       animationFrame: 0,
       maxReactFlowLayers: canvas.querySelectorAll(".react-flow").length,
       motionStates: [canvas.getAttribute("data-motion-state")],
+      nodeTransforms: [] as string[],
       positions: [] as Array<{ x: number; y: number }>,
       sawBlockingLoader: hasVisibleBlockingLoader(),
       sawOutgoingLayer: Boolean(canvas.querySelector('[data-motion-layer="outgoing"]')),
+      transforms: [] as string[],
       viewportStates: [canvas.getAttribute("data-viewport-state")],
     };
     const traceWindow = window as Window & {
@@ -1104,8 +1106,17 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
         canvas.querySelectorAll(".react-flow").length,
       );
       trace.sawBlockingLoader ||= hasVisibleBlockingLoader();
-      const node = canvas.querySelector('[data-testid="rf__node-concept-1"]');
+      const node = canvas.querySelector('[data-testid="rf__node-question-1"]');
+      const viewport = canvas.querySelector(".react-flow__viewport");
+      if (viewport) {
+        const transform = getComputedStyle(viewport).transform;
+        if (trace.transforms.at(-1) !== transform) trace.transforms.push(transform);
+      }
       if (node) {
+        const nodeTransform = getComputedStyle(node).transform;
+        if (trace.nodeTransforms.at(-1) !== nodeTransform) {
+          trace.nodeTransforms.push(nodeTransform);
+        }
         const bounds = node.getBoundingClientRect();
         const position = {
           x: bounds.x + bounds.width / 2,
@@ -1140,13 +1151,16 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
     });
     samplePosition();
   });
-  await conceptNode.click();
+  await questionNode.click();
   await expect(blueprintCanvas).toHaveAttribute("data-focus-state", "connections");
   await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
-  await expect(page.getByRole("dialog", { name: "Net force artifact inspector" })).toBeVisible();
-  await expect(page.locator(".react-flow__node")).toHaveCount(6);
-  await expect(page.locator(".react-flow__edge")).toHaveCount(5);
-  await expect(page.getByRole("button", { name: /Connections · Net force/ })).toBeVisible();
+  const questionInspector = page.getByRole("dialog", {
+    name: /In the ukulele example, why did the speaker focus on learning only a small set of chords before performing\? artifact inspector/,
+  });
+  await expect(questionInspector).toBeVisible();
+  await expect(page.locator(".react-flow__node")).toHaveCount(2);
+  await expect(page.locator(".react-flow__edge")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /Connections · In the ukulele example/ })).toBeVisible();
   await expect(blueprintCanvas).toHaveAttribute("data-motion-state", "idle");
   const motionTrace = await page.evaluate(() => {
     const traceWindow = window as Window & {
@@ -1154,9 +1168,11 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
         animationFrame: number;
         maxReactFlowLayers: number;
         motionStates: Array<string | null>;
+        nodeTransforms: string[];
         positions: Array<{ x: number; y: number }>;
         sawBlockingLoader: boolean;
         sawOutgoingLayer: boolean;
+        transforms: string[];
         viewportStates: Array<string | null>;
       };
       __blueprintMotionObserver?: MutationObserver;
@@ -1169,6 +1185,8 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
   });
   expect(motionTrace?.motionStates).toContain("morphing");
   expect(motionTrace?.positions.length).toBeGreaterThanOrEqual(4);
+  expect(motionTrace?.nodeTransforms.length).toBeGreaterThanOrEqual(4);
+  expect(motionTrace?.transforms.length).toBeGreaterThanOrEqual(4);
   const focalPath = motionTrace?.positions ?? [];
   const pathStart = focalPath[0]!;
   const pathEnd = focalPath.at(-1)!;
@@ -1201,26 +1219,23 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
   expect(motionTrace?.sawOutgoingLayer).toBe(false);
   expect(motionTrace?.viewportStates).toEqual(["ready"]);
   expect(motionTrace?.sawBlockingLoader).toBe(false);
-  const conceptInspector = page.getByRole("dialog", { name: "Net force artifact inspector" });
-  await expectFocusedCamera(conceptNode, conceptInspector);
-  const conceptFocusTransform = await blueprintViewport.evaluate(
+  await expectFocusedCamera(questionNode, questionInspector);
+  const questionFocusTransform = await blueprintViewport.evaluate(
     (element) => getComputedStyle(element).transform,
   );
 
-  await questionNode.click();
+  await conceptNode.click();
   await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
-  const questionInspector = page.getByRole("dialog", {
-    name: /In the ukulele example, why did the speaker focus on learning only a small set of chords before performing\? artifact inspector/,
-  });
-  await expect(questionInspector).toBeVisible();
+  const conceptInspector = page.getByRole("dialog", { name: "Net force artifact inspector" });
+  await expect(conceptInspector).toBeVisible();
   await expect(blueprintCanvas).toHaveAttribute("data-motion-state", "idle");
-  await expect(page.locator(".react-flow__node")).toHaveCount(2);
-  await expect(page.locator(".react-flow__edge")).toHaveCount(1);
-  await expect(page.getByTestId("rf__node-concept-1")).toBeVisible();
-  await expectFocusedCamera(questionNode, questionInspector);
+  await expect(page.locator(".react-flow__node")).toHaveCount(6);
+  await expect(page.locator(".react-flow__edge")).toHaveCount(5);
+  await expect(page.getByTestId("rf__node-question-1")).toBeVisible();
+  await expectFocusedCamera(conceptNode, conceptInspector);
   expect(await blueprintViewport.evaluate(
     (element) => getComputedStyle(element).transform,
-  )).not.toBe(conceptFocusTransform);
+  )).not.toBe(questionFocusTransform);
 
   await page.locator(".react-flow__pane").click({ position: { x: 8, y: 8 } });
   await expect(blueprintCanvas).toHaveAttribute("data-focus-state", "course");

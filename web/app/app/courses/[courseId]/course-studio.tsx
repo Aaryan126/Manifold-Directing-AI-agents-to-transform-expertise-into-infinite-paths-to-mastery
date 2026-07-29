@@ -36,6 +36,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import {
   Activity,
   ArrowLeft,
@@ -4213,6 +4214,11 @@ function BlueprintWorkspace({
   const [cleanupRunning, setCleanupRunning] = useState(false);
   const blueprintCanvasRef = useRef<HTMLDivElement>(null);
   const presentedLiveFlowRef = useRef<BlueprintFlowPresentation | null>(null);
+  const focalClickOriginRef = useRef<{
+    logicalId: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const dragStartPositions = useRef<Record<string, { x: number; y: number }>>({});
   const blueprint = mode === "live"
     ? (activeBlueprint ?? workingBlueprint)
@@ -4535,6 +4541,10 @@ function BlueprintWorkspace({
     const inspectorWidth = blueprintCanvasRef.current
       .querySelector(`.${styles.blueprintInspector}`)
       ?.getBoundingClientRect().width ?? 380;
+    const focalClickOrigin = connectionFocusLogicalId
+      && focalClickOriginRef.current?.logicalId === connectionFocusLogicalId
+      ? focalClickOriginRef.current
+      : null;
     const targetViewport = connectionFocusLogicalId
       ? focusedBlueprintViewport(
         target.nodes,
@@ -4552,9 +4562,9 @@ function BlueprintWorkspace({
         blueprintFitPadding,
       );
     const startViewport = flowInstance.getViewport();
-    const startFocalScreenCenter = connectionFocusLogicalId
+    const startFocalScreenCenter = focalClickOrigin ?? (connectionFocusLogicalId
       ? blueprintFocalScreenCenter(start.nodes, connectionFocusLogicalId, startViewport)
-      : null;
+      : null);
     const targetFocalScreenCenter = connectionFocusLogicalId
       ? blueprintFocalScreenCenter(target.nodes, connectionFocusLogicalId, targetViewport)
       : null;
@@ -4574,8 +4584,9 @@ function BlueprintWorkspace({
         const clamped = Math.max(0, Math.min(1, progress));
         const presentation = interpolateBlueprintPresentation(start, targetPresentation, clamped);
         presentedLiveFlowRef.current = presentation;
-        flowInstance.setNodes(presentation.nodes);
-        flowInstance.setEdges(presentation.edges);
+        flushSync(() => {
+          setPresentedLiveFlow(presentation);
+        });
         const zoom = interpolateBlueprintNumber(
           startViewport.zoom,
           targetViewport.zoom,
@@ -5272,11 +5283,20 @@ function BlueprintWorkspace({
                       void onLayout(artifact, node.position.x, node.position.y, previousPosition);
                     }
                   }}
-                  onNodeClick={(_, node) => {
+                  onNodeClick={(event, node) => {
                     const selectedNode = blueprint.nodes.find((item) => item.id === node.id);
                     if (selectedNode && relationshipDraft?.kind) {
                       void chooseRelationshipTarget(selectedNode);
                       return;
+                    }
+                    if (mode === "live" && selectedNode && blueprintCanvasRef.current) {
+                      const canvasBounds = blueprintCanvasRef.current.getBoundingClientRect();
+                      const nodeBounds = event.currentTarget.getBoundingClientRect();
+                      focalClickOriginRef.current = {
+                        logicalId: selectedNode.logical_id,
+                        x: nodeBounds.left + nodeBounds.width / 2 - canvasBounds.left,
+                        y: nodeBounds.top + nodeBounds.height / 2 - canvasBounds.top,
+                      };
                     }
                     captureLiveFlowPresentation();
                     setSelectedRelationship(null);
