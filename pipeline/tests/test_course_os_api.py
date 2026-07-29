@@ -18,6 +18,7 @@ from app.course_os.models import (
     CourseBlueprint,
     CourseCreate,
     CourseDecisionTrace,
+    CourseProposal,
     CourseRoutingPolicy,
     CourseSummary,
     DashboardCommandResult,
@@ -67,6 +68,42 @@ def test_course_director_streams_status_markdown_and_completion() -> None:
             course_id,
             instructor_id,
             "Review the weakest topic",
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_course_director_change_can_be_undone_through_the_review_ledger() -> None:
+    instructor_id = uuid4()
+    course_id = uuid4()
+    proposal = CourseProposal(
+        id=uuid4(),
+        proposal_type="reconnect_relationship",
+        artifact_type="blueprint_relationship_reconnect",
+        logical_artifact_id=uuid4(),
+        before_state={"relationship_type": "contains"},
+        proposed_state={"relationship_type": "contains"},
+        rationale="Move the concept to the requested topic.",
+        status="undone",
+        created_at=datetime.now(UTC),
+    )
+    service = AsyncMock()
+    service.undo_proposal.return_value = proposal
+    app.dependency_overrides[get_course_os_service] = lambda: service
+    client = TestClient(app)
+
+    try:
+        response = client.post(
+            f"/courses/{course_id}/proposals/{proposal.id}/undo",
+            headers={"X-User-ID": str(instructor_id)},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "undone"
+        service.undo_proposal.assert_awaited_once_with(
+            course_id,
+            proposal.id,
+            instructor_id,
         )
     finally:
         app.dependency_overrides.clear()

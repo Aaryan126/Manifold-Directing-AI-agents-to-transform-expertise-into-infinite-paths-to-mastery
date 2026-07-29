@@ -104,6 +104,40 @@ def _decision_trace(course: CourseSummary, concept_id=None) -> CourseDecisionTra
     )
 
 
+@pytest.mark.anyio
+async def test_course_director_undo_requires_ownership_and_returns_restored_proposal() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    course = _course()
+    proposal = CourseProposal(
+        id=uuid4(),
+        proposal_type="update_artifact",
+        artifact_type="concept",
+        logical_artifact_id=uuid4(),
+        before_state={"title": "Net force"},
+        proposed_state={"name": "Resultant force"},
+        rationale="Use the instructor's preferred term.",
+        status="undone",
+        created_at=datetime.now(UTC),
+    )
+    repository.user_role = AsyncMock(return_value="instructor")
+    repository.get_course = AsyncMock(return_value=course)
+    repository.undo_proposal = AsyncMock(return_value=proposal)
+    service = CourseOSService(repository)
+
+    result = await service.undo_proposal(
+        course.id,
+        proposal.id,
+        course.instructor_id,
+    )
+
+    assert result.status == "undone"
+    repository.undo_proposal.assert_awaited_once_with(
+        course.id,
+        proposal.id,
+        course.instructor_id,
+    )
+
+
 def _topic_plan() -> CourseDirectorPlan:
     return CourseDirectorPlan(
         summary="Prepare a concrete introduction topic.",

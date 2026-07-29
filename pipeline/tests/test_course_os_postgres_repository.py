@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from decimal import Decimal
 from time import perf_counter
 from typing import Any
 from unittest.mock import AsyncMock
@@ -12,10 +13,26 @@ import app.course_os.postgres_repository as repository_module
 from app.course_os.models import BlueprintEdge, BlueprintNode, CourseCreate, CourseSummary
 from app.course_os.postgres_repository import (
     PostgresCourseOSRepository,
+    _json_value,
     _message,
     _publication_blockers,
     _visible_blueprint_edges,
 )
+
+
+def test_proposal_undo_snapshot_normalizes_database_values_for_jsonb() -> None:
+    identifier = uuid4()
+    moment = datetime.now(UTC)
+
+    assert _json_value({
+        "seconds": Decimal("12.375"),
+        "identifier": identifier,
+        "moment": moment,
+    }) == {
+        "seconds": 12.375,
+        "identifier": str(identifier),
+        "moment": str(moment),
+    }
 
 
 def test_visible_blueprint_edges_remove_orphaned_relationships() -> None:

@@ -879,7 +879,12 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     if (!identity) return;
     setProposalStates((current) => ({ ...current, [proposalId]: "saving" }));
     try {
-      const payload = await request<{ status: string }>(
+      const payload = await request<{
+        status: string;
+        proposal_type?: string;
+        artifact_type?: string | null;
+        proposed_state?: Record<string, unknown>;
+      }>(
         `/courses/${courseId}/proposals/${proposalId}/resolve`,
         identity,
         {
@@ -910,6 +915,39 @@ export function CourseStudio({ courseId }: { courseId: string }) {
           refreshRevisionDiff(identity, nextCourse),
           refreshStructuredWorkspace(identity, nextCourse.status === "published"),
         ]);
+        const summary = typeof payload.proposed_state?.summary === "string"
+          ? payload.proposed_state.summary
+          : (payload.proposal_type ?? "Course Director change").replaceAll("_", " ");
+        rememberBlueprintUndo(summary, async () => {
+          const undone = await request<{ status: string }>(
+            `/courses/${courseId}/proposals/${proposalId}/undo`,
+            identity,
+            { method: "POST" },
+          );
+          setProposalStates((current) => ({ ...current, [proposalId]: undone.status }));
+          setMessages((current) => current.map((message) => ({
+            ...message,
+            blocks: message.blocks.map((block) => (
+              block.type === "proposal" && block.proposal_id === proposalId
+                ? { ...block, status: undone.status }
+                : block
+            )),
+          })));
+          const refreshedCourse = await request<CourseSummary>(
+            `/courses/${courseId}/studio`,
+            identity,
+          );
+          setCourse(refreshedCourse);
+          await Promise.all([
+            refreshBlueprint(identity, refreshedCourse),
+            refreshCourseFlow(identity, refreshedCourse),
+            refreshRevisionDiff(identity, refreshedCourse),
+            refreshStructuredWorkspace(
+              identity,
+              refreshedCourse.status === "published",
+            ),
+          ]);
+        });
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not resolve the proposal.");

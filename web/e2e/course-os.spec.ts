@@ -289,6 +289,7 @@ async function mockPublishedCourseOS(page: Page, flowUnitCount = 1) {
   await setInstructorSession(page);
   let savedLayout: { positions?: Array<{ logical_artifact_id?: string; x?: number; y?: number }> } | null = null;
   const proposalDecisions: Array<{ proposal_id: string; decision: string }> = [];
+  const proposalUndos: string[] = [];
   let editedConcept: { name?: string; description?: string } | null = null;
   let savedSequence: string[] = [];
   let savedTopicIds: string[] = [];
@@ -400,6 +401,10 @@ async function mockPublishedCourseOS(page: Page, flowUnitCount = 1) {
           warnings: ["Questions and clips shared with other concepts will be preserved."],
         },
       });
+    }
+    if (path.includes("/proposals/") && path.endsWith("/undo")) {
+      proposalUndos.push(path.split("/").at(-2) ?? "");
+      return route.fulfill({ json: { status: "undone" } });
     }
     if (path.includes("/proposals/") && path.endsWith("/resolve")) {
       const body = JSON.parse(route.request().postData() ?? "{}") as { decision?: string };
@@ -698,6 +703,7 @@ async function mockPublishedCourseOS(page: Page, flowUnitCount = 1) {
     createdRelationships,
     published,
     proposalDecisions,
+    proposalUndos,
     savedLayout: () => savedLayout,
     editedConcept: () => editedConcept,
     savedSequence: () => savedSequence,
@@ -1566,8 +1572,8 @@ test("Blueprint uses the hierarchy-first detailed graph and atomic proposal work
     .toEqual(["accepted", "dismissed", "edited"]);
   await expect(pack.getByText("0 decisions")).toBeVisible();
   await expect(page.getByRole("button", { name: "Design" })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByRole("button", { name: "Close artifact inspector" })).toBeVisible();
-  await page.locator(".react-flow__pane").click({ position: { x: 8, y: 8 } });
+  await page.getByRole("button", { name: "Undo Course Director change" }).click();
+  await expect.poll(() => state.proposalUndos).toEqual(["proposal-2"]);
   await expect(page.getByRole("dialog", { name: /artifact inspector/ })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Design" }).click();

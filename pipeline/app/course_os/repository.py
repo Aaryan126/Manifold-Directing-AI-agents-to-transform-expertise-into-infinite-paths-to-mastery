@@ -195,6 +195,14 @@ class CourseOSRepository(ABC):
     ) -> CourseProposal | None: ...
 
     @abstractmethod
+    async def undo_proposal(
+        self,
+        course_id: UUID,
+        proposal_id: UUID,
+        instructor_id: UUID,
+    ) -> CourseProposal | None: ...
+
+    @abstractmethod
     async def course_map(self, course_id: UUID, revision_id: UUID) -> CourseMap: ...
 
     @abstractmethod

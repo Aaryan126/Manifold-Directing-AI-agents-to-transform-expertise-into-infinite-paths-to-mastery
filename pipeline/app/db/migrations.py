@@ -58,6 +58,7 @@ _POST_BASELINE_MIGRATIONS = frozenset(
         "024_intent_driven_learning_modes.sql",
         "025_learner_guide_conversation.sql",
         "026_auto_accept_private_drafts.sql",
+        "027_course_director_undo.sql",
     }
 )
 

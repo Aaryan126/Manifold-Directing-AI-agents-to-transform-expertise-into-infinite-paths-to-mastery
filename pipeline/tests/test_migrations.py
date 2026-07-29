@@ -75,6 +75,9 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     auto_accept_migration = Path("migrations/026_auto_accept_private_drafts.sql").read_text(
         encoding="utf-8"
     )
+    director_undo_migration = Path("migrations/027_course_director_undo.sql").read_text(
+        encoding="utf-8"
+    )
 
     for table_name in [
         "users",
@@ -120,6 +123,9 @@ def test_initial_migration_contains_prd_phase_zero_entities() -> None:
     assert "dashboard_signals_course_status_idx" in phase10_migration
     assert "dashboard_signals_open_fingerprint_idx" in dashboard_index_migration
     assert "is_simulated boolean not null default false" in simulated_learner_migration
+    assert "add value if not exists 'undone'" in director_undo_migration
+    assert "undo_state jsonb" in director_undo_migration
+    assert "027_course_director_undo.sql" in _POST_BASELINE_MIGRATIONS
     assert "demo-learner-%@coursefoundry.local" in simulated_learner_migration
     for table_name in [
         "course_revisions",

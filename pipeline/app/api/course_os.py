@@ -831,6 +831,21 @@ async def resolve_proposal(
     )
     return _proposal_response(proposal)
 
+@router.post(
+    "/courses/{course_id}/proposals/{proposal_id}/undo",
+    response_model=ProposalResponse,
+)
+async def undo_proposal(
+    course_id: UUID,
+    proposal_id: UUID,
+    user_id: UserContext,
+    service: CourseOSDependency,
+) -> ProposalResponse:
+    proposal = await _call(
+        service.undo_proposal(course_id, proposal_id, user_id)
+    )
+    return _proposal_response(proposal)
+
 
 @router.get("/courses/{course_id}/map", response_model=CourseMapResponse)
 async def course_map(

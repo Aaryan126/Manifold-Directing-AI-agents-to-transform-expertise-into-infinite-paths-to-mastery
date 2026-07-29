@@ -604,6 +604,25 @@ class CourseOSService:
             raise CourseOSValidationError("Proposal not found.")
         return proposal
 
+    async def undo_proposal(
+        self,
+        course_id: UUID,
+        proposal_id: UUID,
+        instructor_id: UUID,
+    ) -> CourseProposal:
+        await self._require_owned_course(course_id, instructor_id)
+        try:
+            proposal = await self._repository.undo_proposal(
+                course_id,
+                proposal_id,
+                instructor_id,
+            )
+        except ValueError as exc:
+            raise CourseOSValidationError(str(exc)) from exc
+        if proposal is None:
+            raise CourseOSValidationError("Proposal not found.")
+        return proposal
+
     async def course_map(self, course_id: UUID, instructor_id: UUID) -> CourseMap:
         course = await self._require_owned_course(course_id, instructor_id)
         return await self._repository.course_map(course_id, _current_revision(course))

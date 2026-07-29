@@ -1,5 +1,6 @@
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -2169,24 +2170,18 @@ class PostgresCourseOSRepository(CourseOSRepository):
             if proposal is None:
                 return None
             resolved_state = instructor_revision or _json_dict(proposal["proposed_state"])
-            row = await (
-                await conn.execute(
-                    """
-                    update course_proposals
-                    set status = %s, instructor_revision = %s::jsonb, resolved_at = now()
-                    where id = %s returning *
-                    """,
-                    (
-                        decision.value,
-                        Jsonb(instructor_revision) if instructor_revision else None,
-                        proposal_id,
-                    ),
-                )
-            ).fetchone()
+            undo_state: dict[str, Any] | None = None
             if decision in {ReviewDecision.ACCEPTED, ReviewDecision.EDITED}:
                 artifact_type = str(proposal["artifact_type"] or "")
                 logical_artifact_id = proposal["logical_artifact_id"]
                 if artifact_type and logical_artifact_id:
+                    undo_state = await _capture_proposal_undo_state(
+                        conn,
+                        course_id=course_id,
+                        artifact_type=artifact_type,
+                        logical_artifact_id=UUID(str(logical_artifact_id)),
+                        revision_id=UUID(str(proposal["revision_id"])),
+                    )
                     await _apply_typed_proposal(
                         conn,
                         course_id=course_id,
@@ -2202,6 +2197,16 @@ class PostgresCourseOSRepository(CourseOSRepository):
                         raise ValueError(
                             "This proposal does not contain an applicable course change."
                         )
+                    revision = await (
+                        await conn.execute(
+                            "select brief from course_revisions where id = %s for update",
+                            (proposal["revision_id"],),
+                        )
+                    ).fetchone()
+                    undo_state = {
+                        "kind": "brief",
+                        "brief": _json_dict((revision or {}).get("brief")),
+                    }
                     await conn.execute(
                         """
                         update course_revisions
@@ -2214,6 +2219,22 @@ class PostgresCourseOSRepository(CourseOSRepository):
                         """,
                         (Jsonb([directive]), proposal["revision_id"]),
                     )
+            row = await (
+                await conn.execute(
+                    """
+                    update course_proposals
+                    set status = %s, instructor_revision = %s::jsonb,
+                        undo_state = %s::jsonb, resolved_at = now(), undone_at = null
+                    where id = %s returning *
+                    """,
+                    (
+                        decision.value,
+                        Jsonb(instructor_revision) if instructor_revision else None,
+                        Jsonb(undo_state) if undo_state else None,
+                        proposal_id,
+                    ),
+                )
+            ).fetchone()
             await conn.execute(
                 """
                 insert into audit_events (
@@ -2232,6 +2253,78 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     decision.value,
                     Jsonb(_json_dict(proposal["proposed_state"])),
                     Jsonb(resolved_state),
+                    proposal["rationale"],
+                    proposal["revision_id"],
+                    proposal_id,
+                ),
+            )
+        return _proposal(row) if row else None
+
+    async def undo_proposal(
+        self,
+        course_id: UUID,
+        proposal_id: UUID,
+        instructor_id: UUID,
+    ) -> CourseProposal | None:
+        async with await psycopg.AsyncConnection.connect(
+            self._database_url,
+            row_factory=dict_row,
+        ) as conn:
+            proposal = await (
+                await conn.execute(
+                    """
+                    select * from course_proposals
+                    where id = %s and course_id = %s
+                    for update
+                    """,
+                    (proposal_id, course_id),
+                )
+            ).fetchone()
+            if proposal is None:
+                return None
+            if str(proposal["status"]) not in {"accepted", "edited"}:
+                raise ValueError("Only an applied Course Director change can be undone.")
+            undo_state = _json_dict(proposal["undo_state"])
+            if not undo_state:
+                raise ValueError("This Course Director change does not have an undo record.")
+            await _apply_proposal_undo(
+                conn,
+                course_id=course_id,
+                instructor_id=instructor_id,
+                proposal=proposal,
+                undo_state=undo_state,
+            )
+            row = await (
+                await conn.execute(
+                    """
+                    update course_proposals
+                    set status = 'undone', undone_at = now()
+                    where id = %s
+                    returning *
+                    """,
+                    (proposal_id,),
+                )
+            ).fetchone()
+            await conn.execute(
+                """
+                insert into audit_events (
+                  course_id, actor_type, actor_id, artifact_type, artifact_id,
+                  action, source, previous_state, new_state, ai_rationale,
+                  scope, revision_id, course_proposal_id
+                ) values (
+                  %s, 'user', %s, 'course_brief', %s, 'undo', 'instructor',
+                  %s::jsonb, %s::jsonb, %s, 'revision', %s, %s
+                )
+                """,
+                (
+                    course_id,
+                    instructor_id,
+                    proposal_id,
+                    Jsonb(
+                        _json_dict(proposal["instructor_revision"])
+                        or _json_dict(proposal["proposed_state"])
+                    ),
+                    Jsonb(_json_dict(proposal["before_state"])),
                     proposal["rationale"],
                     proposal["revision_id"],
                     proposal_id,
@@ -7327,6 +7420,424 @@ _TYPED_PROPOSAL_FIELDS: dict[str, tuple[str, frozenset[str], frozenset[str]]] = 
 }
 
 
+async def _capture_proposal_undo_state(
+    conn: Any,
+    *,
+    course_id: UUID,
+    artifact_type: str,
+    logical_artifact_id: UUID,
+    revision_id: UUID,
+) -> dict[str, Any]:
+    if artifact_type in _TYPED_PROPOSAL_FIELDS:
+        table, allowed_fields, _ = _TYPED_PROPOSAL_FIELDS[artifact_type]
+        fields = sorted(allowed_fields)
+        row = await (
+            await conn.execute(
+                f"""
+                select {", ".join(fields)}, instructor_revision
+                from {table}
+                where revision_id = %s and logical_id = %s
+                """,  # noqa: S608 - table and columns come from the allowlist above.
+                (revision_id, logical_artifact_id),
+            )
+        ).fetchone()
+        if row is None:
+            raise ValueError("The proposed artifact is no longer present.")
+        return {
+            "kind": "update",
+            "artifact_type": artifact_type,
+            "values": {
+                field: _json_value(row[field])
+                for field in fields
+            },
+            "instructor_revision": _json_dict(row["instructor_revision"]),
+        }
+    if artifact_type in {
+        "topic_create",
+        "concept_create",
+        "question_create",
+        "course_unit_create",
+        "concept_edge_create",
+    }:
+        return {"kind": "created_artifact", "artifact_type": artifact_type}
+    if artifact_type in {
+        "blueprint_relationship_create",
+        "blueprint_relationship_reconnect",
+        "blueprint_relationship_remove",
+    }:
+        return {"kind": "relationship", "artifact_type": artifact_type}
+    if artifact_type.endswith("_remove"):
+        rows = await _removed_artifact_snapshots(
+            conn,
+            course_id=course_id,
+            artifact_type=artifact_type,
+            logical_artifact_id=logical_artifact_id,
+            revision_id=revision_id,
+        )
+        return {
+            "kind": "removed_artifact",
+            "artifact_type": artifact_type,
+            "rows": rows,
+        }
+    raise ValueError("This Course Director change cannot be undone safely.")
+
+
+async def _removed_artifact_snapshots(
+    conn: Any,
+    *,
+    course_id: UUID,
+    artifact_type: str,
+    logical_artifact_id: UUID,
+    revision_id: UUID,
+) -> list[dict[str, Any]]:
+    del course_id
+    kind = artifact_type.removesuffix("_remove")
+    table = {
+        "topic": "topics",
+        "concept": "concepts",
+        "clip": "clips",
+        "question": "questions",
+        "course_unit": "course_units",
+    }.get(kind)
+    if table is None:
+        raise ValueError("That removed artifact cannot be restored.")
+    status_field = "status" if kind == "clip" else "review_status"
+    artifact = await (
+        await conn.execute(
+            f"""
+            select id, {status_field}{", dismissed_at" if kind != "clip" else ""}
+            from {table}
+            where revision_id = %s and logical_id = %s
+            """,  # noqa: S608 - table and status field come from allowlists above.
+            (revision_id, logical_artifact_id),
+        )
+    ).fetchone()
+    if artifact is None:
+        raise ValueError("The proposed artifact is no longer present.")
+    snapshots = [{
+        "table": table,
+        "id": str(artifact["id"]),
+        "values": {
+            status_field: str(artifact[status_field]),
+            **(
+                {"dismissed_at": artifact["dismissed_at"].isoformat()
+                 if artifact["dismissed_at"] else None}
+                if kind != "clip"
+                else {}
+            ),
+        },
+    }]
+    related_queries: list[tuple[str, str, tuple[Any, ...]]] = []
+    if kind == "topic":
+        related_queries = [
+            (
+                "clips",
+                "status",
+                (artifact["id"],),
+            ),
+            (
+                "questions",
+                "review_status",
+                (artifact["id"],),
+            ),
+        ]
+    elif kind == "concept":
+        related_queries = [
+            (
+                "concept_edges",
+                "review_status",
+                (revision_id, artifact["id"], artifact["id"]),
+            ),
+        ]
+    elif kind == "course_unit":
+        related_queries = [
+            (
+                "course_unit_edges",
+                "review_status",
+                (revision_id, artifact["id"], artifact["id"]),
+            ),
+        ]
+    for related_table, related_status_field, params in related_queries:
+        if related_table in {"concept_edges", "course_unit_edges"}:
+            id_columns = (
+                "from_concept_id", "to_concept_id"
+            ) if related_table == "concept_edges" else (
+                "source_unit_id", "target_unit_id"
+            )
+            query = f"""
+                select id, {related_status_field}, dismissed_at
+                from {related_table}
+                where revision_id = %s
+                  and ({id_columns[0]} = %s or {id_columns[1]} = %s)
+            """
+        else:
+            query = f"""
+                select id, {related_status_field}
+                       {", dismissed_at" if related_status_field == "review_status" else ""}
+                from {related_table}
+                where topic_id = %s
+            """
+        related_rows = await (await conn.execute(query, params)).fetchall()
+        for row in related_rows:
+            values: dict[str, Any] = {
+                related_status_field: str(row[related_status_field]),
+            }
+            if related_status_field == "review_status":
+                values["dismissed_at"] = (
+                    row["dismissed_at"].isoformat() if row["dismissed_at"] else None
+                )
+            snapshots.append({
+                "table": related_table,
+                "id": str(row["id"]),
+                "values": values,
+            })
+    return snapshots
+
+
+async def _apply_proposal_undo(
+    conn: Any,
+    *,
+    course_id: UUID,
+    instructor_id: UUID,
+    proposal: dict[str, Any],
+    undo_state: dict[str, Any],
+) -> None:
+    kind = str(undo_state.get("kind", ""))
+    artifact_type = str(proposal["artifact_type"] or "")
+    revision_id = UUID(str(proposal["revision_id"]))
+    if kind == "brief":
+        await conn.execute(
+            "update course_revisions set brief = %s::jsonb, updated_at = now() where id = %s",
+            (Jsonb(_json_dict(undo_state.get("brief"))), revision_id),
+        )
+        return
+    if proposal["logical_artifact_id"] is None:
+        raise ValueError("This Course Director change has no restorable artifact.")
+    logical_artifact_id = UUID(str(proposal["logical_artifact_id"]))
+    resolved_state = (
+        _json_dict(proposal["instructor_revision"])
+        or _json_dict(proposal["proposed_state"])
+    )
+    if kind == "update":
+        specification = _TYPED_PROPOSAL_FIELDS.get(artifact_type)
+        values = _json_dict(undo_state.get("values"))
+        if specification is None or not values:
+            raise ValueError("This artifact update cannot be restored.")
+        table, allowed_fields, json_fields = specification
+        fields = [field for field in sorted(allowed_fields) if field in values]
+        assignments = ", ".join(f"{field} = %s" for field in fields)
+        parameters = [
+            Jsonb(values[field]) if field in json_fields else values[field]
+            for field in fields
+        ]
+        result = await conn.execute(
+            f"""
+            update {table}
+            set {assignments}, instructor_revision = %s::jsonb, updated_at = now()
+            where revision_id = %s and logical_id = %s
+            """,  # noqa: S608 - table and fields come from the allowlist above.
+            (
+                *parameters,
+                Jsonb(_json_dict(undo_state.get("instructor_revision"))),
+                revision_id,
+                logical_artifact_id,
+            ),
+        )
+        if result.rowcount == 0:
+            raise ValueError("The changed artifact is no longer present.")
+        return
+    if kind == "created_artifact":
+        if artifact_type == "concept_edge_create":
+            result = await conn.execute(
+                """
+                update concept_edges
+                set review_status = 'dismissed', dismissed_at = now(), updated_at = now()
+                where revision_id = %s and logical_id = %s
+                  and review_status <> 'dismissed'
+                """,
+                (revision_id, logical_artifact_id),
+            )
+            if result.rowcount == 0:
+                raise ValueError("The created prerequisite is no longer present.")
+            return
+        remove_type = {
+            "topic_create": "topic_remove",
+            "concept_create": "concept_remove",
+            "question_create": "question_remove",
+            "course_unit_create": "course_unit_remove",
+        }.get(artifact_type)
+        if remove_type is None:
+            raise ValueError("This created artifact cannot be undone.")
+        await _apply_typed_proposal(
+            conn,
+            course_id=course_id,
+            instructor_id=instructor_id,
+            artifact_type=remove_type,
+            logical_artifact_id=logical_artifact_id,
+            revision_id=revision_id,
+            resolved_state={"action": "undo"},
+        )
+        return
+    if kind == "removed_artifact":
+        allowed_tables = {
+            "topics", "concepts", "clips", "questions", "course_units",
+            "concept_edges", "course_unit_edges",
+        }
+        for snapshot in undo_state.get("rows", []):
+            if not isinstance(snapshot, dict):
+                continue
+            table = str(snapshot.get("table", ""))
+            values = _json_dict(snapshot.get("values"))
+            if table not in allowed_tables or not values:
+                raise ValueError("The removal undo record is invalid.")
+            restorable_fields = (
+                {"status"} if table == "clips" else {"review_status", "dismissed_at"}
+            )
+            fields = [field for field in values if field in restorable_fields]
+            if not fields:
+                raise ValueError("The removal undo record has no restorable state.")
+            assignments = ", ".join(f"{field} = %s" for field in fields)
+            await conn.execute(
+                f"""
+                update {table}
+                set {assignments}, updated_at = now()
+                where id = %s
+                """,  # noqa: S608 - table and fields come from allowlists above.
+                (*[values[field] for field in fields], UUID(str(snapshot["id"]))),
+            )
+        return
+    if kind == "relationship":
+        relationship = str(resolved_state["relationship_type"])
+        source_logical_id = UUID(str(resolved_state["source_logical_id"]))
+        target_logical_id = UUID(str(resolved_state["target_logical_id"]))
+        if artifact_type == "blueprint_relationship_create":
+            await _remove_blueprint_relationship(
+                conn,
+                course_id=course_id,
+                revision_id=revision_id,
+                instructor_id=instructor_id,
+                relationship=relationship,
+                source_logical_id=source_logical_id,
+                target_logical_id=target_logical_id,
+                mutation_source="course_director_undo",
+            )
+        elif artifact_type == "blueprint_relationship_remove":
+            await _restore_blueprint_relationship(
+                conn,
+                course_id=course_id,
+                revision_id=revision_id,
+                instructor_id=instructor_id,
+                relationship=relationship,
+                source_logical_id=source_logical_id,
+                target_logical_id=target_logical_id,
+                mutation_source="course_director_undo",
+            )
+        elif artifact_type == "blueprint_relationship_reconnect":
+            await _restore_blueprint_relationship(
+                conn,
+                course_id=course_id,
+                revision_id=revision_id,
+                instructor_id=instructor_id,
+                relationship=str(resolved_state["previous_relationship_type"]),
+                source_logical_id=UUID(str(resolved_state["previous_source_logical_id"])),
+                target_logical_id=UUID(str(resolved_state["previous_target_logical_id"])),
+                mutation_source="course_director_undo",
+            )
+            await _remove_blueprint_relationship(
+                conn,
+                course_id=course_id,
+                revision_id=revision_id,
+                instructor_id=instructor_id,
+                relationship=relationship,
+                source_logical_id=source_logical_id,
+                target_logical_id=target_logical_id,
+                mutation_source="course_director_undo",
+            )
+        else:
+            raise ValueError("This relationship change cannot be undone.")
+        return
+    raise ValueError("This Course Director change cannot be undone safely.")
+
+
+async def _restore_blueprint_relationship(
+    conn: Any,
+    *,
+    course_id: UUID,
+    revision_id: UUID,
+    instructor_id: UUID,
+    relationship: str,
+    source_logical_id: UUID,
+    target_logical_id: UUID,
+    mutation_source: str,
+) -> None:
+    if relationship != "requires":
+        await _create_blueprint_relationship(
+            conn,
+            course_id=course_id,
+            revision_id=revision_id,
+            instructor_id=instructor_id,
+            relationship=relationship,
+            source_logical_id=source_logical_id,
+            target_logical_id=target_logical_id,
+            mutation_source=mutation_source,
+        )
+        return
+    nodes = await _blueprint_relationship_nodes(
+        conn,
+        revision_id,
+        (source_logical_id, target_logical_id),
+    )
+    source = nodes.get(source_logical_id)
+    target = nodes.get(target_logical_id)
+    if source is None or target is None:
+        raise ValueError("Both prerequisite endpoints must still be present.")
+    _validate_blueprint_relationship_nodes(relationship, source, target)
+    restored = await conn.execute(
+        """
+        update concept_edges
+        set review_status = 'edited', dismissed_at = null, updated_at = now(),
+            instructor_revision = coalesce(instructor_revision, '{}'::jsonb)
+              || %s::jsonb
+        where revision_id = %s and from_concept_id = %s and to_concept_id = %s
+          and relationship = 'requires' and review_status = 'dismissed'
+        """,
+        (
+            Jsonb({"action": "restore", "source": mutation_source}),
+            revision_id,
+            source["id"],
+            target["id"],
+        ),
+    )
+    if restored.rowcount == 0:
+        await _create_blueprint_relationship(
+            conn,
+            course_id=course_id,
+            revision_id=revision_id,
+            instructor_id=instructor_id,
+            relationship=relationship,
+            source_logical_id=source_logical_id,
+            target_logical_id=target_logical_id,
+            mutation_source=mutation_source,
+        )
+        return
+    await _record_workspace_audit(
+        conn,
+        course_id=course_id,
+        revision_id=revision_id,
+        instructor_id=instructor_id,
+        artifact_type="blueprint_relationship",
+        artifact_id=source_logical_id,
+        action="restore",
+        previous_state=None,
+        new_state={
+            "relationship": relationship,
+            "source_logical_id": str(source_logical_id),
+            "target_logical_id": str(target_logical_id),
+        },
+        note="Restored a prerequisite relationship through Course Director undo.",
+    )
+
+
 async def _apply_typed_proposal(
     conn: Any,
     *,
@@ -7849,6 +8360,18 @@ async def _apply_typed_proposal(
 
 def _json_dict(value: object) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
+
+
+def _json_value(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, (datetime, UUID)):
+        return str(value)
+    if isinstance(value, Mapping):
+        return {str(key): _json_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_value(item) for item in value]
+    return value
 
 
 def _visible_blueprint_edges(
