@@ -12,7 +12,10 @@ import {
   type ReactNode,
 } from "react";
 import { X } from "lucide-react";
-import { sharedSurfaceTransition } from "./interface-motion";
+import {
+  interfaceEase,
+  sharedSurfaceTransition,
+} from "./interface-motion";
 
 type AssistantMorphProps = {
   children: ReactNode;
@@ -77,7 +80,7 @@ export function AssistantMorph({
     <MotionConfig reducedMotion="user" transition={layoutTransition}>
       <AnimatePresence
         initial={false}
-        mode="popLayout"
+        mode="sync"
         onExitComplete={() => launcherRef.current?.focus({ preventScroll: true })}
       >
         {!open ? (
@@ -119,6 +122,12 @@ export function AssistantMorph({
             id={panelId}
             key={`${surfaceId}-panel`}
             layoutId={surfaceId}
+            exit={reduceMotion
+              ? undefined
+              : {
+                  opacity: 0,
+                  transition: { duration: 0.22, ease: interfaceEase },
+                }}
             style={{
               backgroundColor: "#ffffff",
               borderRadius: "20px 0 0 20px",
@@ -144,12 +153,19 @@ export function AssistantMorph({
                 className={closeButtonClassName}
                 initial={reduceMotion ? false : { opacity: 0, rotate: -8, scale: 0.82 }}
                 animate={{ opacity: 1, rotate: 0, scale: 1 }}
-                exit={reduceMotion ? undefined : { opacity: 0, rotate: 8, scale: 0.82 }}
+                exit={reduceMotion
+                  ? undefined
+                  : {
+                      opacity: 0,
+                      rotate: 8,
+                      scale: 0.82,
+                      transition: { duration: 0.12, ease: interfaceEase },
+                    }}
                 onClick={() => onOpenChange(false)}
                 ref={closeRef}
                 transition={reduceMotion
                   ? { duration: 0 }
-                  : { delay: 0.18, duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                  : { delay: 0.18, duration: 0.2, ease: interfaceEase }}
                 type="button"
               >
                 <X />
@@ -158,11 +174,17 @@ export function AssistantMorph({
             <motion.div
               animate={{ opacity: 1, x: 0 }}
               className={panelContentClassName}
-              exit={reduceMotion ? undefined : { opacity: 0, x: 14 }}
+              exit={reduceMotion
+                ? undefined
+                : {
+                    opacity: 0,
+                    x: 14,
+                    transition: { duration: 0.14, ease: interfaceEase },
+                  }}
               initial={reduceMotion ? false : { opacity: 0, x: 22 }}
               transition={reduceMotion
                 ? { duration: 0 }
-                : { delay: 0.16, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                : { delay: 0.16, duration: 0.3, ease: interfaceEase }}
             >
               {children}
             </motion.div>

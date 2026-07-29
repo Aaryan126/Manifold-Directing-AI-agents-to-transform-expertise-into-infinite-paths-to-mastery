@@ -938,6 +938,15 @@ test("Course Director capsule expands and reverses with keyboard focus", async (
   await closeDirector.click();
   await expect(director).toHaveCount(0);
   await expect(openDirector).toBeFocused();
+
+  for (let cycle = 0; cycle < 6; cycle += 1) {
+    await openDirector.dispatchEvent("click");
+    await expect(director).toBeVisible();
+    await closeDirector.dispatchEvent("click");
+    await expect(director).toHaveCount(0);
+    await expect(openDirector).toBeVisible();
+    await expect(openDirector).toHaveCount(1);
+  }
 });
 
 test("new course retries reuse one idempotency key", async ({ page }) => {
