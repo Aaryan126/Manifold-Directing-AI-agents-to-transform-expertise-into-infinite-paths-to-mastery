@@ -1107,7 +1107,10 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
       const node = canvas.querySelector('[data-testid="rf__node-concept-1"]');
       if (node) {
         const bounds = node.getBoundingClientRect();
-        const position = { x: bounds.x, y: bounds.y };
+        const position = {
+          x: bounds.x + bounds.width / 2,
+          y: bounds.y + bounds.height / 2,
+        };
         const previous = trace.positions.at(-1);
         if (
           !previous
@@ -1166,6 +1169,34 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
   });
   expect(motionTrace?.motionStates).toContain("morphing");
   expect(motionTrace?.positions.length).toBeGreaterThanOrEqual(4);
+  const focalPath = motionTrace?.positions ?? [];
+  const pathStart = focalPath[0]!;
+  const pathEnd = focalPath.at(-1)!;
+  const pathVector = {
+    x: pathEnd.x - pathStart.x,
+    y: pathEnd.y - pathStart.y,
+  };
+  const pathLengthSquared = pathVector.x ** 2 + pathVector.y ** 2;
+  expect(pathLengthSquared).toBeGreaterThan(1);
+  const pathLength = Math.sqrt(pathLengthSquared);
+  const pathSamples = focalPath.map((position) => {
+    const relative = {
+      x: position.x - pathStart.x,
+      y: position.y - pathStart.y,
+    };
+    return {
+      perpendicularDistance: Math.abs(
+        pathVector.y * relative.x - pathVector.x * relative.y,
+      ) / pathLength,
+      progress: (
+        relative.x * pathVector.x + relative.y * pathVector.y
+      ) / pathLengthSquared,
+    };
+  });
+  expect(Math.max(...pathSamples.map((sample) => sample.perpendicularDistance)))
+    .toBeLessThan(2);
+  expect(Math.min(...pathSamples.map((sample) => sample.progress))).toBeGreaterThanOrEqual(-0.02);
+  expect(Math.max(...pathSamples.map((sample) => sample.progress))).toBeLessThanOrEqual(1.02);
   expect(motionTrace?.maxReactFlowLayers).toBe(1);
   expect(motionTrace?.sawOutgoingLayer).toBe(false);
   expect(motionTrace?.viewportStates).toEqual(["ready"]);

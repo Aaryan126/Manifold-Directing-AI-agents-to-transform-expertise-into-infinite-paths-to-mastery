@@ -2666,6 +2666,22 @@ function focusedBlueprintViewport(
   };
 }
 
+function blueprintFocalScreenCenter(
+  nodes: BlueprintGraphNode[],
+  focalLogicalId: string,
+  viewport: { x: number; y: number; zoom: number },
+) {
+  const focalNode = nodes.find(
+    (node) => node.data.artifact.logical_id === focalLogicalId,
+  );
+  if (!focalNode) return null;
+  const dimensions = blueprintNodeDimensions(focalNode.data.artifact);
+  return {
+    x: (focalNode.position.x + dimensions.width / 2) * viewport.zoom + viewport.x,
+    y: (focalNode.position.y + dimensions.height / 2) * viewport.zoom + viewport.y,
+  };
+}
+
 const blueprintRelationshipLabels: Record<BlueprintEdgeKind, string> = {
   contains: "Structure",
   next: "Sequence",
@@ -4536,6 +4552,12 @@ function BlueprintWorkspace({
         blueprintFitPadding,
       );
     const startViewport = flowInstance.getViewport();
+    const startFocalScreenCenter = connectionFocusLogicalId
+      ? blueprintFocalScreenCenter(start.nodes, connectionFocusLogicalId, startViewport)
+      : null;
+    const targetFocalScreenCenter = connectionFocusLogicalId
+      ? blueprintFocalScreenCenter(target.nodes, connectionFocusLogicalId, targetViewport)
+      : null;
     if (reducedMotion) {
       presentLiveFlow(targetPresentation);
       void flowInstance.setViewport(targetViewport, { duration: 0 });
@@ -4554,10 +4576,39 @@ function BlueprintWorkspace({
         presentedLiveFlowRef.current = presentation;
         flowInstance.setNodes(presentation.nodes);
         flowInstance.setEdges(presentation.edges);
+        const zoom = interpolateBlueprintNumber(
+          startViewport.zoom,
+          targetViewport.zoom,
+          clamped,
+        );
+        const focalScreenCenter = connectionFocusLogicalId
+          ? blueprintFocalScreenCenter(
+            presentation.nodes,
+            connectionFocusLogicalId,
+            { x: 0, y: 0, zoom },
+          )
+          : null;
+        const tracksFocalNode = Boolean(
+          focalScreenCenter
+          && startFocalScreenCenter
+          && targetFocalScreenCenter,
+        );
         void flowInstance.setViewport({
-          x: interpolateBlueprintNumber(startViewport.x, targetViewport.x, clamped),
-          y: interpolateBlueprintNumber(startViewport.y, targetViewport.y, clamped),
-          zoom: interpolateBlueprintNumber(startViewport.zoom, targetViewport.zoom, clamped),
+          x: tracksFocalNode
+            ? interpolateBlueprintNumber(
+              startFocalScreenCenter!.x,
+              targetFocalScreenCenter!.x,
+              clamped,
+            ) - focalScreenCenter!.x
+            : interpolateBlueprintNumber(startViewport.x, targetViewport.x, clamped),
+          y: tracksFocalNode
+            ? interpolateBlueprintNumber(
+              startFocalScreenCenter!.y,
+              targetFocalScreenCenter!.y,
+              clamped,
+            ) - focalScreenCenter!.y
+            : interpolateBlueprintNumber(startViewport.y, targetViewport.y, clamped),
+          zoom,
         }, { duration: 0 });
       },
       onComplete: () => {
