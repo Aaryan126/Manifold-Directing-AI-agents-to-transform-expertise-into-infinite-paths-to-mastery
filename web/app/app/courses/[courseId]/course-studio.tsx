@@ -265,6 +265,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   const [lectureCreationVideoId, setLectureCreationVideoId] = useState<string | null>(null);
   const [blueprintUndoEntries, setBlueprintUndoEntries] = useState<BlueprintUndoEntry[]>([]);
   const [blueprintUndoing, setBlueprintUndoing] = useState(false);
+  const [blueprintRefreshing, setBlueprintRefreshing] = useState(false);
 
   const isBuilding = Boolean(
     (run && ["queued", "running"].includes(run.status))
@@ -591,13 +592,10 @@ export function CourseStudio({ courseId }: { courseId: string }) {
         completedMessage as CourseMessage,
       ]);
       setDirectorStream(null);
+      // A Course Director response only prepares private proposals. Until the
+      // instructor accepts one, the course graph has not changed and should
+      // remain exactly where it is instead of being re-fetched and re-laid out.
       await refreshArtifacts(identity);
-      await Promise.all([
-        refreshBlueprint(identity, nextCourse),
-        refreshCourseFlow(identity, nextCourse),
-        refreshRevisionDiff(identity, nextCourse),
-        refreshStructuredWorkspace(identity, nextCourse.status === "published"),
-      ]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not send the message.");
       setDirectorStream(null);
@@ -877,7 +875,9 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     instructorRevision?: Record<string, unknown>,
   ) {
     if (!identity) return;
+    const updatesCourse = decision !== "dismissed";
     setProposalStates((current) => ({ ...current, [proposalId]: "saving" }));
+    if (updatesCourse) setBlueprintRefreshing(true);
     try {
       const payload = await request<{
         status: string;
@@ -905,10 +905,9 @@ export function CourseStudio({ courseId }: { courseId: string }) {
             : block
         )),
       })));
-      if (decision !== "dismissed" && course) {
+      if (updatesCourse && course) {
         const nextCourse = await request<CourseSummary>(`/courses/${courseId}/studio`, identity);
         setCourse(nextCourse);
-        setBlueprintMode("design");
         await Promise.all([
           refreshBlueprint(identity, nextCourse),
           refreshCourseFlow(identity, nextCourse),
@@ -919,39 +918,46 @@ export function CourseStudio({ courseId }: { courseId: string }) {
           ? payload.proposed_state.summary
           : (payload.proposal_type ?? "Course Director change").replaceAll("_", " ");
         rememberBlueprintUndo(summary, async () => {
-          const undone = await request<{ status: string }>(
-            `/courses/${courseId}/proposals/${proposalId}/undo`,
-            identity,
-            { method: "POST" },
-          );
-          setProposalStates((current) => ({ ...current, [proposalId]: undone.status }));
-          setMessages((current) => current.map((message) => ({
-            ...message,
-            blocks: message.blocks.map((block) => (
-              block.type === "proposal" && block.proposal_id === proposalId
-                ? { ...block, status: undone.status }
-                : block
-            )),
-          })));
-          const refreshedCourse = await request<CourseSummary>(
-            `/courses/${courseId}/studio`,
-            identity,
-          );
-          setCourse(refreshedCourse);
-          await Promise.all([
-            refreshBlueprint(identity, refreshedCourse),
-            refreshCourseFlow(identity, refreshedCourse),
-            refreshRevisionDiff(identity, refreshedCourse),
-            refreshStructuredWorkspace(
+          setBlueprintRefreshing(true);
+          try {
+            const undone = await request<{ status: string }>(
+              `/courses/${courseId}/proposals/${proposalId}/undo`,
               identity,
-              refreshedCourse.status === "published",
-            ),
-          ]);
+              { method: "POST" },
+            );
+            setProposalStates((current) => ({ ...current, [proposalId]: undone.status }));
+            setMessages((current) => current.map((message) => ({
+              ...message,
+              blocks: message.blocks.map((block) => (
+                block.type === "proposal" && block.proposal_id === proposalId
+                  ? { ...block, status: undone.status }
+                  : block
+              )),
+            })));
+            const refreshedCourse = await request<CourseSummary>(
+              `/courses/${courseId}/studio`,
+              identity,
+            );
+            setCourse(refreshedCourse);
+            await Promise.all([
+              refreshBlueprint(identity, refreshedCourse),
+              refreshCourseFlow(identity, refreshedCourse),
+              refreshRevisionDiff(identity, refreshedCourse),
+              refreshStructuredWorkspace(
+                identity,
+                refreshedCourse.status === "published",
+              ),
+            ]);
+          } finally {
+            setBlueprintRefreshing(false);
+          }
         });
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not resolve the proposal.");
       setProposalStates((current) => ({ ...current, [proposalId]: "proposed" }));
+    } finally {
+      if (updatesCourse) setBlueprintRefreshing(false);
     }
   }
 
@@ -2103,6 +2109,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     dashboard={dashboardSummary}
                     disabled={sending}
                     mode={blueprintMode}
+                    refreshing={blueprintRefreshing}
                     onAddConcept={createBlueprintConcept}
                     onAddTopic={createBlueprintTopic}
                     onAskDirector={(node) => {
@@ -4142,6 +4149,7 @@ function BlueprintWorkspace({
   dashboard,
   disabled,
   mode,
+  refreshing,
   onAddConcept,
   onAddTopic,
   onAskDirector,
@@ -4177,6 +4185,7 @@ function BlueprintWorkspace({
   dashboard: DashboardSummary | null;
   disabled: boolean;
   mode: BlueprintMode;
+  refreshing: boolean;
   onAddConcept: (draft: {
     name: string;
     description: string;
@@ -4250,6 +4259,7 @@ function BlueprintWorkspace({
   const settledViewportKeyRef = useRef<string | null>(null);
   const [presentedLiveFlow, setPresentedLiveFlow] = useState<BlueprintFlowPresentation | null>(null);
   const [neighborhoodMotionActive, setNeighborhoodMotionActive] = useState(false);
+  const [mutationTransitionPending, setMutationTransitionPending] = useState(false);
   const [enabledRelationships, setEnabledRelationships] = useState<Set<BlueprintEdgeKind>>(
     () => new Set(coreBlueprintEdgeKinds),
   );
@@ -4356,15 +4366,25 @@ function BlueprintWorkspace({
     && presentedLiveFlow.contextKey !== viewportContextKey
     && (presentedLiveFlow.connectionFocused || connectionFocusLogicalId),
   );
+  const isLiveLayoutRefresh = Boolean(
+    mode === "live"
+    && presentedLiveFlow
+    && !viewportReady
+    && !isNeighborhoodTransition,
+  );
+  const mapUpdating = refreshing || mutationTransitionPending;
   const graphVisible = viewportReady || Boolean(
     mode === "live"
     && presentedLiveFlow
-    && (isNeighborhoodTransition || neighborhoodMotionActive),
+    && (isNeighborhoodTransition || isLiveLayoutRefresh || neighborhoodMotionActive),
   );
-  const renderedFlowNodes = mode === "live" && isNeighborhoodTransition && presentedLiveFlow
+  const retainsPresentedLiveFlow = mode === "live"
+    && presentedLiveFlow
+    && (isNeighborhoodTransition || isLiveLayoutRefresh);
+  const renderedFlowNodes = retainsPresentedLiveFlow
     ? presentedLiveFlow.nodes
     : flow.nodes;
-  const renderedFlowEdges = mode === "live" && isNeighborhoodTransition && presentedLiveFlow
+  const renderedFlowEdges = retainsPresentedLiveFlow
     ? presentedLiveFlow.edges
     : flow.edges;
   const latestLiveFlowTarget = useRef<{
@@ -4415,6 +4435,20 @@ function BlueprintWorkspace({
   const cleanupAnchor = cleanupAnchorLogicalId
     ? blueprint?.nodes.find((node) => node.logical_id === cleanupAnchorLogicalId) ?? null
     : null;
+
+  useEffect(() => {
+    if (refreshing) {
+      setMutationTransitionPending(true);
+      return;
+    }
+    if (mutationTransitionPending && viewportReady) {
+      setMutationTransitionPending(false);
+    }
+  }, [mutationTransitionPending, refreshing, viewportReady]);
+
+  useEffect(() => {
+    if (mode !== "live") setMutationTransitionPending(false);
+  }, [mode]);
 
   useEffect(() => {
     if (selectedLogicalId && !blueprint?.nodes.some((node) => node.logical_id === selectedLogicalId)) {
@@ -4515,17 +4549,31 @@ function BlueprintWorkspace({
         1,
         blueprintFitPadding,
       );
+      const target = latestLiveFlowTarget.current;
+      const nextPresentation = mode === "live" && target?.fitKey === viewportFitKey
+        ? {
+          connectionFocused: target.connectionFocused,
+          contextKey: target.contextKey,
+          edges: target.edges,
+          nodes: target.nodes,
+        }
+        : null;
+      const retainingPreviousMap = Boolean(
+        mode === "live"
+        && presentedLiveFlowRef.current
+        && !isNeighborhoodTransition,
+      );
+      // During a server-backed Live update, the last complete map remains
+      // painted. Commit the newly arranged nodes before changing the viewport
+      // so the old graph never jumps to the new graph's camera position.
+      if (retainingPreviousMap && nextPresentation) {
+        flushSync(() => presentLiveFlow(nextPresentation));
+      }
       void flowInstance.setViewport(targetViewport, { duration: 0 });
       frame = window.requestAnimationFrame(() => {
         if (cancelled) return;
-        const target = latestLiveFlowTarget.current;
-        if (mode === "live" && target?.fitKey === viewportFitKey) {
-          presentLiveFlow({
-            connectionFocused: target.connectionFocused,
-            contextKey: target.contextKey,
-            edges: target.edges,
-            nodes: target.nodes,
-          });
+        if (!retainingPreviousMap && nextPresentation) {
+          presentLiveFlow(nextPresentation);
         }
         settleViewport(viewportFitKey);
       });
@@ -4946,7 +4994,10 @@ function BlueprintWorkspace({
             ? neighborhoodMotionActive
               ? "morphing"
               : "preparing"
-            : "idle"}
+            : mapUpdating
+              ? "updating"
+              : "idle"}
+          data-update-state={mapUpdating ? "updating" : "idle"}
           data-viewport-state={graphVisible ? "ready" : "settling"}
           ref={blueprintCanvasRef}
         >
@@ -5281,6 +5332,25 @@ function BlueprintWorkspace({
           </div>
 
           <MotionConfig reducedMotion="user">
+              <AnimatePresence initial={false}>
+                {mapUpdating && graphVisible ? (
+                  <motion.div
+                    animate={{ opacity: 1, y: 0 }}
+                    aria-live="polite"
+                    className={styles.blueprintMapUpdating}
+                    exit={{ opacity: 0, y: -5 }}
+                    initial={reducedMotion ? false : { opacity: 0, y: -5 }}
+                    key="blueprint-map-updating"
+                    role="status"
+                    transition={reducedMotion
+                      ? { duration: 0 }
+                      : { duration: 0.2, ease: interfaceEase }}
+                  >
+                    <LoaderCircle className={styles.spin} />
+                    <span>Updating the course map…</span>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
               {!graphVisible ? (
                   <motion.div
                     animate={{ opacity: 1 }}
@@ -5297,7 +5367,7 @@ function BlueprintWorkspace({
                 ) : null}
 
               <motion.div
-                animate={{ opacity: graphVisible ? 1 : 0 }}
+                animate={{ opacity: graphVisible ? (mapUpdating ? 0.82 : 1) : 0 }}
                 aria-hidden={!graphVisible}
                 className={styles.blueprintGraphStage}
                 data-motion-layer="current"

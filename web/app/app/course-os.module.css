@@ -1783,6 +1783,8 @@ button.routeChip:hover,button.routeChip[aria-expanded="true"] { background: #fff
 .blueprintGraphStage { inset: 0; pointer-events: none; position: absolute; }
 .blueprintCanvas[data-viewport-state="ready"] .blueprintGraphStage { pointer-events: auto; }
 .blueprintGraphStage > :global(.react-flow) { height: 100%; width: 100%; }
+.blueprintMapUpdating { align-items: center; background: #fff; border: 1px solid #d8d4cc; border-radius: 999px; bottom: 22px; box-shadow: 0 8px 26px rgb(31 32 36 / 12%); color: #56545b; display: flex; font-size: 10px; font-weight: 720; gap: 7px; left: 50%; padding: 9px 13px; pointer-events: none; position: absolute; transform: translateX(-50%); z-index: 13; }
+.blueprintMapUpdating svg { height: 14px; width: 14px; }
 .blueprintLayoutLoading { align-items: center; color: #68666d; display: flex; font-size: 12px; gap: 9px; left: 50%; pointer-events: none; position: absolute; top: 50%; transform: translate(-50%, -50%); z-index: 6; }
 .blueprintLayoutLoading svg { height: 17px; width: 17px; }
 .blueprintTypedNode { background: #f0eee9; border: 1px solid #cfcac1; border-radius: 11px; box-shadow: 0 8px 22px rgb(34 35 39 / 7%); box-sizing: border-box; color: #202126; display: grid; gap: 8px; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; padding: 12px 13px 11px; position: relative; text-align: left; transition: border-color 120ms ease, box-shadow 120ms ease, opacity 120ms ease, transform 120ms ease; width: 100%; }

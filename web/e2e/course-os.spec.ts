@@ -80,10 +80,22 @@ function courseFlowWithUnitCount(
   };
 }
 
-async function mockCourseOS(page: Page) {
+async function mockCourseOS(
+  page: Page,
+  options: { directorProposal?: boolean; proposalResolveDelayMs?: number } = {},
+) {
   await setInstructorSession(page);
   let deleted = false;
-  const courseMessages = [{
+  let directorProposalAccepted = false;
+  let blueprintRequests = 0;
+  const proposalDecisions: string[] = [];
+  const courseMessages: Array<{
+    id: string;
+    role: string;
+    content: string;
+    blocks: Array<Record<string, unknown>>;
+    created_at: string;
+  }> = [{
     id: "55555555-5555-4555-8555-555555555555",
     role: "manifold",
     content: "Your editable private draft is ready.",
@@ -176,6 +188,40 @@ async function mockCourseOS(page: Page) {
     }
     if (path.endsWith("/messages/stream") && route.request().method() === "POST") {
       const body = route.request().postDataJSON() as { content: string };
+      const directorMessage = options.directorProposal
+        ? {
+          id: "streamed-director-proposal",
+          role: "manifold",
+          content: "I prepared one private structural change. Review it before it changes the course.",
+          blocks: [{
+            type: "proposal",
+            proposal_id: "director-proposal-1",
+            status: "proposed",
+            proposal_type: "remove_relationship",
+            artifact_type: "blueprint_relationship_remove",
+            logical_artifact_id: null,
+            before_state: {
+              relationship_type: "contains",
+              source_logical_id: "topic-logical",
+              target_logical_id: "concept-logical",
+            },
+            proposed_state: {
+              relationship_type: "contains",
+              source_logical_id: "topic-logical",
+              target_logical_id: "concept-logical",
+              summary: "Remove Vector addition from Net force.",
+            },
+            rationale: "The instructor requested this exact structural change.",
+          }],
+          created_at: "2026-07-21T00:01:01Z",
+        }
+        : {
+          id: "streamed-director-message",
+          role: "manifold",
+          content: "### Course update\n\n- **Vector addition** is covered.\n- One review decision remains.",
+          blocks: [],
+          created_at: "2026-07-21T00:01:01Z",
+        };
       courseMessages.push(
         {
           id: "streamed-instructor-message",
@@ -184,25 +230,28 @@ async function mockCourseOS(page: Page) {
           blocks: [],
           created_at: "2026-07-21T00:01:00Z",
         },
-        {
-          id: "streamed-director-message",
-          role: "manifold",
-          content: "### Course update\n\n- **Vector addition** is covered.\n- One review decision remains.",
-          blocks: [],
-          created_at: "2026-07-21T00:01:01Z",
-        },
+        directorMessage,
       );
       await route.fulfill({
-        body: [
-          'event: status\ndata: {"message":"Inspecting the Blueprint…"}',
-          'event: delta\ndata: {"content":"### Course update\\n\\n"}',
-          'event: delta\ndata: {"content":"- **Vector addition** is covered.\\n- One review decision remains."}',
-          `event: done\ndata: ${JSON.stringify({
-            message: courseMessages.at(-1),
-            proposal: null,
-          })}`,
-          "",
-        ].join("\n\n"),
+        body: options.directorProposal
+          ? [
+            'event: status\ndata: {"message":"Inspecting the Blueprint…"}',
+            `event: done\ndata: ${JSON.stringify({
+              message: directorMessage,
+              proposal: directorMessage.blocks[0],
+            })}`,
+            "",
+          ].join("\n\n")
+          : [
+            'event: status\ndata: {"message":"Inspecting the Blueprint…"}',
+            'event: delta\ndata: {"content":"### Course update\\n\\n"}',
+            'event: delta\ndata: {"content":"- **Vector addition** is covered.\\n- One review decision remains."}',
+            `event: done\ndata: ${JSON.stringify({
+              message: directorMessage,
+              proposal: null,
+            })}`,
+            "",
+          ].join("\n\n"),
         contentType: "text/event-stream",
       });
       return;
@@ -226,6 +275,7 @@ async function mockCourseOS(page: Page) {
       return;
     }
     if (path.endsWith("/blueprint")) {
+      blueprintRequests += 1;
       await route.fulfill({
         json: {
           course_id: course.id,
@@ -235,8 +285,29 @@ async function mockCourseOS(page: Page) {
             { id: "topic-1", logical_id: "topic-logical", kind: "topic", title: "Net force", status: "accepted", parent_id: null, metadata: { video_id: lectureVideoId } },
             { id: "concept-1", logical_id: "concept-logical", kind: "concept", title: "Vector addition", status: "accepted", parent_id: "topic-1", metadata: { sequence_rank: 1 } },
           ],
-          edges: [{ id: "contains-1", source_id: "topic-1", target_id: "concept-1", kind: "contains", status: "accepted" }],
+          edges: directorProposalAccepted
+            ? []
+            : [{ id: "contains-1", source_id: "topic-1", target_id: "concept-1", kind: "contains", status: "accepted" }],
           uncovered_concept_ids: ["concept-1"],
+        },
+      });
+      return;
+    }
+    if (path.endsWith("/proposals/director-proposal-1/resolve")) {
+      const body = route.request().postDataJSON() as { decision: string };
+      proposalDecisions.push(body.decision);
+      if (options.proposalResolveDelayMs) {
+        await new Promise((resolve) => setTimeout(resolve, options.proposalResolveDelayMs));
+      }
+      directorProposalAccepted = body.decision !== "dismissed";
+      await route.fulfill({
+        json: {
+          status: body.decision,
+          proposal_type: "remove_relationship",
+          artifact_type: "blueprint_relationship_remove",
+          proposed_state: {
+            summary: "Remove Vector addition from Net force.",
+          },
         },
       });
       return;
@@ -282,7 +353,11 @@ async function mockCourseOS(page: Page) {
     }
     await route.fulfill({ json: {} });
   });
-  return { deleted: () => deleted };
+  return {
+    blueprintRequests: () => blueprintRequests,
+    deleted: () => deleted,
+    proposalDecisions,
+  };
 }
 
 async function mockPublishedCourseOS(page: Page, flowUnitCount = 1) {
@@ -1027,6 +1102,96 @@ test("course studio exposes Blueprint, review decisions, and a mobile-safe layou
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
     .analyze();
   expect(results.violations).toEqual([]);
+});
+
+test("Course Director proposals preserve the Live map before and during acceptance", async ({ page }) => {
+  const state = await mockCourseOS(page, {
+    directorProposal: true,
+    proposalResolveDelayMs: 180,
+  });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto(`/app/courses/${course.id}`);
+  await page.getByRole("button", { name: "Open Blueprint for Forces lecture" }).click();
+
+  const blueprintCanvas = page.locator("[data-viewport-state]");
+  const liveMode = page.getByRole("button", { name: "Live", exact: true });
+  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
+  await expect(blueprintCanvas.locator(".react-flow__node")).toHaveCount(2);
+  await expect(liveMode).toHaveAttribute("aria-pressed", "true");
+  const blueprintRequestsBeforeProposal = state.blueprintRequests();
+
+  await page.getByRole("button", { name: "Open Course Director" }).click();
+  await page.getByLabel("Message Course Director").fill(
+    "Remove Vector addition from the Net force topic.",
+  );
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.getByText("Remove Vector addition from Net force.")).toBeVisible();
+
+  // Preparing a proposal is not a graph mutation. It must not trigger another
+  // Blueprint fetch, hide the current nodes, change the camera, or enter Design.
+  expect(state.blueprintRequests()).toBe(blueprintRequestsBeforeProposal);
+  await expect(blueprintCanvas.locator(".react-flow__node")).toHaveCount(2);
+  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
+  await expect(blueprintCanvas).toHaveAttribute("data-update-state", "idle");
+  await expect(liveMode).toHaveAttribute("aria-pressed", "true");
+
+  await blueprintCanvas.evaluate((canvas) => {
+    const trace = {
+      minNodeCount: canvas.querySelectorAll(".react-flow__node").length,
+      minStageOpacity: 1,
+      frame: 0,
+    };
+    const sample = () => {
+      trace.minNodeCount = Math.min(
+        trace.minNodeCount,
+        canvas.querySelectorAll(".react-flow__node").length,
+      );
+      const stage = canvas.querySelector<HTMLElement>('[data-motion-layer="current"]');
+      if (stage) {
+        trace.minStageOpacity = Math.min(
+          trace.minStageOpacity,
+          Number.parseFloat(getComputedStyle(stage).opacity),
+        );
+      }
+      trace.frame = requestAnimationFrame(sample);
+    };
+    const traceWindow = window as Window & {
+      __proposalMapTrace?: typeof trace;
+    };
+    traceWindow.__proposalMapTrace = trace;
+    trace.frame = requestAnimationFrame(sample);
+  });
+
+  await page.getByRole("button", { name: "Accept", exact: true }).click();
+  await expect(blueprintCanvas).toHaveAttribute("data-update-state", "updating");
+  await expect(page.getByText("Updating the course map…")).toBeVisible();
+  await expect(blueprintCanvas.locator(".react-flow__node")).toHaveCount(2);
+
+  await expect(page.getByText("Proposal accepted")).toBeVisible();
+  await expect(blueprintCanvas).toHaveAttribute("data-update-state", "idle");
+  await expect(page.getByText("Updating the course map…")).toHaveCount(0);
+  await expect(blueprintCanvas.locator(".react-flow__node")).toHaveCount(2);
+  await expect(liveMode).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Design", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  expect(state.proposalDecisions).toEqual(["accepted"]);
+
+  const transitionTrace = await page.evaluate(() => {
+    const traceWindow = window as Window & {
+      __proposalMapTrace?: {
+        minNodeCount: number;
+        minStageOpacity: number;
+        frame: number;
+      };
+    };
+    const trace = traceWindow.__proposalMapTrace;
+    if (trace) cancelAnimationFrame(trace.frame);
+    return trace;
+  });
+  expect(transitionTrace?.minNodeCount).toBeGreaterThan(0);
+  expect(transitionTrace?.minStageOpacity).toBeGreaterThanOrEqual(0.8);
 });
 
 test("course deletion requires a separate destructive confirmation", async ({ page }) => {
