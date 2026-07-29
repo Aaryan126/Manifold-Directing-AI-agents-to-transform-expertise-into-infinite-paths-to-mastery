@@ -19,6 +19,7 @@ import {
   orderedGenerationTasks,
   performancePercent,
   reorderBlueprintConcepts,
+  resolveCurrentBlueprintNode,
   resolveBlueprintNodeOverlaps,
   masteryStateForConcept,
   shouldHydrateGenerationRun,
@@ -59,6 +60,31 @@ const course: CourseSummary = {
 };
 
 describe("Course OS presentation", () => {
+  it("resolves a painted artifact to the current revision by stable logical identity", () => {
+    const currentTopic: BlueprintNode = {
+      id: "topic-working",
+      logical_id: "topic-logical",
+      kind: "topic",
+      title: "Current topic",
+      status: "accepted",
+      parent_id: null,
+      metadata: {},
+    };
+    const blueprint: CourseBlueprint = {
+      course_id: "course",
+      revision_id: "working-revision",
+      revision_kind: "working",
+      nodes: [currentTopic],
+      edges: [],
+      uncovered_concept_ids: [],
+    };
+
+    expect(resolveCurrentBlueprintNode(blueprint, {
+      id: "topic-active",
+      logical_id: "topic-logical",
+    })).toBe(currentTopic);
+  });
+
   it("resolves a live Blueprint clip to its cloned working-revision preview", () => {
     const node: BlueprintNode = {
       id: "clip-active",

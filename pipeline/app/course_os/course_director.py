@@ -172,6 +172,10 @@ class OpenAICourseDirector:
                         "For reconnect_relationship, identify the exact existing relationship "
                         "in the previous_* fields and the replacement in the normal relationship "
                         "fields so it remains one atomic review decision. "
+                        "When asked to move a concept between topics, first inspect its current "
+                        "contains relationships. If the destination topic already contains the "
+                        "concept, remove only the old source-topic relationship; never reconnect "
+                        "onto a duplicate relationship. "
                         "For create_topic provide title, summary, start_seconds, end_seconds. "
                         "For create_concept provide name, description, topic_logical_ids, and "
                         "sequence_after_id. For create_question provide topic_logical_id, "
@@ -614,17 +618,41 @@ def _validated_plan(
                 not in relationships
             ):
                 continue
+        operation = candidate.operation
+        relationship_type = candidate.relationship_type
+        normalized_source_id = source_id
+        normalized_target_id = target_id
+        normalized_previous_relationship_type = candidate.previous_relationship_type
+        normalized_previous_source_id = previous_source_id
+        normalized_previous_target_id = previous_target_id
+        if (
+            candidate.operation == "reconnect_relationship"
+            and candidate.relationship_type == "contains"
+            and (candidate.relationship_type, source_id, target_id) in relationships
+            and (
+                candidate.previous_relationship_type,
+                previous_source_id,
+                previous_target_id,
+            ) != (candidate.relationship_type, source_id, target_id)
+        ):
+            operation = "remove_relationship"
+            relationship_type = candidate.previous_relationship_type
+            normalized_source_id = previous_source_id
+            normalized_target_id = previous_target_id
+            normalized_previous_relationship_type = None
+            normalized_previous_source_id = None
+            normalized_previous_target_id = None
         actions.append(
             CourseDirectorAction(
-                operation=candidate.operation,
+                operation=operation,
                 artifact_kind=candidate.artifact_kind,
                 logical_artifact_id=logical_id,
-                relationship_type=candidate.relationship_type,
-                source_logical_id=source_id,
-                target_logical_id=target_id,
-                previous_relationship_type=candidate.previous_relationship_type,
-                previous_source_logical_id=previous_source_id,
-                previous_target_logical_id=previous_target_id,
+                relationship_type=relationship_type,
+                source_logical_id=normalized_source_id,
+                target_logical_id=normalized_target_id,
+                previous_relationship_type=normalized_previous_relationship_type,
+                previous_source_logical_id=normalized_previous_source_id,
+                previous_target_logical_id=normalized_previous_target_id,
                 proposed_state=proposed_state,
                 summary=_clear_director_text(candidate.summary) or "Prepare a private change",
                 rationale=_clear_director_text(candidate.rationale)

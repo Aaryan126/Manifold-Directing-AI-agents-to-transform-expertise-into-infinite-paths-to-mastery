@@ -117,6 +117,7 @@ import {
   shouldHydrateGenerationRun,
   topicLogicalIdsForConcept,
   reorderBlueprintConcepts,
+  resolveCurrentBlueprintNode,
   resolveBlueprintNodeOverlaps,
   visibleBlueprintNodeIds,
   visibleBlueprintEdges,
@@ -5305,7 +5306,10 @@ function BlueprintWorkspace({
                     }
                   }}
                   onNodeClick={(event, node) => {
-                    const selectedNode = blueprint.nodes.find((item) => item.id === node.id);
+                    const selectedNode = resolveCurrentBlueprintNode(
+                      blueprint,
+                      node.data.artifact,
+                    );
                     if (selectedNode && relationshipDraft?.kind) {
                       void chooseRelationshipTarget(selectedNode);
                       return;

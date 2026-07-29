@@ -1313,6 +1313,18 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
     (element) => getComputedStyle(element).transform,
   )).not.toBe(questionFocusTransform);
 
+  const focusedTopicNode = page.getByTestId("rf__node-topic-1");
+  await focusedTopicNode.click();
+  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
+  const topicInspector = page.getByRole("dialog", {
+    name: "Audience composition, expectations, teaching team, and case study introduction artifact inspector",
+  });
+  await expect(topicInspector).toBeVisible();
+  await expect(page.getByRole("button", {
+    name: "Connections · Audience composition, expectations, teaching team, and case study introduction",
+  })).toBeVisible();
+  await expect(blueprintCanvas).toHaveAttribute("data-motion-state", "idle");
+
   await page.locator(".react-flow__pane").click({ position: { x: 8, y: 8 } });
   await expect(blueprintCanvas).toHaveAttribute("data-focus-state", "course");
   await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");

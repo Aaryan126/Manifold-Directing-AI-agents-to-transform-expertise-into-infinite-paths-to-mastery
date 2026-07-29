@@ -178,6 +178,85 @@ def test_director_accepts_a_reviewed_topic_removal_plan() -> None:
     assert plan.actions[0].logical_artifact_id == topic.logical_id
 
 
+def test_director_turns_a_move_to_an_existing_topic_into_old_link_removal() -> None:
+    old_topic = BlueprintNode(
+        id=uuid4(),
+        logical_id=uuid4(),
+        kind="topic",
+        title="Why plan",
+        status="accepted",
+        parent_id=None,
+        metadata={},
+    )
+    destination_topic = BlueprintNode(
+        id=uuid4(),
+        logical_id=uuid4(),
+        kind="topic",
+        title="Core entrepreneurial principles",
+        status="accepted",
+        parent_id=None,
+        metadata={},
+    )
+    concept = BlueprintNode(
+        id=uuid4(),
+        logical_id=uuid4(),
+        kind="concept",
+        title="Value creation and value capture",
+        status="accepted",
+        parent_id=None,
+        metadata={},
+    )
+    blueprint = CourseBlueprint(
+        course_id=uuid4(),
+        revision_id=uuid4(),
+        revision_kind="working",
+        nodes=(old_topic, destination_topic, concept),
+        edges=(
+            BlueprintEdge(
+                id=f"contains:{uuid4()}",
+                source_id=old_topic.id,
+                target_id=concept.id,
+                kind="contains",
+                status="accepted",
+            ),
+            BlueprintEdge(
+                id=f"contains:{uuid4()}",
+                source_id=destination_topic.id,
+                target_id=concept.id,
+                kind="contains",
+                status="accepted",
+            ),
+        ),
+        uncovered_concept_ids=(),
+    )
+    output = _DirectorPlanOutput(
+        summary="Move the concept into Core entrepreneurial principles.",
+        actions=[
+            _DirectorActionOutput(
+                operation="reconnect_relationship",
+                relationship_type="contains",
+                source_logical_id=str(destination_topic.logical_id),
+                target_logical_id=str(concept.logical_id),
+                previous_relationship_type="contains",
+                previous_source_logical_id=str(old_topic.logical_id),
+                previous_target_logical_id=str(concept.logical_id),
+                summary="Move the concept to Core entrepreneurial principles",
+                rationale="The destination better matches the concept.",
+            )
+        ],
+    )
+
+    plan = _validated_plan(output, blueprint)
+
+    assert len(plan.actions) == 1
+    action = plan.actions[0]
+    assert action.operation == "remove_relationship"
+    assert action.relationship_type == "contains"
+    assert action.source_logical_id == old_topic.logical_id
+    assert action.target_logical_id == concept.logical_id
+    assert action.previous_relationship_type is None
+
+
 @pytest.mark.anyio
 async def test_local_director_plans_bounded_rename_against_exact_blueprint_node() -> None:
     blueprint = _blueprint()

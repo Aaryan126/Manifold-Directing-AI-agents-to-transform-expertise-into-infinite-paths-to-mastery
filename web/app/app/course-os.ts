@@ -995,6 +995,17 @@ export function compareBlueprintSequence(left: BlueprintNode, right: BlueprintNo
   return leftRank - rightRank || left.title.localeCompare(right.title);
 }
 
+export function resolveCurrentBlueprintNode(
+  blueprint: CourseBlueprint,
+  renderedNode: Pick<BlueprintNode, "id" | "logical_id">,
+): BlueprintNode | null {
+  return blueprint.nodes.find(
+    (node) => node.logical_id === renderedNode.logical_id,
+  ) ?? blueprint.nodes.find(
+    (node) => node.id === renderedNode.id,
+  ) ?? null;
+}
+
 export function masteryStateForConcept(
   conceptId: string,
   evidence: BlueprintConceptEvidence[],
