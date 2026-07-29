@@ -1720,6 +1720,9 @@ test("Blueprint uses the hierarchy-first detailed graph and atomic proposal work
   }))).toBe(true);
   await expect(conceptNode.locator("article[data-kind='concept']")).toBeVisible();
   await expect(sourceNode.locator("article[data-kind='source']")).toBeVisible();
+  expect(await blueprintCanvas.locator("article[data-kind]").evaluateAll(
+    (nodes) => nodes.every((node) => node.querySelector("header em") == null),
+  )).toBe(true);
   await expect(conceptNode.locator("article[data-kind='concept']")).toHaveCSS("background-color", "rgb(227, 237, 242)");
   await expect(topicNode.locator("article[data-kind='topic']")).toHaveCSS("background-color", "rgb(255, 243, 166)");
   expect(await topicNode.locator("strong").evaluate((title) => (

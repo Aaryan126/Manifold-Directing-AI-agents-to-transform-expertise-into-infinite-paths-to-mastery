@@ -2799,7 +2799,6 @@ function BlueprintArtifactNode({ data }: NodeProps<BlueprintGraphNode>) {
       <header>
         <span>{blueprintKindIcon(artifact.kind)}</span>
         <small>{artifact.kind}</small>
-        <em data-status={artifact.status}>{artifact.status}</em>
       </header>
       <strong title={artifact.title}>{artifact.title}</strong>
       <footer>
@@ -5993,7 +5992,7 @@ function useBlueprintFlow(
           risk,
           selected,
         },
-        ariaLabel: `${node.kind}: ${node.title}. ${node.status}. ${node.kind === "concept" && conceptEvidence?.attempts ? `${Math.round(conceptEvidence.correct_percent ?? 0)} percent correct.` : coverageLabel(node)}`,
+        ariaLabel: `${node.kind}: ${node.title}. ${node.kind === "concept" && conceptEvidence?.attempts ? `${Math.round(conceptEvidence.correct_percent ?? 0)} percent correct.` : coverageLabel(node)}`,
         connectable: false,
         // These dimensions are the same authoritative values supplied to ELK.
         // Supplying them to React Flow prevents a legitimate controlled-node
