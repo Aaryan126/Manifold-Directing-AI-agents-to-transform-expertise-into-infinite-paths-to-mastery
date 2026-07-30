@@ -1378,6 +1378,14 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
     };
     const trace = {
       animationFrame: 0,
+      edgeSamples: [] as Array<{
+        height: number;
+        motionState: string | null;
+        path: string;
+        width: number;
+        x: number;
+        y: number;
+      }>,
       maxReactFlowLayers: canvas.querySelectorAll(".react-flow").length,
       motionStates: [canvas.getAttribute("data-motion-state")],
       nodeTransforms: [] as string[],
@@ -1398,6 +1406,9 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
       );
       trace.sawBlockingLoader ||= hasVisibleBlockingLoader();
       const node = canvas.querySelector('[data-testid="rf__node-question-1"]');
+      const edgePath = canvas.querySelector<SVGGraphicsElement>(
+        '[data-testid="rf__edge-assesses-1"] path.react-flow__edge-path',
+      );
       const viewport = canvas.querySelector(".react-flow__viewport");
       if (viewport) {
         const transform = getComputedStyle(viewport).transform;
@@ -1420,6 +1431,25 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
           || Math.abs(previous.y - position.y) > 0.25
         ) {
           trace.positions.push(position);
+        }
+      }
+      if (edgePath) {
+        const bounds = edgePath.getBBox();
+        const sample = {
+          height: bounds.height,
+          motionState: canvas.getAttribute("data-motion-state"),
+          path: edgePath.getAttribute("d") ?? "",
+          width: bounds.width,
+          x: bounds.x,
+          y: bounds.y,
+        };
+        const previous = trace.edgeSamples.at(-1);
+        if (
+          !previous
+          || previous.motionState !== sample.motionState
+          || previous.path !== sample.path
+        ) {
+          trace.edgeSamples.push(sample);
         }
       }
       trace.animationFrame = window.requestAnimationFrame(samplePosition);
@@ -1457,6 +1487,14 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
     const traceWindow = window as Window & {
       __blueprintMotionTrace?: {
         animationFrame: number;
+        edgeSamples: Array<{
+          height: number;
+          motionState: string | null;
+          path: string;
+          width: number;
+          x: number;
+          y: number;
+        }>;
         maxReactFlowLayers: number;
         motionStates: Array<string | null>;
         nodeTransforms: string[];
@@ -1478,6 +1516,23 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
   expect(motionTrace?.positions.length).toBeGreaterThanOrEqual(4);
   expect(motionTrace?.nodeTransforms.length).toBeGreaterThanOrEqual(4);
   expect(motionTrace?.transforms.length).toBeGreaterThanOrEqual(4);
+  const edgeSamples = motionTrace?.edgeSamples ?? [];
+  const firstSettledEdgeIndex = edgeSamples.findIndex((sample, index) => (
+    sample.motionState === "idle"
+    && edgeSamples.slice(0, index).some((candidate) => candidate.motionState === "morphing")
+  ));
+  expect(firstSettledEdgeIndex).toBeGreaterThan(0);
+  const lastMovingEdge = [...edgeSamples.slice(0, firstSettledEdgeIndex)]
+    .reverse()
+    .find((sample) => sample.motionState === "morphing");
+  const firstSettledEdge = edgeSamples[firstSettledEdgeIndex];
+  expect(lastMovingEdge).toBeDefined();
+  expect(Math.hypot(
+    firstSettledEdge!.x - lastMovingEdge!.x,
+    firstSettledEdge!.y - lastMovingEdge!.y,
+  )).toBeLessThan(2.5);
+  expect(Math.abs(firstSettledEdge!.width - lastMovingEdge!.width)).toBeLessThan(2.5);
+  expect(Math.abs(firstSettledEdge!.height - lastMovingEdge!.height)).toBeLessThan(2.5);
   const focalPath = motionTrace?.positions ?? [];
   const pathStart = focalPath[0]!;
   const pathEnd = focalPath.at(-1)!;

@@ -39,6 +39,7 @@ Status values to use: `Not started`, `In progress`, `Automated tests passing / a
 
 *(Record finalized architecture choices here with a one-line rationale and date. This section is the record `AGENTS.md` uses to keep `prd.md` Section 8 in sync if the real stack diverges from the recommendation.)*
 
+- 2026-07-30: Blueprint Live uses the same React Flow port-aware orthogonal relationship route before, throughout, and after direct-neighborhood springs. ELK bend-point routes remain available in static Design authoring, but Live no longer restores them on the settlement frame; this removes the small final relationship-line jump on both focus and restoration without changing relationship semantics.
 - 2026-07-30: Competition rehearsal uses the real learner planning/routing APIs from a narrowly scoped reset command. The command requires an exact course UUID and concept name, is read-only unless `--apply` is supplied, clears only one selected learner's records for that course, and stops the new session at its first reviewed question. The learner remains explicitly `is_simulated`; no runtime answer, route, or evidence card is fabricated for the recording.
 - 2026-07-30: Learner adaptation is presented as an explicit evidence → reason → next-step decision. The session rail names the actual action and artifact instead of repeating concept names, while Mastery Map defaults to a rendered three-to-five-node current neighborhood and exposes a deliberate whole-course toggle.
 - 2026-07-30: Supersedes the earlier first-topic camera prototype: generation opens directly into Blueprint Live with no banner, frames the source/topic backbone, then performs one brief session-scoped semantic reveal—topics, concepts, teaching moments/checks—without replacing graph topology. The reveal is skippable, reduced-motion users receive the final state immediately, and the existing fit-all control remains the explicit whole-lecture overview.
@@ -908,6 +909,10 @@ Brief Blueprint reveal prototype verification passed on 2026-07-30: root `npm ru
 ---
 
 Expanded portfolio-activity seed verification passed on 2026-07-30: the seed script compiles and passes Ruff, reruns successfully, and database aggregation reports 15 enrolled learners, 5 new enrollments in the last seven days, and the exact `[5,8,6,11,9,12,10]` distinct assessment-active learner curve. All added users remain explicitly simulated, the dashboard retains its simulated-evidence label, and the seed still replaces only its labelled attempts.
+
+---
+
+Live relationship-settlement verification passed on 2026-07-30: strict frontend TypeScript and the focused rendered Chromium direct-neighborhood journey pass. The journey samples a retained assessment relationship on every spring frame and proves the route bounding geometry changes by less than 2.5 graph pixels between the last moving frame and the first settled frame, while the existing clicked-node straight-path, marker approach, single-canvas, no-loader, refocus, pane-close, inspector-close, and Design contracts remain green.
 
 ---
 

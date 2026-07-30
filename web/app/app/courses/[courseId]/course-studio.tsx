@@ -2619,6 +2619,16 @@ function blueprintStyleOpacity(
   return fallback;
 }
 
+export function blueprintEdgesWithoutLayoutRoutes(
+  edges: BlueprintGraphEdge[],
+): BlueprintGraphEdge[] {
+  return edges.map((edge) => (
+    edge.data?.points?.length
+      ? { ...edge, data: { ...edge.data, points: null } }
+      : edge
+  ));
+}
+
 function interpolateBlueprintPresentation(
   start: BlueprintFlowPresentation,
   target: BlueprintFlowPresentation,
@@ -4464,6 +4474,10 @@ function BlueprintWorkspace({
       relationshipDraft,
     },
   );
+  const liveFlowEdges = useMemo(
+    () => blueprintEdgesWithoutLayoutRoutes(flow.edges),
+    [flow.edges],
+  );
   const viewportContextKey = `${mode}:${connectionFocusLogicalId
     ? `connections:${connectionFocusLogicalId}`
     : focusTopicLogicalId ?? "course"}:${autoArrangeVersion}`;
@@ -4512,7 +4526,9 @@ function BlueprintWorkspace({
     : flow.nodes;
   const renderedFlowEdges = retainsPresentedLiveFlow
     ? presentedLiveFlow.edges
-    : flow.edges;
+    : mode === "live"
+      ? liveFlowEdges
+      : flow.edges;
   const latestLiveFlowTarget = useRef<{
     connectionFocused: boolean;
     contextKey: string;
@@ -4523,7 +4539,7 @@ function BlueprintWorkspace({
   latestLiveFlowTarget.current = {
     connectionFocused: Boolean(connectionFocusLogicalId),
     contextKey: viewportContextKey,
-    edges: flow.edges,
+    edges: mode === "live" ? liveFlowEdges : flow.edges,
     fitKey: viewportFitKey,
     nodes: flow.nodes,
   };
@@ -4987,7 +5003,9 @@ function BlueprintWorkspace({
     const presentation: BlueprintFlowPresentation = {
       connectionFocused: Boolean(connectionFocusLogicalId),
       contextKey: viewportContextKey,
-      edges: flowInstance?.getEdges() ?? current.edges,
+      edges: blueprintEdgesWithoutLayoutRoutes(
+        flowInstance?.getEdges() ?? current.edges,
+      ),
       nodes: flowInstance?.getNodes() ?? current.nodes,
     };
     presentedLiveFlowRef.current = presentation;
