@@ -30,8 +30,9 @@ licensed business lecture. Let the generation progress communicate the work
 being done.
 
 When generation finishes, let the Blueprint itself make the transformation
-visible. The opening camera should show one readable topic neighborhood; use
-the fit-all control once to reveal the complete lecture.
+visible: the source/topic backbone appears first, concepts unfold beneath it,
+then teaching moments and checks resolve into place. Use the fit-all control
+once after the brief reveal to show the complete lecture.
 
 The spoken point is that this is more than transcription or summarization:
 Manifold identifies topics, concepts, prerequisites, teaching moments, checks

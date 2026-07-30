@@ -2572,6 +2572,7 @@ const blueprintModes: Array<{ id: BlueprintMode; label: string }> = [
   { id: "live", label: "Live" },
   { id: "design", label: "Design" },
 ];
+type BlueprintGuidedRevealPhase = "topics" | "concepts" | "artifacts" | "complete";
 
 type BlueprintGraphNodeData = {
   artifact: BlueprintNode;
@@ -2590,6 +2591,7 @@ type BlueprintGraphEdgeData = {
   kind: BlueprintEdgeKind;
   points: Array<{ x: number; y: number }> | null;
   previewAction?: BlueprintProposalPreview["action"];
+  revealLayer: "topic" | "concept" | "artifact";
   visible: boolean;
 };
 type BlueprintGraphEdge = Edge<BlueprintGraphEdgeData, "blueprintRelation">;
@@ -2729,84 +2731,30 @@ function blueprintPresentationBounds(nodes: BlueprintGraphNode[]) {
   };
 }
 
-export function openingBlueprintNodeIds(
-  nodes: Array<{
-    id: string;
-    kind: BlueprintNode["kind"];
-    sequence_rank: number | null;
-    title: string;
-  }>,
-  edges: Array<{
-    source: string;
-    target: string;
-    kind: BlueprintEdgeKind;
-  }>,
+export function blueprintOverviewNodeIds(
+  nodes: Array<{ id: string; kind: BlueprintNode["kind"] }>,
 ) {
-  if (nodes.length <= 10) return nodes.map((node) => node.id);
-  const firstTopic = [...nodes]
-    .filter((node) => node.kind === "topic")
-    .sort((left, right) => (
-      (left.sequence_rank ?? Number.MAX_SAFE_INTEGER)
-        - (right.sequence_rank ?? Number.MAX_SAFE_INTEGER)
-      || left.title.localeCompare(right.title)
-    ))[0];
-  if (!firstTopic) return nodes.slice(0, 10).map((node) => node.id);
-
-  const visibleIds = new Set([firstTopic.id]);
-  let frontier = new Set([firstTopic.id]);
-  for (let depth = 0; depth < 2; depth += 1) {
-    const next = new Set<string>();
-    for (const edge of edges) {
-      if (
-        frontier.has(edge.source)
-        && ["contains", "teaches", "assesses"].includes(edge.kind)
-      ) {
-        visibleIds.add(edge.target);
-        next.add(edge.target);
-      }
-    }
-    frontier = next;
-  }
-  return visibleIds.size > 1
-    ? [...visibleIds]
-    : nodes.slice(0, 10).map((node) => node.id);
+  const overviewIds = nodes
+    .filter((node) => node.kind === "source" || node.kind === "topic")
+    .map((node) => node.id);
+  return overviewIds.length ? overviewIds : nodes.map((node) => node.id);
 }
 
-function blueprintOpeningNodes(
+function blueprintOverviewViewport(
   nodes: BlueprintGraphNode[],
-  edges: BlueprintGraphEdge[],
-) {
-  const openingIds = new Set(openingBlueprintNodeIds(
-    nodes.map((node) => ({
-      id: node.id,
-      kind: node.data.artifact.kind,
-      sequence_rank: typeof node.data.artifact.metadata.sequence_rank === "number"
-        ? node.data.artifact.metadata.sequence_rank
-        : null,
-      title: node.data.artifact.title,
-    })),
-    edges.map((edge) => ({
-      source: edge.source,
-      target: edge.target,
-      kind: edge.data?.kind ?? "contains",
-    })),
-  ));
-  return nodes.filter((node) => openingIds.has(node.id));
-}
-
-function openingBlueprintViewport(
-  nodes: BlueprintGraphNode[],
-  edges: BlueprintGraphEdge[],
   canvasWidth: number,
   canvasHeight: number,
 ) {
+  const overviewIds = new Set(blueprintOverviewNodeIds(
+    nodes.map((node) => ({ id: node.id, kind: node.data.artifact.kind })),
+  ));
   return getViewportForBounds(
-    blueprintPresentationBounds(blueprintOpeningNodes(nodes, edges)),
+    blueprintPresentationBounds(nodes.filter((node) => overviewIds.has(node.id))),
     canvasWidth,
     canvasHeight,
     0.1,
-    0.92,
-    0.18,
+    0.9,
+    0.12,
   );
 }
 
@@ -3073,7 +3021,10 @@ function BlueprintRelationEdge({
       ? "Proposed reconnection"
       : blueprintRelationshipLabels[kind];
   return (
-    <>
+    <g
+      className={styles.blueprintRevealEdge}
+      data-reveal-layer={data?.revealLayer ?? "artifact"}
+    >
       <BaseEdge id={id} interactionWidth={18} markerEnd={markerEnd} path={path} style={style} />
       {data?.visible ? (
         <text
@@ -3087,7 +3038,7 @@ function BlueprintRelationEdge({
           {relationshipLabel}
         </text>
       ) : null}
-    </>
+    </g>
   );
 }
 
@@ -4424,6 +4375,9 @@ function BlueprintWorkspace({
   const [presentedLiveFlow, setPresentedLiveFlow] = useState<BlueprintFlowPresentation | null>(null);
   const [neighborhoodMotionActive, setNeighborhoodMotionActive] = useState(false);
   const [mutationTransitionPending, setMutationTransitionPending] = useState(false);
+  const [guidedRevealPhase, setGuidedRevealPhase] =
+    useState<BlueprintGuidedRevealPhase>("topics");
+  const guidedRevealRunRef = useRef(0);
   const [enabledRelationships, setEnabledRelationships] = useState<Set<BlueprintEdgeKind>>(
     () => new Set(coreBlueprintEdgeKinds),
   );
@@ -4458,6 +4412,9 @@ function BlueprintWorkspace({
   const blueprint = mode === "live"
     ? (activeBlueprint ?? workingBlueprint)
     : (workingBlueprint ?? activeBlueprint);
+  const guidedRevealIdentity = blueprint
+    ? `${blueprint.revision_id}:${blueprint.nodes.find((node) => node.kind === "source")?.logical_id ?? contextTitle}`
+    : null;
   const selected = blueprint?.nodes.find((node) => node.logical_id === selectedLogicalId) ?? null;
   const selectedClip = selected?.kind === "clip"
     ? findBlueprintClip(selected, clips)
@@ -4620,6 +4577,76 @@ function BlueprintWorkspace({
   }, [mode]);
 
   useEffect(() => {
+    if (!graphVisible || !guidedRevealIdentity) return;
+    const run = guidedRevealRunRef.current + 1;
+    guidedRevealRunRef.current = run;
+    const storageKey = `manifold:blueprint-guided-reveal:${guidedRevealIdentity}`;
+    let alreadyRevealed = false;
+    try {
+      alreadyRevealed = window.sessionStorage.getItem(storageKey) === "complete";
+    } catch {
+      // Session storage is presentation-only; the reveal still works without it.
+    }
+    if (
+      mode !== "live"
+      || focusTopicLogicalId
+      || connectionFocusLogicalId
+      || reducedMotion
+      || alreadyRevealed
+    ) {
+      setGuidedRevealPhase("complete");
+      return;
+    }
+
+    setGuidedRevealPhase("topics");
+    const advance = (
+      phase: BlueprintGuidedRevealPhase,
+      delay: number,
+      complete = false,
+    ) => window.setTimeout(() => {
+      if (guidedRevealRunRef.current !== run) return;
+      setGuidedRevealPhase(phase);
+      if (complete) {
+        try {
+          window.sessionStorage.setItem(storageKey, "complete");
+        } catch {
+          // Presentation state does not affect the course graph.
+        }
+      }
+    }, delay);
+    const timers = [
+      advance("concepts", 560),
+      advance("artifacts", 1180),
+      advance("complete", 1900, true),
+    ];
+    return () => {
+      guidedRevealRunRef.current += 1;
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [
+    connectionFocusLogicalId,
+    focusTopicLogicalId,
+    graphVisible,
+    guidedRevealIdentity,
+    mode,
+    reducedMotion,
+  ]);
+
+  const skipGuidedReveal = useCallback(() => {
+    guidedRevealRunRef.current += 1;
+    setGuidedRevealPhase("complete");
+    if (!guidedRevealIdentity) return;
+    try {
+      window.sessionStorage.setItem(
+        `manifold:blueprint-guided-reveal:${guidedRevealIdentity}`,
+        "complete",
+      );
+    } catch {
+      // Presentation state does not affect the course graph.
+    }
+  }, [guidedRevealIdentity]);
+
+  useEffect(() => {
     if (selectedLogicalId && !blueprint?.nodes.some((node) => node.logical_id === selectedLogicalId)) {
       setSelectedLogicalId(null);
     }
@@ -4712,9 +4739,8 @@ function BlueprintWorkspace({
         return;
       }
       const targetViewport = mode === "live" && !focusTopicLogicalId
-        ? openingBlueprintViewport(
+        ? blueprintOverviewViewport(
           nodesForFit,
-          target?.edges ?? [],
           canvasBounds?.width ?? 1,
           canvasBounds?.height ?? 1,
         )
@@ -4839,9 +4865,8 @@ function BlueprintWorkspace({
         inspectorWidth,
       )
       : mode === "live" && !focusTopicLogicalId
-        ? openingBlueprintViewport(
+        ? blueprintOverviewViewport(
           target.nodes,
-          target.edges,
           canvasBounds.width,
           canvasBounds.height,
         )
@@ -5528,6 +5553,21 @@ function BlueprintWorkspace({
 
           <MotionConfig reducedMotion="user">
               <AnimatePresence initial={false}>
+                {graphVisible && guidedRevealPhase !== "complete" ? (
+                  <motion.button
+                    animate={{ opacity: 1, y: 0 }}
+                    className={styles.blueprintRevealSkip}
+                    exit={{ opacity: 0, y: -4 }}
+                    initial={{ opacity: 0, y: 4 }}
+                    onClick={skipGuidedReveal}
+                    transition={{ duration: 0.16, ease: interfaceEase }}
+                    type="button"
+                  >
+                    Skip reveal
+                  </motion.button>
+                ) : null}
+              </AnimatePresence>
+              <AnimatePresence initial={false}>
                 {mapUpdating && graphVisible ? (
                   <motion.div
                     animate={{ opacity: 1, y: 0 }}
@@ -5565,6 +5605,7 @@ function BlueprintWorkspace({
                 animate={{ opacity: graphVisible ? (mapUpdating ? 0.82 : 1) : 0 }}
                 aria-hidden={!graphVisible}
                 className={styles.blueprintGraphStage}
+                data-guided-reveal={guidedRevealPhase}
                 data-motion-layer="current"
                 initial={false}
                 transition={reducedMotion
@@ -6236,6 +6277,16 @@ function useBlueprintFlow(
       : null;
     return layoutEdges.map((edge) => {
       const visible = visibleEdgeIds.has(edge.id);
+      const sourceKind = visibleNodes.find((node) => node.id === edge.source_id)?.kind;
+      const targetKind = visibleNodes.find((node) => node.id === edge.target_id)?.kind;
+      const revealLayer = sourceKind === "clip"
+        || sourceKind === "question"
+        || targetKind === "clip"
+        || targetKind === "question"
+        ? "artifact"
+        : sourceKind === "concept" || targetKind === "concept"
+          ? "concept"
+          : "topic";
       const previewed = Boolean(
         proposalPreview
         && previewSource
@@ -6268,6 +6319,7 @@ function useBlueprintFlow(
           kind: edge.kind,
           points: edgePoints[edge.id] ?? null,
           previewAction: previewed ? proposalPreview?.action : undefined,
+          revealLayer,
           visible,
         },
         focusable: visible,
@@ -6288,7 +6340,15 @@ function useBlueprintFlow(
         },
       };
     });
-  }, [blueprint?.nodes, edgePoints, layoutEdges, proposalPreview, renderedEdges, selectedId]);
+  }, [
+    blueprint?.nodes,
+    edgePoints,
+    layoutEdges,
+    proposalPreview,
+    renderedEdges,
+    selectedId,
+    visibleNodes,
+  ]);
   const setPosition = useCallback(
     (id: string, position: { x: number; y: number }) => {
       setPositions((current) => ({ ...current, [id]: position }));

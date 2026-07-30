@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  openingBlueprintNodeIds,
+  blueprintOverviewNodeIds,
   pendingBlueprintProposalPreview,
 } from "../app/app/courses/[courseId]/course-studio";
 import {
@@ -36,24 +36,20 @@ function step(
 }
 
 describe("competition demo experience", () => {
-  it("opens a large Blueprint on the first topic neighborhood", () => {
+  it("frames the source and complete topic backbone before revealing detail", () => {
     const nodes = [
-      { id: "topic-2", kind: "topic" as const, sequence_rank: 1, title: "Second" },
-      { id: "topic-1", kind: "topic" as const, sequence_rank: 0, title: "First" },
-      { id: "concept-1", kind: "concept" as const, sequence_rank: 0, title: "Concept" },
-      { id: "clip-1", kind: "clip" as const, sequence_rank: 0, title: "Clip" },
-      ...Array.from({ length: 8 }, (_, index) => ({
-        id: `other-${index}`,
-        kind: "concept" as const,
-        sequence_rank: index + 2,
-        title: `Other ${index}`,
-      })),
+      { id: "source", kind: "source" as const },
+      { id: "topic-2", kind: "topic" as const },
+      { id: "topic-1", kind: "topic" as const },
+      { id: "concept-1", kind: "concept" as const },
+      { id: "clip-1", kind: "clip" as const },
+      { id: "question-1", kind: "question" as const },
     ];
-    expect(openingBlueprintNodeIds(nodes, [
-      { source: "topic-1", target: "concept-1", kind: "contains" },
-      { source: "concept-1", target: "clip-1", kind: "teaches" },
-      { source: "topic-2", target: "other-0", kind: "contains" },
-    ])).toEqual(["topic-1", "concept-1", "clip-1"]);
+    expect(blueprintOverviewNodeIds(nodes)).toEqual([
+      "source",
+      "topic-2",
+      "topic-1",
+    ]);
   });
 
   it("derives the exact pending relationship removal without changing the graph", () => {

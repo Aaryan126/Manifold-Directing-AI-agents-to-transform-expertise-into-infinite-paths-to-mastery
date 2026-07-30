@@ -1104,6 +1104,48 @@ test("course studio exposes Blueprint, review decisions, and a mobile-safe layou
   expect(results.violations).toEqual([]);
 });
 
+test("Blueprint first opening reveals topics, concepts, then teaching artifacts", async ({ page }) => {
+  const { published } = await mockPublishedCourseOS(page);
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto(`/app/courses/${published.id}`);
+  await page.getByText("Forces lecture", { exact: true }).click();
+
+  const stage = page.locator('[data-motion-layer="current"]');
+  const concept = stage.locator('[data-kind="concept"]').first();
+  const artifact = stage.locator('[data-kind="clip"]').first();
+  await expect(stage).toHaveAttribute("data-guided-reveal", "topics");
+  await expect(concept).toHaveCSS("opacity", "0");
+  await expect(artifact).toHaveCSS("opacity", "0");
+
+  await expect(stage).toHaveAttribute("data-guided-reveal", "concepts");
+  await expect(concept).toHaveCSS("opacity", "1");
+  await expect(artifact).toHaveCSS("opacity", "0");
+
+  await expect(stage).toHaveAttribute("data-guided-reveal", "artifacts");
+  await expect(artifact).toHaveCSS("opacity", "1");
+  await expect(stage).toHaveAttribute("data-guided-reveal", "complete");
+  await expect(page.getByRole("button", { name: "Skip reveal" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Back to Course Flow" }).click();
+  await page.getByText("Forces lecture", { exact: true }).click();
+  await expect(stage).toHaveAttribute("data-guided-reveal", "complete");
+  await expect(page.getByRole("button", { name: "Skip reveal" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Back to Course Flow" }).click();
+  await page.evaluate(() => window.sessionStorage.clear());
+  await page.getByText("Forces lecture", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "Skip reveal" })).toBeVisible();
+  await page.getByRole("button", { name: "Skip reveal" }).click();
+  await expect(stage).toHaveAttribute("data-guided-reveal", "complete");
+
+  await page.getByRole("button", { name: "Back to Course Flow" }).click();
+  await page.evaluate(() => window.sessionStorage.clear());
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.getByText("Forces lecture", { exact: true }).click();
+  await expect(stage).toHaveAttribute("data-guided-reveal", "complete");
+  await expect(page.getByRole("button", { name: "Skip reveal" })).toHaveCount(0);
+});
+
 test("Course Director proposals preserve the Live map before and during acceptance", async ({ page }) => {
   const state = await mockCourseOS(page, {
     directorProposal: true,
@@ -1285,6 +1327,12 @@ test("Live Blueprint focuses direct connections and restores the whole lecture",
   await expect(page.getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".react-flow__node")).toHaveCount(6);
   await expect(page.locator('[class*="blueprintLayoutLoading"]')).toHaveCount(0);
+  await expect(page.locator('[data-motion-layer="current"]')).toHaveAttribute(
+    "data-guided-reveal",
+    "complete",
+  );
+  await page.getByRole("button", { name: "Fit whole lecture in view" }).click();
+  await page.waitForTimeout(220);
 
   const conceptNode = page.getByTestId("rf__node-concept-1");
   const clipNode = page.getByTestId("rf__node-clip-1");
