@@ -81,7 +81,8 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
               body: "What makes a vector different from a scalar?",
               type: "short_answer",
               choices: [],
-              confidence_prompt: "How confident are you?",
+              confidence_prompt:
+                "How confident are you that you can identify the main purpose of business planning as presented in the reviewed material?",
             },
           ],
           resources: [
@@ -323,7 +324,9 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
 
   await expect(page.locator(".lucide-sparkles")).toHaveCount(0);
   await page.getByRole("button", { name: "Open Learning Assistant" }).click();
-  const assistant = page.getByLabel("Learning Assistant");
+  const assistant = page.getByRole("complementary", {
+    name: "Learning Assistant",
+  });
   const closeAssistant = page.getByRole("button", { name: "Close Learning Assistant" });
   await expect(closeAssistant).toBeFocused();
   await page.keyboard.press("Escape");
@@ -336,6 +339,24 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
   await expect(
     assistant.getByText(/Welcome back. You’re currently working on Vector direction/),
   ).toBeVisible();
+  const assistantBounds = await assistant.boundingBox();
+  const assistantMessageListBounds = await assistant
+    .locator("[class*='guideMessageList']")
+    .boundingBox();
+  const assistantComposerBounds = await assistant
+    .locator("[class*='guideComposer']")
+    .boundingBox();
+  expect(assistantBounds).not.toBeNull();
+  expect(assistantMessageListBounds).not.toBeNull();
+  expect(assistantComposerBounds).not.toBeNull();
+  expect(assistantComposerBounds!.height).toBeLessThan(130);
+  expect(assistantComposerBounds!.y).toBeGreaterThanOrEqual(
+    assistantMessageListBounds!.y + assistantMessageListBounds!.height - 4,
+  );
+  expect(
+    assistantBounds!.y + assistantBounds!.height
+      - (assistantComposerBounds!.y + assistantComposerBounds!.height),
+  ).toBeLessThanOrEqual(22);
   await expect(page.locator('[data-motion-scope="page-enter"]')).toHaveCSS("opacity", "1");
   await expect(assistant.getByText("Learning Guide", { exact: false })).toHaveCount(0);
   await page
@@ -384,10 +405,26 @@ test("agentic learner loop plans, acts on evidence, adapts, and requests help", 
       name: "What makes a vector different from a scalar?",
     }),
   ).toBeVisible();
+  const confidenceButtons = page.locator("[class*='confidenceOptions'] button");
+  await expect(confidenceButtons).toHaveCount(4);
+  const confidenceButtonBounds = await confidenceButtons.evaluateAll((buttons) =>
+    buttons.map((button) => {
+      const bounds = button.getBoundingClientRect();
+      return { top: bounds.top, bottom: bounds.bottom };
+    }),
+  );
+  expect(
+    Math.max(...confidenceButtonBounds.map((bounds) => bounds.top))
+      - Math.min(...confidenceButtonBounds.map((bounds) => bounds.top)),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.max(...confidenceButtonBounds.map((bounds) => bounds.bottom))
+      - Math.min(...confidenceButtonBounds.map((bounds) => bounds.bottom)),
+  ).toBeLessThanOrEqual(1);
   await page.getByLabel("Your answer").fill("It has magnitude");
   await page.getByRole("button", { name: "Unsure" }).click();
   await page.getByRole("button", { name: "Submit answer" }).click();
-  await expect(page.getByText("Your plan adjusted")).toBeVisible();
+  await expect(page.getByText("Your path changed")).toBeVisible();
   await expect(
     page.getByRole("status").getByText(
       "The answer missed direction, so a reviewed recovery clip is next.",

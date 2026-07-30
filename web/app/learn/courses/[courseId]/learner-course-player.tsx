@@ -1733,22 +1733,24 @@ function AnswerFields({
       )}
       <div className={styles.confidence}>
         <span>{confidencePrompt}</span>
-        {[
-          [1, "Guessing"],
-          [2, "Unsure"],
-          [3, "Fairly sure"],
-          [4, "Confident"],
-        ].map(([value, label]) => (
-          <button
-            aria-pressed={confidence === value}
-            disabled={busy}
-            key={value}
-            onClick={() => onConfidence(value as number)}
-            type="button"
-          >
-            {label}
-          </button>
-        ))}
+        <div className={styles.confidenceOptions}>
+          {[
+            [1, "Guessing"],
+            [2, "Unsure"],
+            [3, "Fairly sure"],
+            [4, "Confident"],
+          ].map(([value, label]) => (
+            <button
+              aria-pressed={confidence === value}
+              disabled={busy}
+              key={value}
+              onClick={() => onConfidence(value as number)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
     </>
   );
