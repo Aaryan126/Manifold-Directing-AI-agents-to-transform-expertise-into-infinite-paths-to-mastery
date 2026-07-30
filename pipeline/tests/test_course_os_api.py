@@ -141,6 +141,7 @@ def test_teacher_dashboard_returns_empty_state_metrics() -> None:
             "active_learners": 0,
             "new_learners": 0,
             "activity_history": [],
+            "activity_is_simulated": False,
             "course_radar": [],
         }
         service.dashboard.assert_awaited_once_with(instructor_id)

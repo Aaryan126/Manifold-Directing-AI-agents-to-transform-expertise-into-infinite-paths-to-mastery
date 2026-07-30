@@ -213,13 +213,6 @@ type DirectorStream = {
   content: string;
   status: string;
 };
-type GenerationCompleteSummary = {
-  lectureCount: number;
-  topicCount: number;
-  conceptCount: number;
-  teachingMomentCount: number;
-  checkCount: number;
-};
 type BlueprintProposalPreview = {
   action: "remove" | "reconnect";
   kind: BlueprintEdgeKind;
@@ -280,9 +273,6 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   const [blueprintUndoEntries, setBlueprintUndoEntries] = useState<BlueprintUndoEntry[]>([]);
   const [blueprintUndoing, setBlueprintUndoing] = useState(false);
   const [blueprintRefreshing, setBlueprintRefreshing] = useState(false);
-  const [generationCompleteSummary, setGenerationCompleteSummary] =
-    useState<GenerationCompleteSummary | null>(null);
-  const summarizedGenerationRunRef = useRef<string | null>(null);
 
   const isBuilding = Boolean(
     (run && ["queued", "running"].includes(run.status))
@@ -518,39 +508,6 @@ export function CourseStudio({ courseId }: { courseId: string }) {
             setLectureIntakeOpen(false);
             setSourceLabel(null);
             setCanvasView("blueprint");
-            if (summarizedGenerationRunRef.current !== nextRun.id) {
-              summarizedGenerationRunRef.current = nextRun.id;
-              const [nextBlueprint, nextAssessments] = await Promise.all([
-                request<CourseBlueprint>(
-                  `/courses/${courseId}/blueprint?revision=working`,
-                  identity,
-                ),
-                request<AssessmentWorkspace>(
-                  `/courses/${courseId}/assessment-workspace`,
-                  identity,
-                ),
-              ]);
-              const lectureBlueprint = filterBlueprintForLecture(
-                nextBlueprint,
-                generatedVideoId,
-              );
-              const lectureAssessments = filterAssessmentWorkspaceForBlueprint(
-                nextAssessments,
-                lectureBlueprint,
-                generatedVideoId,
-              );
-              setGenerationCompleteSummary({
-                lectureCount: 1,
-                topicCount: lectureBlueprint?.nodes.filter(
-                  (node) => node.kind === "topic",
-                ).length ?? 0,
-                conceptCount: lectureBlueprint?.nodes.filter(
-                  (node) => node.kind === "concept",
-                ).length ?? 0,
-                teachingMomentCount: lectureAssessments?.clips.length ?? 0,
-                checkCount: lectureAssessments?.questions.length ?? 0,
-              });
-            }
           }
         })
         .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not refresh generation."));
@@ -2163,9 +2120,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     contextTitle={focusedLectureUnit?.title ?? "Cross-lecture concept map"}
                     dashboard={dashboardSummary}
                     disabled={sending}
-                    generationSummary={generationCompleteSummary}
                     mode={blueprintMode}
-                    onDismissGenerationSummary={() => setGenerationCompleteSummary(null)}
                     refreshing={blueprintRefreshing}
                     onAddConcept={createBlueprintConcept}
                     onAddTopic={createBlueprintTopic}
@@ -2551,16 +2506,6 @@ function filterAssessmentWorkspaceForBlueprint(
   };
 }
 
-export function generationCompleteSentence(summary: GenerationCompleteSummary) {
-  const noun = (count: number, singular: string, plural = `${singular}s`) =>
-    `${count} ${count === 1 ? singular : plural}`;
-  return `${noun(summary.lectureCount, "lecture")} became `
-    + `${noun(summary.topicCount, "topic")}, `
-    + `${noun(summary.conceptCount, "concept")}, `
-    + `${noun(summary.teachingMomentCount, "teaching moment")} and `
-    + `${noun(summary.checkCount, "check")}.`;
-}
-
 export function pendingBlueprintProposalPreview(
   messages: CourseMessage[],
   proposalStates: Record<string, string>,
@@ -2782,6 +2727,87 @@ function blueprintPresentationBounds(nodes: BlueprintGraphNode[]) {
     width: right - left,
     height: bottom - top,
   };
+}
+
+export function openingBlueprintNodeIds(
+  nodes: Array<{
+    id: string;
+    kind: BlueprintNode["kind"];
+    sequence_rank: number | null;
+    title: string;
+  }>,
+  edges: Array<{
+    source: string;
+    target: string;
+    kind: BlueprintEdgeKind;
+  }>,
+) {
+  if (nodes.length <= 10) return nodes.map((node) => node.id);
+  const firstTopic = [...nodes]
+    .filter((node) => node.kind === "topic")
+    .sort((left, right) => (
+      (left.sequence_rank ?? Number.MAX_SAFE_INTEGER)
+        - (right.sequence_rank ?? Number.MAX_SAFE_INTEGER)
+      || left.title.localeCompare(right.title)
+    ))[0];
+  if (!firstTopic) return nodes.slice(0, 10).map((node) => node.id);
+
+  const visibleIds = new Set([firstTopic.id]);
+  let frontier = new Set([firstTopic.id]);
+  for (let depth = 0; depth < 2; depth += 1) {
+    const next = new Set<string>();
+    for (const edge of edges) {
+      if (
+        frontier.has(edge.source)
+        && ["contains", "teaches", "assesses"].includes(edge.kind)
+      ) {
+        visibleIds.add(edge.target);
+        next.add(edge.target);
+      }
+    }
+    frontier = next;
+  }
+  return visibleIds.size > 1
+    ? [...visibleIds]
+    : nodes.slice(0, 10).map((node) => node.id);
+}
+
+function blueprintOpeningNodes(
+  nodes: BlueprintGraphNode[],
+  edges: BlueprintGraphEdge[],
+) {
+  const openingIds = new Set(openingBlueprintNodeIds(
+    nodes.map((node) => ({
+      id: node.id,
+      kind: node.data.artifact.kind,
+      sequence_rank: typeof node.data.artifact.metadata.sequence_rank === "number"
+        ? node.data.artifact.metadata.sequence_rank
+        : null,
+      title: node.data.artifact.title,
+    })),
+    edges.map((edge) => ({
+      source: edge.source,
+      target: edge.target,
+      kind: edge.data?.kind ?? "contains",
+    })),
+  ));
+  return nodes.filter((node) => openingIds.has(node.id));
+}
+
+function openingBlueprintViewport(
+  nodes: BlueprintGraphNode[],
+  edges: BlueprintGraphEdge[],
+  canvasWidth: number,
+  canvasHeight: number,
+) {
+  return getViewportForBounds(
+    blueprintPresentationBounds(blueprintOpeningNodes(nodes, edges)),
+    canvasWidth,
+    canvasHeight,
+    0.1,
+    0.92,
+    0.18,
+  );
 }
 
 function focusedBlueprintViewport(
@@ -4284,7 +4310,6 @@ function BlueprintWorkspace({
   contextTitle,
   dashboard,
   disabled,
-  generationSummary,
   mode,
   refreshing,
   onAddConcept,
@@ -4300,7 +4325,6 @@ function BlueprintWorkspace({
   onBackToCourseFlow,
   onOpenSources,
   onModeChange,
-  onDismissGenerationSummary,
   onPrepare,
   onReconnectRelationship,
   onRemoveArtifact,
@@ -4323,7 +4347,6 @@ function BlueprintWorkspace({
   contextTitle: string;
   dashboard: DashboardSummary | null;
   disabled: boolean;
-  generationSummary: GenerationCompleteSummary | null;
   mode: BlueprintMode;
   refreshing: boolean;
   onAddConcept: (draft: {
@@ -4364,7 +4387,6 @@ function BlueprintWorkspace({
   onOpenAssessments: () => void;
   onOpenSources: () => void;
   onModeChange: (mode: BlueprintMode) => void;
-  onDismissGenerationSummary: () => void;
   onPrepare: (node: BlueprintNode, neighbors: BlueprintNode[]) => Promise<void>;
   onReconnectRelationship: (
     previous: BlueprintRelationshipSpec,
@@ -4674,7 +4696,8 @@ function BlueprintWorkspace({
     let cancelled = false;
     let frame = 0;
     let attempts = 0;
-    const nodesForFit = latestLiveFlowTarget.current?.nodes ?? [];
+    const target = latestLiveFlowTarget.current;
+    const nodesForFit = target?.nodes ?? [];
     settleViewport(null);
     // Keep intermediate ELK positions invisible, calculate one viewport from
     // the completed graph-space bounds, then reveal on the following frame.
@@ -4688,15 +4711,21 @@ function BlueprintWorkspace({
         frame = window.requestAnimationFrame(fitWhenSynchronized);
         return;
       }
-      const targetViewport = getViewportForBounds(
-        blueprintPresentationBounds(nodesForFit),
-        canvasBounds?.width ?? 1,
-        canvasBounds?.height ?? 1,
-        0.1,
-        1,
-        blueprintFitPadding,
-      );
-      const target = latestLiveFlowTarget.current;
+      const targetViewport = mode === "live" && !focusTopicLogicalId
+        ? openingBlueprintViewport(
+          nodesForFit,
+          target?.edges ?? [],
+          canvasBounds?.width ?? 1,
+          canvasBounds?.height ?? 1,
+        )
+        : getViewportForBounds(
+          blueprintPresentationBounds(nodesForFit),
+          canvasBounds?.width ?? 1,
+          canvasBounds?.height ?? 1,
+          0.1,
+          1,
+          blueprintFitPadding,
+        );
       const nextPresentation = mode === "live" && target?.fitKey === viewportFitKey
         ? {
           connectionFocused: target.connectionFocused,
@@ -4735,6 +4764,7 @@ function BlueprintWorkspace({
     };
   }, [
     blueprintFitPadding,
+    focusTopicLogicalId,
     flow.layoutReady,
     flow.nodes.length,
     flowInstance,
@@ -4808,14 +4838,21 @@ function BlueprintWorkspace({
         canvasBounds.height,
         inspectorWidth,
       )
-      : getViewportForBounds(
-        blueprintPresentationBounds(target.nodes),
-        canvasBounds.width,
-        canvasBounds.height,
-        0.1,
-        1,
-        blueprintFitPadding,
-      );
+      : mode === "live" && !focusTopicLogicalId
+        ? openingBlueprintViewport(
+          target.nodes,
+          target.edges,
+          canvasBounds.width,
+          canvasBounds.height,
+        )
+        : getViewportForBounds(
+          blueprintPresentationBounds(target.nodes),
+          canvasBounds.width,
+          canvasBounds.height,
+          0.1,
+          1,
+          blueprintFitPadding,
+        );
     const startViewport = flowInstance.getViewport();
     const startFocalScreenCenter = focalClickOrigin ?? (connectionFocusLogicalId
       ? blueprintFocalScreenCenter(start.nodes, connectionFocusLogicalId, startViewport)
@@ -4897,6 +4934,7 @@ function BlueprintWorkspace({
   }, [
     blueprintFitPadding,
     connectionFocusLogicalId,
+    focusTopicLogicalId,
     flow.layoutKey,
     flow.layoutReady,
     flow.nodes.length,
@@ -5454,36 +5492,6 @@ function BlueprintWorkspace({
           </section>
 
           <div className={styles.blueprintFloatingMessages}>
-            <AnimatePresence initial={false}>
-              {generationSummary ? (
-                <motion.section
-                  animate={{ opacity: 1, y: 0 }}
-                  aria-label="Lecture generation complete"
-                  className={styles.generationCompleteMoment}
-                  exit={{ opacity: 0, y: -8 }}
-                  initial={reducedMotion ? false : { opacity: 0, y: -10 }}
-                  key="generation-complete"
-                  role="status"
-                  transition={sharedSurfaceTransition(Boolean(reducedMotion))}
-                >
-                  <span><Check /></span>
-                  <p>
-                    <small>Generation complete</small>
-                    <strong>
-                      {generationCompleteSentence(generationSummary)}
-                    </strong>
-                  </p>
-                  <button
-                    aria-label="Dismiss generation summary"
-                    onClick={onDismissGenerationSummary}
-                    type="button"
-                  >
-                    <X />
-                  </button>
-                </motion.section>
-              ) : null}
-            </AnimatePresence>
-
             {proposalPreview ? (
               <div className={styles.blueprintProposalPreviewNote} role="status">
                 <GitFork />

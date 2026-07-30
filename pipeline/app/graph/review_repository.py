@@ -19,8 +19,9 @@ class ConceptGraphRepository(ABC):
         self,
         course_id: UUID,
         include_proposed: bool = False,
+        video_id: UUID | None = None,
     ) -> CourseGraphContext | None:
-        """Return reviewed topic context for graph generation."""
+        """Return reviewed topic context, optionally scoped to one lecture video."""
 
     @abstractmethod
     async def replace_ai_graph(

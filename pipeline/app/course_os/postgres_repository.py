@@ -925,6 +925,25 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     (instructor_id,),
                 )
             ).fetchall()
+            simulated_activity_row = await (
+                await conn.execute(
+                    """
+                    select exists (
+                      select 1
+                      from attempts a
+                      join questions q on q.id = a.question_id
+                      join topics t on t.id = q.topic_id
+                      join courses c on c.id = t.course_id
+                      where c.instructor_id = %s
+                        and c.status = 'published'
+                        and a.answer ? 'demo_seed'
+                        and a.created_at >=
+                          (now() at time zone 'UTC')::date - interval '6 days'
+                    )
+                    """,
+                    (instructor_id,),
+                )
+            ).fetchone()
             radar_rows = await (
                 await conn.execute(
                     """
@@ -1072,6 +1091,9 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     active_learners=int(row[1] or 0),
                 )
                 for row in activity_rows
+            ),
+            activity_is_simulated=bool(
+                simulated_activity_row and simulated_activity_row[0]
             ),
             course_radar=radar,
         )

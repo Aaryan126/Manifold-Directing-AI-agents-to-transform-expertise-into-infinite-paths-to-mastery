@@ -714,7 +714,12 @@ function LearnerActivity({ dashboard }: { dashboard: DashboardSnapshot }) {
         </div>
       )}
       <footer>
-        <span><i />Active through assessment evidence</span>
+        <span>
+          <i />
+          {dashboard.activity_is_simulated
+            ? "Simulated demo assessment evidence"
+            : "Active through assessment evidence"}
+        </span>
         <p>{trend}</p>
       </footer>
     </article>

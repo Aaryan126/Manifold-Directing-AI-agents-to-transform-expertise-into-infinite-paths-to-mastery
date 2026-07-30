@@ -116,6 +116,7 @@ class DashboardResponse(BaseModel):
     active_learners: int
     new_learners: int
     activity_history: list[DashboardActivityPointResponse]
+    activity_is_simulated: bool
     course_radar: list[CourseRadarItemResponse]
 
 
@@ -1641,6 +1642,7 @@ def _dashboard_response(snapshot: DashboardSnapshot) -> DashboardResponse:
             )
             for point in snapshot.activity_history
         ],
+        activity_is_simulated=snapshot.activity_is_simulated,
         course_radar=[
             CourseRadarItemResponse(
                 **{

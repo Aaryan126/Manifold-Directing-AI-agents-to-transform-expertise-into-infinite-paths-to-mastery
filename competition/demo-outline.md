@@ -29,13 +29,13 @@ Sign in as the instructor, open the competition course, and add the clearly
 licensed business lecture. Let the generation progress communicate the work
 being done.
 
-When generation finishes, pause on the compact Blueprint summary:
-
-> **1 lecture became 6 topics, 7 concepts, 6 teaching moments and 6 checks.**
+When generation finishes, let the Blueprint itself make the transformation
+visible. The opening camera should show one readable topic neighborhood; use
+the fit-all control once to reveal the complete lecture.
 
 The spoken point is that this is more than transcription or summarization:
-Manifold identifies structure, prerequisites, teaching moments, checks for
-understanding, and remediation paths.
+Manifold identifies topics, concepts, prerequisites, teaching moments, checks
+for understanding, and remediation paths.
 
 ## 0:58–1:28 — Instructor: understand the course as a system
 

@@ -47,6 +47,22 @@ async def test_graph_generation_preserves_ai_proposals_and_edges() -> None:
 
 
 @pytest.mark.anyio
+async def test_graph_generation_scopes_context_to_requested_lecture() -> None:
+    course_id = uuid4()
+    topic_id = uuid4()
+    video_id = uuid4()
+    repository = MemoryConceptGraphRepository(_context(course_id, topic_id))
+    service = ConceptGraphService(
+        repository=repository,
+        agent=StaticConceptGraphAgent(_proposal(topic_id)),
+    )
+
+    await service.propose_graph(course_id, provisional=True, video_id=video_id)
+
+    assert repository.requested_video_id == video_id
+
+
+@pytest.mark.anyio
 async def test_instructor_can_add_reviewed_concept_with_topic_link() -> None:
     course_id = uuid4()
     topic_id = uuid4()

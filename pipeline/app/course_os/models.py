@@ -107,6 +107,7 @@ class DashboardSnapshot:
     active_learners: int
     new_learners: int
     activity_history: tuple[DashboardActivityPoint, ...]
+    activity_is_simulated: bool = False
     course_radar: tuple[CourseRadarItem, ...] = ()
 
 

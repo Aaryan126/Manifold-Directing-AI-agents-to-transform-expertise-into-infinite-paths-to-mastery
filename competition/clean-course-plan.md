@@ -8,6 +8,7 @@ current `Business 101` generated course:
 ```bash
 npm run demo:check
 npm run demo:reset
+npm run demo:activity
 ```
 
 `demo:check` is read-only. `demo:reset` requires the explicit mutating script
@@ -21,6 +22,11 @@ This does not delete or recreate the instructor's course and does not call an
 LLM. Placeholder-titled courses are now hidden from the learner portfolio, and
 an explicitly simulated enrolled learner may access the exact draft rehearsal
 revision. Ordinary learners still require publication.
+
+`demo:activity` replaces only attempts carrying the explicit
+`portfolio-activity-v1` demo label. It uses three already-enrolled simulated
+learners and reviewed questions to produce a reproducible seven-day dashboard
+curve; the dashboard labels the resulting series as simulated evidence.
 
 The broader source-manifest export, course publication, three-learner dashboard
 signal, and full eight-stage fixture remain dependent on confirming the

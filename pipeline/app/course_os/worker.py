@@ -127,7 +127,11 @@ class CourseGenerationWorker:
                 "course_title": course_title,
             }
         if task.task_type == "concept_graph":
-            graph = await self._graph.propose_graph(run.course_id, provisional=True)
+            graph = await self._graph.propose_graph(
+                run.course_id,
+                provisional=True,
+                video_id=video_id,
+            )
             return {"concept_count": len(graph.concepts), "edge_count": len(graph.edges)}
         if task.task_type == "clips":
             clip_ids: list[str] = []

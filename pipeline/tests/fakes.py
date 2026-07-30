@@ -238,13 +238,16 @@ class MemoryConceptGraphRepository(ConceptGraphRepository):
         )
         self.concepts: dict[UUID, Concept] = {}
         self.edges: dict[UUID, ConceptGraphEdge] = {}
+        self.requested_video_id: UUID | None = None
 
     async def get_course_context(
         self,
         course_id: UUID,
         include_proposed: bool = False,
+        video_id: UUID | None = None,
     ) -> CourseGraphContext | None:
         del include_proposed
+        self.requested_video_id = video_id
         if course_id != self.context.course_id:
             return None
         return self.context

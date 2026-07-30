@@ -48,10 +48,12 @@ class ConceptGraphService:
         course_id: UUID,
         *,
         provisional: bool = False,
+        video_id: UUID | None = None,
     ) -> ConceptGraph:
         context = await self._repository.get_course_context(
             course_id,
             include_proposed=provisional,
+            video_id=video_id,
         )
         if context is None:
             raise ConceptGraphValidationError("No accepted or edited topics found for this course.")

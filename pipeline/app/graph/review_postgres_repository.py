@@ -32,6 +32,7 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
         self,
         course_id: UUID,
         include_proposed: bool = False,
+        video_id: UUID | None = None,
     ) -> CourseGraphContext | None:
         async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
             rows = await (
@@ -44,11 +45,12 @@ class PostgresConceptGraphRepository(ConceptGraphRepository):
                         select coalesce(working_revision_id, active_revision_id)
                         from courses where id = %s
                       )
+                      and (%s::uuid is null or video_id = %s)
                       and review_status <> 'dismissed'
                       and (%s or review_status in ('accepted', 'edited'))
                     order by start_seconds asc
                     """,
-                    (course_id, course_id, include_proposed),
+                    (course_id, course_id, video_id, video_id, include_proposed),
                 )
             ).fetchall()
             if not rows:

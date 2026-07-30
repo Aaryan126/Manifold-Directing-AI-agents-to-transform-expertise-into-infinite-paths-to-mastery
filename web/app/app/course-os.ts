@@ -46,6 +46,7 @@ export type DashboardSnapshot = {
     date: string;
     active_learners: number;
   }>;
+  activity_is_simulated: boolean;
   course_radar: CourseRadarItem[];
 };
 

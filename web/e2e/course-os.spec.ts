@@ -1166,7 +1166,10 @@ test("Course Director proposals preserve the Live map before and during acceptan
     "Remove Vector addition from the Net force topic.",
   );
   await page.getByRole("button", { name: "Send message" }).click();
-  await expect(page.getByText("Remove Vector addition from Net force.")).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Course Director" })
+      .getByText("Remove Vector addition from Net force."),
+  ).toBeVisible();
 
   // Preparing a proposal is not a graph mutation. It must not trigger another
   // Blueprint fetch, hide the current nodes, change the camera, or enter Design.

@@ -164,7 +164,11 @@ async def test_graph_task_generates_private_draft_artifacts() -> None:
     worked = await _worker(repository, graph=graph).run_once()
 
     assert worked is True
-    graph.propose_graph.assert_awaited_once_with(run.course_id, provisional=True)
+    graph.propose_graph.assert_awaited_once_with(
+        run.course_id,
+        provisional=True,
+        video_id=UUID(task.input["video_id"]),
+    )
     completed_task_id, output = repository.complete_generation_task.await_args.args
     assert completed_task_id == task.id
     assert output["concept_count"] == 2
