@@ -1,87 +1,124 @@
 # Three-minute competition demo outline
 
-The video should make one argument: **Manifold turns one instructor's recording
-into an adaptive course that can explain and improve itself without removing the
-instructor from control.**
+The video makes one argument:
 
-## 0:00–0:20 — The gap
+> **Manifold turns one real lecture into an adaptive mastery system, then closes
+> the loop from learner evidence back to an instructor-reviewed improvement.**
 
-Open with the linear-video problem, not the feature list. One recording gives
-every learner the same path. Building a responsible adaptive version normally
-requires multiple specialist roles, while autonomous AI authoring loses
-accountability.
+The demo should feel like one continuous story, not a tour of product features.
 
-Show the source recording and one sentence:
+## 0:00–0:22 — Problem and gap
 
-> “The missing product is not another course generator. It is the governed loop
-> from real teaching to learner evidence and back to a reviewed course revision.”
+Open on a conventional one-hour lecture. Explain the gap in one breath:
 
-## 0:20–0:55 — Compile the teaching system
+- video gives every learner the same linear path;
+- turning it into a real course normally requires instructional-design,
+  assessment, editing, and analytics work;
+- ordinary AI course generators can create content, but cannot show how each
+  teaching decision connects to later learner evidence.
 
-Show the measured result from the clean competition course:
+Suggested line:
 
-- the source becomes four to six concepts;
-- one real prerequisite is visible;
-- reviewed clips and assessments attach to those concepts;
-- the private/review state is obvious.
+> “A recording can contain excellent teaching and still be a poor learning
+> system. Manifold compiles the instructor’s teaching into an adaptive course
+> whose decisions remain visible and governable.”
 
-Use the measured compilation evidence as a brief overlay: review-ready in 213.91
-seconds and $0.1951 token cost for the recorded disposable run. Say explicitly
-that this is asynchronous wall time, not instructor review time.
+## 0:22–0:58 — Instructor: lecture to mastery course
 
-## 0:55–1:25 — Human governance
+Sign in as the instructor, open the competition course, and add the clearly
+licensed business lecture. Let the generation progress communicate the work
+being done.
 
-Switch to Design and open one AI proposal. Show `Accept / Edit / Dismiss`, then
-show that the change remains private until publication. This is the central trust
-mechanism, not administrative chrome.
+When generation finishes, pause on the compact Blueprint summary:
 
-The spoken point:
+> **1 lecture became 6 topics, 7 concepts, 6 teaching moments and 6 checks.**
 
-> “AI can do substantial work, but it cannot silently become the instructor.”
+The spoken point is that this is more than transcription or summarization:
+Manifold identifies structure, prerequisites, teaching moments, checks for
+understanding, and remediation paths.
 
-## 1:25–2:05 — One learner, one interpretable route
+## 0:58–1:28 — Instructor: understand the course as a system
 
-Use the seeded learner history:
+Keep the Blueprint in Live mode and scan its hierarchy:
 
-1. learner answers the misconception-revealing assessment;
-2. confidence makes the evidence more informative;
-3. a deterministic route sends them to the alternate explanation/remediation;
-4. the reason is visible in plain language.
+```text
+lecture → topics → concepts → teaching moments and assessments
+```
 
-Do not show several learner paths. One crisp route is more persuasive.
+Click one concept so only its direct neighborhood remains. Point out the real
+prerequisite, the assessment, and the alternate explanation. Close the detail
+view to return smoothly to the complete map.
 
-## 2:05–2:40 — Trace the closed loop
+Avoid explaining every relationship. The visual should make the organization
+legible before narration adds detail.
 
-Open **Trace decision** and scan the complete chain:
+## 1:28–1:52 — Instructor: direct the AI, retain control
+
+Open Course Director and enter:
+
+> “Remove ‘Value creation and value capture as the core venture test’ from the
+> ‘Why plan’ topic only, while keeping its existing placement under ‘Core
+> entrepreneurial principles.’”
+
+Before acceptance, show the exact relationship highlighted as a proposed
+removal while the rest of the Blueprint stays visible and unchanged. Briefly
+show `Accept / Edit / Dismiss`, then accept the change and show the graph update.
+
+Suggested line:
+
+> “The agent can edit the course at the level of meaning, but it previews the
+> exact private change and the instructor remains the decision-maker.”
+
+## 1:52–2:22 — Learner: one interpretable adaptation
+
+Switch to the prepared learner at the deterministic continuation point
+immediately before the misconception check. Keep this section short:
+
+1. show the focused session rail: learn, check, reflect;
+2. answer the misconception-revealing question with high confidence;
+3. pause on **Your path changed**;
+4. show the evidence, the reason, and the alternate explanation selected next;
+5. briefly open the focused Mastery Map to show where that support sits in the
+   larger prerequisite path.
+
+Do not demo several learner journeys. One clear, explainable route is stronger.
+State that this is a seeded demonstration learner, not a real cohort.
+
+## 2:22–2:48 — Close the loop with Trace decision
+
+Return to the instructor and open **Trace decision**. Scan the persisted chain:
 
 ```text
 source moment → concept → teaching clip → assessment
 → learner evidence → route event → dashboard signal → proposed revision
 ```
 
-Pause on the dashboard signal and proposed revision. Emphasize that every
-available step is a persisted record and missing evidence is shown honestly.
+Pause on the dashboard signal and proposed revision. Explain that Manifold can
+show why a learner was routed, why the instructor was alerted, and what evidence
+supports the proposed course change. If a record is absent, the trace says so
+instead of inventing one.
 
-This is the most differentiating 35 seconds of the video.
+This is the most differentiating part of the demo.
 
-## 2:40–3:00 — Evidence and trajectory
+## 2:48–3:00 — Close
 
-End with three measured facts:
+End on the Blueprint and summarize the product in three clauses:
 
-- 294 reported automated tests passed;
-- warm p95 was 29.43 ms for the decision trace;
-- the real generation run recovered from a persisted clip failure and still
-  reached review-ready state.
+> “One lecture becomes a structured mastery course. Each learner gets a path
+> based on evidence. Every AI-proposed course improvement stays traceable and
+> instructor-reviewed.”
 
-Close with the honest next step: time a real instructor review and run a matched
-manual-authoring comparison, then validate learning outcomes with real learners.
+Use the measured build/evaluation figures only as small supporting captions.
+Do not let benchmark numbers replace the product story.
 
-## Recording rules
+## Recording setup
 
-- Use one deterministic reset state and one browser path.
-- Keep the cursor deliberate; avoid touring navigation or settings.
-- Do not describe seeded history as a real cohort.
-- Do not claim the under-60-minute instructor target until the timed review exists.
-- Leave the graph visible whenever possible; panels should open over it and close
-  quickly.
-- Use captions for the eight trace stages and measured figures.
+- Run the deterministic competition reset immediately before recording.
+- Use the licensed competition course only; hide stale and untitled courses.
+- Start the learner immediately before the misconception question.
+- Keep the cursor deliberate and avoid navigation, settings, or empty states.
+- Keep the graph visible beneath overlays whenever possible.
+- Use Live mode except for an explicit manual design edit.
+- Do not describe seeded history as a real learner cohort.
+- Do not claim learning-outcome improvements until a real study measures them.
+- Record one uninterrupted browser path; use editing only to tighten pauses.

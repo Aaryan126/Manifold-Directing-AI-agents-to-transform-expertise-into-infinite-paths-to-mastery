@@ -213,6 +213,20 @@ type DirectorStream = {
   content: string;
   status: string;
 };
+type GenerationCompleteSummary = {
+  lectureCount: number;
+  topicCount: number;
+  conceptCount: number;
+  teachingMomentCount: number;
+  checkCount: number;
+};
+type BlueprintProposalPreview = {
+  action: "remove" | "reconnect";
+  kind: BlueprintEdgeKind;
+  sourceLogicalId: string;
+  targetLogicalId: string;
+  summary: string;
+};
 
 const InsightsCharts = dynamic(
   () => import("@/components/insights-charts").then((module) => module.InsightsCharts),
@@ -266,6 +280,9 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   const [blueprintUndoEntries, setBlueprintUndoEntries] = useState<BlueprintUndoEntry[]>([]);
   const [blueprintUndoing, setBlueprintUndoing] = useState(false);
   const [blueprintRefreshing, setBlueprintRefreshing] = useState(false);
+  const [generationCompleteSummary, setGenerationCompleteSummary] =
+    useState<GenerationCompleteSummary | null>(null);
+  const summarizedGenerationRunRef = useRef<string | null>(null);
 
   const isBuilding = Boolean(
     (run && ["queued", "running"].includes(run.status))
@@ -495,11 +512,45 @@ export function CourseStudio({ courseId }: { courseId: string }) {
             ) ?? [...nextFlow.units]
               .filter((unit) => unit.kind === "lecture")
               .sort((left, right) => right.sequence_rank - left.sequence_rank)[0];
-            setLectureFocusVideoId(generatedLecture?.video_id ?? lectureCreationVideoId);
-            setBlueprintMode("design");
+            const generatedVideoId = generatedLecture?.video_id ?? lectureCreationVideoId;
+            setLectureFocusVideoId(generatedVideoId);
+            setBlueprintMode("live");
             setLectureIntakeOpen(false);
             setSourceLabel(null);
             setCanvasView("blueprint");
+            if (summarizedGenerationRunRef.current !== nextRun.id) {
+              summarizedGenerationRunRef.current = nextRun.id;
+              const [nextBlueprint, nextAssessments] = await Promise.all([
+                request<CourseBlueprint>(
+                  `/courses/${courseId}/blueprint?revision=working`,
+                  identity,
+                ),
+                request<AssessmentWorkspace>(
+                  `/courses/${courseId}/assessment-workspace`,
+                  identity,
+                ),
+              ]);
+              const lectureBlueprint = filterBlueprintForLecture(
+                nextBlueprint,
+                generatedVideoId,
+              );
+              const lectureAssessments = filterAssessmentWorkspaceForBlueprint(
+                nextAssessments,
+                lectureBlueprint,
+                generatedVideoId,
+              );
+              setGenerationCompleteSummary({
+                lectureCount: 1,
+                topicCount: lectureBlueprint?.nodes.filter(
+                  (node) => node.kind === "topic",
+                ).length ?? 0,
+                conceptCount: lectureBlueprint?.nodes.filter(
+                  (node) => node.kind === "concept",
+                ).length ?? 0,
+                teachingMomentCount: lectureAssessments?.clips.length ?? 0,
+                checkCount: lectureAssessments?.questions.length ?? 0,
+              });
+            }
           }
         })
         .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not refresh generation."));
@@ -1745,6 +1796,10 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     ) ?? null,
     [activeCourseFlow, lectureFocusVideoId, workingCourseFlow],
   );
+  const blueprintProposalPreview = useMemo(
+    () => pendingBlueprintProposalPreview(messages, proposalStates),
+    [messages, proposalStates],
+  );
   const focusedHealthBlueprint = blueprintMode === "design"
     ? (focusedWorkingBlueprint ?? focusedActiveBlueprint)
     : (focusedActiveBlueprint ?? focusedWorkingBlueprint);
@@ -2108,7 +2163,9 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     contextTitle={focusedLectureUnit?.title ?? "Cross-lecture concept map"}
                     dashboard={dashboardSummary}
                     disabled={sending}
+                    generationSummary={generationCompleteSummary}
                     mode={blueprintMode}
+                    onDismissGenerationSummary={() => setGenerationCompleteSummary(null)}
                     refreshing={blueprintRefreshing}
                     onAddConcept={createBlueprintConcept}
                     onAddTopic={createBlueprintTopic}
@@ -2132,6 +2189,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     onUndo={undoBlueprintChange}
                     onUpdateConcept={updateBlueprintConcept}
                     onUpdateTopic={updateBlueprintTopic}
+                    proposalPreview={blueprintProposalPreview}
                     onOpenAssessments={() => setCanvasView("assessments")}
                     onOpenSources={() => setSourcesOpen(true)}
                     onBackToCourseFlow={() => {
@@ -2493,6 +2551,78 @@ function filterAssessmentWorkspaceForBlueprint(
   };
 }
 
+export function generationCompleteSentence(summary: GenerationCompleteSummary) {
+  const noun = (count: number, singular: string, plural = `${singular}s`) =>
+    `${count} ${count === 1 ? singular : plural}`;
+  return `${noun(summary.lectureCount, "lecture")} became `
+    + `${noun(summary.topicCount, "topic")}, `
+    + `${noun(summary.conceptCount, "concept")}, `
+    + `${noun(summary.teachingMomentCount, "teaching moment")} and `
+    + `${noun(summary.checkCount, "check")}.`;
+}
+
+export function pendingBlueprintProposalPreview(
+  messages: CourseMessage[],
+  proposalStates: Record<string, string>,
+): BlueprintProposalPreview | null {
+  const relationshipKinds = new Set<string>([
+    "contains",
+    "next",
+    "requires",
+    "teaches",
+    "assesses",
+    "remediates_to",
+    "cites",
+  ]);
+  const blocks = messages.flatMap((message) => message.blocks).reverse();
+  for (const block of blocks) {
+    if (
+      block.type !== "proposal"
+      || typeof block.proposal_id !== "string"
+      || !isRecord(block.proposed_state)
+    ) continue;
+    const status = proposalStates[block.proposal_id]
+      ?? (typeof block.status === "string" ? block.status : "proposed");
+    if (!["proposed", "saving"].includes(status)) continue;
+    const artifactType = typeof block.artifact_type === "string"
+      ? block.artifact_type
+      : "";
+    if (![
+      "blueprint_relationship_remove",
+      "blueprint_relationship_reconnect",
+    ].includes(artifactType)) continue;
+    const proposed = block.proposed_state;
+    const reconnect = artifactType === "blueprint_relationship_reconnect";
+    const kind = proposed[
+      reconnect ? "previous_relationship_type" : "relationship_type"
+    ];
+    const source = proposed[
+      reconnect ? "previous_source_logical_id" : "source_logical_id"
+    ];
+    const target = proposed[
+      reconnect ? "previous_target_logical_id" : "target_logical_id"
+    ];
+    if (
+      typeof kind !== "string"
+      || !relationshipKinds.has(kind)
+      || typeof source !== "string"
+      || typeof target !== "string"
+    ) continue;
+    return {
+      action: reconnect ? "reconnect" : "remove",
+      kind: kind as BlueprintEdgeKind,
+      sourceLogicalId: source,
+      targetLogicalId: target,
+      summary: typeof proposed.summary === "string"
+        ? proposed.summary
+        : reconnect
+          ? "Reconnect this relationship after instructor review."
+          : "Remove this relationship after instructor review.",
+    };
+  }
+  return null;
+}
+
 const blueprintModes: Array<{ id: BlueprintMode; label: string }> = [
   { id: "live", label: "Live" },
   { id: "design", label: "Design" },
@@ -2514,6 +2644,7 @@ type BlueprintGraphEdgeData = {
   emphasized: boolean;
   kind: BlueprintEdgeKind;
   points: Array<{ x: number; y: number }> | null;
+  previewAction?: BlueprintProposalPreview["action"];
   visible: boolean;
 };
 type BlueprintGraphEdge = Edge<BlueprintGraphEdgeData, "blueprintRelation">;
@@ -2910,6 +3041,11 @@ function BlueprintRelationEdge({
     y: fallbackLabelY,
   };
   const kind = data?.kind ?? "contains";
+  const relationshipLabel = data?.previewAction === "remove"
+    ? "Proposed removal"
+    : data?.previewAction === "reconnect"
+      ? "Proposed reconnection"
+      : blueprintRelationshipLabels[kind];
   return (
     <>
       <BaseEdge id={id} interactionWidth={18} markerEnd={markerEnd} path={path} style={style} />
@@ -2917,11 +3053,12 @@ function BlueprintRelationEdge({
         <text
           className={styles.blueprintEdgeLabel}
           data-emphasized={data.emphasized}
+          data-preview={data.previewAction}
           textAnchor="middle"
           x={labelPoint.x}
           y={labelPoint.y - 7}
         >
-          {blueprintRelationshipLabels[kind]}
+          {relationshipLabel}
         </text>
       ) : null}
     </>
@@ -4147,6 +4284,7 @@ function BlueprintWorkspace({
   contextTitle,
   dashboard,
   disabled,
+  generationSummary,
   mode,
   refreshing,
   onAddConcept,
@@ -4162,6 +4300,7 @@ function BlueprintWorkspace({
   onBackToCourseFlow,
   onOpenSources,
   onModeChange,
+  onDismissGenerationSummary,
   onPrepare,
   onReconnectRelationship,
   onRemoveArtifact,
@@ -4172,6 +4311,7 @@ function BlueprintWorkspace({
   onUndo,
   onUpdateConcept,
   onUpdateTopic,
+  proposalPreview,
   clips,
   undoing,
   undoLabel,
@@ -4183,6 +4323,7 @@ function BlueprintWorkspace({
   contextTitle: string;
   dashboard: DashboardSummary | null;
   disabled: boolean;
+  generationSummary: GenerationCompleteSummary | null;
   mode: BlueprintMode;
   refreshing: boolean;
   onAddConcept: (draft: {
@@ -4223,6 +4364,7 @@ function BlueprintWorkspace({
   onOpenAssessments: () => void;
   onOpenSources: () => void;
   onModeChange: (mode: BlueprintMode) => void;
+  onDismissGenerationSummary: () => void;
   onPrepare: (node: BlueprintNode, neighbors: BlueprintNode[]) => Promise<void>;
   onReconnectRelationship: (
     previous: BlueprintRelationshipSpec,
@@ -4241,6 +4383,7 @@ function BlueprintWorkspace({
     start_seconds: number;
     end_seconds: number;
   }) => Promise<CourseBlueprint | null>;
+  proposalPreview: BlueprintProposalPreview | null;
   clips: AssessmentWorkspace["clips"];
   undoing: boolean;
   undoLabel: string | null;
@@ -4336,6 +4479,7 @@ function BlueprintWorkspace({
     enabledRelationships,
     mode === "design" && autoArrangeVersion === 0,
     autoArrangeVersion,
+    proposalPreview,
     {
       onStartRelationship: startBlueprintRelationship,
       relationshipDraft,
@@ -5310,6 +5454,46 @@ function BlueprintWorkspace({
           </section>
 
           <div className={styles.blueprintFloatingMessages}>
+            <AnimatePresence initial={false}>
+              {generationSummary ? (
+                <motion.section
+                  animate={{ opacity: 1, y: 0 }}
+                  aria-label="Lecture generation complete"
+                  className={styles.generationCompleteMoment}
+                  exit={{ opacity: 0, y: -8 }}
+                  initial={reducedMotion ? false : { opacity: 0, y: -10 }}
+                  key="generation-complete"
+                  role="status"
+                  transition={sharedSurfaceTransition(Boolean(reducedMotion))}
+                >
+                  <span><Check /></span>
+                  <p>
+                    <small>Generation complete</small>
+                    <strong>
+                      {generationCompleteSentence(generationSummary)}
+                    </strong>
+                  </p>
+                  <button
+                    aria-label="Dismiss generation summary"
+                    onClick={onDismissGenerationSummary}
+                    type="button"
+                  >
+                    <X />
+                  </button>
+                </motion.section>
+              ) : null}
+            </AnimatePresence>
+
+            {proposalPreview ? (
+              <div className={styles.blueprintProposalPreviewNote} role="status">
+                <GitFork />
+                <p>
+                  <strong>Previewing a private relationship change</strong>
+                  <span>{proposalPreview.summary}</span>
+                </p>
+              </div>
+            ) : null}
+
             {pendingEdges.length ? (
               <div className={styles.blueprintNotice}>
                 <CircleAlert />
@@ -5754,6 +5938,7 @@ function useBlueprintFlow(
   enabledRelationships: ReadonlySet<BlueprintEdgeKind>,
   respectSavedLayout = true,
   layoutVersion = 0,
+  proposalPreview: BlueprintProposalPreview | null = null,
   interaction?: {
     onStartRelationship: (node: BlueprintNode, side: BlueprintPortSide) => void;
     relationshipDraft: BlueprintRelationshipDraft | null;
@@ -6031,43 +6216,71 @@ function useBlueprintFlow(
         : { sourceHandle: "flow-out", targetHandle: "flow-in" };
     };
     const visibleEdgeIds = new Set(renderedEdges.map((edge) => edge.id));
+    const previewSource = proposalPreview
+      ? blueprint?.nodes.find(
+        (node) => node.logical_id === proposalPreview.sourceLogicalId,
+      ) ?? null
+      : null;
+    const previewTarget = proposalPreview
+      ? blueprint?.nodes.find(
+        (node) => node.logical_id === proposalPreview.targetLogicalId,
+      ) ?? null
+      : null;
     return layoutEdges.map((edge) => {
       const visible = visibleEdgeIds.has(edge.id);
+      const previewed = Boolean(
+        proposalPreview
+        && previewSource
+        && previewTarget
+        && edge.kind === proposalPreview.kind
+        && edge.source_id === previewSource.id
+        && edge.target_id === previewTarget.id,
+      );
       const emphasized = Boolean(
-        selectedId && (edge.source_id === selectedId || edge.target_id === selectedId),
+        previewed
+        || (selectedId && (edge.source_id === selectedId || edge.target_id === selectedId)),
       );
       const dimmed = Boolean(selectedId && !emphasized);
-      const color = edge.status === "proposed" ? "#d77a25" : relationColor[edge.kind];
+      const color = previewed
+        ? "#b44b3f"
+        : edge.status === "proposed"
+          ? "#d77a25"
+          : relationColor[edge.kind];
       return {
         id: edge.id,
         source: edge.source_id,
         target: edge.target_id,
         type: "blueprintRelation",
         ...relationHandles(edge.kind),
-        ariaLabel: `${blueprintRelationshipLabels[edge.kind]} relationship`,
+        ariaLabel: previewed
+          ? `Proposed ${proposalPreview?.action} of ${blueprintRelationshipLabels[edge.kind]} relationship`
+          : `${blueprintRelationshipLabels[edge.kind]} relationship`,
         data: {
           emphasized,
           kind: edge.kind,
           points: edgePoints[edge.id] ?? null,
+          previewAction: previewed ? proposalPreview?.action : undefined,
           visible,
         },
         focusable: visible,
         markerEnd: !visible || edge.kind === "contains" || edge.kind === "cites"
           ? undefined
           : { type: MarkerType.ArrowClosed, color },
-        animated: edge.kind === "remediates_to",
+        animated: previewed || edge.kind === "remediates_to",
         style: {
           opacity: !visible ? 0 : dimmed ? 0.16 : emphasized ? 1 : 0.62,
           pointerEvents: visible ? "auto" : "none",
           stroke: color,
-          strokeDasharray: edge.status === "proposed" || edge.kind === "cites"
+          strokeDasharray: previewed
+            ? "4 4"
+            : edge.status === "proposed" || edge.kind === "cites"
             ? "6 5"
             : undefined,
-          strokeWidth: emphasized ? 2.2 : edge.kind === "next" ? 1.8 : 1.35,
+          strokeWidth: previewed ? 3.1 : emphasized ? 2.2 : edge.kind === "next" ? 1.8 : 1.35,
         },
       };
     });
-  }, [edgePoints, layoutEdges, renderedEdges, selectedId]);
+  }, [blueprint?.nodes, edgePoints, layoutEdges, proposalPreview, renderedEdges, selectedId]);
   const setPosition = useCallback(
     (id: string, position: { x: number; y: number }) => {
       setPositions((current) => ({ ...current, [id]: position }));

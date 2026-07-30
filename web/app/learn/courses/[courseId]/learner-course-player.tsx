@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import {
   FormEvent,
@@ -81,6 +81,10 @@ type AnswerResponse = {
   session: LearnerStudySession;
   correct: boolean;
   feedback: string;
+  evidence?: {
+    answer: string;
+    confidence: number;
+  };
   route: {
     action: string;
     mastery_state: string;
@@ -544,16 +548,24 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
   async function submitAnswer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!studySession || !activeStep || !answer.trim() || confidence === null) return;
+    const submittedAnswer = answer.trim();
+    const submittedConfidence = confidence;
     setBusy(true);
     setError(null);
     try {
       const result = await mutate<AnswerResponse>(
         `/learn/courses/${courseId}/sessions/${studySession.id}/steps/${activeStep.id}/answer`,
         "POST",
-        { answer: answer.trim(), confidence },
+        { answer: submittedAnswer, confidence: submittedConfidence },
       );
       setStudySession(result.session);
-      setFeedback(result);
+      setFeedback({
+        ...result,
+        evidence: {
+          answer: submittedAnswer,
+          confidence: submittedConfidence,
+        },
+      });
       setAnswer("");
       setConfidence(null);
       setHint(null);
@@ -937,19 +949,49 @@ export function LearnerCoursePlayer({ courseId }: { courseId: string }) {
                 completed={completedSteps}
                 session={studySession}
               />
+              <AnimatePresence initial={false}>
               {feedback ? (
-                <div
+                <motion.section
+                  animate={{ opacity: 1, y: 0 }}
                   className={styles.routeUpdate}
                   data-tone={feedback.correct ? "success" : "support"}
+                  initial={reducedMotion ? false : { opacity: 0, y: -8 }}
+                  key={`${feedback.route.action}:${feedback.session.plan_version}`}
                   role="status"
+                  transition={{ duration: reducedMotion ? 0 : 0.24, ease: [0.22, 1, 0.36, 1] }}
                 >
-                  <strong>
-                    {feedback.correct ? "Evidence updated" : "Your plan adjusted"}
-                  </strong>
+                  <header>
+                    <Route />
+                    <div>
+                      <small>Adaptive decision</small>
+                      <strong>
+                        {feedback.route.action === "advance"
+                          ? "Your path advanced"
+                          : "Your path changed"}
+                      </strong>
+                    </div>
+                  </header>
+                  <dl>
+                    <div>
+                      <dt>Evidence</dt>
+                      <dd>
+                        {feedback.correct ? "Correct" : "Incorrect"} answer ·{" "}
+                        {confidenceLabel(feedback.evidence?.confidence)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Why</dt>
+                      <dd>{feedback.route.why}</dd>
+                    </div>
+                    <div>
+                      <dt>Next</dt>
+                      <dd>{nextRouteStepLabel(feedback.session)}</dd>
+                    </div>
+                  </dl>
                   <p>{feedback.feedback}</p>
-                  <span>{feedback.route.why}</span>
-                </div>
+                </motion.section>
               ) : null}
+              </AnimatePresence>
               {activeStep?.kind === "watch" ? (
                 <WatchStage
                   clip={activeClip}
@@ -1890,6 +1932,7 @@ function MasteryDrawer({
   onSelect: (conceptId: string) => void;
   path: LearnerPath;
 }) {
+  const [scope, setScope] = useState<"focus" | "all">("focus");
   const inspectedItem = path.items.find(
     (item) => item.concept_id === inspectedConceptId,
   );
@@ -1910,13 +1953,26 @@ function MasteryDrawer({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header>
-          <h2>
-            <BookOpen />
-            Mastery Map
-          </h2>
-          <button aria-label="Close mastery" onClick={onClose} type="button">
-            <X />
-          </button>
+          <div>
+            <h2>
+              <BookOpen />
+              Mastery Map
+            </h2>
+            <p>{scope === "focus" ? "Your current path and its nearest dependencies" : "Every concept in this course"}</p>
+          </div>
+          <div className={styles.masteryHeaderActions}>
+            <button
+              aria-pressed={scope === "all"}
+              className={styles.masteryScopeToggle}
+              onClick={() => setScope((current) => current === "focus" ? "all" : "focus")}
+              type="button"
+            >
+              {scope === "focus" ? "Show whole course" : "Focus my path"}
+            </button>
+            <button aria-label="Close mastery" onClick={onClose} type="button">
+              <X />
+            </button>
+          </div>
         </header>
         <div className={styles.masteryMapStage}>
           <LearnerMasteryMap
@@ -1926,6 +1982,7 @@ function MasteryDrawer({
               onInspect(inspectedConceptId === conceptId ? null : conceptId)
             }
             path={path}
+            scope={scope}
           />
           {!inspectedItem ? (
             <p className={styles.masteryMapHint}>
@@ -2198,9 +2255,35 @@ function stageName(step: LearnerSessionStep) {
   return "Review";
 }
 
-function railStepTitle(step: LearnerSessionStep) {
+export function railStepTitle(step: LearnerSessionStep) {
   if (step.kind === "reflect") return "What changed?";
-  return step.concept_name ?? step.title;
+  const title = step.title || step.concept_name || "Course activity";
+  if (step.kind === "watch") {
+    if (step.purpose === "remediation") return `Alternate explanation: ${title}`;
+    if (step.purpose === "reinforcement") return `Reinforce with: ${title}`;
+    return `Watch: ${title}`;
+  }
+  if (step.kind === "question") {
+    if (step.purpose === "remediation") return `Recovery check: ${title}`;
+    if (step.purpose === "reinforcement") return `Reinforcement check: ${title}`;
+    return `Check: ${title}`;
+  }
+  if (step.kind === "resource") return `Review: ${title}`;
+  return title;
+}
+
+export function confidenceLabel(confidence?: number) {
+  if (confidence == null) return "confidence recorded";
+  if (confidence >= 4) return "high confidence";
+  if (confidence >= 3) return "medium confidence";
+  return "low confidence";
+}
+
+export function nextRouteStepLabel(session: LearnerStudySession) {
+  const next = session.steps.find((step) => (
+    step.status === "active" || step.status === "pending"
+  ));
+  return next ? railStepTitle(next) : "Reflect on what changed";
 }
 
 function railStepStateLabel(

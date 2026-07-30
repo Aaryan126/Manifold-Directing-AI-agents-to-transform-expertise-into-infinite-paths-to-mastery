@@ -14,6 +14,8 @@
     "test:health": "node scripts/check-health.mjs",
     "eval:launchpad": "python3 scripts/launchpad_evaluation.py",
     "eval:launchpad:generation": "python3 scripts/launchpad_evaluation.py --run-generation",
+    "demo:check": "python3 scripts/reset_competition_demo.py --course-id 8b39e2ae-3a91-42ef-bfff-985a39283453 --concept \"Entrepreneurial planning as an iterative venture-design process\"",
+    "demo:reset": "python3 scripts/reset_competition_demo.py --course-id 8b39e2ae-3a91-42ef-bfff-985a39283453 --concept \"Entrepreneurial planning as an iterative venture-design process\" --apply",
     "ci": "npm run lint && npm run typecheck && npm run test"
   },
   "engines": {

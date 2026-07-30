@@ -1,7 +1,31 @@
-# Clean competition course and deterministic reset plan
+# Clean competition course and deterministic reset
 
-This is a plan, not an authorization to delete the current dataset. Implementation
-starts after the source recording and its rights are confirmed.
+## Current implementation (2026-07-30)
+
+The non-destructive rehearsal reset is implemented and verified against the
+current `Business 101` generated course:
+
+```bash
+npm run demo:check
+npm run demo:reset
+```
+
+`demo:check` is read-only. `demo:reset` requires the explicit mutating script
+flag, targets the exact course UUID and concept name pinned in `package.json`,
+resets only Brian's records inside that course, marks him simulated, and uses
+the real orientation/session/watch APIs to stop immediately before the reviewed
+misconception question. Each successful run reports the newly prepared session
+and active question IDs.
+
+This does not delete or recreate the instructor's course and does not call an
+LLM. Placeholder-titled courses are now hidden from the learner portfolio, and
+an explicitly simulated enrolled learner may access the exact draft rehearsal
+revision. Ordinary learners still require publication.
+
+The broader source-manifest export, course publication, three-learner dashboard
+signal, and full eight-stage fixture remain dependent on confirming the
+recording's rights and curating the final reviewed course. Stale database-course
+deletion remains a separate, unperformed operation requiring an allowlist.
 
 ## 1. Lock the source and teaching story
 
@@ -42,7 +66,7 @@ Use deterministic UUIDv5 identifiers derived from a fixed namespace and semantic
 keys such as `concept:deliberate-practice`. Stable identities make screenshots,
 automated assertions, and repeat runs comparable.
 
-## 3. Build a narrow reset command
+## 3. Narrow reset command — implemented
 
 Add:
 
@@ -51,26 +75,23 @@ npm run demo:check
 npm run demo:reset
 ```
 
-The implementation should be `scripts/reset_competition_demo.py` with these
-properties:
+`scripts/reset_competition_demo.py` now:
 
-- `--check` is read-only and the default;
-- `--apply` is required for mutation;
-- an advisory lock prevents concurrent resets;
-- it targets only records carrying an exact
-  `brief.competition_fixture_id`, never a title match, wildcard, home directory,
-  database-wide truncate, or unresolved environment variable;
-- one transaction deletes the prior fixture course and recreates it;
-- failure rolls back the complete reset;
-- the source checksum and fixture schema are validated before mutation;
-- the command prints the exact course, revision, instructor, and learner IDs;
-- a post-reset verifier runs before the transaction is considered successful;
-- the reset is idempotent: two runs produce the same logical graph and evidence;
-- external model calls are not required during reset.
+- is read-only unless `--apply` is present;
+- requires an exact course UUID and exact reviewed concept name;
+- refuses placeholder courses;
+- verifies current-revision teaching and assessment coverage;
+- resets only the selected learner's course-scoped sessions, evidence, mastery,
+  placement, guide/help, watch, and unit-progress records in a transaction;
+- retains the generated course, graph, source, and instructor decisions;
+- invokes normal learner APIs to create/start the session and complete only
+  reviewed watch steps;
+- stops and reports the first active question;
+- makes no external model call.
 
-The reset should load a reviewed snapshot generated from the real product
-workflow, not fake a second code path for how artifacts are shaped. AI generation
-can be demonstrated separately with the measured disposable evaluator.
+This narrower implementation intentionally supersedes the earlier destructive
+whole-course recreation design for rehearsals. A future exported fixture can
+add stable UUIDv5 recreation without weakening this safe default.
 
 ## 4. Curate the reviewed course
 

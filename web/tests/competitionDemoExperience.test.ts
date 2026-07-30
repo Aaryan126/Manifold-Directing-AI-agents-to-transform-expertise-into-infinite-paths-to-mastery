@@ -1,0 +1,138 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  generationCompleteSentence,
+  pendingBlueprintProposalPreview,
+} from "../app/app/courses/[courseId]/course-studio";
+import {
+  confidenceLabel,
+  nextRouteStepLabel,
+  railStepTitle,
+} from "../app/learn/courses/[courseId]/learner-course-player";
+import type {
+  LearnerSessionStep,
+  LearnerStudySession,
+} from "../app/learn/learner-course";
+
+function step(
+  overrides: Partial<LearnerSessionStep>,
+): LearnerSessionStep {
+  return {
+    id: "step",
+    ordinal: 0,
+    kind: "watch",
+    purpose: "learn",
+    concept_id: "concept",
+    concept_name: "Value creation",
+    clip_id: "clip",
+    question_id: null,
+    source_id: null,
+    title: "Worked example",
+    reason_code: "recommended",
+    reason: "Build the idea before checking it.",
+    status: "active",
+    ...overrides,
+  };
+}
+
+describe("competition demo experience", () => {
+  it("summarizes a generated lecture in one compact sentence", () => {
+    expect(generationCompleteSentence({
+      lectureCount: 1,
+      topicCount: 6,
+      conceptCount: 7,
+      teachingMomentCount: 6,
+      checkCount: 6,
+    })).toBe(
+      "1 lecture became 6 topics, 7 concepts, 6 teaching moments and 6 checks.",
+    );
+  });
+
+  it("derives the exact pending relationship removal without changing the graph", () => {
+    expect(pendingBlueprintProposalPreview([{
+      id: "message",
+      role: "manifold",
+      content: "Prepared one private change.",
+      created_at: "2026-07-30T00:00:00Z",
+      blocks: [{
+        type: "proposal",
+        proposal_id: "proposal",
+        status: "proposed",
+        artifact_type: "blueprint_relationship_remove",
+        proposed_state: {
+          relationship_type: "contains",
+          source_logical_id: "topic-logical",
+          target_logical_id: "concept-logical",
+          summary: "Remove the concept from Why plan only.",
+        },
+      }],
+    }], {})).toEqual({
+      action: "remove",
+      kind: "contains",
+      sourceLogicalId: "topic-logical",
+      targetLogicalId: "concept-logical",
+      summary: "Remove the concept from Why plan only.",
+    });
+  });
+
+  it("removes the preview as soon as the proposal is resolved", () => {
+    const messages = [{
+      id: "message",
+      role: "manifold" as const,
+      content: "Prepared one private change.",
+      created_at: "2026-07-30T00:00:00Z",
+      blocks: [{
+        type: "proposal",
+        proposal_id: "proposal",
+        status: "proposed",
+        artifact_type: "blueprint_relationship_remove",
+        proposed_state: {
+          relationship_type: "contains",
+          source_logical_id: "topic-logical",
+          target_logical_id: "concept-logical",
+        },
+      }],
+    }];
+    expect(pendingBlueprintProposalPreview(messages, { proposal: "dismissed" }))
+      .toBeNull();
+  });
+
+  it("uses action-specific learner rail titles and identifies the next route step", () => {
+    const alternate = step({
+      purpose: "remediation",
+      title: "A different explanation",
+    });
+    const recovery = step({
+      id: "question",
+      ordinal: 1,
+      kind: "question",
+      purpose: "remediation",
+      title: "Apply the distinction",
+      clip_id: null,
+      question_id: "question",
+      status: "pending",
+    });
+    expect(railStepTitle(alternate))
+      .toBe("Alternate explanation: A different explanation");
+    expect(railStepTitle(recovery))
+      .toBe("Recovery check: Apply the distinction");
+    expect(confidenceLabel(4)).toBe("high confidence");
+
+    const session: LearnerStudySession = {
+      id: "session",
+      course_id: "course",
+      revision_id: "revision",
+      status: "active",
+      mode: "continue_path",
+      finish_requested: false,
+      plan_version: 2,
+      steps: [
+        { ...step({ status: "completed" }) },
+        alternate,
+        recovery,
+      ],
+    };
+    expect(nextRouteStepLabel(session))
+      .toBe("Alternate explanation: A different explanation");
+  });
+});

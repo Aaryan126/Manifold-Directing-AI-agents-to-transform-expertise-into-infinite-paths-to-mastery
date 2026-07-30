@@ -107,14 +107,25 @@ class PostgresAccessRepository(AccessRepository):
                               and unit.review_status in ('accepted', 'edited'))
                               as assignment_count
                     from courses course
+                    join users learner on learner.id = %s
                     left join enrollments enrollment
                       on enrollment.course_id = course.id
                      and enrollment.learner_id = %s
-                    where course.status = 'published'
-                      and course.active_revision_id is not null
+                    where (
+                        (course.status = 'published' and course.active_revision_id is not null)
+                        or (
+                          learner.is_simulated
+                          and enrollment.id is not null
+                          and enrollment.revision_id is not null
+                        )
+                      )
+                      and lower(btrim(course.title)) not in (
+                        'untitled course',
+                        'development course'
+                      )
                     order by enrollment.created_at desc nulls last, course.updated_at desc
                     """,
-                    (learner_id, learner_id),
+                    (learner_id, learner_id, learner_id),
                 )
             ).fetchall()
             return tuple(
@@ -149,7 +160,9 @@ class PostgresAccessRepository(AccessRepository):
                     join enrollments enrollment
                       on enrollment.course_id = course.id
                      and enrollment.learner_id = %s
-                    where course.id = %s and course.status = 'published'
+                    join users learner on learner.id = enrollment.learner_id
+                    where course.id = %s
+                      and (course.status = 'published' or learner.is_simulated)
                     """,
                     (learner_id, course_id),
                 )

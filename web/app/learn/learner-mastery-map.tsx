@@ -58,11 +58,13 @@ export function LearnerMasteryMap({
   mastery,
   onInspect,
   path,
+  scope = "focus",
 }: {
   inspectedConceptId: string | null;
   mastery: LearnerMasteryReview;
   onInspect: (conceptId: string | null) => void;
   path: LearnerPath;
+  scope?: "focus" | "all";
 }) {
   const [positions, setPositions] = useState<
     Record<string, { x: number; y: number }>
@@ -77,20 +79,39 @@ export function LearnerMasteryMap({
     () => learnerMasteryFocusIds(path.items, path.current_concept_id),
     [path.current_concept_id, path.items],
   );
+  const visibleItems = useMemo(
+    () => scope === "focus"
+      ? path.items.filter((item) => focusIds.includes(item.concept_id))
+      : path.items,
+    [focusIds, path.items, scope],
+  );
+  const visibleItemIds = useMemo(
+    () => new Set(visibleItems.map((item) => item.concept_id)),
+    [visibleItems],
+  );
+  const visibleConnections = useMemo(
+    () => connections.filter((connection) => (
+      visibleItemIds.has(connection.source)
+      && visibleItemIds.has(connection.target)
+    )),
+    [connections, visibleItemIds],
+  );
   const focusNodeRefs = useMemo(
-    () => focusIds.map((id) => ({ id })),
-    [focusIds],
+    () => (scope === "focus" ? focusIds : visibleItems.map((item) => item.concept_id))
+      .map((id) => ({ id })),
+    [focusIds, scope, visibleItems],
   );
   const requestedLayoutKey = useMemo(
     () => [
-      ...path.items.map((item) => item.concept_id).sort(),
-      ...connections.map((connection) => connection.id).sort(),
+      scope,
+      ...visibleItems.map((item) => item.concept_id).sort(),
+      ...visibleConnections.map((connection) => connection.id).sort(),
     ].join(":"),
-    [connections, path.items],
+    [scope, visibleConnections, visibleItems],
   );
 
   useEffect(() => {
-    if (!path.items.length) {
+    if (!visibleItems.length) {
       setPositions({});
       setLayoutKey(requestedLayoutKey);
       return;
@@ -112,7 +133,7 @@ export function LearnerMasteryMap({
         "elk.layered.nodePlacement.favorStraightEdges": "true",
         "elk.layered.considerModelOrder.strategy": "PREFER_NODES",
       },
-      children: [...path.items]
+      children: [...visibleItems]
         .sort(
           (left, right) =>
             left.sequence_rank - right.sequence_rank
@@ -123,7 +144,7 @@ export function LearnerMasteryMap({
           width: nodeWidth,
           height: nodeHeight,
         })),
-      edges: connections.map((connection) => ({
+      edges: visibleConnections.map((connection) => ({
         id: connection.id,
         sources: [connection.source],
         targets: [connection.target],
@@ -137,7 +158,7 @@ export function LearnerMasteryMap({
       setLayoutKey(requestedLayoutKey);
     }).catch(() => {
       if (cancelled) return;
-      setPositions(Object.fromEntries(path.items.map((item, index) => [
+      setPositions(Object.fromEntries(visibleItems.map((item, index) => [
         item.concept_id,
         {
           x: (index % 3) * (nodeWidth + 42),
@@ -149,7 +170,7 @@ export function LearnerMasteryMap({
     return () => {
       cancelled = true;
     };
-  }, [connections, path.items, requestedLayoutKey]);
+  }, [requestedLayoutKey, visibleConnections, visibleItems]);
 
   const evidenceByConcept = useMemo(
     () => new Map(
@@ -168,7 +189,7 @@ export function LearnerMasteryMap({
     });
     return routes;
   }, [mastery.recent_routes]);
-  const nodes = useMemo<MasteryNode[]>(() => path.items.map((item) => ({
+  const nodes = useMemo<MasteryNode[]>(() => visibleItems.map((item) => ({
     id: item.concept_id,
     type: "learnerMastery",
     position: positions[item.concept_id] ?? { x: 0, y: 0 },
@@ -186,12 +207,12 @@ export function LearnerMasteryMap({
     inspectedConceptId,
     onInspect,
     path.current_concept_id,
-    path.items,
     positions,
     routeByConcept,
+    visibleItems,
   ]);
   const edges = useMemo<MasteryEdge[]>(() => {
-    const structuralEdges = connections.map((connection) => {
+    const structuralEdges = visibleConnections.map((connection) => {
       const entersCurrent = connection.target === path.current_concept_id;
       const prerequisite = connection.kind === "prerequisite";
       return {
@@ -213,7 +234,7 @@ export function LearnerMasteryMap({
         type: "smoothstep",
       } satisfies MasteryEdge;
     });
-    const itemIds = new Set(path.items.map((item) => item.concept_id));
+    const itemIds = visibleItemIds;
     const seenTransitions = new Set<string>();
     const adaptiveEdges = mastery.recent_routes.flatMap((route) => {
       const source = route.concept_id;
@@ -257,7 +278,7 @@ export function LearnerMasteryMap({
       } satisfies MasteryEdge];
     });
     return [...structuralEdges, ...adaptiveEdges];
-  }, [connections, mastery.recent_routes, path.current_concept_id, path.items]);
+  }, [mastery.recent_routes, path.current_concept_id, visibleConnections, visibleItemIds]);
   const ready = layoutKey === requestedLayoutKey;
 
   useEffect(() => {
@@ -278,6 +299,7 @@ export function LearnerMasteryMap({
     <div
       aria-label="Adaptive mastery prerequisite map"
       className={styles.masteryMapCanvas}
+      data-scope={scope}
       data-testid="mastery-map"
     >
       {!ready ? (

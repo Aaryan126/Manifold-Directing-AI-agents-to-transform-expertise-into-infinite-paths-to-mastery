@@ -305,10 +305,20 @@
 .approvedHint > svg { color: #a65b22; height: 18px; width: 18px; }
 .approvedHint strong { font-size: 12px; }
 .approvedHint p { color: #5e5b62; font-size: 13px; line-height: 1.5; margin: 4px 0 0; }
-.routeUpdate { background: #fff8ef; border: 1px solid #ead1ba; border-radius: 10px; margin-top: 18px; padding: 14px; }
-.routeUpdate[data-tone="success"] { background: var(--manifold-brown-soft); border-color: #d9c7ba; }
-.routeUpdate strong { font-size: 13px; }
-.routeUpdate p,.routeUpdate span { color: #5f5c63; display: block; font-size: 12px; line-height: 1.45; margin: 4px 0 0; }
+.routeUpdate { background: #fff8ef; border: 1px solid #e5c5aa; border-left: 4px solid #a75c25; border-radius: 13px; box-shadow: 0 10px 28px rgb(52 42 33 / 7%); margin-top: 18px; padding: 17px 18px; }
+.routeUpdate[data-tone="success"] { background: #f3f8f0; border-color: #bed2b8; border-left-color: #527c49; }
+.routeUpdate > header { align-items: center; display: flex; gap: 10px; }
+.routeUpdate > header > svg { background: #fff; border: 1px solid rgb(164 89 35 / 18%); border-radius: 9px; color: #a75c25; height: 31px; padding: 7px; width: 31px; }
+.routeUpdate > header div { display: grid; gap: 1px; }
+.routeUpdate > header small { color: #8d4a1c; font-size: 9px; font-weight: 780; letter-spacing: .075em; text-transform: uppercase; }
+.routeUpdate strong { font-size: 15px; }
+.routeUpdate dl { display: grid; gap: 1px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 14px 0 0; }
+.routeUpdate dl > div { background: rgb(255 255 255 / 62%); border: 1px solid rgb(154 112 79 / 14%); display: grid; gap: 4px; min-height: 68px; padding: 10px 12px; }
+.routeUpdate dl > div:first-child { border-radius: 9px 0 0 9px; }
+.routeUpdate dl > div:last-child { border-radius: 0 9px 9px 0; }
+.routeUpdate dt { color: #777078; font-size: 9px; font-weight: 760; letter-spacing: .06em; text-transform: uppercase; }
+.routeUpdate dd { color: #39373c; font-size: 11px; font-weight: 660; line-height: 1.35; margin: 0; }
+.routeUpdate > p { color: #666169; font-size: 11px; line-height: 1.45; margin: 10px 1px 0; }
 .reflectStage { background: #fff; border: 1px solid #dedbd3; border-radius: 15px; margin-top: 42px; max-width: 690px; padding: 34px; }
 .reflectStage h2 { font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 34px; font-weight: 500; letter-spacing: -.03em; margin: 13px 0 7px; }
 .reflectStage > p { color: #68656c; font-size: 14px; line-height: 1.55; margin: 0 0 20px; }
@@ -332,10 +342,15 @@
 .modeChooser > header > button svg { height: 17px; width: 17px; }
 .masteryDrawer { background: #fbfaf7; box-shadow: -20px 0 50px rgb(30 28 25 / 14%); display: grid; grid-template-rows: auto minmax(360px, 1fr) auto; height: 100%; max-width: calc(100vw - 72px); overflow: hidden; width: min(700px, calc(100vw - 72px)); }
 .masteryDrawer > header { align-items: center; border-bottom: 1px solid #dedbd3; display: flex; justify-content: space-between; min-height: 76px; padding: 15px 20px; }
+.masteryDrawer > header > div:first-child { display: grid; gap: 2px; }
+.masteryDrawer > header > div:first-child > p { color: #716e74; font-size: 10px; margin: 0 0 0 32px; }
 .masteryDrawer h2 { align-items: center; display: flex; font-family: "Source Serif 4 Variable", Georgia, serif; font-size: 28px; font-weight: 520; gap: 10px; letter-spacing: -.025em; margin: 0; }
 .masteryDrawer h2 svg { color: #a65318; height: 22px; stroke-width: 1.8; width: 22px; }
 .masteryDrawer > header button { align-items: center; background: transparent; border: 0; color: #66636a; cursor: pointer; display: flex; height: 36px; justify-content: center; width: 36px; }
 .masteryDrawer > header button svg { height: 18px; width: 18px; }
+.masteryHeaderActions { align-items: center; display: flex; gap: 7px; }
+.masteryHeaderActions .masteryScopeToggle { background: #fff; border: 1px solid #d5d1c9; border-radius: 999px; font-size: 10px; font-weight: 720; padding: 0 12px; width: auto; }
+.masteryHeaderActions .masteryScopeToggle[aria-pressed="true"] { background: #2b2b30; border-color: #2b2b30; color: #fff; }
 .masteryMapStage { min-height: 0; position: relative; }
 .masteryMapCanvas { background: #f7f5f0; height: 100%; min-height: 0; position: relative; }
 .masteryMapLoading { align-items: center; background: rgb(247 245 240 / 86%); color: #6e6b72; display: flex; font-size: 12px; gap: 8px; inset: 0; justify-content: center; position: absolute; z-index: 4; }
