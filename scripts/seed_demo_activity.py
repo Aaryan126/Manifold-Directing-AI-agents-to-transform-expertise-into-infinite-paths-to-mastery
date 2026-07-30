@@ -13,7 +13,9 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 
 DEFAULT_INSTRUCTOR_EMAIL = "dev-instructor@coursefoundry.local"
 SEED_KEY = "portfolio-activity-v1"
-ACTIVITY_PATTERN = (1, 2, 1, 3, 2, 3, 2)
+SEEDED_LEARNER_COUNT = 12
+NEW_LEARNER_COUNT = 5
+ACTIVITY_PATTERN = (5, 8, 6, 11, 9, 12, 10)
 
 
 class Assignment(NamedTuple):
@@ -102,9 +104,83 @@ def assignments(instructor_email: str) -> tuple[Assignment, ...]:
     )
     if len(result) < max(ACTIVITY_PATTERN):
         raise RuntimeError(
-            "At least three enrolled simulated learners with reviewed questions are required."
+            f"At least {max(ACTIVITY_PATTERN)} enrolled simulated learners with "
+            "reviewed questions are required."
         )
     return result
+
+
+def seed_learners(instructor_email: str) -> int:
+    target = psql(
+        "select c.id, c.active_revision_id "
+        "from courses c "
+        "join users i on i.id = c.instructor_id "
+        "where i.email = "
+        f"{literal(instructor_email)} "
+        "and c.status = 'published' "
+        "and exists ("
+        " select 1 from questions q "
+        " join topics t on t.id = q.topic_id "
+        " where q.revision_id = c.active_revision_id "
+        " and t.revision_id = c.active_revision_id "
+        " and q.review_status in ('accepted', 'edited')"
+        ") "
+        "order by c.title, c.id "
+        "limit 1"
+    )
+    if not target:
+        raise RuntimeError(
+            "No published instructor course with a reviewed question is available."
+        )
+    course_id, revision_id = target.split("|", 1)
+    user_values: list[str] = []
+    enrollment_values: list[str] = []
+    for index in range(1, SEEDED_LEARNER_COUNT + 1):
+        email = f"portfolio-activity-{index:02d}@coursefoundry.local"
+        learner_id = uuid5(NAMESPACE_URL, f"{SEED_KEY}:learner:{email}")
+        enrollment_id = uuid5(
+            NAMESPACE_URL,
+            f"{SEED_KEY}:enrollment:{learner_id}:{course_id}",
+        )
+        user_values.append(
+            "("
+            f"{literal(str(learner_id))}::uuid,"
+            f"{literal(email)},"
+            "'learner',"
+            f"{literal(f'Demo learner {index:02d}')},"
+            "true"
+            ")"
+        )
+        created_at = (
+            f"(now() at time zone 'UTC')::date - interval '{index - 1} days' "
+            "+ interval '9 hours'"
+            if index <= NEW_LEARNER_COUNT
+            else "(now() at time zone 'UTC')::date - interval '30 days'"
+        )
+        enrollment_values.append(
+            "("
+            f"{literal(str(enrollment_id))}::uuid,"
+            f"{literal(str(learner_id))}::uuid,"
+            f"{literal(course_id)}::uuid,"
+            f"{literal(revision_id)}::uuid,"
+            f"{created_at}"
+            ")"
+        )
+    psql(
+        "begin; "
+        "insert into users (id, email, role, display_name, is_simulated) values "
+        + ",".join(user_values)
+        + " on conflict (email) do update set "
+        "role = excluded.role, display_name = excluded.display_name, "
+        "is_simulated = excluded.is_simulated; "
+        "insert into enrollments (id, learner_id, course_id, revision_id, created_at) "
+        "values "
+        + ",".join(enrollment_values)
+        + " on conflict (learner_id, course_id) do update set "
+        "revision_id = excluded.revision_id, created_at = excluded.created_at; "
+        "commit;"
+    )
+    return SEEDED_LEARNER_COUNT
 
 
 def seed_rows(eligible: tuple[Assignment, ...]) -> int:
@@ -149,6 +225,12 @@ def seed_rows(eligible: tuple[Assignment, ...]) -> int:
 def main() -> int:
     args = parser().parse_args()
     try:
+        if args.apply:
+            learner_count = seed_learners(args.instructor_email)
+            print(
+                f"Seeded {learner_count} labelled simulated learners; "
+                f"{NEW_LEARNER_COUNT} enrolled this week."
+            )
         eligible = assignments(args.instructor_email)
         print(
             f"Ready: {len(eligible)} enrolled simulated learners have reviewed questions."

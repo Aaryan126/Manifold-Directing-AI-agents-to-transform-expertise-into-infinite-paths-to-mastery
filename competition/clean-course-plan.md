@@ -24,9 +24,11 @@ an explicitly simulated enrolled learner may access the exact draft rehearsal
 revision. Ordinary learners still require publication.
 
 `demo:activity` replaces only attempts carrying the explicit
-`portfolio-activity-v1` demo label. It uses three already-enrolled simulated
-learners and reviewed questions to produce a reproducible seven-day dashboard
-curve; the dashboard labels the resulting series as simulated evidence.
+`portfolio-activity-v1` demo label. It adds twelve deterministic simulated
+portfolio learners to a published reviewed course, dates five enrollments within
+the current week, and uses reviewed questions to produce a reproducible
+`[5,8,6,11,9,12,10]` seven-day dashboard curve. The dashboard labels the
+resulting series as simulated evidence.
 
 The broader source-manifest export, course publication, three-learner dashboard
 signal, and full eight-stage fixture remain dependent on confirming the
