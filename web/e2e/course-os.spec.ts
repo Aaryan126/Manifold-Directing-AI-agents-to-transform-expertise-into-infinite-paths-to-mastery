@@ -856,16 +856,8 @@ test("teacher dashboard prioritizes review work and opens the studio", async ({ 
   const priorityPanel = page.getByRole("article").filter({
     has: page.getByRole("heading", { name: "Needs your judgment", exact: true }),
   });
-  const learnerInsight = priorityPanel.locator("[data-kind='learner_insight']").first();
-  await expect(learnerInsight.locator("[class*='priorityIcon']")).toHaveCSS(
-    "background-color",
-    "rgba(0, 0, 0, 0)",
-  );
-  await expect(learnerInsight.locator("[class*='priorityIcon']")).toHaveCSS(
-    "color",
-    "rgb(217, 122, 43)",
-  );
-  await expect(learnerInsight.locator("em")).toHaveCount(0);
+  await expect(priorityPanel.locator("[data-kind='learner_insight']")).toHaveCount(0);
+  await expect(priorityPanel.getByText("You’re all caught up", { exact: true })).toBeVisible();
   const learnerActivityPanel = page.getByRole("article").filter({
     has: page.getByRole("heading", { name: "Learner activity", exact: true }),
   });

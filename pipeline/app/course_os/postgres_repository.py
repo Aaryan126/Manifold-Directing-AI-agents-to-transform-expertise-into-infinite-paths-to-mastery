@@ -853,20 +853,6 @@ class PostgresCourseOSRepository(CourseOSRepository):
                         urgency="normal",
                     )
                 )
-            if course.open_signal_count:
-                attention.append(
-                    AttentionItem(
-                        id=f"insight:{course.id}",
-                        course_id=course.id,
-                        kind="learner_insight",
-                        title=f"Learners need attention in {course.title}",
-                        detail=(
-                            f"{course.open_signal_count} evidence-backed "
-                            "teaching insights are open."
-                        ),
-                        urgency="normal",
-                    )
-                )
         async with pooled_connection(self._database_url) as conn:
             learner_row = await (
                 await conn.execute(

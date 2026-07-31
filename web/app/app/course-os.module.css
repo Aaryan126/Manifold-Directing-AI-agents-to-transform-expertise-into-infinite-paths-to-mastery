@@ -478,7 +478,7 @@
 .priorityEmpty > svg { height: 22px; width: 22px; }
 .priorityEmpty span { display: grid; gap: 3px; }
 .priorityEmpty strong { color: #3d3d43; font-size: 13px; }
-.priorityEmpty small { font-size: 12px; }
+.priorityEmpty small { color: #69676d; font-size: 12px; }
 
 .courseHealth header > span { align-items: center; border: 1px solid #dedbd4; border-radius: 8px; color: #55545b; display: flex; font-size: 11px; gap: 7px; min-height: 34px; padding: 0 11px; }
 .courseHealth header > span svg { height: 13px; width: 13px; }
