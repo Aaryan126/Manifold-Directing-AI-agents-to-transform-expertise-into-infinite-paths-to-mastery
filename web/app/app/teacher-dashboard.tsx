@@ -103,11 +103,6 @@ export function TeacherDashboard() {
     );
   }, [dashboard, query]);
 
-  const judgmentAttention = useMemo(
-    () => dashboard?.attention.filter((item) => item.kind !== "learner_insight") ?? [],
-    [dashboard],
-  );
-
   async function createCourse(title: string) {
     if (!identity || creating || !title.trim()) return;
     const requestId = creationRequestId.current ?? crypto.randomUUID();
@@ -260,14 +255,14 @@ export function TeacherDashboard() {
                     <h2 id="attention-title">Needs your judgment</h2>
                     <p>Where your judgment creates the most impact.</p>
                   </div>
-                  {judgmentAttention.length > 3 ? (
+                  {dashboard.attention.length > 3 ? (
                     <button onClick={() => setShowAllAttention((current) => !current)} type="button">
                       {showAllAttention ? "Show less" : "View all"}<ChevronRight aria-hidden="true" />
                     </button>
-                  ) : <span>{judgmentAttention.length} open</span>}
+                  ) : <span>{dashboard.attention.length} open</span>}
                 </header>
                 <div className={styles.priorityList}>
-                  {judgmentAttention.length ? (showAllAttention ? judgmentAttention : judgmentAttention.slice(0, 3)).map((item) => (
+                  {dashboard.attention.length ? (showAllAttention ? dashboard.attention : dashboard.attention.slice(0, 3)).map((item) => (
                     <Link
                       className={styles.priorityItem}
                       data-has-action={item.kind === "learner_insight" ? undefined : "true"}
@@ -286,7 +281,7 @@ export function TeacherDashboard() {
                   )) : (
                     <div className={styles.priorityEmpty}>
                       <ClipboardCheck aria-hidden="true" />
-                      <span><strong>You’re all caught up</strong><small>New review decisions and build issues will appear here.</small></span>
+                      <span><strong>You’re all caught up</strong><small>New review decisions and learner signals will appear here.</small></span>
                     </div>
                   )}
                 </div>
