@@ -952,6 +952,29 @@ export function shouldHydrateGenerationRun(course: CourseSummary): boolean {
   );
 }
 
+export function resolveGeneratedLectureHandoff(
+  flow: CourseFlow,
+  submittedVideoId: string | null,
+): { videoId: string | null; mode: "design" } {
+  const exactLecture = submittedVideoId
+    ? flow.units.find(
+      (unit) => (
+        unit.kind === "lecture"
+        && unit.status !== "dismissed"
+        && unit.video_id === submittedVideoId
+      ),
+    )
+    : null;
+  const latestLecture = [...flow.units]
+    .filter((unit) => unit.kind === "lecture" && unit.status !== "dismissed")
+    .sort((left, right) => right.sequence_rank - left.sequence_rank)[0];
+
+  return {
+    videoId: exactLecture?.video_id ?? latestLecture?.video_id ?? submittedVideoId,
+    mode: "design",
+  };
+}
+
 export function studioPresentationMode(course: CourseSummary | null): "creation" | "workspace" {
   if (!course) return "creation";
   const ready = course.status === "published"

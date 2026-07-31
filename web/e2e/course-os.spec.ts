@@ -360,7 +360,11 @@ async function mockCourseOS(
   };
 }
 
-async function mockPublishedCourseOS(page: Page, flowUnitCount = 1) {
+async function mockPublishedCourseOS(
+  page: Page,
+  flowUnitCount = 1,
+  options: { completedGeneration?: boolean } = {},
+) {
   await setInstructorSession(page);
   let savedLayout: { positions?: Array<{ logical_artifact_id?: string; x?: number; y?: number }> } | null = null;
   const proposalDecisions: Array<{ proposal_id: string; decision: string }> = [];
@@ -374,8 +378,9 @@ async function mockPublishedCourseOS(page: Page, flowUnitCount = 1) {
     target_logical_id?: string;
   }> = [];
   const cleanupRequests: Array<Record<string, unknown>> = [];
-  let workingRevisionOpen = false;
+  let workingRevisionOpen = Boolean(options.completedGeneration);
   const workingRevisionId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const generatedLectureVideoId = "00000002-1212-4212-8212-121212121212";
   const published = {
     ...course,
     id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -384,9 +389,11 @@ async function mockPublishedCourseOS(page: Page, flowUnitCount = 1) {
     active_revision_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
     working_revision_id: null,
     revision_status: "published",
-    generation_run_id: null,
+    generation_run_id: options.completedGeneration
+      ? "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+      : null,
     generation_status: "complete",
-    generation_phase: "complete",
+    generation_phase: options.completedGeneration ? "draft_ready" : "complete",
     pending_review_count: 64,
     open_signal_count: 1,
   };
@@ -408,7 +415,7 @@ async function mockPublishedCourseOS(page: Page, flowUnitCount = 1) {
           published.id,
           working ? workingRevisionId : published.active_revision_id,
           working ? "working" : "active",
-          flowUnitCount,
+          working && options.completedGeneration ? 2 : flowUnitCount,
         ),
       });
     }
@@ -732,6 +739,10 @@ async function mockPublishedCourseOS(page: Page, flowUnitCount = 1) {
     const clipId = working ? "clip-working" : "clip-1";
     const questionId = working ? "question-working" : "question-1";
     const sourceId = working ? "source-working" : "source-1";
+    const generatedTopicId = "generated-topic-working";
+    const generatedConceptId = "generated-concept-working";
+    const generatedClipId = "generated-clip-working";
+    const generatedQuestionId = "generated-question-working";
     const nodeIdsByLogicalId: Record<string, string> = {
       "topic-logical": topicId,
       "topic-logical-2": topicTwoId,
@@ -753,6 +764,12 @@ async function mockPublishedCourseOS(page: Page, flowUnitCount = 1) {
         { id: clipId, logical_id: "clip-logical", kind: "clip", title: "Vector direction", status: "accepted", parent_id: topicId, metadata: { duration_seconds: 60, start_seconds: 0, end_seconds: 60 } },
         { id: questionId, logical_id: "question-logical", kind: "question", title: "In the ukulele example, why did the speaker focus on learning only a small set of chords before performing?", status: "accepted", parent_id: topicId, metadata: { type: "short_answer" } },
         { id: sourceId, logical_id: "source-logical", kind: "source", title: "Force diagrams.pdf", status: "accepted", parent_id: null, metadata: { source_type: "pdf" } },
+        ...(working && options.completedGeneration ? [
+          { id: generatedTopicId, logical_id: "generated-topic-logical", kind: "topic", title: "Momentum applications", status: "accepted", parent_id: null, metadata: { video_id: generatedLectureVideoId } },
+          { id: generatedConceptId, logical_id: "generated-concept-logical", kind: "concept", title: "Impulse changes momentum", status: "accepted", parent_id: generatedTopicId, metadata: { sequence_rank: 3, description: "Connect force over time to momentum change." } },
+          { id: generatedClipId, logical_id: "generated-clip-logical", kind: "clip", title: "Impulse demonstration", status: "accepted", parent_id: generatedTopicId, metadata: { duration_seconds: 45, start_seconds: 0, end_seconds: 45 } },
+          { id: generatedQuestionId, logical_id: "generated-question-logical", kind: "question", title: "How does impulse change momentum?", status: "accepted", parent_id: generatedTopicId, metadata: { type: "mcq" } },
+        ] : []),
       ],
       edges: [
         { id: "contains-1", source_id: topicId, target_id: conceptId, kind: "contains", status: "accepted" },
@@ -762,6 +779,11 @@ async function mockPublishedCourseOS(page: Page, flowUnitCount = 1) {
         { id: "assesses-1", source_id: questionId, target_id: conceptId, kind: "assesses", status: "accepted" },
         { id: "remediates-1", source_id: questionId, target_id: clipId, kind: "remediates_to", status: "accepted" },
         { id: "cites-1", source_id: sourceId, target_id: conceptId, kind: "cites", status: "accepted" },
+        ...(working && options.completedGeneration ? [
+          { id: "generated-contains", source_id: generatedTopicId, target_id: generatedConceptId, kind: "contains", status: "accepted" },
+          { id: "generated-teaches", source_id: generatedClipId, target_id: generatedConceptId, kind: "teaches", status: "accepted" },
+          { id: "generated-assesses", source_id: generatedQuestionId, target_id: generatedConceptId, kind: "assesses", status: "accepted" },
+        ] : []),
         ...createdRelationships.map((relationship, index) => ({
           id: `manual-${index}-${relationship.relationship}`,
           source_id: nodeIdsByLogicalId[relationship.source_logical_id ?? ""] ?? "",
@@ -1278,7 +1300,10 @@ test("dismissing a Course Director proposal leaves the Live map painted", async 
     "Remove Vector addition from the Net force topic.",
   );
   await page.getByRole("button", { name: "Send message" }).click();
-  await expect(page.getByText("Remove Vector addition from Net force.")).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Course Director" })
+      .getByText("Remove Vector addition from Net force."),
+  ).toBeVisible();
   expect(await blueprintNodes.evaluateAll(
     (nodes) => nodes.every((node) => getComputedStyle(node).visibility !== "hidden"),
   )).toBe(true);
@@ -2064,6 +2089,49 @@ test("Course Flow opens five or more units at overview scale", async ({ page }) 
   await expect.poll(async () => courseFlowGraph.locator(".react-flow__viewport").evaluate((element) => {
     return new DOMMatrix(getComputedStyle(element).transform).a;
   })).toBeLessThanOrEqual(0.82);
+});
+
+test("Course Flow preserves Design while opening and returning from a private lecture", async ({ page }) => {
+  const state = await mockPublishedCourseOS(page);
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto(`/app/courses/${state.published.id}`);
+
+  await page.getByRole("button", { name: "Design", exact: true }).click();
+  await page.getByText("Forces lecture", { exact: true }).click();
+
+  await expect(page.getByRole("button", { name: "Design", exact: true }))
+    .toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Private revision", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Back to Course Flow" }).click();
+  await expect(page.getByRole("button", { name: "Design", exact: true }))
+    .toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Forces lecture", { exact: true })).toBeVisible();
+});
+
+test("a completed uploaded lecture resumes once in its non-empty private Blueprint", async ({ page }) => {
+  const state = await mockPublishedCourseOS(page, 1, { completedGeneration: true });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto(`/app/courses/${state.published.id}`);
+
+  await expect(page.locator('[data-motion-scope="studio-context-title"]'))
+    .toHaveText("Forces lecture 2");
+  await expect(page.getByRole("button", { name: "Design", exact: true }))
+    .toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Private revision", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("rf__node-generated-concept-working")).toBeVisible();
+
+  await page.getByRole("button", { name: "Back to Course Flow" }).click();
+  await expect(page.getByText("Forces lecture 2", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Design", exact: true }))
+    .toHaveAttribute("aria-pressed", "true");
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Design the whole learning journey" }))
+    .toBeVisible();
+  await expect(page.getByRole("button", { name: "Live", exact: true }))
+    .toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Forces lecture 2", { exact: true })).toHaveCount(0);
 });
 
 test("saving a dragged Blueprint node keeps the graph mounted", async ({ page }) => {

@@ -117,6 +117,7 @@ import {
   shouldHydrateGenerationRun,
   topicLogicalIdsForConcept,
   reorderBlueprintConcepts,
+  resolveGeneratedLectureHandoff,
   resolveCurrentBlueprintNode,
   resolveBlueprintNodeOverlaps,
   visibleBlueprintNodeIds,
@@ -159,6 +160,9 @@ import { courseFlowViewportPolicy } from "../../../courseFlowViewport";
 import { readDevelopmentSession } from "../../../developmentSession";
 
 const pipelineBase = process.env.NEXT_PUBLIC_PIPELINE_BASE_URL ?? "http://localhost:8000";
+const generationHandoffStorageKey = (userId: string, courseId: string) => (
+  `manifold.generation-handoff.${userId}.${courseId}`
+);
 type CanvasView = "flow" | "blueprint" | "review" | "assessments" | "preview";
 type BlueprintMode = "live" | "design";
 type Decision = "accepted" | "edited" | "dismissed";
@@ -420,6 +424,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       const courseResult = await request<CourseSummary>(`/courses/${courseId}/studio`, user);
       setCourse(courseResult);
       setBlueprintMode("live");
+      let resumedGenerationHandoff: ReturnType<typeof resolveGeneratedLectureHandoff> | null = null;
       setMessages(
         readRuntimeConversation<CourseMessage>("course-director", user.id, courseId),
       );
@@ -447,7 +452,33 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       if (courseResult.topic_count > 0) {
         await refreshStructuredWorkspace(user, courseResult.status === "published");
       }
-      if (courseResult.status === "published") {
+      const shouldResumeCompletedGeneration = Boolean(
+        courseResult.status === "published"
+        && courseResult.active_revision_id
+        && courseResult.working_revision_id
+        && courseResult.generation_run_id
+        && courseResult.generation_status === "complete"
+        && courseResult.generation_phase === "draft_ready"
+        && window.localStorage.getItem(generationHandoffStorageKey(user.id, courseId))
+          !== courseResult.generation_run_id
+      );
+      if (shouldResumeCompletedGeneration) {
+        const nextFlow = await request<CourseFlow>(
+          `/courses/${courseId}/course-flow?revision=working`,
+          user,
+        );
+        setWorkingCourseFlow(nextFlow);
+        resumedGenerationHandoff = resolveGeneratedLectureHandoff(nextFlow, null);
+      }
+      if (resumedGenerationHandoff) {
+        setLectureFocusVideoId(resumedGenerationHandoff.videoId);
+        setBlueprintMode(resumedGenerationHandoff.mode);
+        setCanvasView("blueprint");
+        window.localStorage.setItem(
+          generationHandoffStorageKey(user.id, courseId),
+          courseResult.generation_run_id!,
+        );
+      } else if (courseResult.status === "published") {
         setCanvasView(
           requestedCanvasView && ["flow", "blueprint", "assessments", "preview"].includes(requestedCanvasView)
             ? requestedCanvasView as CanvasView
@@ -497,17 +528,19 @@ export function CourseStudio({ courseId }: { courseId: string }) {
             await refreshRevisionDiff(identity, nextCourse);
             const nextFlow = await request<CourseFlow>(`/courses/${courseId}/course-flow?revision=working`, identity);
             setWorkingCourseFlow(nextFlow);
-            const generatedLecture = nextFlow.units.find(
-              (unit) => unit.kind === "lecture" && unit.video_id === lectureCreationVideoId,
-            ) ?? [...nextFlow.units]
-              .filter((unit) => unit.kind === "lecture")
-              .sort((left, right) => right.sequence_rank - left.sequence_rank)[0];
-            const generatedVideoId = generatedLecture?.video_id ?? lectureCreationVideoId;
-            setLectureFocusVideoId(generatedVideoId);
-            setBlueprintMode("live");
+            const handoff = resolveGeneratedLectureHandoff(nextFlow, lectureCreationVideoId);
+            setLectureFocusVideoId(handoff.videoId);
+            // A generated lecture exists only in the private working revision until
+            // publication. Opening it through Live would filter the active Blueprint
+            // by a video it cannot contain and leave the canvas empty.
+            setBlueprintMode(handoff.mode);
             setLectureIntakeOpen(false);
             setSourceLabel(null);
             setCanvasView("blueprint");
+            window.localStorage.setItem(
+              generationHandoffStorageKey(identity.id, courseId),
+              nextRun.id,
+            );
           }
         })
         .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not refresh generation."));
@@ -2091,12 +2124,10 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                     onModeChange={setBlueprintMode}
                     onOpenReview={() => setCanvasView("review")}
                     onOpenLecture={(unit) => {
-                      setBlueprintMode("live");
                       setLectureFocusVideoId(unit.video_id);
                       setCanvasView("blueprint");
                     }}
                     onOpenWholeCourse={() => {
-                      setBlueprintMode("live");
                       setLectureFocusVideoId(null);
                       setCanvasView("blueprint");
                     }}
@@ -3838,7 +3869,6 @@ function CourseFlowWorkspace({
   }
 
   function beginNewLecture() {
-    if (mode !== "design") onModeChange("design");
     onAddLecture();
   }
 

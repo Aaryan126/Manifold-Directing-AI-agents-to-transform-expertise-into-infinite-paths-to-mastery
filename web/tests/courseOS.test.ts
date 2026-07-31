@@ -19,6 +19,7 @@ import {
   orderedGenerationTasks,
   performancePercent,
   reorderBlueprintConcepts,
+  resolveGeneratedLectureHandoff,
   resolveCurrentBlueprintNode,
   resolveBlueprintNodeOverlaps,
   masteryStateForConcept,
@@ -562,6 +563,65 @@ describe("Course OS presentation", () => {
     expect(shouldHydrateGenerationRun({ ...withRun, generation_status: "waiting_review" })).toBe(true);
     expect(shouldHydrateGenerationRun({ ...withRun, generation_status: "complete" })).toBe(false);
     expect(shouldHydrateGenerationRun({ ...withRun, generation_status: "cancelled" })).toBe(false);
+  });
+
+  it("opens a completed generated lecture through its private Design revision", () => {
+    const flow = {
+      course_id: course.id,
+      revision_id: "working-revision",
+      revision_kind: "working" as const,
+      modules: [],
+      units: [
+        {
+          id: "lecture-1",
+          logical_id: "lecture-1",
+          module_logical_id: null,
+          kind: "lecture" as const,
+          title: "Existing lecture",
+          summary: "",
+          instructions: "",
+          video_id: "video-1",
+          sequence_rank: 0,
+          status: "accepted",
+          topic_count: 2,
+          concept_count: 3,
+          question_count: 2,
+          source_count: 1,
+          concept_logical_ids: [],
+          x: null,
+          y: null,
+        },
+        {
+          id: "lecture-2",
+          logical_id: "lecture-2",
+          module_logical_id: null,
+          kind: "lecture" as const,
+          title: "New lecture",
+          summary: "",
+          instructions: "",
+          video_id: "video-2",
+          sequence_rank: 1,
+          status: "accepted",
+          topic_count: 4,
+          concept_count: 6,
+          question_count: 4,
+          source_count: 1,
+          concept_logical_ids: [],
+          x: null,
+          y: null,
+        },
+      ],
+      edges: [],
+    };
+
+    expect(resolveGeneratedLectureHandoff(flow, "video-2")).toEqual({
+      videoId: "video-2",
+      mode: "design",
+    });
+    expect(resolveGeneratedLectureHandoff(flow, "missing-video")).toEqual({
+      videoId: "video-2",
+      mode: "design",
+    });
   });
 
   it("keeps Course Director full-width until the private draft reaches review", () => {
