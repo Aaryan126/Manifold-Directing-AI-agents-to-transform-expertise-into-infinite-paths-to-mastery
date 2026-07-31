@@ -513,6 +513,105 @@ export function compactBlueprintHierarchyEdges(
   return compacted;
 }
 
+export function packDenseBlueprintTopicBranches(
+  nodes: BlueprintNode[],
+  edges: BlueprintHierarchyEdge[],
+  positions: Record<string, BlueprintPosition>,
+  horizontalGap = 104,
+  verticalGap = 132,
+): Record<string, BlueprintPosition> {
+  const topics = nodes
+    .filter((node) => node.kind === "topic")
+    .sort(compareBlueprintSequence);
+  if (topics.length < 6) return positions;
+
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const topicIds = new Set(topics.map((topic) => topic.id));
+  const outgoing = new Map<string, string[]>();
+  edges.forEach((edge) => {
+    if (!nodeById.has(edge.source_id) || !nodeById.has(edge.target_id)) return;
+    const targets = outgoing.get(edge.source_id) ?? [];
+    targets.push(edge.target_id);
+    outgoing.set(edge.source_id, targets);
+  });
+
+  const assigned = new Set<string>();
+  const branches = topics.map((topic) => {
+    const branchIds = new Set<string>();
+    const queue = [
+      topic.id,
+      ...nodes
+        .filter((node) => node.parent_id === topic.id)
+        .map((node) => node.id),
+    ];
+    while (queue.length) {
+      const nodeId = queue.shift();
+      if (!nodeId || assigned.has(nodeId) || branchIds.has(nodeId)) continue;
+      const node = nodeById.get(nodeId);
+      if (!node || (nodeId !== topic.id && topicIds.has(nodeId))) continue;
+      if (
+        node.parent_id
+        && topicIds.has(node.parent_id)
+        && node.parent_id !== topic.id
+      ) continue;
+      branchIds.add(nodeId);
+      assigned.add(nodeId);
+      (outgoing.get(nodeId) ?? []).forEach((targetId) => queue.push(targetId));
+    }
+
+    const bounds = [...branchIds].reduce((current, nodeId) => {
+      const node = nodeById.get(nodeId);
+      const position = positions[nodeId];
+      if (!node || !position) return current;
+      const dimensions = blueprintNodeDimensions(node);
+      return {
+        minX: Math.min(current.minX, position.x),
+        minY: Math.min(current.minY, position.y),
+        maxX: Math.max(current.maxX, position.x + dimensions.width),
+        maxY: Math.max(current.maxY, position.y + dimensions.height),
+      };
+    }, {
+      minX: Number.POSITIVE_INFINITY,
+      minY: Number.POSITIVE_INFINITY,
+      maxX: Number.NEGATIVE_INFINITY,
+      maxY: Number.NEGATIVE_INFINITY,
+    });
+    const hasBounds = Number.isFinite(bounds.minX) && Number.isFinite(bounds.minY);
+    return {
+      ids: branchIds,
+      minX: hasBounds ? bounds.minX : 0,
+      minY: hasBounds ? bounds.minY : 0,
+      width: hasBounds ? Math.max(1, bounds.maxX - bounds.minX) : 1,
+      height: hasBounds ? Math.max(1, bounds.maxY - bounds.minY) : 1,
+    };
+  });
+
+  const cellWidth = Math.max(...branches.map((branch) => branch.width));
+  const cellHeight = Math.max(...branches.map((branch) => branch.height));
+  const columnEstimate = Math.round(Math.sqrt(
+    topics.length * (cellHeight / Math.max(1, cellWidth)),
+  ));
+  const columns = Math.max(2, Math.min(4, columnEstimate));
+  const packed = { ...positions };
+  branches.forEach((branch, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const branchX = column * (cellWidth + horizontalGap)
+      + (cellWidth - branch.width) / 2;
+    const branchY = row * (cellHeight + verticalGap);
+    branch.ids.forEach((nodeId) => {
+      const position = positions[nodeId];
+      if (!position) return;
+      packed[nodeId] = {
+        x: position.x - branch.minX + branchX,
+        y: position.y - branch.minY + branchY,
+      };
+    });
+  });
+
+  return packed;
+}
+
 export type CourseBlueprint = {
   course_id: string;
   revision_id: string;

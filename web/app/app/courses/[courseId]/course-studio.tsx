@@ -100,6 +100,7 @@ import {
   blueprintEdgeKinds,
   blueprintHierarchyEdges,
   compactBlueprintHierarchyEdges,
+  packDenseBlueprintTopicBranches,
   blueprintNodeDimensions,
   blueprintNodeLayer,
   blueprintConceptNeighborhoodIds,
@@ -6228,10 +6229,20 @@ function useBlueprintFlow(
           y: typeof saved?.y === "number" ? saved.y : node.y ?? 0,
         }];
         }));
+      const shouldPackTopicBranches = needsVirtualRoot
+        && !hasSavedPositions
+        && visibleNodes.filter((node) => node.kind === "topic").length >= 6;
+      const finalPositions = shouldPackTopicBranches
+        ? packDenseBlueprintTopicBranches(
+          visibleNodes,
+          effectiveHierarchyEdges,
+          calculatedPositions,
+        )
+        : calculatedPositions;
       setPositions(hasSavedPositions
-        ? resolveBlueprintNodeOverlaps(visibleNodes, calculatedPositions)
-        : calculatedPositions);
-      setEdgePoints(Object.fromEntries((layout.edges ?? []).map((edge) => {
+        ? resolveBlueprintNodeOverlaps(visibleNodes, finalPositions)
+        : finalPositions);
+      setEdgePoints(shouldPackTopicBranches ? {} : Object.fromEntries((layout.edges ?? []).map((edge) => {
         const laidOutEdge = edge as typeof edge & {
           sections?: Array<{
             bendPoints?: Array<{ x: number; y: number }>;
