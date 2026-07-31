@@ -38,6 +38,21 @@ The spoken point is that this is more than transcription or summarization:
 Manifold identifies topics, concepts, prerequisites, teaching moments, checks
 for understanding, and remediation paths.
 
+Suggested voice-over:
+
+> **0:22–0:29 — Add the lecture:** “I start with one real business lecture—no
+> prebuilt lessons, quizzes, or learning map.”
+>
+> **0:29–0:42 — Generation progress:** “Manifold transcribes the source,
+> identifies how the instructor has organized the ideas, and builds the
+> learning structure around them.”
+>
+> **0:42–0:58 — Blueprint reveal and fit-all:** “What appears is more than a
+> summary: topics and concepts, their prerequisites, the exact teaching moments
+> that explain them, checks for understanding, and alternate paths when a
+> learner needs help. The result is a private course draft, ready for the
+> instructor to inspect before anything can reach learners.”
+
 ## 0:58–1:28 — Instructor: understand the course as a system
 
 Keep the Blueprint in Live mode and scan its hierarchy:
@@ -52,6 +67,19 @@ view to return smoothly to the complete map.
 
 Avoid explaining every relationship. The visual should make the organization
 legible before narration adds detail.
+
+Suggested voice-over:
+
+> **0:58–1:08 — Scan the hierarchy:** “This Blueprint shows the lecture as a
+> learning system, not just a timeline. The source branches into topics,
+> concepts, and the teaching moments and assessments connected to each one.”
+>
+> **1:08–1:23 — Select one concept:** “Selecting one concept reveals the logic
+> around it: the prerequisite a learner needs first, the check that tests
+> understanding, and the alternate explanation ready if they struggle.”
+>
+> **1:23–1:28 — Close the detail view:** “I can inspect one decision, then
+> return to the complete course.”
 
 ## 1:28–1:52 — Instructor: direct the AI, retain control
 
