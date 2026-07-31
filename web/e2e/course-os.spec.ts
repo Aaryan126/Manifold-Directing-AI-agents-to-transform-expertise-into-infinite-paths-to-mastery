@@ -82,7 +82,11 @@ function courseFlowWithUnitCount(
 
 async function mockCourseOS(
   page: Page,
-  options: { directorProposal?: boolean; proposalResolveDelayMs?: number } = {},
+  options: {
+    denseBlueprint?: boolean;
+    directorProposal?: boolean;
+    proposalResolveDelayMs?: number;
+  } = {},
 ) {
   await setInstructorSession(page);
   let deleted = false;
@@ -276,19 +280,68 @@ async function mockCourseOS(
     }
     if (path.endsWith("/blueprint")) {
       blueprintRequests += 1;
+      const denseNodes = options.denseBlueprint
+        ? Array.from({ length: 9 }, (_, index) => ([
+          {
+            id: `dense-topic-${index}`,
+            logical_id: `dense-topic-logical-${index}`,
+            kind: "topic",
+            title: `Lecture topic ${index + 1}: a complete instructional section`,
+            status: "accepted",
+            parent_id: null,
+            metadata: { video_id: lectureVideoId, sequence_rank: index },
+          },
+          {
+            id: `dense-concept-${index}`,
+            logical_id: `dense-concept-logical-${index}`,
+            kind: "concept",
+            title: `Core concept ${index + 1}`,
+            status: "accepted",
+            parent_id: `dense-topic-${index}`,
+            metadata: { sequence_rank: index },
+          },
+          {
+            id: `dense-clip-${index}`,
+            logical_id: `dense-clip-logical-${index}`,
+            kind: "clip",
+            title: `Explanation ${index + 1}`,
+            status: "active",
+            parent_id: `dense-topic-${index}`,
+            metadata: {},
+          },
+          {
+            id: `dense-question-${index}`,
+            logical_id: `dense-question-logical-${index}`,
+            kind: "question",
+            title: `Which explanation best demonstrates concept ${index + 1}?`,
+            status: "accepted",
+            parent_id: `dense-topic-${index}`,
+            metadata: { type: "mcq" },
+          },
+        ])).flat()
+        : null;
+      const denseEdges = options.denseBlueprint
+        ? Array.from({ length: 9 }, (_, index) => ([
+          { id: `dense-contains-${index}`, source_id: `dense-topic-${index}`, target_id: `dense-concept-${index}`, kind: "contains", status: "accepted" },
+          { id: `dense-teaches-${index}`, source_id: `dense-concept-${index}`, target_id: `dense-clip-${index}`, kind: "teaches", status: "active" },
+          { id: `dense-assesses-${index}`, source_id: `dense-concept-${index}`, target_id: `dense-question-${index}`, kind: "assesses", status: "accepted" },
+        ])).flat()
+        : null;
       await route.fulfill({
         json: {
           course_id: course.id,
           revision_id: course.working_revision_id,
           revision_kind: "working",
-          nodes: [
+          nodes: denseNodes ?? [
             { id: "topic-1", logical_id: "topic-logical", kind: "topic", title: "Net force", status: "accepted", parent_id: null, metadata: { video_id: lectureVideoId } },
             { id: "concept-1", logical_id: "concept-logical", kind: "concept", title: "Vector addition", status: "accepted", parent_id: "topic-1", metadata: { sequence_rank: 1 } },
           ],
-          edges: directorProposalAccepted
+          edges: denseEdges ?? (directorProposalAccepted
             ? []
-            : [{ id: "contains-1", source_id: "topic-1", target_id: "concept-1", kind: "contains", status: "accepted" }],
-          uncovered_concept_ids: ["concept-1"],
+            : [{ id: "contains-1", source_id: "topic-1", target_id: "concept-1", kind: "contains", status: "accepted" }]),
+          uncovered_concept_ids: denseNodes
+            ? []
+            : ["concept-1"],
         },
       });
       return;
@@ -1166,6 +1219,48 @@ test("Blueprint first opening reveals topics, concepts, then teaching artifacts"
   await page.getByText("Forces lecture", { exact: true }).click();
   await expect(stage).toHaveAttribute("data-guided-reveal", "complete");
   await expect(page.getByRole("button", { name: "Skip reveal" })).toHaveCount(0);
+});
+
+test("dense source-less Blueprint keeps readable independent hierarchies", async ({ page }) => {
+  await mockCourseOS(page, { denseBlueprint: true });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto(`/app/courses/${course.id}`);
+  await page.getByText("Forces lecture", { exact: true }).click();
+  const canvas = page.locator("[data-viewport-state]");
+  await expect(canvas).toHaveAttribute("data-viewport-state", "ready");
+  const skipReveal = page.getByRole("button", { name: "Skip reveal" });
+  if (await skipReveal.isVisible().catch(() => false)) await skipReveal.click();
+  await expect(canvas.locator(".react-flow__node")).toHaveCount(36);
+
+  const topicBoxes = await Promise.all(Array.from({ length: 9 }, (_, index) => (
+    canvas.locator(`.react-flow__node[data-id="dense-topic-${index}"]`).boundingBox()
+  )));
+  expect(topicBoxes.every(Boolean)).toBe(true);
+  const topicRows = new Set(topicBoxes.map((box) => Math.round(box!.y / 16)));
+  expect(topicRows.size).toBeGreaterThan(1);
+
+  const allBoxes = await canvas.locator(".react-flow__node").evaluateAll((elements) => (
+    elements.map((element) => {
+      const bounds = element.getBoundingClientRect();
+      return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+    })
+  ));
+  allBoxes.forEach((left, index) => allBoxes.slice(index + 1).forEach((right) => {
+    expect(
+      left.x < right.x + right.width
+      && left.x + left.width > right.x
+      && left.y < right.y + right.height
+      && left.y + left.height > right.y,
+    ).toBe(false);
+  }));
+
+  const [clipBox, questionBox] = await Promise.all([
+    canvas.locator('.react-flow__node[data-id="dense-clip-0"]').boundingBox(),
+    canvas.locator('.react-flow__node[data-id="dense-question-0"]').boundingBox(),
+  ]);
+  expect(clipBox).not.toBeNull();
+  expect(questionBox).not.toBeNull();
+  expect(Math.abs(clipBox!.y - questionBox!.y)).toBeLessThanOrEqual(2);
 });
 
 test("Course Director proposals preserve the Live map before and during acceptance", async ({ page }) => {

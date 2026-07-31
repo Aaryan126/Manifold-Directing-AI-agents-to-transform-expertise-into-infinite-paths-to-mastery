@@ -99,8 +99,6 @@ import {
   availableBlueprintRelationshipKinds,
   blueprintEdgeKinds,
   blueprintHierarchyEdges,
-  compactBlueprintHierarchyEdges,
-  packDenseBlueprintTopicBranches,
   blueprintNodeDimensions,
   blueprintNodeLayer,
   blueprintConceptNeighborhoodIds,
@@ -6094,37 +6092,16 @@ function useBlueprintFlow(
     )) ?? [];
   }, [blueprint, focusedEdgeIds, visibleNodes]);
   const hierarchyEdges = useMemo(
-    () => compactBlueprintHierarchyEdges(
-      visibleNodes,
-      blueprintHierarchyEdges(visibleNodes, layoutEdges),
-    ),
+    () => blueprintHierarchyEdges(visibleNodes, layoutEdges),
     [layoutEdges, visibleNodes],
   );
-  const virtualRootId = "layout:lecture-root";
-  const needsVirtualRoot = !visibleNodes.some((node) => node.kind === "source")
-    && visibleNodes.filter((node) => node.kind === "topic").length > 1;
-  const effectiveHierarchyEdges = useMemo(() => (
-    needsVirtualRoot
-      ? [
-        ...hierarchyEdges,
-        ...visibleNodes
-          .filter((node) => node.kind === "topic")
-          .map((topic) => ({
-            id: `${virtualRootId}:${topic.id}`,
-            source_id: virtualRootId,
-            target_id: topic.id,
-            semantic_edge_id: null,
-          })),
-      ]
-      : hierarchyEdges
-  ), [hierarchyEdges, needsVirtualRoot, visibleNodes]);
   const renderedEdges = useMemo(
     () => visibleBlueprintEdges(layoutEdges, enabledRelationships, selectedId),
     [enabledRelationships, layoutEdges, selectedId],
   );
   const requestedLayoutKey = useMemo(
-    () => `${layoutVersion}:${respectSavedLayout ? "saved" : "arranged"}:${visibleNodes.map((node) => node.id).sort().join(":")}:${effectiveHierarchyEdges.map((edge) => `${edge.id}:${edge.source_id}:${edge.target_id}`).sort().join(":")}`,
-    [effectiveHierarchyEdges, layoutVersion, respectSavedLayout, visibleNodes],
+    () => `${layoutVersion}:${respectSavedLayout ? "saved" : "arranged"}:${visibleNodes.map((node) => node.id).sort().join(":")}:${hierarchyEdges.map((edge) => `${edge.id}:${edge.source_id}:${edge.target_id}`).sort().join(":")}`,
+    [hierarchyEdges, layoutVersion, respectSavedLayout, visibleNodes],
   );
 
   useEffect(() => {
@@ -6137,7 +6114,7 @@ function useBlueprintFlow(
     let cancelled = false;
     const elk = new ELK();
     const portId = (nodeId: string, handle: "flow-in" | "flow-out" | "relation-in" | "relation-out") => `${nodeId}:${handle}`;
-    const normalizedEdges = effectiveHierarchyEdges.map((edge) => {
+    const normalizedEdges = hierarchyEdges.map((edge) => {
       const semanticEdge = edge.semantic_edge_id
         ? layoutEdges.find((candidate) => candidate.id === edge.semantic_edge_id) ?? null
         : null;
@@ -6173,20 +6150,7 @@ function useBlueprintFlow(
         "elk.layered.crossingMinimization.forceNodeModelOrder": "true",
         "elk.layered.thoroughness": "30",
       },
-      children: [
-        ...(needsVirtualRoot ? [{
-          id: virtualRootId,
-          width: 1,
-          height: 1,
-          layoutOptions: {
-            "org.eclipse.elk.layered.layering.layerConstraint": "FIRST",
-            "org.eclipse.elk.portConstraints": "FIXED_ORDER",
-          },
-          ports: [
-            { id: portId(virtualRootId, "flow-out"), layoutOptions: { "org.eclipse.elk.port.side": "SOUTH" }, width: 1, height: 1 },
-          ],
-        }] : []),
-        ...visibleNodes.map((node) => ({
+      children: visibleNodes.map((node) => ({
         id: node.id,
         ...blueprintNodeDimensions(node),
         layoutOptions: {
@@ -6204,8 +6168,7 @@ function useBlueprintFlow(
           { id: portId(node.id, "relation-in"), layoutOptions: { "org.eclipse.elk.port.side": "WEST" }, width: 7, height: 7 },
           { id: portId(node.id, "relation-out"), layoutOptions: { "org.eclipse.elk.port.side": "EAST" }, width: 7, height: 7 },
         ],
-        })),
-      ],
+      })),
       edges: normalizedEdges.map(({ edge, sourcePort, targetPort }) => ({
         id: edge.id,
         sources: [sourcePort],
@@ -6217,9 +6180,7 @@ function useBlueprintFlow(
         const saved = isRecord(artifact.metadata.layout) ? artifact.metadata.layout : null;
         return typeof saved?.x === "number" && typeof saved?.y === "number";
       });
-      const calculatedPositions = Object.fromEntries((layout.children ?? [])
-        .filter((node) => node.id !== virtualRootId)
-        .map((node) => {
+      const calculatedPositions = Object.fromEntries((layout.children ?? []).map((node) => {
         const artifact = visibleNodes.find((item) => item.id === node.id);
         const saved = respectSavedLayout && artifact && isRecord(artifact.metadata.layout)
           ? artifact.metadata.layout
@@ -6228,21 +6189,11 @@ function useBlueprintFlow(
           x: typeof saved?.x === "number" ? saved.x : node.x ?? 0,
           y: typeof saved?.y === "number" ? saved.y : node.y ?? 0,
         }];
-        }));
-      const shouldPackTopicBranches = needsVirtualRoot
-        && !hasSavedPositions
-        && visibleNodes.filter((node) => node.kind === "topic").length >= 6;
-      const finalPositions = shouldPackTopicBranches
-        ? packDenseBlueprintTopicBranches(
-          visibleNodes,
-          effectiveHierarchyEdges,
-          calculatedPositions,
-        )
-        : calculatedPositions;
+      }));
       setPositions(hasSavedPositions
-        ? resolveBlueprintNodeOverlaps(visibleNodes, finalPositions)
-        : finalPositions);
-      setEdgePoints(shouldPackTopicBranches ? {} : Object.fromEntries((layout.edges ?? []).map((edge) => {
+        ? resolveBlueprintNodeOverlaps(visibleNodes, calculatedPositions)
+        : calculatedPositions);
+      setEdgePoints(Object.fromEntries((layout.edges ?? []).map((edge) => {
         const laidOutEdge = edge as typeof edge & {
           sections?: Array<{
             bendPoints?: Array<{ x: number; y: number }>;
@@ -6293,7 +6244,7 @@ function useBlueprintFlow(
       setCompletedLayoutKey(requestedLayoutKey);
     });
     return () => { cancelled = true; };
-  }, [effectiveHierarchyEdges, layoutEdges, needsVirtualRoot, requestedLayoutKey, respectSavedLayout, visibleNodes]);
+  }, [hierarchyEdges, layoutEdges, requestedLayoutKey, respectSavedLayout, visibleNodes]);
 
   const layoutReady = completedLayoutKey === requestedLayoutKey;
   // React Flow treats every new controlled-node object as an unmeasured node.
