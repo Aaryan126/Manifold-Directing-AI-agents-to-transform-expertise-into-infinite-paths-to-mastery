@@ -10,6 +10,7 @@ import {
   buildBlueprintTopicLanes,
   canPrepareImprovement,
   compareBlueprintSequence,
+  compactBlueprintHierarchyEdges,
   courseState,
   directBlueprintNeighborhood,
   evidenceTitle,
@@ -297,6 +298,61 @@ describe("Course OS presentation", () => {
         id: "layout:source:source:topic-b",
         source_id: "source",
         target_id: "topic-b",
+        semantic_edge_id: null,
+      },
+    ]);
+  });
+
+  it("stacks teaching then checking in dense lecture hierarchies", () => {
+    const nodes = [
+      ...Array.from({ length: 6 }, (_, index) => ({
+        id: `topic-${index}`,
+        logical_id: `logical-topic-${index}`,
+        kind: "topic" as const,
+        title: `Topic ${index}`,
+        status: "accepted",
+        parent_id: null,
+        metadata: {},
+      })),
+      {
+        id: "concept",
+        logical_id: "logical-concept",
+        kind: "concept" as const,
+        title: "Concept",
+        status: "accepted",
+        parent_id: "topic-0",
+        metadata: {},
+      },
+      {
+        id: "clip",
+        logical_id: "logical-clip",
+        kind: "clip" as const,
+        title: "Clip",
+        status: "accepted",
+        parent_id: "topic-0",
+        metadata: {},
+      },
+      {
+        id: "question",
+        logical_id: "logical-question",
+        kind: "question" as const,
+        title: "Question",
+        status: "accepted",
+        parent_id: "topic-0",
+        metadata: {},
+      },
+    ] satisfies BlueprintNode[];
+    const compacted = compactBlueprintHierarchyEdges(nodes, [
+      { id: "teach", source_id: "concept", target_id: "clip", semantic_edge_id: "teach" },
+      { id: "assess", source_id: "concept", target_id: "question", semantic_edge_id: "assess" },
+    ]);
+
+    expect(compacted).toEqual([
+      { id: "teach", source_id: "concept", target_id: "clip", semantic_edge_id: "teach" },
+      {
+        id: "layout:teach-then-check:clip:question",
+        source_id: "clip",
+        target_id: "question",
         semantic_edge_id: null,
       },
     ]);

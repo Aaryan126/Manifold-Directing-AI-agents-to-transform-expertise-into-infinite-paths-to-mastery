@@ -485,6 +485,34 @@ export function blueprintHierarchyEdges(
   return hierarchy;
 }
 
+export function compactBlueprintHierarchyEdges(
+  nodes: BlueprintNode[],
+  edges: BlueprintHierarchyEdge[],
+): BlueprintHierarchyEdge[] {
+  if (nodes.filter((node) => node.kind === "topic").length < 6) return edges;
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const compacted = [...edges];
+  for (const parent of nodes.filter((node) => node.kind === "concept")) {
+    const children = compacted.filter((edge) => edge.source_id === parent.id);
+    const clips = children.filter((edge) => nodeById.get(edge.target_id)?.kind === "clip");
+    const questions = children.filter(
+      (edge) => nodeById.get(edge.target_id)?.kind === "question",
+    );
+    if (!clips.length || !questions.length) continue;
+    for (const question of questions) {
+      const index = compacted.indexOf(question);
+      if (index >= 0) compacted.splice(index, 1);
+      compacted.push({
+        id: `layout:teach-then-check:${clips[0].target_id}:${question.target_id}`,
+        source_id: clips[0].target_id,
+        target_id: question.target_id,
+        semantic_edge_id: null,
+      });
+    }
+  }
+  return compacted;
+}
+
 export type CourseBlueprint = {
   course_id: string;
   revision_id: string;

@@ -99,6 +99,7 @@ import {
   availableBlueprintRelationshipKinds,
   blueprintEdgeKinds,
   blueprintHierarchyEdges,
+  compactBlueprintHierarchyEdges,
   blueprintNodeDimensions,
   blueprintNodeLayer,
   blueprintConceptNeighborhoodIds,
@@ -3665,6 +3666,34 @@ function CourseFlowWorkspace({
     });
   }, [arrangedPositions, flow]);
 
+  const displayedPositions = useMemo(() => {
+    if (!compactSequence) return graphPositions;
+    const next: Record<string, { x: number; y: number }> = {};
+    const placed: Array<{ x: number; y: number; width: number; height: number }> = [];
+    for (const unit of units) {
+      const preferred = graphPositions[unit.logical_id]
+        ?? arrangedPositions[unit.logical_id]
+        ?? { x: 70, y: 72 };
+      let x = preferred.x;
+      const y = preferred.y;
+      for (let attempt = 0; attempt <= units.length; attempt += 1) {
+        const collisions = placed.filter((candidate) => (
+          x < candidate.x + candidate.width + 52
+          && x + 264 + 52 > candidate.x
+          && y < candidate.y + candidate.height + 36
+          && y + 180 + 36 > candidate.y
+        ));
+        if (!collisions.length) break;
+        x = Math.max(...collisions.map(
+          (candidate) => candidate.x + candidate.width + 52,
+        ));
+      }
+      next[unit.logical_id] = { x, y };
+      placed.push({ x, y, width: 264, height: 180 });
+    }
+    return next;
+  }, [arrangedPositions, compactSequence, graphPositions, units]);
+
   useEffect(() => {
     if (!relationshipDraft) return;
     function cancelRelationship(event: KeyboardEvent) {
@@ -3717,7 +3746,8 @@ function CourseFlowWorkspace({
       );
       return {
       id: unit.logical_id,
-      position: graphPositions[unit.logical_id]
+      position: displayedPositions[unit.logical_id]
+        ?? graphPositions[unit.logical_id]
         ?? arrangedPositions[unit.logical_id]
         ?? { x: 86, y: 116 + unit.sequence_rank * 154 },
       data: {
@@ -3821,7 +3851,7 @@ function CourseFlowWorkspace({
     };
     });
     return [...laneNodes, ...unitNodes];
-  }, [arrangedPositions, compactSequence, disabled, graphPositions, groups, mode, onOpenLecture, onRemove, relationshipDraft, units]);
+  }, [arrangedPositions, compactSequence, disabled, displayedPositions, graphPositions, groups, mode, onOpenLecture, onRemove, relationshipDraft, units]);
 
   const graphEdges = useMemo<Edge[]>(() => (flow?.edges ?? []).map((edge) => ({
     id: edge.logical_id,
@@ -6063,16 +6093,37 @@ function useBlueprintFlow(
     )) ?? [];
   }, [blueprint, focusedEdgeIds, visibleNodes]);
   const hierarchyEdges = useMemo(
-    () => blueprintHierarchyEdges(visibleNodes, layoutEdges),
+    () => compactBlueprintHierarchyEdges(
+      visibleNodes,
+      blueprintHierarchyEdges(visibleNodes, layoutEdges),
+    ),
     [layoutEdges, visibleNodes],
   );
+  const virtualRootId = "layout:lecture-root";
+  const needsVirtualRoot = !visibleNodes.some((node) => node.kind === "source")
+    && visibleNodes.filter((node) => node.kind === "topic").length > 1;
+  const effectiveHierarchyEdges = useMemo(() => (
+    needsVirtualRoot
+      ? [
+        ...hierarchyEdges,
+        ...visibleNodes
+          .filter((node) => node.kind === "topic")
+          .map((topic) => ({
+            id: `${virtualRootId}:${topic.id}`,
+            source_id: virtualRootId,
+            target_id: topic.id,
+            semantic_edge_id: null,
+          })),
+      ]
+      : hierarchyEdges
+  ), [hierarchyEdges, needsVirtualRoot, visibleNodes]);
   const renderedEdges = useMemo(
     () => visibleBlueprintEdges(layoutEdges, enabledRelationships, selectedId),
     [enabledRelationships, layoutEdges, selectedId],
   );
   const requestedLayoutKey = useMemo(
-    () => `${layoutVersion}:${respectSavedLayout ? "saved" : "arranged"}:${visibleNodes.map((node) => node.id).sort().join(":")}:${hierarchyEdges.map((edge) => `${edge.id}:${edge.source_id}:${edge.target_id}`).sort().join(":")}`,
-    [hierarchyEdges, layoutVersion, respectSavedLayout, visibleNodes],
+    () => `${layoutVersion}:${respectSavedLayout ? "saved" : "arranged"}:${visibleNodes.map((node) => node.id).sort().join(":")}:${effectiveHierarchyEdges.map((edge) => `${edge.id}:${edge.source_id}:${edge.target_id}`).sort().join(":")}`,
+    [effectiveHierarchyEdges, layoutVersion, respectSavedLayout, visibleNodes],
   );
 
   useEffect(() => {
@@ -6085,7 +6136,7 @@ function useBlueprintFlow(
     let cancelled = false;
     const elk = new ELK();
     const portId = (nodeId: string, handle: "flow-in" | "flow-out" | "relation-in" | "relation-out") => `${nodeId}:${handle}`;
-    const normalizedEdges = hierarchyEdges.map((edge) => {
+    const normalizedEdges = effectiveHierarchyEdges.map((edge) => {
       const semanticEdge = edge.semantic_edge_id
         ? layoutEdges.find((candidate) => candidate.id === edge.semantic_edge_id) ?? null
         : null;
@@ -6121,7 +6172,20 @@ function useBlueprintFlow(
         "elk.layered.crossingMinimization.forceNodeModelOrder": "true",
         "elk.layered.thoroughness": "30",
       },
-      children: visibleNodes.map((node) => ({
+      children: [
+        ...(needsVirtualRoot ? [{
+          id: virtualRootId,
+          width: 1,
+          height: 1,
+          layoutOptions: {
+            "org.eclipse.elk.layered.layering.layerConstraint": "FIRST",
+            "org.eclipse.elk.portConstraints": "FIXED_ORDER",
+          },
+          ports: [
+            { id: portId(virtualRootId, "flow-out"), layoutOptions: { "org.eclipse.elk.port.side": "SOUTH" }, width: 1, height: 1 },
+          ],
+        }] : []),
+        ...visibleNodes.map((node) => ({
         id: node.id,
         ...blueprintNodeDimensions(node),
         layoutOptions: {
@@ -6139,7 +6203,8 @@ function useBlueprintFlow(
           { id: portId(node.id, "relation-in"), layoutOptions: { "org.eclipse.elk.port.side": "WEST" }, width: 7, height: 7 },
           { id: portId(node.id, "relation-out"), layoutOptions: { "org.eclipse.elk.port.side": "EAST" }, width: 7, height: 7 },
         ],
-      })),
+        })),
+      ],
       edges: normalizedEdges.map(({ edge, sourcePort, targetPort }) => ({
         id: edge.id,
         sources: [sourcePort],
@@ -6151,7 +6216,9 @@ function useBlueprintFlow(
         const saved = isRecord(artifact.metadata.layout) ? artifact.metadata.layout : null;
         return typeof saved?.x === "number" && typeof saved?.y === "number";
       });
-      const calculatedPositions = Object.fromEntries((layout.children ?? []).map((node) => {
+      const calculatedPositions = Object.fromEntries((layout.children ?? [])
+        .filter((node) => node.id !== virtualRootId)
+        .map((node) => {
         const artifact = visibleNodes.find((item) => item.id === node.id);
         const saved = respectSavedLayout && artifact && isRecord(artifact.metadata.layout)
           ? artifact.metadata.layout
@@ -6160,7 +6227,7 @@ function useBlueprintFlow(
           x: typeof saved?.x === "number" ? saved.x : node.x ?? 0,
           y: typeof saved?.y === "number" ? saved.y : node.y ?? 0,
         }];
-      }));
+        }));
       setPositions(hasSavedPositions
         ? resolveBlueprintNodeOverlaps(visibleNodes, calculatedPositions)
         : calculatedPositions);
@@ -6215,7 +6282,7 @@ function useBlueprintFlow(
       setCompletedLayoutKey(requestedLayoutKey);
     });
     return () => { cancelled = true; };
-  }, [hierarchyEdges, layoutEdges, requestedLayoutKey, respectSavedLayout, visibleNodes]);
+  }, [effectiveHierarchyEdges, layoutEdges, needsVirtualRoot, requestedLayoutKey, respectSavedLayout, visibleNodes]);
 
   const layoutReady = completedLayoutKey === requestedLayoutKey;
   // React Flow treats every new controlled-node object as an unmeasured node.
