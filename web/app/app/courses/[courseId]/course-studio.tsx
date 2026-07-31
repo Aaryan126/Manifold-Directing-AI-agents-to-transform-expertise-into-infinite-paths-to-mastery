@@ -112,6 +112,7 @@ import {
   generationPhaseLabel,
   isValidBlueprintRelationshipTarget,
   orderedGenerationTasks,
+  packBlueprintHierarchyComponents,
   performancePercent,
   masteryStateForConcept,
   shouldHydrateGenerationRun,
@@ -6190,10 +6191,16 @@ function useBlueprintFlow(
           y: typeof saved?.y === "number" ? saved.y : node.y ?? 0,
         }];
       }));
-      setPositions(hasSavedPositions
+      const packedPositions = hasSavedPositions
         ? resolveBlueprintNodeOverlaps(visibleNodes, calculatedPositions)
-        : calculatedPositions);
-      setEdgePoints(Object.fromEntries((layout.edges ?? []).map((edge) => {
+        : packBlueprintHierarchyComponents(
+          visibleNodes,
+          hierarchyEdges,
+          calculatedPositions,
+        );
+      const componentsWerePacked = packedPositions !== calculatedPositions;
+      setPositions(packedPositions);
+      setEdgePoints(componentsWerePacked ? {} : Object.fromEntries((layout.edges ?? []).map((edge) => {
         const laidOutEdge = edge as typeof edge & {
           sections?: Array<{
             bendPoints?: Array<{ x: number; y: number }>;

@@ -1238,6 +1238,13 @@ test("dense source-less Blueprint keeps readable independent hierarchies", async
   expect(topicBoxes.every(Boolean)).toBe(true);
   const topicRows = new Set(topicBoxes.map((box) => Math.round(box!.y / 16)));
   expect(topicRows.size).toBeGreaterThan(1);
+  const orderedTopicRows = [...topicRows].sort((left, right) => left - right);
+  const largestTopicRowGap = Math.max(
+    ...orderedTopicRows.slice(1).map((row, index) => row - orderedTopicRows[index]),
+  ) * 16;
+  const canvasBox = await canvas.boundingBox();
+  expect(canvasBox).not.toBeNull();
+  expect(largestTopicRowGap).toBeLessThan(canvasBox!.height * 0.48);
 
   const allBoxes = await canvas.locator(".react-flow__node").evaluateAll((elements) => (
     elements.map((element) => {

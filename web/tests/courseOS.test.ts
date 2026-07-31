@@ -17,6 +17,7 @@ import {
   generationPhaseLabel,
   isValidBlueprintRelationshipTarget,
   orderedGenerationTasks,
+  packBlueprintHierarchyComponents,
   performancePercent,
   reorderBlueprintConcepts,
   resolveGeneratedLectureHandoff,
@@ -356,6 +357,81 @@ describe("Course OS presentation", () => {
       resolved.first.x + firstDimensions.width + 32,
     );
     expect(resolved.second.y).toBe(200);
+  });
+
+  it("compacts disconnected Blueprint hierarchy groups without changing their internal layout", () => {
+    const node = (
+      id: string,
+      kind: BlueprintNode["kind"],
+      rank: number,
+    ): BlueprintNode => ({
+      id,
+      logical_id: `logical-${id}`,
+      kind,
+      title: id,
+      status: "accepted",
+      parent_id: null,
+      metadata: { sequence_rank: rank },
+    });
+    const nodes = [
+      node("topic-a", "topic", 0),
+      node("concept-a", "concept", 0),
+      node("clip-a", "clip", 0),
+      node("topic-b", "topic", 1),
+      node("concept-b", "concept", 1),
+      node("question-b", "question", 1),
+      node("topic-c", "topic", 2),
+      node("concept-c", "concept", 2),
+      node("clip-c", "clip", 2),
+    ];
+    const edges = [
+      { id: "a-contains", source_id: "topic-a", target_id: "concept-a", semantic_edge_id: "a-contains" },
+      { id: "a-teaches", source_id: "concept-a", target_id: "clip-a", semantic_edge_id: "a-teaches" },
+      { id: "b-contains", source_id: "topic-b", target_id: "concept-b", semantic_edge_id: "b-contains" },
+      { id: "b-assesses", source_id: "concept-b", target_id: "question-b", semantic_edge_id: "b-assesses" },
+      { id: "c-contains", source_id: "topic-c", target_id: "concept-c", semantic_edge_id: "c-contains" },
+      { id: "c-teaches", source_id: "concept-c", target_id: "clip-c", semantic_edge_id: "c-teaches" },
+    ];
+    const positions: Record<string, { x: number; y: number }> = {
+      "topic-a": { x: 0, y: 0 },
+      "concept-a": { x: 20, y: 210 },
+      "clip-a": { x: 30, y: 420 },
+      "topic-b": { x: 4200, y: 2600 },
+      "concept-b": { x: 4220, y: 2810 },
+      "question-b": { x: 4230, y: 3020 },
+      "topic-c": { x: 8200, y: 0 },
+      "concept-c": { x: 8220, y: 210 },
+      "clip-c": { x: 8230, y: 420 },
+    };
+
+    const packed = packBlueprintHierarchyComponents(nodes, edges, positions);
+    expect(packed).not.toBe(positions);
+    expect(packed["concept-b"].x - packed["topic-b"].x).toBe(20);
+    expect(packed["concept-b"].y - packed["topic-b"].y).toBe(210);
+    expect(packed["question-b"].y - packed["concept-b"].y).toBe(210);
+
+    const originalWidth = Math.max(...nodes.map((item) => (
+      positions[item.id].x + blueprintNodeDimensions(item).width
+    ))) - Math.min(...nodes.map((item) => positions[item.id].x));
+    const packedWidth = Math.max(...nodes.map((item) => (
+      packed[item.id].x + blueprintNodeDimensions(item).width
+    ))) - Math.min(...nodes.map((item) => packed[item.id].x));
+    expect(packedWidth).toBeLessThan(originalWidth / 2);
+
+    const rectangles = nodes.map((item) => ({
+      ...blueprintNodeDimensions(item),
+      ...packed[item.id],
+    }));
+    rectangles.forEach((left, leftIndex) => {
+      rectangles.slice(leftIndex + 1).forEach((right) => {
+        expect(
+          left.x < right.x + right.width
+          && left.x + left.width > right.x
+          && left.y < right.y + right.height
+          && left.y + left.height > right.y,
+        ).toBe(false);
+      });
+    });
   });
 
   it("offers only meaningful Blueprint relationships and valid typed targets", () => {

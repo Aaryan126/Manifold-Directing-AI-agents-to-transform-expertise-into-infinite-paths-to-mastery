@@ -380,6 +380,126 @@ export type BlueprintHierarchyEdge = {
   semantic_edge_id: string | null;
 };
 
+/**
+ * ELK lays out each disconnected hierarchy correctly, but its default
+ * connected-component placement can leave large, arbitrary voids between
+ * those otherwise readable groups. Repack only the component rectangles and
+ * preserve every node's offset inside its component. This keeps the semantic
+ * topic → concept → teaching/check hierarchy intact while making a source-less
+ * lecture read as one coherent map.
+ *
+ * Returning the original positions object means no packing was needed. Callers
+ * use that identity to retain ELK's routed bend points in the unchanged case.
+ */
+export function packBlueprintHierarchyComponents(
+  nodes: BlueprintNode[],
+  edges: BlueprintHierarchyEdge[],
+  positions: Record<string, BlueprintPosition>,
+  horizontalGap = 96,
+  verticalGap = 112,
+): Record<string, BlueprintPosition> {
+  const positionedNodes = nodes.filter((node) => Boolean(positions[node.id]));
+  if (positionedNodes.length < 2) return positions;
+
+  const nodeById = new Map(positionedNodes.map((node) => [node.id, node]));
+  const adjacency = new Map(positionedNodes.map((node) => [node.id, new Set<string>()]));
+  edges.forEach((edge) => {
+    if (!nodeById.has(edge.source_id) || !nodeById.has(edge.target_id)) return;
+    adjacency.get(edge.source_id)?.add(edge.target_id);
+    adjacency.get(edge.target_id)?.add(edge.source_id);
+  });
+
+  const orderById = new Map(positionedNodes.map((node, index) => [node.id, index]));
+  const visited = new Set<string>();
+  const components: Array<{
+    height: number;
+    ids: string[];
+    minOrder: number;
+    minX: number;
+    minY: number;
+    width: number;
+  }> = [];
+
+  positionedNodes.forEach((start) => {
+    if (visited.has(start.id)) return;
+    const ids: string[] = [];
+    const pending = [start.id];
+    visited.add(start.id);
+    while (pending.length) {
+      const id = pending.pop();
+      if (!id) continue;
+      ids.push(id);
+      adjacency.get(id)?.forEach((neighbor) => {
+        if (visited.has(neighbor)) return;
+        visited.add(neighbor);
+        pending.push(neighbor);
+      });
+    }
+
+    const bounds = ids.reduce((current, id) => {
+      const node = nodeById.get(id);
+      const position = positions[id];
+      if (!node || !position) return current;
+      const dimensions = blueprintNodeDimensions(node);
+      return {
+        maxX: Math.max(current.maxX, position.x + dimensions.width),
+        maxY: Math.max(current.maxY, position.y + dimensions.height),
+        minX: Math.min(current.minX, position.x),
+        minY: Math.min(current.minY, position.y),
+      };
+    }, {
+      maxX: Number.NEGATIVE_INFINITY,
+      maxY: Number.NEGATIVE_INFINITY,
+      minX: Number.POSITIVE_INFINITY,
+      minY: Number.POSITIVE_INFINITY,
+    });
+    components.push({
+      height: bounds.maxY - bounds.minY,
+      ids,
+      minOrder: Math.min(...ids.map((id) => orderById.get(id) ?? Number.MAX_SAFE_INTEGER)),
+      minX: bounds.minX,
+      minY: bounds.minY,
+      width: bounds.maxX - bounds.minX,
+    });
+  });
+
+  if (components.length < 2) return positions;
+  components.sort((left, right) => left.minOrder - right.minOrder);
+
+  const paddedArea = components.reduce(
+    (sum, component) => sum
+      + (component.width + horizontalGap) * (component.height + verticalGap),
+    0,
+  );
+  const widestComponent = Math.max(...components.map((component) => component.width));
+  const targetWidth = Math.max(widestComponent, Math.sqrt(paddedArea) * 1.35);
+  const packed = { ...positions };
+  let cursorX = 0;
+  let cursorY = 0;
+  let rowHeight = 0;
+
+  components.forEach((component) => {
+    if (cursorX > 0 && cursorX + component.width > targetWidth) {
+      cursorX = 0;
+      cursorY += rowHeight + verticalGap;
+      rowHeight = 0;
+    }
+    const translateX = cursorX - component.minX;
+    const translateY = cursorY - component.minY;
+    component.ids.forEach((id) => {
+      const position = positions[id];
+      packed[id] = {
+        x: position.x + translateX,
+        y: position.y + translateY,
+      };
+    });
+    cursorX += component.width + horizontalGap;
+    rowHeight = Math.max(rowHeight, component.height);
+  });
+
+  return packed;
+}
+
 export function blueprintHierarchyEdges(
   nodes: BlueprintNode[],
   edges: BlueprintEdge[],
