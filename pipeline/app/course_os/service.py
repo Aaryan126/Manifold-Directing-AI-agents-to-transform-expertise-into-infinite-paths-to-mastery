@@ -293,7 +293,15 @@ class CourseOSService:
         ingestion_job_id: UUID,
     ) -> GenerationRun:
         course = await self._require_owned_course(course_id, instructor_id)
-        if course.working_revision_id is None and course.status == "published":
+        demo_course = await self._repository.prepare_competition_demo_generation(
+            course_id,
+            instructor_id,
+            video_id,
+            ingestion_job_id,
+        )
+        if isinstance(demo_course, CourseSummary):
+            course = demo_course
+        elif course.working_revision_id is None and course.status == "published":
             try:
                 course = await self._repository.create_working_revision(
                     course_id,

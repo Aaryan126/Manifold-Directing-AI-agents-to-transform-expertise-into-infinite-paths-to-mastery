@@ -74,6 +74,15 @@ class CourseOSRepository(ABC):
         ingestion_job_id: UUID,
     ) -> GenerationRun: ...
 
+    async def prepare_competition_demo_generation(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        video_id: UUID,
+        ingestion_job_id: UUID,
+    ) -> CourseSummary | None:
+        return None
+
     @abstractmethod
     async def get_generation_run(self, run_id: UUID) -> GenerationRun | None: ...
 

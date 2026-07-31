@@ -3606,7 +3606,9 @@ function CourseFlowWorkspace({
     (left, right) => left.sequence_rank - right.sequence_rank,
   ), [flow]);
   const lectureCount = units.filter((unit) => unit.kind === "lecture").length;
-  const compactSequence = modules.length === 0 && units.length <= 2;
+  // Ungrouped lectures are already a sequence. Only real instructor-created
+  // modules should introduce visual lane containers.
+  const compactSequence = modules.length === 0;
   const showGraphGuidance = mode === "design" && (
     Boolean(relationshipDraft?.relationship)
     || units.some((unit) => unit.status === "proposed")

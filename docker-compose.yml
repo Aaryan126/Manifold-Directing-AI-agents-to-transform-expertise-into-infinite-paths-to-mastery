@@ -32,11 +32,13 @@ services:
       MUX_POLL_TIMEOUT_SECONDS: ${MUX_POLL_TIMEOUT_SECONDS:-600}
       DEMO_VIDEO_PATH: /app/demo/test_video.mp4
       DEMO_TRANSCRIPT_PATH: /app/demo/transcript.json
+      COMPETITION_DEMO_CONFIG_PATH: ${COMPETITION_DEMO_CONFIG_PATH:-/app/competition-demo.yaml}
     ports:
       - "8000:8000"
     volumes:
       - local_video_data:/data/video
       - ./test_video.mp4:/app/demo/test_video.mp4:ro
+      - ./competition-demo.yaml:/app/competition-demo.yaml:ro
     depends_on:
       postgres:
         condition: service_healthy

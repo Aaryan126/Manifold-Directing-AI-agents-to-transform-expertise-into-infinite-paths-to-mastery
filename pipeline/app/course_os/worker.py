@@ -97,6 +97,24 @@ class CourseGenerationWorker:
         if run is None:
             raise RuntimeError("Generation run disappeared while its task was leased.")
         video_id = _video_id(task)
+        if task.input.get("competition_demo_replay") is True:
+            delay = float(task.input.get("demo_step_delay_seconds", 0))
+            if delay > 0:
+                await asyncio.sleep(delay)
+            if task.task_type == "review_bundles":
+                accepted = await self._repository.finalize_generated_private_draft(
+                    run.course_id,
+                    run.revision_id,
+                )
+                return {
+                    "auto_accepted_private_draft": accepted,
+                    "artifact_count": sum(accepted.values()),
+                    "competition_demo_replay": True,
+                }
+            output = task.input.get("demo_output")
+            return dict(output) if isinstance(output, dict) else {
+                "competition_demo_replay": True
+            }
         if task.task_type == "source_ready":
             transcript = await self._ingestion.get_video_transcript(video_id)
             if transcript is None:

@@ -1,0 +1,9 @@
+# Local recording rehearsal only. Set enabled: false to use the real AI pipeline.
+enabled: true
+business_101:
+  course_id: 8b39e2ae-3a91-42ef-bfff-985a39283453
+  baseline_revision_id: a5b37fb7-3f6e-48f1-b784-752d66d8224b
+  prepared_revision_id: 03ef0caa-8cb2-4a3f-9055-3a6d049f1cb9
+  template_video_id: d592b54e-722f-4bf4-aa1f-437deed9db82
+  prepared_unit_logical_id: d592b54e-722f-4bf4-aa1f-437deed9db82
+  step_delay_seconds: 1.8

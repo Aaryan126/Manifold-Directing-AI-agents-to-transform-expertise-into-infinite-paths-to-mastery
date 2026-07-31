@@ -107,6 +107,26 @@ The evaluator keeps measured values, calculated costs, vendor claims, and
 unmeasured gaps separate. It does not substitute a generic industry ratio for a
 matched manual-authoring study.
 
+### Business 101 recording rehearsal
+
+[`competition-demo.yaml`](competition-demo.yaml) enables a deterministic replay
+for the exact local Business 101 course. Uploading the prepared lecture still
+creates a real source record, advances through the normal six durable progress
+steps, opens the cached result as a private working Blueprint, and requires the
+instructor to publish. It does not call ASR or the LLM again. Set `enabled:
+false` and rebuild the pipeline container to restore real generation; every
+other course always uses real generation.
+
+Before each recording take:
+
+```bash
+pipeline/.venv/bin/python scripts/reset_business_101_generation_demo.py --apply
+```
+
+Without `--apply`, the command only reports readiness. The reset is narrowly
+scoped to the exact IDs in the YAML and returns Business 101 to its one-lecture
+published baseline.
+
 ## Judge-facing materials
 
 - [LaunchPad five-pillar write-up](competition/launchpad-writeup.md)

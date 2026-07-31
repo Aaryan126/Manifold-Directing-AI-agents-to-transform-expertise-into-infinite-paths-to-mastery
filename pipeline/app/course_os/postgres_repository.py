@@ -8,6 +8,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from app.competition_demo import CompetitionDemoConfig
 from app.course_os.models import (
     AssessmentClipOption,
     AssessmentConceptOption,
@@ -60,8 +61,13 @@ DEFAULT_ROUTING_POLICY = RoutingPolicyDraft(3, 1, "require_mastery", 2)
 
 
 class PostgresCourseOSRepository(CourseOSRepository):
-    def __init__(self, database_url: str) -> None:
+    def __init__(
+        self,
+        database_url: str,
+        competition_demo: CompetitionDemoConfig | None = None,
+    ) -> None:
         self._database_url = database_url
+        self._competition_demo = competition_demo
 
     async def user_role(self, user_id: UUID) -> str | None:
         async with pooled_connection(self._database_url) as conn:
@@ -1098,6 +1104,130 @@ class PostgresCourseOSRepository(CourseOSRepository):
             course_radar=radar,
         )
 
+    async def prepare_competition_demo_generation(
+        self,
+        course_id: UUID,
+        instructor_id: UUID,
+        video_id: UUID,
+        ingestion_job_id: UUID,
+    ) -> CourseSummary | None:
+        demo = self._competition_demo
+        if demo is None or not demo.matches_course(course_id):
+            return None
+        async with await psycopg.AsyncConnection.connect(
+            self._database_url,
+            row_factory=dict_row,
+        ) as conn:
+            course = await (
+                await conn.execute(
+                    """
+                    select * from courses
+                    where id = %s and instructor_id = %s
+                    for update
+                    """,
+                    (course_id, instructor_id),
+                )
+            ).fetchone()
+            if course is None:
+                raise ValueError("Instructor does not own this course.")
+            if course["working_revision_id"] is not None:
+                raise ValueError("Reset the Business 101 rehearsal before replaying it.")
+            if UUID(str(course["active_revision_id"])) != demo.baseline_revision_id:
+                raise ValueError("Reset the Business 101 rehearsal before replaying it.")
+            source = await (
+                await conn.execute(
+                    """
+                    select duration_seconds, transcript
+                    from videos
+                    where id = %s and course_id = %s
+                    """,
+                    (demo.template_video_id, course_id),
+                )
+            ).fetchone()
+            unit = await (
+                await conn.execute(
+                    """
+                    select id, video_id
+                    from course_units
+                    where revision_id = %s and logical_id = %s
+                    """,
+                    (demo.prepared_revision_id, demo.prepared_unit_logical_id),
+                )
+            ).fetchone()
+            if source is None or unit is None:
+                raise ValueError("The configured Business 101 rehearsal cache is unavailable.")
+            previous_video_id = UUID(str(unit["video_id"]))
+            await conn.execute(
+                """
+                update videos
+                set duration_seconds = %s,
+                    transcript = %s,
+                    source_metadata = source_metadata || %s::jsonb
+                where id = %s and course_id = %s
+                """,
+                (
+                    source["duration_seconds"],
+                    Jsonb(source["transcript"]),
+                    Jsonb({"competition_demo_replay": True}),
+                    video_id,
+                    course_id,
+                ),
+            )
+            await conn.execute(
+                """
+                update ingestion_jobs
+                set status = 'complete', progress = 100, error_message = null,
+                    completed_at = now(), updated_at = now()
+                where id = %s and video_id = %s and course_id = %s
+                """,
+                (ingestion_job_id, video_id, course_id),
+            )
+            await conn.execute(
+                """
+                update topics
+                set video_id = %s, updated_at = now()
+                where revision_id = %s and video_id = %s
+                """,
+                (video_id, demo.prepared_revision_id, previous_video_id),
+            )
+            await conn.execute(
+                """
+                update course_units
+                set video_id = %s, updated_at = now()
+                where revision_id = %s and logical_id = %s
+                """,
+                (video_id, demo.prepared_revision_id, demo.prepared_unit_logical_id),
+            )
+            await conn.execute(
+                """
+                update course_revisions
+                set status = case
+                    when id = %s then 'published'::course_revision_status
+                    when id = %s then 'building'::course_revision_status
+                    else status
+                end,
+                updated_at = now()
+                where course_id = %s and id in (%s, %s)
+                """,
+                (
+                    demo.baseline_revision_id,
+                    demo.prepared_revision_id,
+                    course_id,
+                    demo.baseline_revision_id,
+                    demo.prepared_revision_id,
+                ),
+            )
+            await conn.execute(
+                """
+                update courses
+                set active_revision_id = %s, working_revision_id = %s,
+                    status = 'published', updated_at = now()
+                where id = %s
+                """,
+                (demo.baseline_revision_id, demo.prepared_revision_id, course_id),
+            )
+        return await self.get_course(course_id)
+
     async def create_generation_run(
         self,
         course_id: UUID,
@@ -1115,6 +1245,12 @@ class PostgresCourseOSRepository(CourseOSRepository):
             "assessments": (task_ids["clips"],),
             "review_bundles": (task_ids["assessments"],),
         }
+        demo = self._competition_demo
+        is_demo_replay = bool(
+            demo
+            and demo.matches_course(course_id)
+            and revision_id == demo.prepared_revision_id
+        )
         async with await psycopg.AsyncConnection.connect(
             self._database_url,
             row_factory=dict_row,
@@ -1241,7 +1377,103 @@ class PostgresCourseOSRepository(CourseOSRepository):
             ).fetchone()
             if run is None:
                 raise RuntimeError("Failed to create generation run.")
+            demo_outputs: dict[str, dict[str, Any]] = {}
+            if is_demo_replay:
+                topics = await (
+                    await conn.execute(
+                        """
+                        select id from topics
+                        where revision_id = %s and video_id = %s
+                          and review_status <> 'dismissed'
+                        order by start_seconds
+                        """,
+                        (revision_id, video_id),
+                    )
+                ).fetchall()
+                topic_ids = [str(row["id"]) for row in topics]
+                concepts = await (
+                    await conn.execute(
+                        """
+                        select count(distinct tc.concept_id) count
+                        from topic_concepts tc
+                        join topics t on t.id = tc.topic_id
+                        where t.revision_id = %s and t.video_id = %s
+                          and t.review_status <> 'dismissed'
+                        """,
+                        (revision_id, video_id),
+                    )
+                ).fetchone()
+                edges = await (
+                    await conn.execute(
+                        """
+                        select count(*) count from concept_edges
+                        where revision_id = %s and review_status <> 'dismissed'
+                        """,
+                        (revision_id,),
+                    )
+                ).fetchone()
+                clip_rows = await (
+                    await conn.execute(
+                        """
+                        select c.id from clips c
+                        join topics t on t.id = c.topic_id
+                        where t.revision_id = %s and t.video_id = %s
+                          and c.status <> 'superseded'
+                        """,
+                        (revision_id, video_id),
+                    )
+                ).fetchall()
+                question_rows = await (
+                    await conn.execute(
+                        """
+                        select q.id from questions q
+                        join topics t on t.id = q.topic_id
+                        where t.revision_id = %s and t.video_id = %s
+                          and q.review_status <> 'dismissed'
+                        """,
+                        (revision_id, video_id),
+                    )
+                ).fetchall()
+                demo_outputs = {
+                    "source_ready": {
+                        "video_id": str(video_id),
+                        "transcript_ready": True,
+                        "competition_demo_replay": True,
+                    },
+                    "outline": {
+                        "topic_ids": topic_ids,
+                        "count": len(topic_ids),
+                        "competition_demo_replay": True,
+                    },
+                    "concept_graph": {
+                        "concept_count": int(concepts["count"] if concepts else 0),
+                        "edge_count": int(edges["count"] if edges else 0),
+                        "competition_demo_replay": True,
+                    },
+                    "clips": {
+                        "clip_ids": [str(row["id"]) for row in clip_rows],
+                        "count": len(clip_rows),
+                        "competition_demo_replay": True,
+                    },
+                    "assessments": {
+                        "question_ids": [str(row["id"]) for row in question_rows],
+                        "count": len(question_rows),
+                        "competition_demo_replay": True,
+                    },
+                }
             for task_type in _TASK_ORDER:
+                task_input: dict[str, Any] = {
+                    "video_id": str(video_id),
+                    "ingestion_job_id": str(ingestion_job_id),
+                }
+                if is_demo_replay and demo is not None:
+                    task_input.update(
+                        {
+                            "competition_demo_replay": True,
+                            "demo_step_delay_seconds": demo.step_delay_seconds,
+                            "demo_output": demo_outputs.get(task_type, {}),
+                        }
+                    )
                 await conn.execute(
                     """
                     insert into generation_tasks (
@@ -1255,12 +1487,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
                         task_type,
                         list(dependencies[task_type]),
                         f"{revision_id}:{video_id}:{task_type}:lecture",
-                        Jsonb(
-                            {
-                                "video_id": str(video_id),
-                                "ingestion_job_id": str(ingestion_job_id),
-                            }
-                        ),
+                        Jsonb(task_input),
                         120 if task_type == "source_ready" else 3,
                     ),
                 )

@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     mux_poll_timeout_seconds: float = 600.0
     demo_video_path: str = "../test_video.mp4"
     demo_transcript_path: str = "demo/transcript.json"
+    competition_demo_config_path: str | None = None
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     generation_worker_enabled: bool = True
     generation_worker_poll_seconds: float = 1.0

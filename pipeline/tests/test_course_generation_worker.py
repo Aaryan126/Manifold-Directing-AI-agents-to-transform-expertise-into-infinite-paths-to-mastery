@@ -119,6 +119,32 @@ async def test_source_task_runs_transcription_inside_the_durable_worker() -> Non
 
 
 @pytest.mark.anyio
+async def test_competition_demo_task_replays_cached_output_without_providers() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    task = replace(
+        _task("outline"),
+        input={
+            "video_id": str(uuid4()),
+            "competition_demo_replay": True,
+            "demo_step_delay_seconds": 0,
+            "demo_output": {"count": 9, "topic_ids": ["cached-topic"]},
+        },
+    )
+    repository.claim_generation_task = AsyncMock(return_value=task)
+    repository.get_generation_run = AsyncMock(return_value=_run(task))
+    repository.complete_generation_task = AsyncMock()
+    segmentation = AsyncMock()
+
+    worked = await _worker(repository, segmentation=segmentation).run_once()
+
+    assert worked is True
+    segmentation.propose_topics.assert_not_awaited()
+    output = repository.complete_generation_task.await_args.args[1]
+    assert output["count"] == 9
+    assert output["topic_ids"] == ["cached-topic"]
+
+
+@pytest.mark.anyio
 async def test_outline_task_prepares_an_editable_private_course_title() -> None:
     repository = create_autospec(CourseOSRepository, instance=True)
     task = _task("outline")

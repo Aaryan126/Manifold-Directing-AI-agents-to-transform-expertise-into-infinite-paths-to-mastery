@@ -13,6 +13,7 @@ from app.clips.factory import build_clip_extraction_agent
 from app.clips.materializer import LocalFfmpegClipMaterializer
 from app.clips.postgres_repository import PostgresClipRepository
 from app.clips.service import ClipService
+from app.competition_demo import load_competition_demo_config
 from app.config import Settings, get_settings
 from app.course_os.course_director import LocalCourseDirector, OpenAICourseDirector
 from app.course_os.dashboard_assistant import LocalDashboardAssistant, OpenAIDashboardAssistant
@@ -64,6 +65,9 @@ def get_course_os_service() -> CourseOSService:
 
 
 def build_course_os_service(settings: Settings) -> CourseOSService:
+    competition_demo = load_competition_demo_config(
+        settings.competition_demo_config_path
+    )
     assistant = (
         OpenAIDashboardAssistant(settings.openai_api_key, settings.llm_model)
         if settings.openai_api_key
@@ -75,7 +79,10 @@ def build_course_os_service(settings: Settings) -> CourseOSService:
         else LocalCourseDirector()
     )
     return CourseOSService(
-        repository=PostgresCourseOSRepository(settings.database_url),
+        repository=PostgresCourseOSRepository(
+            settings.database_url,
+            competition_demo=competition_demo,
+        ),
         dashboard_assistant=assistant,
         course_director=director,
     )
@@ -110,8 +117,14 @@ def get_course_intelligence_worker() -> CourseIntelligenceWorker:
 @lru_cache
 def get_course_generation_worker() -> CourseGenerationWorker:
     settings = get_settings()
+    competition_demo = load_competition_demo_config(
+        settings.competition_demo_config_path
+    )
     return CourseGenerationWorker(
-        repository=PostgresCourseOSRepository(settings.database_url),
+        repository=PostgresCourseOSRepository(
+            settings.database_url,
+            competition_demo=competition_demo,
+        ),
         ingestion=build_ingestion_service(settings),
         segmentation=build_segmentation_service(settings),
         graph=build_concept_graph_service(settings),
