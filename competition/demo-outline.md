@@ -40,8 +40,8 @@ for understanding, and remediation paths.
 
 Suggested voice-over:
 
-> **0:22–0:29 — Add the lecture:** “I start with one real business lecture—no
-> prebuilt lessons, quizzes, or learning map.”
+> **0:22–0:29 — Add the lecture:** “Here’s how that works. I start with one
+> real business lecture—before any lessons, quizzes, or learning map exist.”
 >
 > **0:29–0:42 — Generation progress:** “Manifold transcribes the source,
 > identifies how the instructor has organized the ideas, and builds the
