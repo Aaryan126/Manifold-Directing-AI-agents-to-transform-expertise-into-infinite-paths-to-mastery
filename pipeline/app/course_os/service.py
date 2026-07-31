@@ -293,6 +293,20 @@ class CourseOSService:
         ingestion_job_id: UUID,
     ) -> GenerationRun:
         course = await self._require_owned_course(course_id, instructor_id)
+        if course.working_revision_id is None and course.status == "published":
+            try:
+                course = await self._repository.create_working_revision(
+                    course_id,
+                    instructor_id,
+                )
+            except ValueError as exc:
+                # A concurrent generation request may have opened the revision
+                # after the ownership snapshot above. Re-read once so the
+                # operation remains safe and idempotent at the revision boundary.
+                refreshed = await self._repository.get_course(course_id)
+                if refreshed is None or refreshed.working_revision_id is None:
+                    raise CourseOSValidationError(str(exc)) from exc
+                course = refreshed
         if course.working_revision_id is None:
             raise CourseOSValidationError(
                 "Open a working revision before generating course content."

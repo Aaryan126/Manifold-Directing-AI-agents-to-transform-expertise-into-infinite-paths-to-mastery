@@ -23,6 +23,8 @@ from app.course_os.models import (
     DashboardActivityPoint,
     DashboardSnapshot,
     DecisionTraceStage,
+    GenerationRun,
+    GenerationRunStatus,
     RevisionDiff,
     RoutingPolicyDraft,
 )
@@ -802,6 +804,117 @@ async def test_draft_course_cannot_open_second_revision() -> None:
 
     with pytest.raises(CourseOSValidationError, match="already has a working revision"):
         await service.open_working_revision(course.id, course.instructor_id)
+
+
+@pytest.mark.anyio
+async def test_starting_generation_on_published_course_opens_private_revision() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    published = replace(
+        _course(),
+        status="published",
+        active_revision_id=uuid4(),
+        working_revision_id=None,
+        revision_status="published",
+    )
+    working_revision_id = uuid4()
+    working = replace(
+        published,
+        working_revision_id=working_revision_id,
+        revision_status="building",
+    )
+    video_id = uuid4()
+    ingestion_job_id = uuid4()
+    run = GenerationRun(
+        id=uuid4(),
+        course_id=published.id,
+        revision_id=working_revision_id,
+        status=GenerationRunStatus.QUEUED,
+        phase="source_ready",
+        progress=0,
+        error_summary=None,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    repository.user_role = AsyncMock(return_value="instructor")
+    repository.get_course = AsyncMock(return_value=published)
+    repository.create_working_revision = AsyncMock(return_value=working)
+    repository.create_generation_run = AsyncMock(return_value=run)
+    service = CourseOSService(repository)
+
+    result = await service.start_generation(
+        published.id,
+        published.instructor_id,
+        video_id,
+        ingestion_job_id,
+    )
+
+    assert result == run
+    repository.create_working_revision.assert_awaited_once_with(
+        published.id,
+        published.instructor_id,
+    )
+    repository.create_generation_run.assert_awaited_once_with(
+        published.id,
+        working_revision_id,
+        published.instructor_id,
+        video_id,
+        ingestion_job_id,
+    )
+
+
+@pytest.mark.anyio
+async def test_concurrent_generation_reuses_newly_opened_private_revision() -> None:
+    repository = create_autospec(CourseOSRepository, instance=True)
+    published = replace(
+        _course(),
+        status="published",
+        active_revision_id=uuid4(),
+        working_revision_id=None,
+        revision_status="published",
+    )
+    working_revision_id = uuid4()
+    working = replace(
+        published,
+        working_revision_id=working_revision_id,
+        revision_status="building",
+    )
+    video_id = uuid4()
+    ingestion_job_id = uuid4()
+    run = GenerationRun(
+        id=uuid4(),
+        course_id=published.id,
+        revision_id=working_revision_id,
+        status=GenerationRunStatus.QUEUED,
+        phase="source_ready",
+        progress=0,
+        error_summary=None,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    repository.user_role = AsyncMock(return_value="instructor")
+    repository.get_course = AsyncMock(side_effect=(published, working))
+    repository.create_working_revision = AsyncMock(
+        side_effect=ValueError("This course already has a working revision."),
+    )
+    repository.create_generation_run = AsyncMock(return_value=run)
+    service = CourseOSService(repository)
+
+    result = await service.start_generation(
+        published.id,
+        published.instructor_id,
+        video_id,
+        ingestion_job_id,
+    )
+
+    assert result == run
+    assert repository.get_course.await_count == 2
+    repository.create_generation_run.assert_awaited_once_with(
+        published.id,
+        working_revision_id,
+        published.instructor_id,
+        video_id,
+        ingestion_job_id,
+    )
 
 
 @pytest.mark.anyio
