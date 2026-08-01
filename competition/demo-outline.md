@@ -117,45 +117,130 @@ Suggested voice-over:
 
 ## 1:52–2:22 — Learner: one interpretable adaptation
 
-Switch to the prepared learner at the deterministic continuation point
-immediately before the misconception check. Keep this section short:
+Run `npm run demo:reset` immediately before filming this clip. Sign in as Brian,
+open Business 101, and confirm that the learner is already paused at the
+business-planning misconception check. The right session rail should show the
+completed learning step, the current check, and reflection still ahead.
 
-1. show the focused session rail: learn, check, reflect;
-2. answer the misconception-revealing question with high confidence;
-3. pause on **Your path changed**;
-4. show the evidence, the reason, and the alternate explanation selected next;
-5. briefly open the focused Mastery Map to show where that support sits in the
-   larger prerequisite path.
+Detailed screen recording:
 
-Do not demo several learner journeys. One clear, explainable route is stronger.
-State that this is a seeded demonstration learner, not a real cohort.
+1. **1:52–1:57 — Establish the learner and session.** Cut directly from the
+   instructor Blueprint to the learner question. Hold the full workspace long
+   enough to show both the question and the focused session rail. Do not open a
+   menu or scroll.
+2. **1:57–2:04 — Submit one misconception.** For **“According to the lecture,
+   why should an entrepreneur create a business plan?”**, select the first
+   answer, **“To produce a formal document mainly for investors…”**. Select
+   **Confident**, then click **Submit answer**. Keep the cursor away from the
+   result card once it appears.
+3. **2:04–2:13 — Hold on the adaptive decision.** Pause on **Your path
+   changed**. Make sure the card visibly shows all three rows:
+   **Incorrect answer · high confidence**, the saved **Why**, and the
+   **Alternate explanation** selected under **Next**. Let the updated session
+   rail remain visible beside it.
+4. **2:13–2:22 — Locate the support in the course.** Click **Mastery** once.
+   Hold on the default focused Mastery Map; do not switch to **Show whole
+   course**. Frame the current concept, its nearby prerequisite, and the purple
+   support route. If needed, select the route-changed concept once to expose
+   **Why this route changed**, but do not explore other nodes.
+
+Suggested voice-over:
+
+> **1:52–1:57 — Establish the learner:** “This is a seeded demonstration
+> learner, paused at one check—not a real cohort.”
+>
+> **1:57–2:04 — Answer incorrectly with confidence:** “The learner chooses a
+> common misconception and answers with high confidence.”
+>
+> **2:04–2:13 — Show Evidence / Why / Next:** “Manifold records both signals,
+> explains why the path changed, and selects a reviewed alternate explanation
+> next.”
+>
+> **2:13–2:22 — Open Mastery Map:** “The Mastery Map places that support inside
+> the larger prerequisite path, so the adaptation stays understandable.”
+
+Do not demo a second learner journey. The point is one short, legible chain from
+learner evidence to a changed next step.
 
 ## 2:22–2:48 — Close the loop with Trace decision
 
-Return to the instructor and open **Trace decision**. Scan the persisted chain:
+Use a separate instructor browser profile or a clean edit between clips so no
+login transition appears on screen. After the learner answer, refresh the
+instructor Course Studio once so its dashboard aggregation sees the new saved
+evidence. In Blueprint Live, use **Jump to…** to select **Entrepreneurial
+planning as an iterative venture-design process**, then open **Trace decision**.
+
+Before recording, confirm the trace header. Use the primary script below only
+if it says **Complete chain** and both **Dashboard signal** and **Proposed
+revision** are available. The current Business 101 published revision does not
+yet have a signal-linked proposed revision; if that remains true, use the
+honest-gap version instead of claiming a record exists.
+
+Detailed screen recording:
+
+1. **2:22–2:27 — Open the lineage.** Begin on the selected planning concept in
+   Blueprint Live. Click **Trace decision** and wait until the loading state has
+   completely resolved before moving the cursor.
+2. **2:27–2:38 — Scan design into evidence.** Move slowly down the ordered
+   chain. Keep **Source moment**, **Concept**, **Teaching clip**, **Assessment**,
+   **Learner evidence**, and **Route event** readable. Do not click individual
+   stages; the ordered list is the visual.
+3. **2:38–2:45 — Pause on the institutional response.** If present, hold
+   **Dashboard signal** and **Proposed revision** together in view. This is the
+   payoff: the learner route, instructor alert, and proposed course change are
+   connected by persisted evidence.
+4. **2:45–2:48 — Show the trust boundary.** End the trace shot with either the
+   footer—**Missing steps are never inferred**—or a visible **Not yet** stage.
+   Do not hide a gap with a crop.
+
+The persisted chain is:
 
 ```text
 source moment → concept → teaching clip → assessment
 → learner evidence → route event → dashboard signal → proposed revision
 ```
 
-Pause on the dashboard signal and proposed revision. Explain that Manifold can
-show why a learner was routed, why the instructor was alerted, and what evidence
-supports the proposed course change. If a record is absent, the trace says so
-instead of inventing one.
+Suggested voice-over when the complete chain is available:
+
+> **2:22–2:27 — Open Trace decision:** “Back in the instructor view, Trace
+> decision reconstructs that route from stored records.”
+>
+> **2:27–2:38 — Scan source through route:** “It connects the lecture moment and
+> teaching design to the learner evidence that changed the path.”
+>
+> **2:38–2:45 — Hold signal and proposal:** “The same chain shows why the
+> instructor was alerted and what evidence supports the proposed revision.”
+>
+> **2:45–2:48 — End on the trust boundary:** “If a record is missing, Manifold
+> says so—nothing is invented.”
+
+Honest-gap replacement for **2:38–2:48** when the final stages show **Not yet**:
+
+> “Here, the learner evidence and route are persisted, but no evidence-linked
+> course proposal exists yet. Manifold marks that gap instead of inventing a
+> causal story.”
 
 This is the most differentiating part of the demo.
 
 ## 2:48–3:00 — Close
 
-End on the Blueprint and summarize the product in three clauses:
+Close **Trace decision**, clear the concept focus by clicking the empty canvas,
+and end on the fitted Blueprint in Live mode. Keep Course Director closed and
+do not publish during this shot. Hold the complete map for the full closing
+line; a gentle editorial push-in is fine, but do not move or zoom the graph with
+the cursor.
+
+Suggested voice-over:
 
 > “One lecture becomes a structured mastery course. Each learner gets a path
 > based on evidence. Every AI-proposed course improvement stays traceable and
 > instructor-reviewed.”
 
-Use the measured build/evaluation figures only as small supporting captions.
-Do not let benchmark numbers replace the product story.
+If using a final title card, place a small **Manifold** wordmark and the phrase
+**Adaptive learning, with every decision traceable** over the held Blueprint.
+Use measured build/evaluation figures only as small supporting captions; omit
+them entirely if they compete with the three-clause close. Do not add a feature
+list, dashboard montage, or second call to action in these final twelve seconds.
 
 ## Recording setup
 
