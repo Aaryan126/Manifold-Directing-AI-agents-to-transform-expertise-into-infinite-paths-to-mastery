@@ -139,6 +139,149 @@ def test_director_context_identifies_artifacts_already_removed_privately() -> No
     ]
 
 
+def test_reconnect_normalizes_dependent_requires_prerequisite_language() -> None:
+    prerequisite = BlueprintNode(
+        id=uuid4(),
+        logical_id=uuid4(),
+        kind="concept",
+        title="Venture-backed outcomes",
+        status="accepted",
+        parent_id=None,
+        metadata={},
+    )
+    dependent = BlueprintNode(
+        id=uuid4(),
+        logical_id=uuid4(),
+        kind="concept",
+        title="Run fundraising",
+        status="accepted",
+        parent_id=None,
+        metadata={},
+    )
+    replacement = BlueprintNode(
+        id=uuid4(),
+        logical_id=uuid4(),
+        kind="concept",
+        title="Startup speed",
+        status="accepted",
+        parent_id=None,
+        metadata={},
+    )
+    blueprint = CourseBlueprint(
+        course_id=uuid4(),
+        revision_id=uuid4(),
+        revision_kind="working",
+        nodes=(prerequisite, dependent, replacement),
+        edges=(
+            BlueprintEdge(
+                id=f"requires:{uuid4()}",
+                source_id=prerequisite.id,
+                target_id=dependent.id,
+                kind="requires",
+                status="accepted",
+            ),
+        ),
+        uncovered_concept_ids=(),
+    )
+    output = _DirectorPlanOutput(
+        summary="Make fundraising require startup speed.",
+        actions=[
+            _DirectorActionOutput(
+                operation="reconnect_relationship",
+                relationship_type="requires",
+                source_logical_id=str(dependent.logical_id),
+                target_logical_id=str(replacement.logical_id),
+                previous_relationship_type="requires",
+                previous_source_logical_id=str(prerequisite.logical_id),
+                previous_target_logical_id=str(dependent.logical_id),
+                summary="Use startup speed as the prerequisite",
+                rationale="Startup speed should precede fundraising.",
+            )
+        ],
+    )
+
+    action = _validated_plan(output, blueprint).actions[0]
+
+    assert action.operation == "reconnect_relationship"
+    assert action.source_logical_id == replacement.logical_id
+    assert action.target_logical_id == dependent.logical_id
+
+
+def test_reconnect_to_an_existing_prerequisite_removes_only_the_old_edge() -> None:
+    prerequisite = BlueprintNode(
+        id=uuid4(),
+        logical_id=uuid4(),
+        kind="concept",
+        title="Old prerequisite",
+        status="accepted",
+        parent_id=None,
+        metadata={},
+    )
+    dependent = BlueprintNode(
+        id=uuid4(),
+        logical_id=uuid4(),
+        kind="concept",
+        title="Dependent",
+        status="accepted",
+        parent_id=None,
+        metadata={},
+    )
+    replacement = BlueprintNode(
+        id=uuid4(),
+        logical_id=uuid4(),
+        kind="concept",
+        title="Existing prerequisite",
+        status="accepted",
+        parent_id=None,
+        metadata={},
+    )
+    blueprint = CourseBlueprint(
+        course_id=uuid4(),
+        revision_id=uuid4(),
+        revision_kind="working",
+        nodes=(prerequisite, dependent, replacement),
+        edges=(
+            BlueprintEdge(
+                id=f"requires:{uuid4()}",
+                source_id=prerequisite.id,
+                target_id=dependent.id,
+                kind="requires",
+                status="accepted",
+            ),
+            BlueprintEdge(
+                id=f"requires:{uuid4()}",
+                source_id=replacement.id,
+                target_id=dependent.id,
+                kind="requires",
+                status="accepted",
+            ),
+        ),
+        uncovered_concept_ids=(),
+    )
+    output = _DirectorPlanOutput(
+        summary="Use the existing prerequisite.",
+        actions=[
+            _DirectorActionOutput(
+                operation="reconnect_relationship",
+                relationship_type="requires",
+                source_logical_id=str(dependent.logical_id),
+                target_logical_id=str(replacement.logical_id),
+                previous_relationship_type="requires",
+                previous_source_logical_id=str(prerequisite.logical_id),
+                previous_target_logical_id=str(dependent.logical_id),
+                summary="Use the existing prerequisite",
+                rationale="Remove the redundant direct path.",
+            )
+        ],
+    )
+
+    action = _validated_plan(output, blueprint).actions[0]
+
+    assert action.operation == "remove_relationship"
+    assert action.source_logical_id == prerequisite.logical_id
+    assert action.target_logical_id == dependent.logical_id
+
+
 def test_director_accepts_a_reviewed_topic_removal_plan() -> None:
     topic = BlueprintNode(
         id=uuid4(),

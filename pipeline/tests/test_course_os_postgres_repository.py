@@ -13,6 +13,7 @@ import app.course_os.postgres_repository as repository_module
 from app.course_os.models import BlueprintEdge, BlueprintNode, CourseCreate, CourseSummary
 from app.course_os.postgres_repository import (
     PostgresCourseOSRepository,
+    _create_blueprint_relationship,
     _json_value,
     _message,
     _publication_blockers,
@@ -89,6 +90,71 @@ class _RowsCursor:
 
     async def fetchall(self) -> list[dict[str, Any]]:
         return self._rows
+
+
+class _DismissedPrerequisiteConnection:
+    def __init__(
+        self,
+        source_id: UUID,
+        source_logical_id: UUID,
+        target_id: UUID,
+        target_logical_id: UUID,
+        edge_id: UUID,
+    ) -> None:
+        self.nodes = [
+            {"kind": "concept", "id": source_id, "logical_id": source_logical_id},
+            {"kind": "concept", "id": target_id, "logical_id": target_logical_id},
+        ]
+        self.edge_id = edge_id
+        self.statements: list[str] = []
+
+    async def execute(self, query: str, parameters: object = None) -> object:
+        normalized = " ".join(query.split())
+        self.statements.append(normalized)
+        if normalized.startswith("select 'topic' as kind"):
+            return _RowsCursor(self.nodes)
+        if normalized.startswith("select id, review_status from concept_edges"):
+            return _Cursor({"id": self.edge_id, "review_status": "dismissed"})
+        if normalized.startswith("with recursive reachable"):
+            return _Cursor(None)
+        return _Cursor()
+
+
+@pytest.mark.anyio
+async def test_create_prerequisite_reactivates_a_dismissed_edge() -> None:
+    source_id = uuid4()
+    source_logical_id = uuid4()
+    target_id = uuid4()
+    target_logical_id = uuid4()
+    edge_id = uuid4()
+    conn = _DismissedPrerequisiteConnection(
+        source_id,
+        source_logical_id,
+        target_id,
+        target_logical_id,
+        edge_id,
+    )
+
+    await _create_blueprint_relationship(
+        conn,
+        course_id=uuid4(),
+        revision_id=uuid4(),
+        instructor_id=uuid4(),
+        relationship="requires",
+        source_logical_id=source_logical_id,
+        target_logical_id=target_logical_id,
+        mutation_source="course_director",
+    )
+
+    assert any(
+        statement.startswith("update concept_edges")
+        and "review_status = 'edited'" in statement
+        and "dismissed_at = null" in statement
+        for statement in conn.statements
+    )
+    assert not any(
+        statement.startswith("insert into concept_edges") for statement in conn.statements
+    )
 
 
 class _BlueprintEvidenceConnection:

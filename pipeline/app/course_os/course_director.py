@@ -166,9 +166,12 @@ class OpenAICourseDirector:
                         "concept name/description; clip type/difficulty/start_seconds/end_seconds; "
                         "and question body/type/correct_answer/confidence_prompt. Supported "
                         "relationship "
-                        "semantics are contains(topic→concept), requires(concept→concept), "
+                        "semantics are contains(topic→concept), "
+                        "requires(prerequisite concept→dependent concept), "
                         "teaches(concept→clip), assesses(concept→question), "
                         "remediates_to(question→concept|clip), and cites(artifact→source). "
+                        "For example, if Fundraising requires Startup speed, use Startup speed "
+                        "as source and Fundraising as target. "
                         "For reconnect_relationship, identify the exact existing relationship "
                         "in the previous_* fields and the replacement in the normal relationship "
                         "fields so it remains one atomic review decision. "
@@ -627,13 +630,33 @@ def _validated_plan(
         normalized_previous_target_id = previous_target_id
         if (
             candidate.operation == "reconnect_relationship"
-            and candidate.relationship_type == "contains"
-            and (candidate.relationship_type, source_id, target_id) in relationships
+            and candidate.relationship_type == "requires"
+            and source_id == previous_target_id
+            and target_id not in {previous_source_id, previous_target_id}
+        ):
+            # Natural language usually says "dependent requires prerequisite", while the
+            # stored graph points prerequisite → dependent. Normalize the common reversed
+            # model output when it keeps the old dependent and replaces its prerequisite.
+            normalized_source_id = target_id
+            normalized_target_id = source_id
+        if (
+            candidate.operation == "reconnect_relationship"
+            and (
+                candidate.relationship_type,
+                normalized_source_id,
+                normalized_target_id,
+            )
+            in relationships
             and (
                 candidate.previous_relationship_type,
                 previous_source_id,
                 previous_target_id,
-            ) != (candidate.relationship_type, source_id, target_id)
+            )
+            != (
+                candidate.relationship_type,
+                normalized_source_id,
+                normalized_target_id,
+            )
         ):
             operation = "remove_relationship"
             relationship_type = candidate.previous_relationship_type

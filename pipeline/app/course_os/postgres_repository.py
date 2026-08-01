@@ -6359,17 +6359,17 @@ async def _create_blueprint_relationship(
             (source_id, target_id, revision_id),
         )
     elif relationship == "requires":
-        duplicate = await (
+        existing = await (
             await conn.execute(
                 """
-                select 1 from concept_edges
+                select id, review_status from concept_edges
                 where revision_id = %s and from_concept_id = %s and to_concept_id = %s
-                  and relationship = 'requires' and review_status <> 'dismissed'
+                  and relationship = 'requires'
                 """,
                 (revision_id, source_id, target_id),
             )
         ).fetchone()
-        if duplicate:
+        if existing and str(existing["review_status"]) != "dismissed":
             raise ValueError("That prerequisite relationship already exists.")
         cycle = await (
             await conn.execute(
@@ -6391,20 +6391,36 @@ async def _create_blueprint_relationship(
         ).fetchone()
         if cycle:
             raise ValueError("That prerequisite would create a cycle.")
-        await conn.execute(
-            """
-            insert into concept_edges (
-              from_concept_id, to_concept_id, relationship, instructor_revision,
-              review_status, approved_at, revision_id
-            ) values (%s, %s, 'requires', %s::jsonb, 'edited', now(), %s)
-            """,
-            (
-                source_id,
-                target_id,
-                Jsonb({"action": "add", "source": mutation_source}),
-                revision_id,
-            ),
-        )
+        if existing:
+            await conn.execute(
+                """
+                update concept_edges
+                set review_status = 'edited', dismissed_at = null, approved_at = now(),
+                    updated_at = now(),
+                    instructor_revision = coalesce(instructor_revision, '{}'::jsonb)
+                      || %s::jsonb
+                where id = %s and review_status = 'dismissed'
+                """,
+                (
+                    Jsonb({"action": "add", "source": mutation_source}),
+                    existing["id"],
+                ),
+            )
+        else:
+            await conn.execute(
+                """
+                insert into concept_edges (
+                  from_concept_id, to_concept_id, relationship, instructor_revision,
+                  review_status, approved_at, revision_id
+                ) values (%s, %s, 'requires', %s::jsonb, 'edited', now(), %s)
+                """,
+                (
+                    source_id,
+                    target_id,
+                    Jsonb({"action": "add", "source": mutation_source}),
+                    revision_id,
+                ),
+            )
     elif relationship == "teaches":
         duplicate = await (
             await conn.execute(
