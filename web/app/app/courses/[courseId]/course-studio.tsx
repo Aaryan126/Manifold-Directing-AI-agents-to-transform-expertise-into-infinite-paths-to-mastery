@@ -2714,6 +2714,45 @@ export function blueprintEdgesWithoutLayoutRoutes(
   ));
 }
 
+export function stabilizeBlueprintRevisionHandoff(
+  start: BlueprintFlowPresentation,
+  target: BlueprintFlowPresentation,
+  anchorLogicalId: string | null,
+): BlueprintFlowPresentation {
+  const startByLogicalId = new Map(
+    start.nodes.map((node) => [node.data.artifact.logical_id, node]),
+  );
+  const anchorTarget = target.nodes.find(
+    (node) => node.data.artifact.logical_id === anchorLogicalId,
+  ) ?? target.nodes.find(
+    (node) => startByLogicalId.has(node.data.artifact.logical_id),
+  );
+  const anchorStart = anchorTarget
+    ? startByLogicalId.get(anchorTarget.data.artifact.logical_id)
+    : null;
+  const offset = anchorStart && anchorTarget
+    ? {
+      x: anchorStart.position.x - anchorTarget.position.x,
+      y: anchorStart.position.y - anchorTarget.position.y,
+    }
+    : { x: 0, y: 0 };
+
+  return {
+    ...target,
+    edges: blueprintEdgesWithoutLayoutRoutes(target.edges),
+    nodes: target.nodes.map((node) => {
+      const previous = startByLogicalId.get(node.data.artifact.logical_id);
+      return {
+        ...node,
+        position: previous?.position ?? {
+          x: node.position.x + offset.x,
+          y: node.position.y + offset.y,
+        },
+      };
+    }),
+  };
+}
+
 function interpolateBlueprintPresentation(
   start: BlueprintFlowPresentation,
   target: BlueprintFlowPresentation,
@@ -4635,9 +4674,16 @@ function BlueprintWorkspace({
     && presentedLiveFlow
     && (isNeighborhoodTransition || isLiveLayoutRefresh || neighborhoodMotionActive),
   );
+  const retainsPrivatePreviewPositions = Boolean(
+    mode === "live"
+    && privateLivePreview
+    && connectionFocusLogicalId
+    && presentedLiveFlow?.connectionFocused
+    && presentedLiveFlow.contextKey === viewportContextKey,
+  );
   const retainsPresentedLiveFlow = mode === "live"
     && presentedLiveFlow
-    && (isNeighborhoodTransition || isLiveLayoutRefresh);
+    && (isNeighborhoodTransition || isLiveLayoutRefresh || retainsPrivatePreviewPositions);
   const renderedFlowNodes = retainsPresentedLiveFlow
     ? presentedLiveFlow.nodes
     : flow.nodes;
@@ -4866,6 +4912,29 @@ function BlueprintWorkspace({
     let attempts = 0;
     const target = latestLiveFlowTarget.current;
     const nodesForFit = target?.nodes ?? [];
+    const currentPresentation = presentedLiveFlowRef.current;
+    if (
+      mode === "live"
+      && privateLivePreview
+      && connectionFocusLogicalId
+      && currentPresentation?.connectionFocused
+      && currentPresentation.contextKey === viewportContextKey
+      && target?.connectionFocused
+      && target.contextKey === viewportContextKey
+    ) {
+      presentLiveFlow(stabilizeBlueprintRevisionHandoff(
+        currentPresentation,
+        {
+          connectionFocused: target.connectionFocused,
+          contextKey: target.contextKey,
+          edges: target.edges,
+          nodes: target.nodes,
+        },
+        connectionFocusLogicalId,
+      ));
+      settleViewport(viewportFitKey);
+      return;
+    }
     settleViewport(null);
     // Keep intermediate ELK positions invisible, calculate one viewport from
     // the completed graph-space bounds, then reveal on the following frame.
@@ -4937,8 +5006,11 @@ function BlueprintWorkspace({
     flowInstance,
     isNeighborhoodTransition,
     mode,
+    connectionFocusLogicalId,
+    privateLivePreview,
     presentLiveFlow,
     settleViewport,
+    viewportContextKey,
     viewportFitKey,
   ]);
 
@@ -4952,20 +5024,35 @@ function BlueprintWorkspace({
     if (viewportReady && !isNeighborhoodTransition && !neighborhoodMotionActive) {
       const target = latestLiveFlowTarget.current;
       if (!target) return;
-      presentLiveFlow({
+      const targetPresentation = {
         connectionFocused: target.connectionFocused,
         contextKey: target.contextKey,
         edges: target.edges,
         nodes: target.nodes,
-      });
+      };
+      const currentPresentation = presentedLiveFlowRef.current;
+      presentLiveFlow(
+        privateLivePreview
+        && connectionFocusLogicalId
+        && currentPresentation?.connectionFocused
+        && currentPresentation.contextKey === target.contextKey
+          ? stabilizeBlueprintRevisionHandoff(
+            currentPresentation,
+            targetPresentation,
+            connectionFocusLogicalId,
+          )
+          : targetPresentation,
+      );
     }
   }, [
+    connectionFocusLogicalId,
     enabledRelationships,
     flow.layoutKey,
     isNeighborhoodTransition,
     mode,
     neighborhoodMotionActive,
     presentLiveFlow,
+    privateLivePreview,
     selectedLogicalId,
     viewportFitKey,
     viewportReady,

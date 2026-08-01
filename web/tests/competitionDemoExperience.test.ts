@@ -5,6 +5,7 @@ import {
   pendingBlueprintProposalPreview,
   shouldPreserveCompetitionFocus,
   shouldShowCompetitionPrivatePreview,
+  stabilizeBlueprintRevisionHandoff,
 } from "../app/app/courses/[courseId]/course-studio";
 import {
   confidenceLabel,
@@ -137,6 +138,47 @@ describe("competition demo experience", () => {
       "removed-concept",
       [{ logical_id: "venture-outcomes" }],
     )).toBe(false);
+  });
+
+  it("keeps surviving nodes fixed across physical revision identities", () => {
+    const artifact = (id: string, logicalId: string, x: number, y: number) => ({
+      id,
+      type: "blueprintArtifact",
+      position: { x, y },
+      data: {
+        artifact: { logical_id: logicalId },
+      },
+    });
+    const start = {
+      connectionFocused: true,
+      contextKey: "live:connections:focal:0",
+      edges: [],
+      nodes: [
+        artifact("active-focal", "focal", 120, 240),
+        artifact("active-neighbor", "neighbor", 30, 40),
+      ],
+    } as unknown as Parameters<typeof stabilizeBlueprintRevisionHandoff>[0];
+    const target = {
+      connectionFocused: true,
+      contextKey: "live:connections:focal:0",
+      edges: [],
+      nodes: [
+        artifact("working-focal", "focal", 0, 0),
+        artifact("working-neighbor", "neighbor", 400, 500),
+        artifact("working-added", "added", 200, 300),
+      ],
+    } as unknown as Parameters<typeof stabilizeBlueprintRevisionHandoff>[1];
+
+    const stabilized = stabilizeBlueprintRevisionHandoff(start, target, "focal");
+
+    expect(stabilized.nodes.map((node) => ({
+      logicalId: node.data.artifact.logical_id,
+      position: node.position,
+    }))).toEqual([
+      { logicalId: "focal", position: { x: 120, y: 240 } },
+      { logicalId: "neighbor", position: { x: 30, y: 40 } },
+      { logicalId: "added", position: { x: 320, y: 540 } },
+    ]);
   });
 
   it("uses action-specific learner rail titles and identifies the next route step", () => {

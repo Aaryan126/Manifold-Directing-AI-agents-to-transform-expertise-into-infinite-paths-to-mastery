@@ -294,6 +294,9 @@ async function mockCourseOS(
     if (path.endsWith("/blueprint")) {
       blueprintRequests += 1;
       const working = url.searchParams.get("revision") === "working";
+      const distinctCompetitionRevision = working && options.competitionDemoPublished;
+      const topicNodeId = distinctCompetitionRevision ? "topic-working" : "topic-1";
+      const conceptNodeId = distinctCompetitionRevision ? "concept-working" : "concept-1";
       const denseNodes = options.denseBlueprint
         ? Array.from({ length: 9 }, (_, index) => ([
           {
@@ -349,15 +352,15 @@ async function mockCourseOS(
             : courseSummary.active_revision_id ?? course.working_revision_id,
           revision_kind: working ? "working" : courseSummary.active_revision_id ? "active" : "working",
           nodes: denseNodes ?? [
-            { id: "topic-1", logical_id: "topic-logical", kind: "topic", title: "Net force", status: "accepted", parent_id: null, metadata: { video_id: lectureVideoId } },
-            { id: "concept-1", logical_id: "concept-logical", kind: "concept", title: "Vector addition", status: "accepted", parent_id: "topic-1", metadata: { sequence_rank: 1 } },
+            { id: topicNodeId, logical_id: "topic-logical", kind: "topic", title: "Net force", status: "accepted", parent_id: null, metadata: { video_id: lectureVideoId } },
+            { id: conceptNodeId, logical_id: "concept-logical", kind: "concept", title: "Vector addition", status: "accepted", parent_id: topicNodeId, metadata: { sequence_rank: 1 } },
           ],
           edges: denseEdges ?? (working && directorProposalAccepted
             ? []
-            : [{ id: "contains-1", source_id: "topic-1", target_id: "concept-1", kind: "contains", status: "accepted" }]),
+            : [{ id: distinctCompetitionRevision ? "contains-working" : "contains-1", source_id: topicNodeId, target_id: conceptNodeId, kind: "contains", status: "accepted" }]),
           uncovered_concept_ids: denseNodes
             ? []
-            : ["concept-1"],
+            : [conceptNodeId],
         },
       });
       return;
@@ -1441,6 +1444,9 @@ test("competition recording previews an accepted private change inside the focus
   );
   await page.getByRole("button", { name: "Send message" }).click();
   await expect(page.getByText("Previewing a private relationship change")).toBeVisible();
+  const focalBeforeAccept = await blueprintCanvas
+    .locator('.react-flow__node[data-id="concept-1"]')
+    .boundingBox();
   await page.getByRole("button", { name: "Accept", exact: true }).click();
 
   await expect(page.getByText("Private preview", { exact: true })).toBeVisible();
@@ -1448,6 +1454,13 @@ test("competition recording previews an accepted private change inside the focus
   await expect(blueprintCanvas).toHaveAttribute("data-focus-state", "connections");
   await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
   await expect(blueprintCanvas.locator(".react-flow__node")).toHaveCount(1);
+  const focalAfterAccept = await blueprintCanvas
+    .locator('.react-flow__node[data-id="concept-working"]')
+    .boundingBox();
+  expect(focalBeforeAccept).not.toBeNull();
+  expect(focalAfterAccept).not.toBeNull();
+  expect(Math.abs(focalAfterAccept!.x - focalBeforeAccept!.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(focalAfterAccept!.y - focalBeforeAccept!.y)).toBeLessThanOrEqual(1);
 
   await blueprintCanvas.locator(".react-flow__pane").dispatchEvent("click");
   await expect(blueprintCanvas).toHaveAttribute("data-focus-state", "course");
