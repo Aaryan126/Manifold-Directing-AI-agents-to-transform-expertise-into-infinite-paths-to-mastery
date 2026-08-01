@@ -23,6 +23,7 @@ export type CourseSummary = {
   pending_review_count: number;
   open_signal_count: number;
   updated_at: string;
+  competition_demo?: boolean;
 };
 
 export type AttentionItem = {

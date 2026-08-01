@@ -86,18 +86,32 @@ Suggested voice-over:
 
 Open Course Director and enter:
 
-> “Remove ‘Value creation and value capture as the core venture test’ from the
-> ‘Why plan’ topic only, while keeping its existing placement under ‘Core
-> entrepreneurial principles.’”
+> “Reconnect ‘Run fundraising as a timed, signal-driven process’ so it requires
+> ‘Startup speed and incentive alignment,’ not ‘Venture-backed startup
+> outcomes.’ Keep everything else unchanged.”
 
-Before acceptance, show the exact relationship highlighted as a proposed
-removal while the rest of the Blueprint stays visible and unchanged. Briefly
-show `Accept / Edit / Dismiss`, then accept the change and show the graph update.
+Keep the Venture-backed outcomes concept's focused Live neighborhood open while
+using Course Director. Before acceptance, show the exact existing relationship
+highlighted as a proposed reconnection while the rest of the neighborhood stays
+visible and unchanged. Briefly show `Accept / Edit / Dismiss`, then accept the
+change. In the configured recording demo, the focused neighborhood immediately
+projects the accepted working revision under a clearly labelled **Private
+preview**; close the detail view to show the same private structure in the whole
+Blueprint. The learner-facing published revision remains unchanged.
 
-Suggested line:
+Suggested voice-over:
 
-> “The agent can edit the course at the level of meaning, but it previews the
-> exact private change and the instructor remains the decision-maker.”
+> **1:28–1:35 — Ask from the focused view:** “From this focused view, I can ask
+> Course Director to reshape the prerequisite path.”
+>
+> **1:35–1:42 — Show the highlighted relationship:** “It highlights the exact
+> relationship it would replace before changing anything.”
+>
+> **1:42–1:46 — Show the controls:** “I can accept, edit, or dismiss.”
+>
+> **1:46–1:52 — Accept and reveal the private preview:** “I’ll accept—the map
+> updates immediately as a private preview, while the published course remains
+> unchanged until I publish.”
 
 ## 1:52–2:22 — Learner: one interpretable adaptation
 

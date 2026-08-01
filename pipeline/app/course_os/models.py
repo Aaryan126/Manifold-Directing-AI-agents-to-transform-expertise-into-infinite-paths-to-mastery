@@ -62,6 +62,7 @@ class CourseSummary:
     pending_review_count: int
     open_signal_count: int
     updated_at: datetime
+    competition_demo: bool = False
 
 
 @dataclass(frozen=True)

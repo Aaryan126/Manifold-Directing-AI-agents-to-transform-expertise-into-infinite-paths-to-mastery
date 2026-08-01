@@ -226,6 +226,34 @@ type BlueprintProposalPreview = {
   summary: string;
 };
 
+export function shouldShowCompetitionPrivatePreview(
+  course: Pick<CourseSummary, "competition_demo"> | null,
+  mode: BlueprintMode,
+  previewRevisionId: string | null,
+  workingRevisionId: string | null,
+) {
+  return Boolean(
+    course?.competition_demo
+    && mode === "live"
+    && previewRevisionId
+    && workingRevisionId === previewRevisionId,
+  );
+}
+
+export function shouldPreserveCompetitionFocus(
+  privateLivePreview: boolean,
+  mode: BlueprintMode,
+  focusLogicalId: string | null,
+  nodes: Array<Pick<BlueprintNode, "logical_id">>,
+) {
+  return Boolean(
+    privateLivePreview
+    && mode === "live"
+    && focusLogicalId
+    && nodes.some((node) => node.logical_id === focusLogicalId),
+  );
+}
+
 const InsightsCharts = dynamic(
   () => import("@/components/insights-charts").then((module) => module.InsightsCharts),
   { ssr: false },
@@ -278,6 +306,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   const [blueprintUndoEntries, setBlueprintUndoEntries] = useState<BlueprintUndoEntry[]>([]);
   const [blueprintUndoing, setBlueprintUndoing] = useState(false);
   const [blueprintRefreshing, setBlueprintRefreshing] = useState(false);
+  const [demoLivePreviewRevisionId, setDemoLivePreviewRevisionId] = useState<string | null>(null);
 
   const isBuilding = Boolean(
     (run && ["queued", "running"].includes(run.status))
@@ -421,6 +450,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       }
       conversationScopeRef.current = null;
       setConversationHydrated(false);
+      setDemoLivePreviewRevisionId(null);
       setIdentity(user);
       const courseResult = await request<CourseSummary>(`/courses/${courseId}/studio`, user);
       setCourse(courseResult);
@@ -956,6 +986,13 @@ export function CourseStudio({ courseId }: { courseId: string }) {
           refreshRevisionDiff(identity, nextCourse),
           refreshStructuredWorkspace(identity, nextCourse.status === "published"),
         ]);
+        if (
+          nextCourse.competition_demo
+          && blueprintMode === "live"
+          && nextCourse.working_revision_id
+        ) {
+          setDemoLivePreviewRevisionId(nextCourse.working_revision_id);
+        }
         const summary = typeof payload.proposed_state?.summary === "string"
           ? payload.proposed_state.summary
           : (payload.proposal_type ?? "Course Director change").replaceAll("_", " ");
@@ -1027,6 +1064,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
       setRun(null);
       setRevisionDiff(null);
       setBlueprintUndoEntries([]);
+      setDemoLivePreviewRevisionId(null);
       await refreshArtifacts(identity);
       await refreshStructuredWorkspace(identity);
       await refreshBlueprint(identity, nextCourse);
@@ -1773,6 +1811,15 @@ export function CourseStudio({ courseId }: { courseId: string }) {
     () => filterBlueprintForLecture(workingBlueprint, lectureFocusVideoId),
     [workingBlueprint, lectureFocusVideoId],
   );
+  const demoLivePrivatePreview = shouldShowCompetitionPrivatePreview(
+    course,
+    blueprintMode,
+    demoLivePreviewRevisionId,
+    workingBlueprint?.revision_id ?? null,
+  );
+  const focusedLiveBlueprint = demoLivePrivatePreview
+    ? (focusedWorkingBlueprint ?? focusedActiveBlueprint)
+    : (focusedActiveBlueprint ?? focusedWorkingBlueprint);
   const focusedAssessmentWorkspace = useMemo(
     () => filterAssessmentWorkspaceForBlueprint(
       assessmentWorkspace,
@@ -1793,7 +1840,7 @@ export function CourseStudio({ courseId }: { courseId: string }) {
   );
   const focusedHealthBlueprint = blueprintMode === "design"
     ? (focusedWorkingBlueprint ?? focusedActiveBlueprint)
-    : (focusedActiveBlueprint ?? focusedWorkingBlueprint);
+    : focusedLiveBlueprint;
   const focusedHealthConcepts = focusedHealthBlueprint?.nodes.filter(
     (node) => node.kind === "concept",
   ) ?? [];
@@ -1973,9 +2020,14 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                         <ArrowLeft />Return to map
                       </button>
                     ) : null}
-                    <span className={styles.studioPublicationState} data-mode={blueprintMode}>
+                    <span
+                      className={styles.studioPublicationState}
+                      data-mode={demoLivePrivatePreview ? "private-preview" : blueprintMode}
+                    >
                       <i />
-                      {blueprintMode === "design"
+                      {demoLivePrivatePreview
+                        ? "Private preview"
+                        : blueprintMode === "design"
                         ? "Private revision"
                         : course?.status === "published"
                           ? "Published"
@@ -2146,13 +2198,14 @@ export function CourseStudio({ courseId }: { courseId: string }) {
                 ) : null}
                 {canvasView === "blueprint" ? (
                   <BlueprintWorkspace
-                    activeBlueprint={focusedActiveBlueprint}
+                    activeBlueprint={focusedLiveBlueprint}
                     agentTasks={agentTasks}
                     blueprintEvidence={blueprintEvidence}
                     contextTitle={focusedLectureUnit?.title ?? "Cross-lecture concept map"}
                     dashboard={dashboardSummary}
                     disabled={sending}
                     mode={blueprintMode}
+                    privateLivePreview={demoLivePrivatePreview}
                     refreshing={blueprintRefreshing}
                     onAddConcept={createBlueprintConcept}
                     onAddTopic={createBlueprintTopic}
@@ -4359,6 +4412,7 @@ function BlueprintWorkspace({
   onUpdateConcept,
   onUpdateTopic,
   proposalPreview,
+  privateLivePreview,
   clips,
   undoing,
   undoLabel,
@@ -4429,6 +4483,7 @@ function BlueprintWorkspace({
     end_seconds: number;
   }) => Promise<CourseBlueprint | null>;
   proposalPreview: BlueprintProposalPreview | null;
+  privateLivePreview: boolean;
   clips: AssessmentWorkspace["clips"];
   undoing: boolean;
   undoLabel: string | null;
@@ -4750,14 +4805,22 @@ function BlueprintWorkspace({
   useEffect(() => {
     const revisionId = blueprint?.revision_id ?? null;
     if (previousRevisionId.current && previousRevisionId.current !== revisionId) {
-      setConnectionFocusLogicalId(null);
-      if (mode === "live" && connectionFocusLogicalId) {
-        setSelectedLogicalId(null);
-        setSelectedRelationship(null);
+      const preservesDemoFocus = shouldPreserveCompetitionFocus(
+        privateLivePreview,
+        mode,
+        connectionFocusLogicalId,
+        blueprint?.nodes ?? [],
+      );
+      if (!preservesDemoFocus) {
+        setConnectionFocusLogicalId(null);
+        if (mode === "live" && connectionFocusLogicalId) {
+          setSelectedLogicalId(null);
+          setSelectedRelationship(null);
+        }
       }
     }
     previousRevisionId.current = revisionId;
-  }, [blueprint?.revision_id, connectionFocusLogicalId, mode]);
+  }, [blueprint, connectionFocusLogicalId, mode, privateLivePreview]);
 
   const performUndo = useCallback(async () => {
     setSelectedLogicalId(null);
@@ -5597,6 +5660,16 @@ function BlueprintWorkspace({
           </section>
 
           <div className={styles.blueprintFloatingMessages}>
+            {privateLivePreview ? (
+              <div className={styles.blueprintPrivatePreviewNote} role="status">
+                <Eye />
+                <p>
+                  <strong>Private change preview</strong>
+                  <span>Learners still see the published course until you publish.</span>
+                </p>
+              </div>
+            ) : null}
+
             {proposalPreview ? (
               <div className={styles.blueprintProposalPreviewNote} role="status">
                 <GitFork />

@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   blueprintOverviewNodeIds,
   pendingBlueprintProposalPreview,
+  shouldPreserveCompetitionFocus,
+  shouldShowCompetitionPrivatePreview,
 } from "../app/app/courses/[courseId]/course-studio";
 import {
   confidenceLabel,
@@ -99,6 +101,42 @@ describe("competition demo experience", () => {
     }];
     expect(pendingBlueprintProposalPreview(messages, { proposal: "dismissed" }))
       .toBeNull();
+  });
+
+  it("shows an accepted Business 101 working revision in the recording-only Live preview", () => {
+    expect(shouldShowCompetitionPrivatePreview(
+      { competition_demo: true },
+      "live",
+      "working-revision",
+      "working-revision",
+    )).toBe(true);
+    expect(shouldShowCompetitionPrivatePreview(
+      { competition_demo: false },
+      "live",
+      "working-revision",
+      "working-revision",
+    )).toBe(false);
+    expect(shouldShowCompetitionPrivatePreview(
+      { competition_demo: true },
+      "design",
+      "working-revision",
+      "working-revision",
+    )).toBe(false);
+  });
+
+  it("keeps the focused node across the recording-only active-to-working handoff", () => {
+    expect(shouldPreserveCompetitionFocus(
+      true,
+      "live",
+      "venture-outcomes",
+      [{ logical_id: "venture-outcomes" }, { logical_id: "fundraising" }],
+    )).toBe(true);
+    expect(shouldPreserveCompetitionFocus(
+      true,
+      "live",
+      "removed-concept",
+      [{ logical_id: "venture-outcomes" }],
+    )).toBe(false);
   });
 
   it("uses action-specific learner rail titles and identifies the next route step", () => {

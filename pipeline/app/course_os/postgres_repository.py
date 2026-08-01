@@ -144,7 +144,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     (instructor_id,),
                 )
             ).fetchall()
-        return tuple(_course_summary(row) for row in rows)
+        return tuple(_course_summary(row, self._competition_demo) for row in rows)
 
     async def get_course(self, course_id: UUID) -> CourseSummary | None:
         async with pooled_connection(self._database_url, row_factory=dict_row) as conn:
@@ -154,7 +154,7 @@ class PostgresCourseOSRepository(CourseOSRepository):
                     (course_id,),
                 )
             ).fetchone()
-        return _course_summary(row) if row else None
+        return _course_summary(row, self._competition_demo) if row else None
 
     async def delete_course(self, course_id: UUID, instructor_id: UUID) -> bool:
         async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
@@ -7509,9 +7509,13 @@ def _missing_trace_stage(key: str, title: str) -> DecisionTraceStage:
     )
 
 
-def _course_summary(row: dict[str, Any]) -> CourseSummary:
+def _course_summary(
+    row: dict[str, Any],
+    competition_demo: CompetitionDemoConfig | None = None,
+) -> CourseSummary:
+    course_id = UUID(str(row["id"]))
     return CourseSummary(
-        id=UUID(str(row["id"])),
+        id=course_id,
         instructor_id=UUID(str(row["instructor_id"])),
         title=str(row["title"]),
         description=str(row["description"]) if row["description"] is not None else None,
@@ -7535,6 +7539,9 @@ def _course_summary(row: dict[str, Any]) -> CourseSummary:
         pending_review_count=int(row["pending_review_count"]),
         open_signal_count=int(row["open_signal_count"]),
         updated_at=_datetime(row["updated_at"]),
+        competition_demo=bool(
+            competition_demo and competition_demo.matches_course(course_id)
+        ),
     )
 
 

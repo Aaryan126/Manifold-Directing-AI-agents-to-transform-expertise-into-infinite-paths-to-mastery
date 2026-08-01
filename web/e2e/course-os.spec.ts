@@ -83,6 +83,7 @@ function courseFlowWithUnitCount(
 async function mockCourseOS(
   page: Page,
   options: {
+    competitionDemoPublished?: boolean;
     denseBlueprint?: boolean;
     directorProposal?: boolean;
     proposalResolveDelayMs?: number;
@@ -92,6 +93,17 @@ async function mockCourseOS(
   let deleted = false;
   let directorProposalAccepted = false;
   let blueprintRequests = 0;
+  const courseSummary = options.competitionDemoPublished
+    ? {
+      ...course,
+      status: "published",
+      active_revision_id: "99999999-9999-4999-8999-999999999999",
+      generation_run_id: null,
+      generation_status: null,
+      generation_phase: null,
+      competition_demo: true,
+    }
+    : course;
   const proposalDecisions: string[] = [];
   const courseMessages: Array<{
     id: string;
@@ -187,7 +199,7 @@ async function mockCourseOS(
       return;
     }
     if (path.endsWith("/studio")) {
-      await route.fulfill({ json: course });
+      await route.fulfill({ json: courseSummary });
       return;
     }
     if (path.endsWith("/messages/stream") && route.request().method() === "POST") {
@@ -269,17 +281,19 @@ async function mockCourseOS(
       return;
     }
     if (path.endsWith("/course-flow")) {
+      const working = url.searchParams.get("revision") === "working";
       await route.fulfill({
         json: oneLectureCourseFlow(
           course.id,
-          course.working_revision_id,
-          "working",
+          working ? course.working_revision_id : courseSummary.active_revision_id ?? course.working_revision_id,
+          working ? "working" : courseSummary.active_revision_id ? "active" : "working",
         ),
       });
       return;
     }
     if (path.endsWith("/blueprint")) {
       blueprintRequests += 1;
+      const working = url.searchParams.get("revision") === "working";
       const denseNodes = options.denseBlueprint
         ? Array.from({ length: 9 }, (_, index) => ([
           {
@@ -330,13 +344,15 @@ async function mockCourseOS(
       await route.fulfill({
         json: {
           course_id: course.id,
-          revision_id: course.working_revision_id,
-          revision_kind: "working",
+          revision_id: working
+            ? course.working_revision_id
+            : courseSummary.active_revision_id ?? course.working_revision_id,
+          revision_kind: working ? "working" : courseSummary.active_revision_id ? "active" : "working",
           nodes: denseNodes ?? [
             { id: "topic-1", logical_id: "topic-logical", kind: "topic", title: "Net force", status: "accepted", parent_id: null, metadata: { video_id: lectureVideoId } },
             { id: "concept-1", logical_id: "concept-logical", kind: "concept", title: "Vector addition", status: "accepted", parent_id: "topic-1", metadata: { sequence_rank: 1 } },
           ],
-          edges: denseEdges ?? (directorProposalAccepted
+          edges: denseEdges ?? (working && directorProposalAccepted
             ? []
             : [{ id: "contains-1", source_id: "topic-1", target_id: "concept-1", kind: "contains", status: "accepted" }]),
           uncovered_concept_ids: denseNodes
@@ -375,6 +391,26 @@ async function mockCourseOS(
             { id: "concept-1", logical_id: "concept-logical", kind: "concept", title: "Vector addition", status: "accepted", topic_id: "topic-1", metadata: {} },
           ],
           edges: [],
+        },
+      });
+      return;
+    }
+    if (path.endsWith("/revision-diff")) {
+      await route.fulfill({
+        json: {
+          active_revision_id: courseSummary.active_revision_id,
+          working_revision_id: courseSummary.working_revision_id,
+          changes: directorProposalAccepted ? [{
+            artifact_type: "relationship",
+            logical_artifact_id: null,
+            change_type: "removed",
+            before_state: {
+              relationship_type: "contains",
+              source_logical_id: "topic-logical",
+              target_logical_id: "concept-logical",
+            },
+            after_state: null,
+          }] : [],
         },
       });
       return;
@@ -1382,6 +1418,46 @@ test("Course Director proposals preserve the Live map before and during acceptan
   expect(transitionTrace?.minPaintedNodeCount).toBeGreaterThan(0);
   expect(transitionTrace?.maxHiddenNodeCount).toBe(0);
   expect(transitionTrace?.minStageOpacity).toBeGreaterThanOrEqual(0.8);
+});
+
+test("competition recording previews an accepted private change inside the focused Live graph", async ({ page }) => {
+  await mockCourseOS(page, {
+    competitionDemoPublished: true,
+    directorProposal: true,
+  });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto(`/app/courses/${course.id}`);
+  await page.getByRole("button", { name: "Open Blueprint for Forces lecture" }).click();
+
+  const blueprintCanvas = page.locator("[data-viewport-state]");
+  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
+  await blueprintCanvas.locator('.react-flow__node[data-id="concept-1"]').click();
+  await expect(blueprintCanvas).toHaveAttribute("data-focus-state", "connections");
+  await expect(blueprintCanvas.locator(".react-flow__node")).toHaveCount(2);
+
+  await page.getByRole("button", { name: "Open Course Director" }).click();
+  await page.getByLabel("Message Course Director").fill(
+    "Remove Vector addition from the Net force topic.",
+  );
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.getByText("Previewing a private relationship change")).toBeVisible();
+  await page.getByRole("button", { name: "Accept", exact: true }).click();
+
+  await expect(page.getByText("Private preview", { exact: true })).toBeVisible();
+  await expect(page.getByText("Private change preview", { exact: true })).toBeVisible();
+  await expect(blueprintCanvas).toHaveAttribute("data-focus-state", "connections");
+  await expect(blueprintCanvas).toHaveAttribute("data-viewport-state", "ready");
+  await expect(blueprintCanvas.locator(".react-flow__node")).toHaveCount(1);
+
+  await blueprintCanvas.locator(".react-flow__pane").dispatchEvent("click");
+  await expect(blueprintCanvas).toHaveAttribute("data-focus-state", "course");
+  await expect(blueprintCanvas.locator(".react-flow__node")).toHaveCount(2);
+  await expect(blueprintCanvas.locator(".react-flow__edge")).toHaveCount(0);
+
+  await page.reload();
+  await page.getByRole("button", { name: "Open Blueprint for Forces lecture" }).click();
+  await expect(page.getByText("Published", { exact: true })).toBeVisible();
+  await expect(blueprintCanvas.locator(".react-flow__edge")).toHaveCount(1);
 });
 
 test("dismissing a Course Director proposal leaves the Live map painted", async ({ page }) => {

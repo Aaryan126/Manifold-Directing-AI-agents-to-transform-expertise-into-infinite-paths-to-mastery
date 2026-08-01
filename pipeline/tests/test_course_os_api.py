@@ -281,6 +281,47 @@ def test_create_course_returns_working_revision() -> None:
         app.dependency_overrides.clear()
 
 
+def test_course_studio_exposes_exact_competition_demo_scope() -> None:
+    instructor_id = uuid4()
+    course = CourseSummary(
+        id=uuid4(),
+        instructor_id=instructor_id,
+        title="Business 101",
+        description=None,
+        status="published",
+        active_revision_id=uuid4(),
+        working_revision_id=uuid4(),
+        revision_status="review",
+        generation_run_id=None,
+        generation_status=None,
+        generation_phase=None,
+        generation_progress=100,
+        source_count=2,
+        topic_count=15,
+        concept_count=13,
+        pending_review_count=0,
+        open_signal_count=0,
+        updated_at=datetime.now(UTC),
+        competition_demo=True,
+    )
+    service = AsyncMock()
+    service.course.return_value = course
+    app.dependency_overrides[get_course_os_service] = lambda: service
+    client = TestClient(app)
+
+    try:
+        response = client.get(
+            f"/courses/{course.id}/studio",
+            headers={"X-User-ID": str(instructor_id)},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["competition_demo"] is True
+        service.course.assert_awaited_once_with(course.id, instructor_id)
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_create_course_passes_idempotency_key_into_the_creation_brief() -> None:
     instructor_id = uuid4()
     request_id = str(uuid4())
