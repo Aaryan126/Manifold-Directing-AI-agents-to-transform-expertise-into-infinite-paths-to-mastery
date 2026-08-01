@@ -101,17 +101,19 @@ Blueprint. The learner-facing published revision remains unchanged.
 
 Suggested voice-over:
 
-> **1:28–1:35 — Ask from the focused view:** “From this focused view, I can ask
-> Course Director to reshape the prerequisite path.”
+> **1:28–1:36 — Introduce Course Director and the edit:** “Course Director lets
+> me edit the learning structure in plain language. Here, I’m replacing one
+> prerequisite in this learner path.”
 >
-> **1:35–1:42 — Show the highlighted relationship:** “It highlights the exact
-> relationship it would replace before changing anything.”
+> **1:36–1:43 — Show the highlighted relationship:** “Before anything changes,
+> Manifold highlights the exact relationship it would replace and leaves the
+> rest untouched.”
 >
-> **1:42–1:46 — Show the controls:** “I can accept, edit, or dismiss.”
+> **1:43–1:46 — Show the controls:** “I can accept, edit, or dismiss.”
 >
 > **1:46–1:52 — Accept and reveal the private preview:** “I’ll accept—the map
-> updates immediately as a private preview, while the published course remains
-> unchanged until I publish.”
+> updates immediately as a private preview—but learners see nothing until I
+> publish.”
 
 ## 1:52–2:22 — Learner: one interpretable adaptation
 
