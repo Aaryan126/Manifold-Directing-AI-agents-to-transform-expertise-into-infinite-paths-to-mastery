@@ -210,6 +210,10 @@ class OpenAICourseDirector:
         if parsed is None:
             raise RuntimeError("Course Director did not return a valid edit plan.")
         plan = _validated_plan(parsed, blueprint, course_flow)
+        if not plan.actions:
+            reconnect_plan = _deterministic_reconnect_plan(instruction, blueprint)
+            if reconnect_plan is not None:
+                return reconnect_plan
         published_only_match = _published_only_removal_match(
             instruction,
             blueprint,
@@ -302,6 +306,9 @@ class LocalCourseDirector:
     ) -> CourseDirectorPlan:
         normalized = instruction.strip()
         lowered = normalized.lower()
+        reconnect_plan = _deterministic_reconnect_plan(normalized, blueprint)
+        if reconnect_plan is not None:
+            return reconnect_plan
         flow_matches = sorted(
             (
                 unit
@@ -729,6 +736,139 @@ def _instruction_matches_title(instruction: str, title: str) -> bool:
         token_coverage >= 0.72
         or SequenceMatcher(None, normalized_instruction, normalized_title).ratio() >= 0.68
     )
+
+
+def _deterministic_reconnect_plan(
+    instruction: str,
+    blueprint: CourseBlueprint,
+) -> CourseDirectorPlan | None:
+    """Recover one explicit quoted prerequisite swap without relaxing graph safety."""
+
+    lowered = instruction.lower()
+    if (
+        not re.search(r"\breconnect\b", lowered)
+        or not re.search(r"\brequires?\b", lowered)
+        or not re.search(r"\b(?:not|instead\s+of)\b", lowered)
+    ):
+        return None
+    references = _quoted_instruction_references(instruction)
+    if len(references) != 3:
+        return None
+    concepts = tuple(node for node in blueprint.nodes if node.kind == "concept")
+    dependent = _unique_concept_reference(references[0], concepts)
+    replacement = _unique_concept_reference(references[1], concepts)
+    previous = _unique_concept_reference(references[2], concepts)
+    if (
+        dependent is None
+        or replacement is None
+        or previous is None
+        or len({dependent.logical_id, replacement.logical_id, previous.logical_id}) != 3
+    ):
+        return None
+
+    logical_ids_by_node_id = {node.id: node.logical_id for node in blueprint.nodes}
+    relationships = {
+        (
+            edge.kind,
+            logical_ids_by_node_id.get(edge.source_id),
+            logical_ids_by_node_id.get(edge.target_id),
+        )
+        for edge in blueprint.edges
+        if edge.kind != "next"
+    }
+    previous_relationship = ("requires", previous.logical_id, dependent.logical_id)
+    replacement_relationship = (
+        "requires",
+        replacement.logical_id,
+        dependent.logical_id,
+    )
+    if (
+        previous_relationship not in relationships
+        and replacement_relationship in relationships
+    ):
+        return CourseDirectorPlan(
+            summary=f"{replacement.title} is already the private prerequisite.",
+            actions=(),
+            clarification=(
+                "That prerequisite reconnect is already applied in Design. Live still shows "
+                "the published relationship until you choose Publish updates."
+            ),
+        )
+    if previous_relationship not in relationships:
+        return None
+
+    output = _DirectorPlanOutput(
+        summary=f"Reconnect the prerequisite for {dependent.title}.",
+        actions=[
+            _DirectorActionOutput(
+                operation="reconnect_relationship",
+                relationship_type="requires",
+                source_logical_id=str(replacement.logical_id),
+                target_logical_id=str(dependent.logical_id),
+                previous_relationship_type="requires",
+                previous_source_logical_id=str(previous.logical_id),
+                previous_target_logical_id=str(dependent.logical_id),
+                summary=f"Use {replacement.title} as the prerequisite",
+                rationale=(
+                    "The instructor named the dependent concept, replacement prerequisite, "
+                    "and existing prerequisite explicitly."
+                ),
+            )
+        ],
+    )
+    plan = _validated_plan(output, blueprint)
+    return plan if plan.actions else None
+
+
+def _quoted_instruction_references(instruction: str) -> tuple[str, ...]:
+    matches = re.finditer(
+        r'“([^”]+)”|‘([^’]+)’|"([^"]+)"|\'([^\']+)\'',
+        instruction,
+    )
+    return tuple(
+        next(group for group in match.groups() if group is not None).strip()
+        for match in matches
+    )
+
+
+def _reference_tokens(value: str) -> set[str]:
+    tokens = _normalized_title(value).split()
+    return {
+        token[:-1] if token.endswith("s") and len(token) > 4 else token
+        for token in tokens
+        if token not in {"a", "an", "and", "are", "as", "for", "is", "of", "the", "to"}
+    }
+
+
+def _unique_concept_reference(
+    reference: str,
+    concepts: tuple[BlueprintNode, ...],
+) -> BlueprintNode | None:
+    normalized_reference = _normalized_title(reference)
+    reference_tokens = _reference_tokens(reference)
+    if not normalized_reference or not reference_tokens:
+        return None
+    ranked: list[tuple[float, BlueprintNode]] = []
+    for concept in concepts:
+        normalized_title = _normalized_title(concept.title)
+        title_tokens = _reference_tokens(concept.title)
+        coverage = len(reference_tokens & title_tokens) / len(reference_tokens)
+        score = max(
+            coverage,
+            SequenceMatcher(None, normalized_reference, normalized_title).ratio(),
+        )
+        if normalized_reference == normalized_title:
+            score = 1.2
+        elif normalized_reference in normalized_title:
+            score = 1.1
+        if coverage >= 0.8 or score >= 0.72:
+            ranked.append((score, concept))
+    ranked.sort(key=lambda candidate: candidate[0], reverse=True)
+    if not ranked:
+        return None
+    if len(ranked) > 1 and ranked[0][0] - ranked[1][0] < 0.12:
+        return None
+    return ranked[0][1]
 
 
 def _published_only_removal_match(

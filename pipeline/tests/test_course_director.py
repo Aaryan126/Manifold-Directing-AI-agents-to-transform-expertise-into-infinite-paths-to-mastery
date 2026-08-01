@@ -282,6 +282,104 @@ def test_reconnect_to_an_existing_prerequisite_removes_only_the_old_edge() -> No
     assert action.target_logical_id == dependent.logical_id
 
 
+@pytest.mark.anyio
+async def test_reconnect_resolves_short_quoted_business_concept_names() -> None:
+    previous = BlueprintNode(
+        id=uuid4(),
+        logical_id=uuid4(),
+        kind="concept",
+        title="Venture-backed startups are built for outsized, liquid outcomes",
+        status="accepted",
+        parent_id=None,
+        metadata={},
+    )
+    dependent = BlueprintNode(
+        id=uuid4(),
+        logical_id=uuid4(),
+        kind="concept",
+        title=(
+            "Run fundraising as a timed, signal-driven process and choose investors "
+            "for strategic value, not just price"
+        ),
+        status="accepted",
+        parent_id=None,
+        metadata={},
+    )
+    replacement = BlueprintNode(
+        id=uuid4(),
+        logical_id=uuid4(),
+        kind="concept",
+        title=(
+            "Startup speed and incentive alignment make startups attractive "
+            "acquisition targets"
+        ),
+        status="accepted",
+        parent_id=None,
+        metadata={},
+    )
+    blueprint = CourseBlueprint(
+        course_id=uuid4(),
+        revision_id=uuid4(),
+        revision_kind="working",
+        nodes=(previous, dependent, replacement),
+        edges=(
+            BlueprintEdge(
+                id=f"requires:{uuid4()}",
+                source_id=previous.id,
+                target_id=dependent.id,
+                kind="requires",
+                status="accepted",
+            ),
+        ),
+        uncovered_concept_ids=(),
+    )
+
+    plan = await LocalCourseDirector().plan(
+        "Reconnect ‘Run fundraising as a timed, signal-driven process’ so it "
+        "requires ‘Startup speed and incentive alignment,’ not "
+        "‘Venture-backed startup outcomes.’ Keep everything else unchanged.",
+        blueprint,
+    )
+
+    assert plan.clarification is None
+    assert len(plan.actions) == 1
+    action = plan.actions[0]
+    assert action.operation == "reconnect_relationship"
+    assert action.relationship_type == "requires"
+    assert action.source_logical_id == replacement.logical_id
+    assert action.target_logical_id == dependent.logical_id
+    assert action.previous_source_logical_id == previous.logical_id
+    assert action.previous_target_logical_id == dependent.logical_id
+
+    already_applied = CourseBlueprint(
+        course_id=blueprint.course_id,
+        revision_id=blueprint.revision_id,
+        revision_kind="working",
+        nodes=blueprint.nodes,
+        edges=(
+            BlueprintEdge(
+                id=f"requires:{uuid4()}",
+                source_id=replacement.id,
+                target_id=dependent.id,
+                kind="requires",
+                status="edited",
+            ),
+        ),
+        uncovered_concept_ids=(),
+    )
+    repeated_plan = await LocalCourseDirector().plan(
+        "Reconnect ‘Run fundraising as a timed, signal-driven process’ so it "
+        "requires ‘Startup speed and incentive alignment,’ not "
+        "‘Venture-backed startup outcomes.’ Keep everything else unchanged.",
+        already_applied,
+    )
+
+    assert repeated_plan.actions == ()
+    assert repeated_plan.clarification is not None
+    assert "already applied in Design" in repeated_plan.clarification
+    assert "Live still shows the published relationship" in repeated_plan.clarification
+
+
 def test_director_accepts_a_reviewed_topic_removal_plan() -> None:
     topic = BlueprintNode(
         id=uuid4(),
