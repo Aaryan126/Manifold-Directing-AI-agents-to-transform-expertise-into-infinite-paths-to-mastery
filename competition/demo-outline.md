@@ -118,16 +118,17 @@ Suggested voice-over:
 ## 1:52–2:22 — Learner: one interpretable adaptation
 
 Run `npm run demo:reset` immediately before filming this clip. Sign in as Brian,
-open Business 101, and confirm that the learner is already paused at the
-business-planning misconception check. The right session rail should show the
-completed learning step, the current check, and reflection still ahead.
+then begin on the learner dashboard with the Business 101 card visible. The
+reset has already completed the teaching step and prepared the next screen at
+the business-planning misconception check.
 
 Detailed screen recording:
 
-1. **1:52–1:57 — Establish the learner and session.** Cut directly from the
-   instructor Blueprint to the learner question. Hold the full workspace long
-   enough to show both the question and the focused session rail. Do not open a
-   menu or scroll.
+1. **1:52–1:57 — Establish the learner and session.** Begin on the Business 101
+   card and immediately click **Continue course**. The prepared session should
+   open directly on the question—do not click **Start session** or replay the
+   lecture. Hold the workspace long enough to show both the question and the
+   right rail: learning complete, check current, reflection ahead.
 2. **1:57–2:04 — Submit one misconception.** For **“According to the lecture,
    why should an entrepreneur create a business plan?”**, select the first
    answer, **“To produce a formal document mainly for investors…”**. Select
