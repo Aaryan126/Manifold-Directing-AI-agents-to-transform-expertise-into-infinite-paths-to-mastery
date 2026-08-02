@@ -171,28 +171,35 @@ instructor Course Studio once so its dashboard aggregation sees the new saved
 evidence. In Blueprint Live, use **Jump to…** to select **Entrepreneurial
 planning as an iterative venture-design process**, then open **Trace decision**.
 
-Before recording, confirm the trace header. Use the primary script below only
-if it says **Complete chain** and both **Dashboard signal** and **Proposed
-revision** are available. The current Business 101 published revision does not
-yet have a signal-linked proposed revision; if that remains true, use the
-honest-gap version instead of claiming a record exists.
+The prepared Business 101 recording state currently has seven persisted stages:
+the six source-to-route records plus a real dashboard signal generated from the
+seeded learner's saved evidence. **Proposed revision** is correctly **Not yet**,
+so the trace header says **Honest gaps shown**. Record that honest boundary; do
+not publish or fabricate a proposal merely to make the header say **Complete
+chain**.
 
 Detailed screen recording:
 
-1. **2:22–2:27 — Open the lineage.** Begin on the selected planning concept in
-   Blueprint Live. Click **Trace decision** and wait until the loading state has
-   completely resolved before moving the cursor.
-2. **2:27–2:38 — Scan design into evidence.** Move slowly down the ordered
-   chain. Keep **Source moment**, **Concept**, **Teaching clip**, **Assessment**,
-   **Learner evidence**, and **Route event** readable. Do not click individual
-   stages; the ordered list is the visual.
-3. **2:38–2:45 — Pause on the institutional response.** If present, hold
-   **Dashboard signal** and **Proposed revision** together in view. This is the
-   payoff: the learner route, instructor alert, and proposed course change are
-   connected by persisted evidence.
-4. **2:45–2:48 — Show the trust boundary.** End the trace shot with either the
-   footer—**Missing steps are never inferred**—or a visible **Not yet** stage.
-   Do not hide a gap with a crop.
+1. **Before the take.** Keep a separate instructor profile already signed in.
+   Open **Business 101**, refresh Course Studio once, enter **Entrepreneurial
+   Planning and Business Plan Fundamentals for New Ventures**, remain in
+   **Blueprint Live**, and use **Jump to…** to focus
+   **Entrepreneurial planning as an iterative venture-design process**. Let the
+   focused graph settle completely. Do not reset the learner again; the saved
+   answer is the evidence this shot needs.
+2. **2:22–2:27 — Open the lineage.** Start recording on that focused concept.
+   Click **Trace decision** once and keep the cursor still while **Tracing
+   persisted records…** resolves. Confirm the header says **Honest gaps shown**.
+3. **2:27–2:38 — Scan design into evidence.** Glide the cursor slowly down
+   **Source moment**, **Concept**, **Teaching clip**, **Assessment**, **Learner
+   evidence**, and **Route event**. Do not click the stages. If all eight stages
+   fit, do not scroll; otherwise use one slow, small downward scroll.
+4. **2:38–2:45 — Hold the instructor signal.** Stop on **Dashboard signal** and
+   keep its title and summary readable. This is the institutional response to
+   the seeded learner evidence.
+5. **2:45–2:48 — Show the trust boundary.** Move slightly lower and hold
+   **Proposed revision — Not yet** together with the footer, **Missing steps are
+   never inferred**. End the clip there without closing the trace.
 
 The persisted chain is:
 
@@ -201,25 +208,20 @@ source moment → concept → teaching clip → assessment
 → learner evidence → route event → dashboard signal → proposed revision
 ```
 
-Suggested voice-over when the complete chain is available:
+Voice-over for the prepared seven-stage recording:
 
 > **2:22–2:27 — Open Trace decision:** “Back in the instructor view, Trace
-> decision reconstructs that route from stored records.”
+> decision reconstructs that learner route from stored records.”
 >
-> **2:27–2:38 — Scan source through route:** “It connects the lecture moment and
-> teaching design to the learner evidence that changed the path.”
+> **2:27–2:38 — Scan source through route:** “It links the source, teaching
+> design, assessment, and high-confidence mistake to the remediation the learner
+> received.”
 >
-> **2:38–2:45 — Hold signal and proposal:** “The same chain shows why the
-> instructor was alerted and what evidence supports the proposed revision.”
+> **2:38–2:45 — Hold the dashboard signal:** “That same evidence has now
+> produced an instructor signal.”
 >
-> **2:45–2:48 — End on the trust boundary:** “If a record is missing, Manifold
-> says so—nothing is invented.”
-
-Honest-gap replacement for **2:38–2:48** when the final stages show **Not yet**:
-
-> “Here, the learner evidence and route are persisted, but no evidence-linked
-> course proposal exists yet. Manifold marks that gap instead of inventing a
-> causal story.”
+> **2:45–2:48 — End on the trust boundary:** “No course revision exists yet, so
+> Manifold says Not yet instead of inventing one.”
 
 This is the most differentiating part of the demo.
 
