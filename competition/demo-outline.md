@@ -147,18 +147,18 @@ Detailed screen recording:
 
 Suggested voice-over:
 
-> **1:52–1:57 — Establish the learner:** “This is a seeded demonstration
-> learner, paused at one check—not a real cohort.”
+> **1:52–1:57 — Establish the learner:** “Now, one seeded demonstration
+> learner—not a real cohort—reaches a quick check.”
 >
-> **1:57–2:04 — Answer incorrectly with confidence:** “The learner chooses a
-> common misconception and answers with high confidence.”
+> **1:57–2:04 — Answer incorrectly with confidence:** “They choose a common
+> misconception and answer with high confidence.”
 >
-> **2:04–2:13 — Show Evidence / Why / Next:** “Manifold records both signals,
-> explains why the path changed, and selects a reviewed alternate explanation
-> next.”
+> **2:04–2:13 — Show Evidence / Why / Next:** “Manifold combines correctness
+> and confidence, explains why the path changed, and selects a reviewed
+> alternate explanation next.”
 >
-> **2:13–2:22 — Open Mastery Map:** “The Mastery Map places that support inside
-> the larger prerequisite path, so the adaptation stays understandable.”
+> **2:13–2:22 — Open Mastery Map:** “The Mastery Map shows exactly where that
+> support fits in the larger prerequisite path.”
 
 Do not demo a second learner journey. The point is one short, legible chain from
 learner evidence to a changed next step.
