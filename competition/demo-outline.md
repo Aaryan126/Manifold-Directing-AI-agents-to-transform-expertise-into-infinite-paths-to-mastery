@@ -171,11 +171,11 @@ instructor Course Studio once so its dashboard aggregation sees the new saved
 evidence. In Blueprint Live, use **Jump to…** to select **Entrepreneurial
 planning as an iterative venture-design process**, then open **Trace decision**.
 
-The prepared Business 101 recording state currently has seven persisted stages:
-the six source-to-route records plus a real dashboard signal generated from the
-seeded learner's saved evidence. **Proposed revision** is correctly **Not yet**,
-so the trace header says **Honest gaps shown**. Record that honest boundary; do
-not publish or fabricate a proposal merely to make the header say **Complete
+The prepared Business 101 recording state has all eight persisted stages. The
+seeded learner's saved evidence produced a real dashboard signal, and that
+signal grounds one private concept-improvement proposal in the unpublished
+working revision. The proposal remains **proposed** and instructor-reviewable;
+nothing has been accepted or published. The trace header should say **Complete
 chain**.
 
 Detailed screen recording:
@@ -189,17 +189,18 @@ Detailed screen recording:
    answer is the evidence this shot needs.
 2. **2:22–2:27 — Open the lineage.** Start recording on that focused concept.
    Click **Trace decision** once and keep the cursor still while **Tracing
-   persisted records…** resolves. Confirm the header says **Honest gaps shown**.
+   persisted records…** resolves. Confirm the header says **Complete chain**.
 3. **2:27–2:38 — Scan design into evidence.** Glide the cursor slowly down
    **Source moment**, **Concept**, **Teaching clip**, **Assessment**, **Learner
    evidence**, and **Route event**. Do not click the stages. If all eight stages
    fit, do not scroll; otherwise use one slow, small downward scroll.
-4. **2:38–2:45 — Hold the instructor signal.** Stop on **Dashboard signal** and
-   keep its title and summary readable. This is the institutional response to
-   the seeded learner evidence.
-5. **2:45–2:48 — Show the trust boundary.** Move slightly lower and hold
-   **Proposed revision — Not yet** together with the footer, **Missing steps are
-   never inferred**. End the clip there without closing the trace.
+4. **2:38–2:45 — Hold the completed feedback loop.** Stop with **Dashboard
+   signal** and **Proposed revision** together in view. Keep the signal summary
+   and the private proposal rationale readable. Do not open, accept, or edit the
+   proposal; its pending review state is the instructor-control point.
+5. **2:45–2:48 — Show the trust boundary.** Hold the completed final stage with
+   the footer, **Missing steps are never inferred**. End the clip there without
+   closing the trace.
 
 The persisted chain is:
 
@@ -208,7 +209,7 @@ source moment → concept → teaching clip → assessment
 → learner evidence → route event → dashboard signal → proposed revision
 ```
 
-Voice-over for the prepared seven-stage recording:
+Voice-over for the prepared complete-chain recording:
 
 > **2:22–2:27 — Open Trace decision:** “Back in the instructor view, Trace
 > decision reconstructs that learner route from stored records.”
@@ -217,11 +218,11 @@ Voice-over for the prepared seven-stage recording:
 > design, assessment, and high-confidence mistake to the remediation the learner
 > received.”
 >
-> **2:38–2:45 — Hold the dashboard signal:** “That same evidence has now
-> produced an instructor signal.”
+> **2:38–2:45 — Hold signal and proposal:** “That same evidence becomes an
+> instructor signal and a private course improvement, still awaiting review.”
 >
-> **2:45–2:48 — End on the trust boundary:** “No course revision exists yet, so
-> Manifold says Not yet instead of inventing one.”
+> **2:45–2:48 — End on the trust boundary:** “Every link is persisted; missing
+> evidence is never invented.”
 
 This is the most differentiating part of the demo.
 

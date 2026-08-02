@@ -15,6 +15,7 @@ from app.dashboard.models import (
 from app.dashboard.priority_generation import generate_priorities
 from app.intelligence.extractor import DocumentExtractionError, DocumentExtractor, VisualAnalyzer
 from app.intelligence.local_agent import LocalCourseImprovementAgent
+from app.intelligence.openai_agent import _ImprovementOutput
 
 
 class RecordingAnalyzer(VisualAnalyzer):
@@ -24,6 +25,13 @@ class RecordingAnalyzer(VisualAnalyzer):
     async def analyze(self, image: bytes, native_text: str) -> str:
         self.calls += 1
         return f"Observed visual beside: {native_text[:30]}"
+
+
+def test_openai_improvement_schema_is_strict_and_uses_json_object_string() -> None:
+    schema = _ImprovementOutput.model_json_schema()
+
+    assert schema["additionalProperties"] is False
+    assert schema["properties"]["proposed_state_json"]["type"] == "string"
 
 
 @pytest.mark.anyio

@@ -3946,12 +3946,32 @@ class PostgresCourseOSRepository(CourseOSRepository):
                         from course_agent_tasks task
                         join course_proposals proposal
                           on proposal.id = any(task.proposal_ids)
-                        where task.course_id = %s and task.revision_id = %s
+                        join course_revisions task_revision
+                          on task_revision.id = task.revision_id
+                        join courses owner_course
+                          on owner_course.id = task.course_id
+                        where task.course_id = %s
+                          and (
+                            task.revision_id = %s
+                            or (
+                              %s = 'active'
+                              and task.revision_id = owner_course.working_revision_id
+                              and task_revision.parent_revision_id = %s
+                            )
+                          )
                           and task.evidence_snapshot ->> 'signal_id' = %s
-                        order by proposal.created_at desc
+                        order by
+                          (task.revision_id = owner_course.working_revision_id) desc,
+                          proposal.created_at desc
                         limit 1
                         """,
-                        (course_id, revision_id, str(signal["id"])),
+                        (
+                            course_id,
+                            revision_id,
+                            revision_kind,
+                            revision_id,
+                            str(signal["id"]),
+                        ),
                     )
                 ).fetchone()
 

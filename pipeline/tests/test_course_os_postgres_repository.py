@@ -167,6 +167,107 @@ class _BlueprintEvidenceConnection:
         return _RowsCursor(self.rows)
 
 
+class _DecisionTraceConnection:
+    def __init__(self) -> None:
+        self.course_id = uuid4()
+        self.active_revision_id = uuid4()
+        self.working_revision_id = uuid4()
+        self.concept_id = uuid4()
+        self.concept_logical_id = uuid4()
+        self.video_id = uuid4()
+        self.question_id = uuid4()
+        self.question_logical_id = uuid4()
+        self.clip_id = uuid4()
+        self.clip_logical_id = uuid4()
+        self.attempt_id = uuid4()
+        self.route_id = uuid4()
+        self.signal_id = uuid4()
+        self.proposal_id = uuid4()
+        self.statements: list[str] = []
+        self.parameters: list[object] = []
+
+    async def execute(self, query: str, parameters: object = None) -> _Cursor:
+        normalized = " ".join(query.split())
+        self.statements.append(normalized)
+        self.parameters.append(parameters)
+        if normalized.startswith("select c.id, c.logical_id, c.name"):
+            return _Cursor({
+                "id": self.concept_id,
+                "logical_id": self.concept_logical_id,
+                "name": "Iterative venture design",
+                "description": "Plans evolve as evidence changes.",
+                "review_status": "accepted",
+                "topic_id": uuid4(),
+                "topic_logical_id": uuid4(),
+                "topic_title": "Why plan",
+                "start_seconds": Decimal("10"),
+                "end_seconds": Decimal("90"),
+                "video_id": self.video_id,
+                "source_label": "Lecture recording",
+            })
+        if normalized.startswith("select event.id, event.learner_id"):
+            return _Cursor({
+                "id": self.route_id,
+                "learner_id": uuid4(),
+                "attempt_id": self.attempt_id,
+                "mastery_before": "not_started",
+                "mastery_after": "struggling",
+                "action": "remediate",
+                "target_concept_id": self.concept_id,
+                "target_clip_id": self.clip_id,
+                "why": "Incorrect answer matched a reviewed remediation rule.",
+                "evidence_snapshot": {"correctness": False, "confidence": 4},
+                "created_at": datetime.now(UTC),
+                "question_id": self.question_id,
+                "correctness": False,
+                "confidence": 4,
+                "answer": "A finished document",
+                "purpose": "lesson",
+                "question_logical_id": self.question_logical_id,
+                "question_body": "Why is planning iterative?",
+            })
+        if normalized.startswith("select clip.id, clip.logical_id"):
+            return _Cursor({
+                "id": self.clip_id,
+                "logical_id": self.clip_logical_id,
+                "type": "misconception_correction",
+                "start_seconds": Decimal("30"),
+                "end_seconds": Decimal("60"),
+            })
+        if normalized.startswith("select id, type, related_entity_type"):
+            return _Cursor({
+                "id": self.signal_id,
+                "type": "stuck_cohort",
+                "related_entity_type": "concept",
+                "related_entity_id": self.concept_id,
+                "ai_diagnosis": {
+                    "title": "Learners are stuck on iterative planning",
+                    "summary": "One simulated learner is struggling.",
+                },
+                "status": "open",
+                "instructor_action": None,
+                "created_at": datetime.now(UTC),
+            })
+        if normalized.startswith("select proposal.id, proposal.proposal_type"):
+            return _Cursor({
+                "id": self.proposal_id,
+                "proposal_type": "concept_revision",
+                "artifact_type": "concept",
+                "logical_artifact_id": self.concept_logical_id,
+                "proposed_state": {
+                    "description": "Contrast a static plan with iterative venture design."
+                },
+                "rationale": (
+                    "The high-confidence misconception supports a contrastive explanation."
+                ),
+                "status": "proposed",
+                "created_at": datetime.now(UTC),
+            })
+        if normalized.startswith("select citation.id, citation.excerpt"):
+            return _Cursor(None)
+        raise AssertionError(f"Unexpected decision-trace query: {normalized}")
+
+
 class _RoutingDeleteConnection:
     def __init__(self, concept_id: UUID, override_id: UUID, default_id: UUID) -> None:
         self.concept_id = concept_id
@@ -397,6 +498,50 @@ async def test_blueprint_evidence_aggregates_300_concepts_in_one_warm_query(
     assert len(connection.statements) == 1
     assert "left join lateral" in connection.statements[0]
     assert elapsed_ms < 250
+
+
+@pytest.mark.anyio
+async def test_live_decision_trace_follows_signal_to_private_child_revision_proposal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connection = _DecisionTraceConnection()
+
+    @asynccontextmanager
+    async def fake_connection(*_args: object, **_kwargs: object) -> AsyncIterator[object]:
+        yield connection
+
+    monkeypatch.setattr(repository_module, "pooled_connection", fake_connection)
+    repository = PostgresCourseOSRepository("postgresql://unused")
+
+    trace = await repository.decision_trace(
+        connection.course_id,
+        connection.active_revision_id,
+        "active",
+        connection.concept_id,
+    )
+
+    assert trace is not None
+    assert trace.complete is True
+    assert trace.stages[-1].key == "proposed_revision"
+    assert trace.stages[-1].artifact_id == connection.proposal_id
+    proposal_query_index = next(
+        index
+        for index, statement in enumerate(connection.statements)
+        if statement.startswith("select proposal.id, proposal.proposal_type")
+    )
+    assert "task.revision_id = owner_course.working_revision_id" in connection.statements[
+        proposal_query_index
+    ]
+    assert "task_revision.parent_revision_id = %s" in connection.statements[
+        proposal_query_index
+    ]
+    assert connection.parameters[proposal_query_index] == (
+        connection.course_id,
+        connection.active_revision_id,
+        "active",
+        connection.active_revision_id,
+        str(connection.signal_id),
+    )
 
 
 def test_publication_uses_draft_readiness_without_a_review_bundle_gate() -> None:

@@ -1,16 +1,19 @@
+import json
 from typing import Any
 from uuid import UUID
 
 from openai import AsyncOpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.intelligence.agent import CourseImprovementAgent
 from app.intelligence.models import ImprovementDraft
 
 
 class _ImprovementOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     proposal_type: str = Field(min_length=1, max_length=80)
-    proposed_state: dict[str, Any]
+    proposed_state_json: str = Field(min_length=2)
     rationale: str = Field(min_length=1, max_length=4000)
 
 
@@ -38,7 +41,8 @@ class OpenAICourseImprovementAgent(CourseImprovementAgent):
                         "minimal private-revision change from persisted evidence. Preserve all "
                         "required IDs and fields, do not invent learner statistics, and do not "
                         "claim the change has been applied. Return a complete proposed artifact "
-                        "state and a concise evidence-grounded rationale for instructor review."
+                        "state as a valid JSON object string in proposed_state_json, plus a "
+                        "concise evidence-grounded rationale for instructor review."
                     ),
                 },
                 {
@@ -56,8 +60,14 @@ class OpenAICourseImprovementAgent(CourseImprovementAgent):
         parsed = response.output_parsed
         if parsed is None:
             raise RuntimeError("Course improvement response did not match its schema.")
+        try:
+            parsed_state = json.loads(parsed.proposed_state_json)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Course improvement returned invalid proposed-state JSON.") from exc
+        if not isinstance(parsed_state, dict):
+            raise RuntimeError("Course improvement proposed state must be a JSON object.")
         proposed = dict(current_state)
-        proposed.update(parsed.proposed_state)
+        proposed.update(parsed_state)
         return ImprovementDraft(
             proposal_type=parsed.proposal_type,
             artifact_type=artifact_type,
