@@ -16,6 +16,20 @@ source → course model → reviewed teaching → learner evidence
        → adaptive route → instructor signal → reviewed revision
 ```
 
+## Live demo
+
+Open the public deployment at
+[manifold-aaryan126.onrender.com](https://manifold-aaryan126.onrender.com/login).
+
+- Instructor: `David` / `David1`
+- Learner: `Brian` / `Brian1`
+
+These are fixed demonstration identities, not production authentication. The
+demo runs on Render's free service tier with an isolated Neon database, so the
+first request after an idle period can take roughly a minute while the services
+wake up. The published `Learn Anything in 20 Hours` course is enrolled for the
+learner account and includes the bundled lecture media.
+
 ## Why it exists
 
 A lecture video is normally one path for every learner. Making it adaptive

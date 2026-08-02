@@ -98,6 +98,22 @@ Status values to use: `Not started`, `In progress`, `Automated tests passing / a
 
 ## Scope Decisions & Deviations from `prd.md` / `plan.md`
 
+- 2026-08-02: The public Render/Neon demonstration was refreshed from current
+  `main` after the existing services were found to be healthy but pinned to a
+  July build. Both Docker services now run the current application, the public
+  web routes and API health checks return HTTP 200, production CORS admits only
+  the public web origin, and the bundled lecture supports HTTP 206 byte-range
+  playback. The hosted `Learn Anything in 20 Hours` fixture was created through
+  a legacy publish endpoint that set the course status without promoting its
+  revision; it was repaired through the current revision-aware publication API,
+  which atomically made the working revision active and repointed enrollments.
+  Brian now sees the published course and its 19-concept learner workspace.
+  README exposes the live URL and fixed demonstration credentials. The refresh
+  is verified by 223 backend tests, 112 web tests, one shared-package test,
+  workspace lint, and strict TypeScript checks. Render free
+  cold starts and development-only identity handling remain the documented
+  deployment limitations; the Render/Neon architecture already recorded in
+  `prd.md` and `plan.md` is unchanged.
 - 2026-08-01: The competition recording needs an accepted Course Director relationship change to remain visually continuous inside the focused neighborhood. The exact configured Business 101 course therefore receives a session-only, clearly labelled private-working projection after Accept/Edit while the mode control remains on Live. This is a recording exception, not a learner-facing Live mutation: ordinary courses retain the published-Live contract, reload restores the active graph, publication remains explicit, and the proposal ledger/audit/Undo path is unchanged. `prd.md` and `plan.md` are synchronized with this narrow exception.
 - 2026-07-31 (dense-layout decision refined after direct visual review): Human review rejected both the synthetic common-root layout and its per-branch follow-up because the real nine-topic Business 101 lecture rendered as a tiny horizontal wall. Restoring native hierarchy fixed that structure but exposed large arbitrary voids between ELK's disconnected components. Blueprint therefore retains the native top-to-bottom topic → concept → clip/question structure and now compacts only the bounding rectangles of whole connected hierarchy groups. There is still no artificial root, relationship rewrite, or movement inside a group; saved instructor positions remain authoritative. The separate Course Flow card-collision fix remains. `prd.md` and `plan.md` are synchronized to this presentation-only refinement.
 - 2026-07-31: The competition recording may use a deterministic cached replay for the exact Business 101 lecture so repeated takes do not incur transcription/LLM time or cost. This is configuration, not a replacement generation implementation: the uploaded media record is real, the six durable progress tasks are real, the cached artifacts enter a real private working revision, and publication is real. All other courses and disabled mode use the provider-backed pipeline. The prepared cache was curated from three visible lectures to the intended original-plus-one result, with the older duplicate dismissed and the direct sequence edge restored. `competition-demo.yaml`, `scripts/reset_business_101_generation_demo.py`, `prd.md`, and `plan.md` document the boundary.
