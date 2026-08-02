@@ -1,9 +1,11 @@
 import json
 import re
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict
+
+from app.ai.agnes import AgnesStructuredClient
 
 LearningGuideIntent = Literal[
     "next",
@@ -40,6 +42,32 @@ class _IntentOutput(BaseModel):
     intent: LearningGuideIntent
 
 
+def _guide_messages(
+    question: str,
+    available_actions: tuple[str, ...],
+) -> list[dict[str, str]]:
+    return [
+        {
+            "role": "system",
+            "content": (
+                "Classify a learner's request into exactly one allowlisted intent. "
+                "Do not answer the learner and do not create teaching content. Use "
+                "content_question for requests asking what a course concept means or "
+                "for a new explanation. Use capabilities when no intent fits."
+            ),
+        },
+        {
+            "role": "user",
+            "content": json.dumps(
+                {
+                    "request": question,
+                    "available_course_actions": available_actions,
+                }
+            ),
+        },
+    ]
+
+
 class OpenAILearningGuideInterpreter:
     """Classify free text without allowing model-authored text to reach a learner."""
 
@@ -56,26 +84,7 @@ class OpenAILearningGuideInterpreter:
         try:
             response = await self._client.responses.parse(
                 model=self._model,
-                input=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "Classify a learner's request into exactly one allowlisted intent. "
-                            "Do not answer the learner and do not create teaching content. Use "
-                            "content_question for requests asking what a course concept means or "
-                            "for a new explanation. Use capabilities when no intent fits."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": json.dumps(
-                            {
-                                "request": question,
-                                "available_course_actions": available_actions,
-                            }
-                        ),
-                    },
-                ],
+                input=cast(Any, _guide_messages(question, available_actions)),
                 text_format=_IntentOutput,
             )
             if response.output_parsed is not None:
@@ -84,6 +93,36 @@ class OpenAILearningGuideInterpreter:
             # The Guide remains available when model classification is unavailable.
             pass
         return await self._fallback.classify(question, available_actions)
+
+
+class AgnesLearningGuideInterpreter:
+    """Use Agnes only to classify a bounded intent; it never authors learner text."""
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        base_url: str,
+        *,
+        fallback: LearningGuideInterpreter | None = None,
+    ) -> None:
+        self._client = AgnesStructuredClient(api_key, model, base_url)
+        self._fallback = fallback or LocalLearningGuideInterpreter()
+
+    async def classify(
+        self,
+        question: str,
+        available_actions: tuple[str, ...],
+    ) -> LearningGuideIntent:
+        try:
+            parsed = await self._client.parse(
+                messages=_guide_messages(question, available_actions),
+                output_type=_IntentOutput,
+                operation="learning_guide_intent",
+            )
+            return parsed.intent
+        except Exception:
+            return await self._fallback.classify(question, available_actions)
 
 
 class LocalLearningGuideInterpreter:

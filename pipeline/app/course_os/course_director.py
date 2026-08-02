@@ -2,12 +2,13 @@ import json
 import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 from uuid import UUID
 
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.ai.agnes import AgnesStructuredClient
 from app.course_os.models import BlueprintNode, CourseBlueprint, CourseFlow
 
 DirectorOperation = Literal[
@@ -130,6 +131,92 @@ class _DirectorPlanOutput(BaseModel):
     actions: list[_DirectorActionOutput] = Field(default_factory=list, max_length=8)
 
 
+def _director_messages(
+    instruction: str,
+    blueprint: CourseBlueprint,
+    active_blueprint: CourseBlueprint | None,
+    course_flow: CourseFlow | None,
+) -> list[dict[str, str]]:
+    return [
+        {
+            "role": "system",
+            "content": (
+                "You are Course Director, planning bounded edits to a private course "
+                "revision. Return only concrete actions grounded in the supplied Blueprint. "
+                "Never imply learner-facing changes are already made: every action becomes "
+                "an independent Accept/Edit/Dismiss proposal. Use exact logical IDs. "
+                "Supported operations include update_artifact and remove_artifact for any "
+                "supplied topic, concept, clip, question, or source; create_topic, "
+                "create_concept, create_question; and the relationship operations below. "
+                "At whole-course scope, create_course_unit can add a standalone quiz or "
+                "assignment with title, summary, instructions, course_unit_kind, and "
+                "concept_logical_ids. remove_course_unit removes one supplied Course Flow "
+                "unit. Never use these operations for a lecture. "
+                "When an instructor asks to remove or delete one exact named artifact, use "
+                "remove_artifact with its exact artifact_kind and logical_artifact_id. "
+                "Editable fields are topic title/summary/start_seconds/end_seconds; "
+                "concept name/description; clip type/difficulty/start_seconds/end_seconds; "
+                "and question body/type/correct_answer/confidence_prompt. Supported "
+                "relationship semantics are contains(topic→concept), "
+                "requires(prerequisite concept→dependent concept), "
+                "teaches(concept→clip), assesses(concept→question), "
+                "remediates_to(question→concept|clip), and cites(artifact→source). "
+                "For example, if Fundraising requires Startup speed, use Startup speed "
+                "as source and Fundraising as target. "
+                "For reconnect_relationship, identify the exact existing relationship "
+                "in the previous_* fields and the replacement in the normal relationship "
+                "fields so it remains one atomic review decision. "
+                "When asked to move a concept between topics, first inspect its current "
+                "contains relationships. If the destination topic already contains the "
+                "concept, remove only the old source-topic relationship; never reconnect "
+                "onto a duplicate relationship. "
+                "For create_topic provide title, summary, start_seconds, end_seconds. "
+                "For create_concept provide name, description, topic_logical_ids, and "
+                "sequence_after_id. For create_question provide topic_logical_id, "
+                "primary_concept_logical_id, body, type, correct_answer, and "
+                "confidence_prompt. Ground the question in that concept; for MCQ include "
+                "plausible choices in correct_answer. If the request is ambiguous, unsafe, "
+                "or cannot be expressed with these operations, return no actions and one "
+                "clarification. "
+                "The context may list published artifacts that are absent from the private "
+                "working revision. If an instructor asks to remove one, do not target a "
+                "different artifact and do not create another action. Explain that it is "
+                "already removed privately, remains visible in Live until Publish updates, "
+                "and can be inspected in Design. "
+                "Prefer the smallest coherent plan and explain each action plainly."
+            ),
+        },
+        {
+            "role": "user",
+            "content": json.dumps(
+                _blueprint_context(instruction, blueprint, active_blueprint, course_flow)
+            ),
+        },
+    ]
+
+
+def _finish_director_plan(
+    parsed: _DirectorPlanOutput,
+    instruction: str,
+    blueprint: CourseBlueprint,
+    active_blueprint: CourseBlueprint | None,
+    course_flow: CourseFlow | None,
+) -> CourseDirectorPlan:
+    plan = _validated_plan(parsed, blueprint, course_flow)
+    if not plan.actions:
+        reconnect_plan = _deterministic_reconnect_plan(instruction, blueprint)
+        if reconnect_plan is not None:
+            return reconnect_plan
+    published_only_match = _published_only_removal_match(
+        instruction,
+        blueprint,
+        active_blueprint,
+    )
+    if not plan.actions and published_only_match is not None:
+        return _already_removed_plan(published_only_match.title)
+    return plan
+
+
 class OpenAICourseDirector:
     def __init__(self, api_key: str, model: str) -> None:
         self._client = AsyncOpenAI(api_key=api_key)
@@ -144,84 +231,69 @@ class OpenAICourseDirector:
     ) -> CourseDirectorPlan:
         response = await self._client.responses.parse(
             model=self._model,
-            input=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are Course Director, planning bounded edits to a private course "
-                        "revision. Return only concrete actions grounded in the supplied "
-                        "Blueprint. "
-                        "Never imply learner-facing changes are already made: every action becomes "
-                        "an independent Accept/Edit/Dismiss proposal. Use exact logical IDs. "
-                        "Supported operations include update_artifact and remove_artifact for any "
-                        "supplied topic, concept, clip, question, or source; create_topic, "
-                        "create_concept, create_question; and the relationship operations below. "
-                        "At whole-course scope, create_course_unit can add a standalone quiz or "
-                        "assignment with title, summary, instructions, course_unit_kind, and "
-                        "concept_logical_ids. remove_course_unit removes one supplied Course Flow "
-                        "unit. Never use these operations for a lecture. "
-                        "When an instructor asks to remove or delete one exact named artifact, use "
-                        "remove_artifact with its exact artifact_kind and logical_artifact_id. "
-                        "Editable fields are topic title/summary/start_seconds/end_seconds; "
-                        "concept name/description; clip type/difficulty/start_seconds/end_seconds; "
-                        "and question body/type/correct_answer/confidence_prompt. Supported "
-                        "relationship "
-                        "semantics are contains(topic→concept), "
-                        "requires(prerequisite concept→dependent concept), "
-                        "teaches(concept→clip), assesses(concept→question), "
-                        "remediates_to(question→concept|clip), and cites(artifact→source). "
-                        "For example, if Fundraising requires Startup speed, use Startup speed "
-                        "as source and Fundraising as target. "
-                        "For reconnect_relationship, identify the exact existing relationship "
-                        "in the previous_* fields and the replacement in the normal relationship "
-                        "fields so it remains one atomic review decision. "
-                        "When asked to move a concept between topics, first inspect its current "
-                        "contains relationships. If the destination topic already contains the "
-                        "concept, remove only the old source-topic relationship; never reconnect "
-                        "onto a duplicate relationship. "
-                        "For create_topic provide title, summary, start_seconds, end_seconds. "
-                        "For create_concept provide name, description, topic_logical_ids, and "
-                        "sequence_after_id. For create_question provide topic_logical_id, "
-                        "primary_concept_logical_id, body, type, correct_answer, and "
-                        "confidence_prompt. Ground the question in that concept; for MCQ include "
-                        "plausible choices in correct_answer. If the request is ambiguous, unsafe, "
-                        "or cannot be expressed with these operations, return no actions and one "
-                        "clarification. "
-                        "The context may list published artifacts that are absent from the private "
-                        "working revision. If an instructor asks to remove one, do not target a "
-                        "different artifact and do not create another action. Explain that it is "
-                        "already removed privately, remains visible in Live until Publish updates, "
-                        "and can be inspected in Design. "
-                        "Prefer the smallest coherent plan and explain each action plainly."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        _blueprint_context(
-                            instruction, blueprint, active_blueprint, course_flow
-                        )
-                    ),
-                },
-            ],
+            input=cast(
+                Any,
+                _director_messages(
+                    instruction, blueprint, active_blueprint, course_flow
+                ),
+            ),
             text_format=_DirectorPlanOutput,
         )
         parsed = response.output_parsed
         if parsed is None:
             raise RuntimeError("Course Director did not return a valid edit plan.")
-        plan = _validated_plan(parsed, blueprint, course_flow)
-        if not plan.actions:
-            reconnect_plan = _deterministic_reconnect_plan(instruction, blueprint)
-            if reconnect_plan is not None:
-                return reconnect_plan
-        published_only_match = _published_only_removal_match(
+        return _finish_director_plan(
+            parsed,
             instruction,
             blueprint,
             active_blueprint,
+            course_flow,
         )
-        if not plan.actions and published_only_match is not None:
-            return _already_removed_plan(published_only_match.title)
-        return plan
+
+
+class AgnesCourseDirector:
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        base_url: str,
+        *,
+        fallback: CourseDirector | None = None,
+    ) -> None:
+        self._client = AgnesStructuredClient(api_key, model, base_url)
+        self._fallback = fallback
+
+    async def plan(
+        self,
+        instruction: str,
+        blueprint: CourseBlueprint,
+        active_blueprint: CourseBlueprint | None = None,
+        course_flow: CourseFlow | None = None,
+    ) -> CourseDirectorPlan:
+        try:
+            parsed = await self._client.parse(
+                messages=_director_messages(
+                    instruction, blueprint, active_blueprint, course_flow
+                ),
+                output_type=_DirectorPlanOutput,
+                operation="course_director_plan",
+            )
+        except Exception:
+            if self._fallback is None:
+                raise
+            return await self._fallback.plan(
+                instruction,
+                blueprint,
+                active_blueprint,
+                course_flow,
+            )
+        return _finish_director_plan(
+            parsed,
+            instruction,
+            blueprint,
+            active_blueprint,
+            course_flow,
+        )
 
 
 def _blueprint_context(

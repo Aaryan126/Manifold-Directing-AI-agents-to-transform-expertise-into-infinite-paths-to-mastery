@@ -51,22 +51,49 @@ def record_openai_usage(
     latency_ms: float,
     audio_seconds: float | None = None,
 ) -> None:
-    """Record actual provider-returned usage without coupling to one SDK response type."""
+    """Record actual OpenAI usage without coupling to one SDK response type."""
+
+    record_model_usage(
+        response,
+        provider="openai",
+        operation=operation,
+        model=model,
+        latency_ms=latency_ms,
+        audio_seconds=audio_seconds,
+    )
+
+
+def record_model_usage(
+    response: Any,
+    *,
+    provider: str,
+    operation: str,
+    model: str,
+    latency_ms: float,
+    audio_seconds: float | None = None,
+) -> None:
+    """Record provider-returned Responses or Chat Completions token usage."""
 
     records = _usage_records.get()
     if records is None:
         return
     usage = _value(response, "usage")
-    input_details = _value(usage, "input_tokens_details")
+    input_details = _value(usage, "input_tokens_details") or _value(
+        usage, "prompt_tokens_details"
+    )
     records.append(
         AIUsageRecord(
             operation=operation,
-            provider="openai",
+            provider=provider,
             model=model,
             latency_ms=round(latency_ms, 2),
-            input_tokens=_integer(_value(usage, "input_tokens")),
+            input_tokens=_integer(
+                _value(usage, "input_tokens") or _value(usage, "prompt_tokens")
+            ),
             cached_input_tokens=_integer(_value(input_details, "cached_tokens")),
-            output_tokens=_integer(_value(usage, "output_tokens")),
+            output_tokens=_integer(
+                _value(usage, "output_tokens") or _value(usage, "completion_tokens")
+            ),
             total_tokens=_integer(_value(usage, "total_tokens")),
             audio_seconds=(
                 round(float(audio_seconds), 3) if audio_seconds is not None else None

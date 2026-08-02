@@ -1,12 +1,13 @@
 import json
 import re
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 from uuid import UUID
 
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 
+from app.ai.agnes import AgnesStructuredClient
 from app.course_os.models import (
     CourseRadarItem,
     DashboardEvidenceReference,
@@ -47,6 +48,57 @@ class _CommandOutput(BaseModel):
     action_label: str | None = Field(default=None, max_length=60)
 
 
+def _dashboard_messages(
+    question: str,
+    snapshot: DashboardSnapshot,
+    records: tuple[_EvidenceRecord, ...],
+) -> list[dict[str, str]]:
+    return [
+        {
+            "role": "system",
+            "content": (
+                "You are Manifold, an evidence analyst for an instructor. Answer only "
+                "from the supplied saved evidence. Never invent learners, causes, trends, "
+                "or measurements. If evidence is missing, say so plainly. Classify requests "
+                "to alter course content as change_request; everything else is question. "
+                "A change request is only a private proposal and must not imply that a live "
+                "course changed. Cite the evidence IDs that directly support the answer. "
+                "Write at most 60 words. Lead with the practical conclusion, then the most "
+                "important supporting fact. Use restrained Markdown: bold only the most "
+                "decision-relevant course or metric, and use at most three short bullets only "
+                "when they make a comparison materially clearer. Never mention database IDs, "
+                "raw record IDs, unchanged zero-value details, or enumerate every course when "
+                "a portfolio-level comparison is enough. The interface shows cited evidence "
+                "separately."
+            ),
+        },
+        {
+            "role": "user",
+            "content": json.dumps(
+                {
+                    "request": question,
+                    "published_course_count": len(snapshot.course_radar),
+                    "retrieved_evidence": [
+                        {
+                            "id": item.reference.id,
+                            "course_id": (
+                                str(item.reference.course_id)
+                                if item.reference.course_id
+                                else None
+                            ),
+                            "course": item.reference.course_title,
+                            "metric": item.reference.metric,
+                            "label": item.reference.label,
+                            "value": item.reference.value,
+                        }
+                        for item in records
+                    ],
+                }
+            ),
+        },
+    ]
+
+
 class OpenAIDashboardAssistant:
     def __init__(self, api_key: str, model: str) -> None:
         self._client = AsyncOpenAI(api_key=api_key)
@@ -60,58 +112,43 @@ class OpenAIDashboardAssistant:
         records = search_dashboard_evidence(question, snapshot)
         response = await self._client.responses.parse(
             model=self._model,
-            input=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are Manifold, an evidence analyst for an instructor. Answer only "
-                        "from the supplied saved evidence. Never invent learners, causes, trends, "
-                        "or measurements. If evidence is missing, say so plainly. Classify "
-                        "requests "
-                        "to alter course content as change_request; everything else is question. "
-                        "A change request is only a private proposal and must not imply that a "
-                        "live "
-                        "course changed. Cite the evidence IDs that directly support the answer. "
-                        "Write at most 60 words. Lead with the practical conclusion, then the "
-                        "most important supporting fact. Use restrained Markdown: bold only the "
-                        "most decision-relevant course or metric, and use at most three short "
-                        "bullets only when they make a comparison materially clearer. Never "
-                        "mention "
-                        "database IDs, raw record IDs, unchanged zero-value details, or enumerate "
-                        "every course when a portfolio-level comparison is enough. The interface "
-                        "shows the cited evidence separately."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        {
-                            "request": question,
-                            "published_course_count": len(snapshot.course_radar),
-                            "retrieved_evidence": [
-                                {
-                                    "id": item.reference.id,
-                                    "course_id": (
-                                        str(item.reference.course_id)
-                                        if item.reference.course_id
-                                        else None
-                                    ),
-                                    "course": item.reference.course_title,
-                                    "metric": item.reference.metric,
-                                    "label": item.reference.label,
-                                    "value": item.reference.value,
-                                }
-                                for item in records
-                            ],
-                        }
-                    ),
-                },
-            ],
+            input=cast(Any, _dashboard_messages(question, snapshot, records)),
             text_format=_CommandOutput,
         )
         parsed = response.output_parsed
         if parsed is None:
             raise RuntimeError("Dashboard analysis did not match the expected schema.")
+        return _analysis_from_output(parsed, records, snapshot)
+
+
+class AgnesDashboardAssistant:
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        base_url: str,
+        *,
+        fallback: DashboardAssistant | None = None,
+    ) -> None:
+        self._client = AgnesStructuredClient(api_key, model, base_url)
+        self._fallback = fallback
+
+    async def analyze(
+        self,
+        question: str,
+        snapshot: DashboardSnapshot,
+    ) -> DashboardAssistantAnalysis:
+        records = search_dashboard_evidence(question, snapshot)
+        try:
+            parsed = await self._client.parse(
+                messages=_dashboard_messages(question, snapshot, records),
+                output_type=_CommandOutput,
+                operation="dashboard_analysis",
+            )
+        except Exception:
+            if self._fallback is None:
+                raise
+            return await self._fallback.analyze(question, snapshot)
         return _analysis_from_output(parsed, records, snapshot)
 
 

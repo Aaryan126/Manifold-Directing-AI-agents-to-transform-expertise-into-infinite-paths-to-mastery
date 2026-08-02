@@ -15,8 +15,18 @@ from app.clips.postgres_repository import PostgresClipRepository
 from app.clips.service import ClipService
 from app.competition_demo import load_competition_demo_config
 from app.config import Settings, get_settings
-from app.course_os.course_director import LocalCourseDirector, OpenAICourseDirector
-from app.course_os.dashboard_assistant import LocalDashboardAssistant, OpenAIDashboardAssistant
+from app.course_os.course_director import (
+    AgnesCourseDirector,
+    CourseDirector,
+    LocalCourseDirector,
+    OpenAICourseDirector,
+)
+from app.course_os.dashboard_assistant import (
+    AgnesDashboardAssistant,
+    DashboardAssistant,
+    LocalDashboardAssistant,
+    OpenAIDashboardAssistant,
+)
 from app.course_os.postgres_repository import PostgresCourseOSRepository
 from app.course_os.service import CourseOSService
 from app.course_os.worker import CourseGenerationWorker
@@ -35,6 +45,8 @@ from app.intelligence.service import CourseIntelligenceService
 from app.intelligence.storage import SupplementalSourceStorage
 from app.intelligence.worker import CourseIntelligenceWorker
 from app.learning.guide import (
+    AgnesLearningGuideInterpreter,
+    LearningGuideInterpreter,
     LocalLearningGuideInterpreter,
     OpenAILearningGuideInterpreter,
 )
@@ -68,16 +80,8 @@ def build_course_os_service(settings: Settings) -> CourseOSService:
     competition_demo = load_competition_demo_config(
         settings.competition_demo_config_path
     )
-    assistant = (
-        OpenAIDashboardAssistant(settings.openai_api_key, settings.llm_model)
-        if settings.openai_api_key
-        else LocalDashboardAssistant()
-    )
-    director = (
-        OpenAICourseDirector(settings.openai_api_key, settings.llm_model)
-        if settings.openai_api_key
-        else LocalCourseDirector()
-    )
+    assistant = _build_dashboard_assistant(settings)
+    director = _build_course_director(settings)
     return CourseOSService(
         repository=PostgresCourseOSRepository(
             settings.database_url,
@@ -233,11 +237,7 @@ def build_routing_service(settings: Settings) -> RoutingService:
 @lru_cache
 def get_learning_service() -> LearningService:
     settings = get_settings()
-    guide = (
-        OpenAILearningGuideInterpreter(settings.openai_api_key, settings.llm_model)
-        if settings.openai_api_key
-        else LocalLearningGuideInterpreter()
-    )
+    guide = _build_learning_guide(settings)
     return LearningService(
         repository=PostgresLearningRepository(settings.database_url),
         routing=build_routing_service(settings),
@@ -267,3 +267,84 @@ def get_audit_service() -> AuditService:
 
 def build_audit_service(settings: Settings) -> AuditService:
     return AuditService(repository=PostgresAuditRepository(settings.database_url))
+
+
+def _build_course_director(settings: Settings) -> CourseDirector:
+    local = LocalCourseDirector()
+    openai = (
+        OpenAICourseDirector(settings.openai_api_key, settings.llm_model)
+        if settings.openai_api_key
+        else None
+    )
+    if settings.course_director_provider == "local":
+        return local
+    if settings.course_director_provider == "openai":
+        return openai or local
+    if settings.course_director_provider == "agnes":
+        if not settings.agnes_api_key:
+            raise ValueError(
+                "AGNES_API_KEY is required when COURSE_DIRECTOR_PROVIDER=agnes"
+            )
+        return AgnesCourseDirector(
+            settings.agnes_api_key,
+            settings.agnes_agent_model,
+            settings.agnes_base_url,
+            fallback=((openai or local) if settings.agnes_fallback_to_openai else None),
+        )
+    raise ValueError(
+        f"Unsupported COURSE_DIRECTOR_PROVIDER: {settings.course_director_provider}"
+    )
+
+
+def _build_dashboard_assistant(settings: Settings) -> DashboardAssistant:
+    local = LocalDashboardAssistant()
+    openai = (
+        OpenAIDashboardAssistant(settings.openai_api_key, settings.llm_model)
+        if settings.openai_api_key
+        else None
+    )
+    if settings.dashboard_assistant_provider == "local":
+        return local
+    if settings.dashboard_assistant_provider == "openai":
+        return openai or local
+    if settings.dashboard_assistant_provider == "agnes":
+        if not settings.agnes_api_key:
+            raise ValueError(
+                "AGNES_API_KEY is required when DASHBOARD_ASSISTANT_PROVIDER=agnes"
+            )
+        return AgnesDashboardAssistant(
+            settings.agnes_api_key,
+            settings.agnes_agent_model,
+            settings.agnes_base_url,
+            fallback=((openai or local) if settings.agnes_fallback_to_openai else None),
+        )
+    raise ValueError(
+        f"Unsupported DASHBOARD_ASSISTANT_PROVIDER: {settings.dashboard_assistant_provider}"
+    )
+
+
+def _build_learning_guide(settings: Settings) -> LearningGuideInterpreter:
+    local = LocalLearningGuideInterpreter()
+    openai = (
+        OpenAILearningGuideInterpreter(settings.openai_api_key, settings.llm_model)
+        if settings.openai_api_key
+        else None
+    )
+    if settings.learning_guide_provider == "local":
+        return local
+    if settings.learning_guide_provider == "openai":
+        return openai or local
+    if settings.learning_guide_provider == "agnes":
+        if not settings.agnes_api_key:
+            raise ValueError(
+                "AGNES_API_KEY is required when LEARNING_GUIDE_PROVIDER=agnes"
+            )
+        return AgnesLearningGuideInterpreter(
+            settings.agnes_api_key,
+            settings.agnes_fast_model,
+            settings.agnes_base_url,
+            fallback=(openai if settings.agnes_fallback_to_openai else local),
+        )
+    raise ValueError(
+        f"Unsupported LEARNING_GUIDE_PROVIDER: {settings.learning_guide_provider}"
+    )

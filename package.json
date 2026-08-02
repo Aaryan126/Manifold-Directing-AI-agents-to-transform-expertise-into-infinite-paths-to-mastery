@@ -17,6 +17,8 @@
     "demo:check": "python3 scripts/reset_competition_demo.py --course-id 8b39e2ae-3a91-42ef-bfff-985a39283453 --concept \"Entrepreneurial planning as an iterative venture-design process\"",
     "demo:reset": "python3 scripts/reset_competition_demo.py --course-id 8b39e2ae-3a91-42ef-bfff-985a39283453 --concept \"Entrepreneurial planning as an iterative venture-design process\" --apply",
     "demo:activity": "python3 scripts/seed_demo_activity.py --apply",
+    "test:agnes:contracts": "cd pipeline && uv run pytest -q tests/test_agnes_provider.py tests/test_agnes_wiring.py tests/test_agnes_agents.py",
+    "test:agnes:live": "cd pipeline && uv run python ../scripts/test_agnes_integration.py",
     "ci": "npm run lint && npm run typecheck && npm run test"
   },
   "engines": {

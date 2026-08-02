@@ -14,6 +14,14 @@ class Settings(BaseSettings):
     clip_agent_provider: str = "openai"
     assessment_agent_provider: str = "openai"
     llm_model: str = "gpt-5.4"
+    course_director_provider: str = "openai"
+    dashboard_assistant_provider: str = "openai"
+    learning_guide_provider: str = "openai"
+    agnes_api_key: str | None = Field(default=None)
+    agnes_base_url: str = "https://apihub.agnes-ai.com/v1"
+    agnes_agent_model: str = "agnes-2.5-flash"
+    agnes_fast_model: str = "agnes-1.5-flash"
+    agnes_fallback_to_openai: bool = True
     video_provider: str = "local"
     force_local_video_delivery: bool = False
     local_video_storage_path: str = "/data/video"
