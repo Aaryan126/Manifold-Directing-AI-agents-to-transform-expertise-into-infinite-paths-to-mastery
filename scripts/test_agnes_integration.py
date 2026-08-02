@@ -156,9 +156,7 @@ def _usage(records: list[AIUsageRecord]) -> list[dict[str, object]]:
 
 async def _run(settings: Settings) -> dict[str, object]:
     if not settings.agnes_api_key:
-        raise RuntimeError(
-            "AGNES_API_KEY is missing. Add it to .env before running the live test."
-        )
+        raise RuntimeError("AGNES_API_KEY is missing. Add it to .env before running the live test.")
 
     blueprint, expected_source, expected_target = _blueprint()
     director = AgnesCourseDirector(
@@ -212,8 +210,16 @@ async def _run(settings: Settings) -> dict[str, object]:
         raise RuntimeError(f"Expected why_next intent, got {intent}.")
 
     usage = [*director_usage, *dashboard_usage, *guide_usage]
-    if len(usage) != 3 or any(record.provider != "agnes" for record in usage):
-        raise RuntimeError("Expected three directly measured Agnes provider calls.")
+    required_operations = {
+        "course_director_plan",
+        "dashboard_analysis",
+        "learning_guide_intent",
+    }
+    measured_operations = {record.operation for record in usage}
+    if not required_operations.issubset(measured_operations) or any(
+        record.provider != "agnes" for record in usage
+    ):
+        raise RuntimeError("Expected directly measured Agnes calls for all three agents.")
     return {
         "status": "passed",
         "base_url": settings.agnes_base_url,

@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     agnes_api_key: str | None = Field(default=None)
     agnes_base_url: str = "https://apihub.agnes-ai.com/v1"
     agnes_agent_model: str = "agnes-2.5-flash"
-    agnes_fast_model: str = "agnes-1.5-flash"
+    agnes_fast_model: str = "agnes-2.5-flash"
     agnes_fallback_to_openai: bool = True
     video_provider: str = "local"
     force_local_video_delivery: bool = False

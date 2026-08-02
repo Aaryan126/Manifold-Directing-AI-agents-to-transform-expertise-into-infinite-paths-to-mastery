@@ -106,19 +106,22 @@ def _dashboard_snapshot() -> DashboardSnapshot:
 
 
 @pytest.mark.anyio
-async def test_agnes_course_director_uses_existing_bounded_graph_validation() -> None:
+@pytest.mark.parametrize("model_operation", ("remove_relationship", "reconnect_relationship"))
+async def test_agnes_course_director_uses_existing_bounded_graph_validation(
+    model_operation: Any,
+) -> None:
     blueprint, topic, concept = _director_blueprint()
     structured = _StructuredResult(
         _DirectorPlanOutput(
             summary="Remove the old topic placement only.",
             actions=[
                 _DirectorActionOutput(
-                    operation="remove_relationship",
+                    operation=model_operation,
                     summary="Remove the old placement",
                     rationale="The concept remains available elsewhere.",
-                    relationship_type="contains",
-                    source_logical_id=str(topic.logical_id),
-                    target_logical_id=str(concept.logical_id),
+                    previous_relationship_type="contains",
+                    previous_source_logical_id=str(topic.logical_id),
+                    previous_target_logical_id=str(concept.logical_id),
                 )
             ],
         )
@@ -138,13 +141,9 @@ async def test_agnes_course_director_uses_existing_bounded_graph_validation() ->
 @pytest.mark.anyio
 async def test_agnes_dashboard_answer_is_limited_to_retrieved_evidence() -> None:
     snapshot = _dashboard_snapshot()
-    records = search_dashboard_evidence(
-        "Where are learners confident but incorrect?", snapshot
-    )
+    records = search_dashboard_evidence("Where are learners confident but incorrect?", snapshot)
     evidence = next(
-        record.reference
-        for record in records
-        if record.reference.metric == "confident-incorrect"
+        record.reference for record in records if record.reference.metric == "confident-incorrect"
     )
     structured = _StructuredResult(
         _CommandOutput(
@@ -154,14 +153,10 @@ async def test_agnes_dashboard_answer_is_limited_to_retrieved_evidence() -> None
             evidence_ids=[evidence.id, "not-a-retrieved-record"],
         )
     )
-    assistant = AgnesDashboardAssistant(
-        "key", "agnes-2.5-flash", "https://example.test/v1"
-    )
+    assistant = AgnesDashboardAssistant("key", "agnes-2.5-flash", "https://example.test/v1")
     cast(Any, assistant)._client = structured
 
-    result = await assistant.analyze(
-        "Where are learners confident but incorrect?", snapshot
-    )
+    result = await assistant.analyze("Where are learners confident but incorrect?", snapshot)
 
     assert result.course_title == "Mechanics"
     assert result.evidence == (evidence,)
@@ -172,9 +167,7 @@ async def test_agnes_dashboard_answer_is_limited_to_retrieved_evidence() -> None
 @pytest.mark.anyio
 async def test_agnes_learning_guide_returns_only_an_allowlisted_intent() -> None:
     structured = _StructuredResult(_IntentOutput(intent="why_next"))
-    guide = AgnesLearningGuideInterpreter(
-        "key", "agnes-1.5-flash", "https://example.test/v1"
-    )
+    guide = AgnesLearningGuideInterpreter("key", "agnes-2.5-flash", "https://example.test/v1")
     cast(Any, guide)._client = structured
 
     intent = await guide.classify(

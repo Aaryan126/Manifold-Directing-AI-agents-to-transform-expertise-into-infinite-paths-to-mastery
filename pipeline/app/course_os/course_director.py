@@ -108,9 +108,9 @@ class _DirectorActionOutput(BaseModel):
     operation: DirectorOperation
     summary: str = Field(min_length=1, max_length=120)
     rationale: str = Field(min_length=1, max_length=240)
-    artifact_kind: Literal[
-        "topic", "concept", "clip", "question", "source", "course_unit"
-    ] | None = None
+    artifact_kind: (
+        Literal["topic", "concept", "clip", "question", "source", "course_unit"] | None
+    ) = None
     logical_artifact_id: str | None = None
     relationship_type: DirectorRelationship | None = None
     source_logical_id: str | None = None
@@ -233,9 +233,7 @@ class OpenAICourseDirector:
             model=self._model,
             input=cast(
                 Any,
-                _director_messages(
-                    instruction, blueprint, active_blueprint, course_flow
-                ),
+                _director_messages(instruction, blueprint, active_blueprint, course_flow),
             ),
             text_format=_DirectorPlanOutput,
         )
@@ -272,9 +270,7 @@ class AgnesCourseDirector:
     ) -> CourseDirectorPlan:
         try:
             parsed = await self._client.parse(
-                messages=_director_messages(
-                    instruction, blueprint, active_blueprint, course_flow
-                ),
+                messages=_director_messages(instruction, blueprint, active_blueprint, course_flow),
                 output_type=_DirectorPlanOutput,
                 operation="course_director_plan",
             )
@@ -309,11 +305,7 @@ def _blueprint_context(
     for edge in blueprint.edges:
         source_logical_id = logical_ids_by_node_id.get(edge.source_id)
         target_logical_id = logical_ids_by_node_id.get(edge.target_id)
-        if (
-            edge.kind == "next"
-            or source_logical_id is None
-            or target_logical_id is None
-        ):
+        if edge.kind == "next" or source_logical_id is None or target_logical_id is None:
             continue
         relationships.append(
             {
@@ -357,9 +349,7 @@ def _blueprint_context(
                 "title": unit.title,
                 "summary": unit.summary,
                 "status": unit.status,
-                "concept_logical_ids": [
-                    str(value) for value in unit.concept_logical_ids
-                ],
+                "concept_logical_ids": [str(value) for value in unit.concept_logical_ids],
             }
             for unit in (course_flow.units if course_flow else ())
         ],
@@ -401,8 +391,7 @@ class LocalCourseDirector:
                         logical_artifact_id=unit.logical_id,
                         summary=f"Remove {unit.title}",
                         rationale=(
-                            "The instructor explicitly requested this private "
-                            "Course Flow change."
+                            "The instructor explicitly requested this private Course Flow change."
                         ),
                     ),
                 ),
@@ -417,9 +406,7 @@ class LocalCourseDirector:
             reverse=True,
         )
         requested_unit_kind = (
-            "quiz" if "quiz" in lowered
-            else "assignment" if "assignment" in lowered
-            else None
+            "quiz" if "quiz" in lowered else "assignment" if "assignment" in lowered else None
         )
         matched_concepts = [node for node in matches if node.kind == "concept"]
         if ("add" in lowered or "create" in lowered) and requested_unit_kind:
@@ -433,9 +420,7 @@ class LocalCourseDirector:
                     ),
                 )
             concept_titles = ", ".join(node.title for node in matched_concepts)
-            title = (
-                f"{requested_unit_kind.title()}: {matched_concepts[0].title}"
-            )
+            title = f"{requested_unit_kind.title()}: {matched_concepts[0].title}"
             return CourseDirectorPlan(
                 summary=f"Prepare a standalone {requested_unit_kind}.",
                 actions=(
@@ -498,9 +483,12 @@ class LocalCourseDirector:
                         "published course until you choose Publish updates."
                     ),
                 )
-        if ("add" in lowered or "create" in lowered) and (
-            "question" in lowered or "assessment" in lowered
-        ) and matches and matches[0].kind == "concept":
+        if (
+            ("add" in lowered or "create" in lowered)
+            and ("question" in lowered or "assessment" in lowered)
+            and matches
+            and matches[0].kind == "concept"
+        ):
             concept = matches[0]
             topic_edge = next(
                 (
@@ -535,9 +523,7 @@ class LocalCourseDirector:
                                 ),
                                 "type": "short_answer",
                                 "correct_answer": {"answer": expected},
-                                "confidence_prompt": (
-                                    "How confident are you in your explanation?"
-                                ),
+                                "confidence_prompt": ("How confident are you in your explanation?"),
                             },
                             summary=f"Add a question for {concept.title}",
                             rationale=(
@@ -591,9 +577,7 @@ def _validated_plan(
         for edge in blueprint.edges
         if edge.kind != "next"
     }
-    course_units = {
-        unit.logical_id: unit for unit in (course_flow.units if course_flow else ())
-    }
+    course_units = {unit.logical_id: unit for unit in (course_flow.units if course_flow else ())}
     actions: list[CourseDirectorAction] = []
     for candidate in output.actions:
         proposed_state = candidate.proposed_state.as_proposal_state()
@@ -615,6 +599,41 @@ def _validated_plan(
             )
         except ValueError:
             continue
+        reconnect_without_replacement = (
+            candidate.operation == "reconnect_relationship"
+            and candidate.relationship_type is None
+            and source_id is None
+            and target_id is None
+            and candidate.previous_relationship_type is not None
+            and previous_source_id in nodes
+            and previous_target_id in nodes
+            and (
+                candidate.previous_relationship_type,
+                previous_source_id,
+                previous_target_id,
+            )
+            in relationships
+            and not proposed_state
+        )
+        removal_in_previous_fields = (
+            candidate.operation == "remove_relationship"
+            and candidate.relationship_type is None
+            and source_id is None
+            and target_id is None
+            and candidate.previous_relationship_type is not None
+            and previous_source_id in nodes
+            and previous_target_id in nodes
+            and (
+                candidate.previous_relationship_type,
+                previous_source_id,
+                previous_target_id,
+            )
+            in relationships
+            and not proposed_state
+        )
+        relationship_payload_is_previous = (
+            reconnect_without_replacement or removal_in_previous_fields
+        )
         if candidate.operation in {"update_artifact", "remove_artifact"}:
             if logical_id not in nodes or nodes[logical_id].kind != candidate.artifact_kind:
                 continue
@@ -624,9 +643,7 @@ def _validated_plan(
         if candidate.operation == "create_course_unit":
             state = proposed_state
             try:
-                concept_ids = [
-                    UUID(str(value)) for value in state.get("concept_logical_ids", [])
-                ]
+                concept_ids = [UUID(str(value)) for value in state.get("concept_logical_ids", [])]
             except (TypeError, ValueError):
                 continue
             if (
@@ -659,11 +676,15 @@ def _validated_plan(
                 or not str(state.get("confidence_prompt", "")).strip()
             ):
                 continue
-        if candidate.operation in {
-            "create_relationship",
-            "reconnect_relationship",
-            "remove_relationship",
-        }:
+        if (
+            candidate.operation
+            in {
+                "create_relationship",
+                "reconnect_relationship",
+                "remove_relationship",
+            }
+            and not relationship_payload_is_previous
+        ):
             if (
                 candidate.relationship_type is None
                 or source_id not in nodes
@@ -675,15 +696,20 @@ def _validated_plan(
                 )
             ):
                 continue
-        if candidate.operation in {"remove_relationship", "reconnect_relationship"} and (
-            candidate.relationship_type,
-            source_id,
-            target_id,
-        ) not in relationships:
+        if (
+            candidate.operation in {"remove_relationship", "reconnect_relationship"}
+            and not relationship_payload_is_previous
+            and (
+                candidate.relationship_type,
+                source_id,
+                target_id,
+            )
+            not in relationships
+        ):
             if candidate.operation == "remove_relationship":
                 continue
         if candidate.operation == "reconnect_relationship":
-            if (
+            if not reconnect_without_replacement and (
                 candidate.previous_relationship_type is None
                 or previous_source_id not in nodes
                 or previous_target_id not in nodes
@@ -700,13 +726,23 @@ def _validated_plan(
                 not in relationships
             ):
                 continue
-        operation = candidate.operation
-        relationship_type = candidate.relationship_type
-        normalized_source_id = source_id
-        normalized_target_id = target_id
-        normalized_previous_relationship_type = candidate.previous_relationship_type
-        normalized_previous_source_id = previous_source_id
-        normalized_previous_target_id = previous_target_id
+        operation = "remove_relationship" if reconnect_without_replacement else candidate.operation
+        relationship_type = (
+            candidate.previous_relationship_type
+            if relationship_payload_is_previous
+            else candidate.relationship_type
+        )
+        normalized_source_id = previous_source_id if relationship_payload_is_previous else source_id
+        normalized_target_id = previous_target_id if relationship_payload_is_previous else target_id
+        normalized_previous_relationship_type = (
+            None if relationship_payload_is_previous else candidate.previous_relationship_type
+        )
+        normalized_previous_source_id = (
+            None if relationship_payload_is_previous else previous_source_id
+        )
+        normalized_previous_target_id = (
+            None if relationship_payload_is_previous else previous_target_id
+        )
         if (
             candidate.operation == "reconnect_relationship"
             and candidate.relationship_type == "requires"
@@ -854,10 +890,7 @@ def _deterministic_reconnect_plan(
         replacement.logical_id,
         dependent.logical_id,
     )
-    if (
-        previous_relationship not in relationships
-        and replacement_relationship in relationships
-    ):
+    if previous_relationship not in relationships and replacement_relationship in relationships:
         return CourseDirectorPlan(
             summary=f"{replacement.title} is already the private prerequisite.",
             actions=(),
@@ -898,8 +931,7 @@ def _quoted_instruction_references(instruction: str) -> tuple[str, ...]:
         instruction,
     )
     return tuple(
-        next(group for group in match.groups() if group is not None).strip()
-        for match in matches
+        next(group for group in match.groups() if group is not None).strip() for match in matches
     )
 
 

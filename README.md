@@ -155,8 +155,18 @@ published baseline.
 
 ```mermaid
 flowchart LR
-    S["Instructor-owned source"] --> G["Durable AI compilation"]
-    G --> R["Private review gates"]
+    subgraph OpenAI["OpenAI · source-to-course compilation"]
+        OAI["ASR + GPT-5.4<br/>transcription, segmentation, graph,<br/>clips, assessments, enrichment"]
+    end
+
+    subgraph Agnes["Agnes AI · bounded interactive inference"]
+        CD["Agnes 2.5 Flash<br/>Course Director planning"]
+        DA["Agnes 2.5 Flash<br/>grounded dashboard synthesis"]
+        LI["Agnes 2.5 Flash<br/>learner intent classification"]
+    end
+
+    S["Instructor-owned source"] --> OAI
+    OAI --> R["Private review gates"]
     R --> B["Published Blueprint"]
     B --> L["Learner session"]
     L --> E["Attempt + confidence + mastery"]
@@ -165,8 +175,13 @@ flowchart LR
     D --> P["Private proposed revision"]
     P --> R
 
+    B -. "bounded edit request" .-> CD
+    CD -. "typed private proposal" .-> P
+    D -. "retrieved saved evidence" .-> DA
+    L -. "free-text request" .-> LI
+
     B <--> DB[("PostgreSQL system of record")]
-    G <--> DB
+    OAI <--> DB
     E <--> DB
     T <--> DB
     D <--> DB
@@ -177,11 +192,16 @@ flowchart LR
 | Web | Next.js 15, React 19, TypeScript, React Flow, ELK, Motion |
 | API and orchestration | Python 3.12, FastAPI, Pydantic |
 | Durable work | PostgreSQL-backed task queue with leases, retries, and recovery |
-| AI | OpenAI GPT-5.4 behind task-specific agent interfaces |
+| OpenAI AI | GPT-5.4 for source-to-course compilation, graph/content generation, and document enrichment |
+| Agnes AI | Verified Agnes 2.5 Flash for Course Director planning, grounded dashboard synthesis, and bounded learner-intent classification |
+| Deterministic safeguards | Pydantic validation, evidence-ID filtering, prerequisite/routing/grading policy, private proposal review, and atomic publication |
 | Transcription | OpenAI ASR adapter with ffmpeg extraction/chunking |
 | Data and graph | PostgreSQL 16 adjacency tables, recursive CTEs, revisioned artifacts |
 | Video | Mux adapter plus local development/CI provider |
 | Verification | Pytest, Vitest, Playwright, axe, Ruff, mypy, ESLint, TypeScript |
+
+The Agnes integration follows the official
+[model catalog and OpenAI-compatible endpoint guidance](https://github.com/AgnesAI-Labs/AgnesAI-Models/blob/main/MODEL_CATALOG.md).
 
 Generation task outputs persist wall time and provider-returned usage. The
 competition harness uses those records to calculate cost rather than estimating
@@ -194,6 +214,7 @@ Prerequisites:
 - Docker with Docker Compose;
 - Node.js 22+ and Python 3.12+ for host-side checks;
 - an OpenAI API key for real AI generation;
+- an Agnes API key for the three interactive Agnes agents;
 - optional Mux credentials for production-style video delivery.
 
 Create local configuration:
@@ -202,7 +223,18 @@ Create local configuration:
 cp .env.example .env
 ```
 
-Set `OPENAI_API_KEY` in `.env`, then start:
+Set `OPENAI_API_KEY` and `AGNES_API_KEY` in `.env`. To enable the verified
+hybrid routing, set:
+
+```env
+COURSE_DIRECTOR_PROVIDER=agnes
+DASHBOARD_ASSISTANT_PROVIDER=agnes
+LEARNING_GUIDE_PROVIDER=agnes
+AGNES_AGENT_MODEL=agnes-2.5-flash
+AGNES_FAST_MODEL=agnes-2.5-flash
+```
+
+Then start:
 
 ```bash
 docker compose up --build
@@ -225,6 +257,8 @@ npm run lint
 npm run typecheck
 npm test
 (cd pipeline && uv run pytest -q)
+npm run test:agnes:contracts
+npm run test:agnes:live
 npm run test:e2e
 ```
 

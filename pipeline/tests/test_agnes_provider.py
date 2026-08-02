@@ -16,14 +16,17 @@ class _Output(BaseModel):
 
 
 class _FakeCompletions:
-    def __init__(self, content: str) -> None:
-        self.content = content
+    def __init__(self, content: str | list[str]) -> None:
+        self.contents = [content] if isinstance(content, str) else list(content)
         self.request: dict[str, Any] | None = None
+        self.requests: list[dict[str, Any]] = []
 
     async def create(self, **kwargs: Any) -> Any:
         self.request = kwargs
+        self.requests.append(kwargs)
+        content = self.contents[min(len(self.requests) - 1, len(self.contents) - 1)]
         return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content=self.content))],
+            choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
             usage=SimpleNamespace(
                 prompt_tokens=21,
                 completion_tokens=5,
@@ -34,7 +37,7 @@ class _FakeCompletions:
 
 
 class _FakeClient:
-    def __init__(self, content: str) -> None:
+    def __init__(self, content: str | list[str]) -> None:
         self.completions = _FakeCompletions(content)
         self.chat = SimpleNamespace(completions=self.completions)
 
@@ -59,6 +62,7 @@ async def test_agnes_client_uses_chat_completions_and_validates_json() -> None:
     assert fake.completions.request is not None
     assert fake.completions.request["model"] == "agnes-2.5-flash"
     assert fake.completions.request["response_format"] == {"type": "json_object"}
+    assert fake.completions.request["temperature"] == 0
     assert "JSON Schema" in fake.completions.request["messages"][0]["content"]
     assert usage[0].provider == "agnes"
     assert usage[0].input_tokens == 21
@@ -71,7 +75,7 @@ async def test_agnes_client_rejects_schema_invalid_output() -> None:
     fake = _FakeClient('{"unexpected":"value"}')
     client = AgnesStructuredClient(
         "test-key",
-        "agnes-1.5-flash",
+        "agnes-2.5-flash",
         client=cast(AsyncOpenAI, fake),
     )
 
@@ -88,7 +92,7 @@ async def test_agnes_client_rejects_non_json_output() -> None:
     fake = _FakeClient("I cannot provide JSON.")
     client = AgnesStructuredClient(
         "test-key",
-        "agnes-1.5-flash",
+        "agnes-2.5-flash",
         client=cast(AsyncOpenAI, fake),
     )
 
@@ -98,3 +102,26 @@ async def test_agnes_client_rejects_non_json_output() -> None:
             output_type=_Output,
             operation="test_agnes_invalid_json",
         )
+
+
+@pytest.mark.anyio
+async def test_agnes_client_repairs_one_schema_invalid_response() -> None:
+    fake = _FakeClient(['{"unexpected":"value"}', '{"intent":"why_next"}'])
+    client = AgnesStructuredClient(
+        "test-key",
+        "agnes-2.5-flash",
+        client=cast(AsyncOpenAI, fake),
+    )
+
+    with capture_ai_usage() as usage:
+        output = await client.parse(
+            messages=[{"role": "user", "content": "Classify this"}],
+            output_type=_Output,
+            operation="test_agnes_repair",
+        )
+
+    assert output.intent == "why_next"
+    assert len(fake.completions.requests) == 2
+    repair_messages = fake.completions.requests[1]["messages"]
+    assert "failed validation" in repair_messages[-1]["content"]
+    assert len(usage) == 2
