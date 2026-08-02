@@ -173,10 +173,11 @@ planning as an iterative venture-design process**, then open **Trace decision**.
 
 The prepared Business 101 recording state has all eight persisted stages. The
 seeded learner's saved evidence produced a real dashboard signal, and that
-signal grounds one private concept-improvement proposal in the unpublished
-working revision. The proposal remains **proposed** and instructor-reviewable;
-nothing has been accepted or published. The trace header should say **Complete
-chain**.
+signal grounds one private assessment-revision proposal in the unpublished
+working revision. The proposal makes the observed fixed-document misconception
+explicit in the question while preserving its choices, answer, and routing. It
+remains **proposed** and instructor-reviewable. Nothing has been accepted or
+published. The trace header should say **Complete chain**.
 
 Detailed screen recording:
 
@@ -219,7 +220,8 @@ Voice-over for the prepared complete-chain recording:
 > received.”
 >
 > **2:38–2:45 — Hold signal and proposal:** “That same evidence becomes an
-> instructor signal and a private course improvement, still awaiting review.”
+> instructor signal and a private assessment improvement, still awaiting
+> review.”
 >
 > **2:45–2:48 — End on the trust boundary:** “Every link is persisted; missing
 > evidence is never invented.”
