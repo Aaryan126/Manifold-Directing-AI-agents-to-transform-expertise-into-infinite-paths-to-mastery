@@ -13,6 +13,22 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: AGNES_API_KEY
+        sync: false
+      - key: AGNES_BASE_URL
+        value: https://apihub.agnes-ai.com/v1
+      - key: AGNES_AGENT_MODEL
+        value: agnes-2.5-flash
+      - key: AGNES_FAST_MODEL
+        value: agnes-2.5-flash
+      - key: AGNES_FALLBACK_TO_OPENAI
+        value: "true"
+      - key: COURSE_DIRECTOR_PROVIDER
+        value: agnes
+      - key: DASHBOARD_ASSISTANT_PROVIDER
+        value: agnes
+      - key: LEARNING_GUIDE_PROVIDER
+        value: agnes
       - key: VIDEO_PROVIDER
         value: local
       - key: CORS_ORIGINS
