@@ -1,116 +1,117 @@
 # Manifold — LaunchPad submission write-up
 
-## Problem
+## 1. Problem
 
 Recorded expertise is abundant, but a lecture is still one linear path for every
-learner. Making it adaptive requires work usually split across an instructional
-designer, video editor, assessment writer, analyst, and platform engineer.
-Independent instructors and small training teams rarely have that stack.
+learner. Turning it into an adaptive course normally divides work among an
+instructional designer, video editor, assessment writer, analyst, and platform
+engineer. Independent instructors and small training teams rarely have that
+stack.
 
-Existing authoring tools can accelerate course drafts, and adaptive platforms can
-personalize delivery, but the hard gap is the complete accountable loop:
-preserving the instructor's source, modeling what is taught, routing from learner
-evidence, diagnosing failures, and improving the course without letting a private
-AI draft silently reach learners.
+AI authoring tools can draft content, while adaptive platforms can personalize
+delivery. The missing system is the accountable loop between them: preserve what
+the instructor actually taught, model its concepts and prerequisites, route from
+learner evidence, diagnose failures, and improve the course without silently
+letting an AI draft reach learners.
 
-We defined success before building: a two-hour lecture should become a
-publishable adaptive course in under 60 minutes of active instructor work,
-excluding asynchronous processing; initial generation must remain private,
-editable, and auditable until explicit publication; later AI-proposed changes
-must remain human-controlled; runtime routing must be explainable; and at least
-one signal-to-revision loop must work end to end. The first target still requires
-a matched timed instructor study and is not claimed as achieved.
+We defined success before building: convert a two-hour lecture in under 60
+minutes of active instructor work; keep generated work private and auditable
+until publication; keep later AI changes reviewable; explain every learner route;
+and demonstrate a complete evidence-to-revision loop. The time target still
+needs a matched study and is not claimed as achieved.
 
-## Approach
+## 2. Approach
 
-Manifold is a human-governed adaptive course compiler, not a generic course
-generator or free-form tutor.
+Manifold is a human-governed adaptive course compiler, not a generic generator or
+free-form tutor. A durable pipeline converts an instructor-owned recording into
+timestamped topics, a sparse prerequisite graph, reusable clips,
+concept-grounded questions, confidence checks, and remediation routes. The
+coherent result enters an editable private revision automatically; only the
+instructor can publish it. Later AI-authored changes use the stricter independent
+`Accept / Edit / Dismiss` proposal gate.
 
-One durable pipeline converts an instructor-owned recording into timestamped
-topics, a sparse prerequisite graph, reusable clips, concept-grounded questions,
-confidence checks, and remediation routes. The coherent result automatically
-becomes an editable private draft, while each artifact retains provenance and
-stable identity across revisions. This removes clerical approval work without
-giving AI publication authority: the instructor still chooses when the revision
-reaches learners.
+We deliberately use different intelligence for different kinds of authority:
 
-At learner runtime, deterministic policy combines prerequisites, correctness,
-confidence, mastery, and reviewed content availability. Every decision persists
-an attempt, mastery transition, route action, target, evidence snapshot, and
-rationale. Cohort patterns become dashboard signals. Specialist agents may then
-prepare a private revision, but these later evidence-driven changes return to the
-Accept/Edit/Dismiss gate.
+| Work | Implementation | Why |
+|---|---|---|
+| Source-to-course compilation | OpenAI GPT-5.4 | Segmentation, graph, clip, assessment, and enrichment tasks need long-context structured reasoning. GPT-5.4 supports a 1.05M-token context and structured outputs; errors here affect every learner. |
+| Interactive instructor agents | Agnes 2.5 Flash | Course Director returns closed-schema edit plans; the dashboard may synthesize only retrieved evidence. These frequent interactions are bounded, latency-sensitive, and cost-sensitive. |
+| Learning Assistant | Agnes 2.5 Flash | It returns one allowlisted intent. Visible replies use persisted evidence and reviewed artifacts, never generated teaching. |
+| Learner routing and publication | Deterministic code | Prerequisites, evidence transitions, and publication are policy boundaries, not prompts. |
 
-We chose PostgreSQL adjacency tables and recursive CTEs over a second graph
-database because our graph scale is bounded and transactional consistency with
-revisions, attempts, and audit records matters more than specialized
-infrastructure. We chose a Postgres-backed durable queue over browser-owned jobs
-so compilation survives navigation and service restarts. We use task-specific
-GPT-5.4 agents rather than one autonomous prompt, with schema validation and
-deterministic downstream services limiting each agent's authority.
+This is not a cosmetic integration. All-GPT would spend frontier-model capacity
+on narrow interactions; moving the unbenchmarked compiler to Agnes would risk
+the highest-consequence artifacts. One unrestricted agent would be harder to
+audit. Agnes therefore handles bounded interaction while GPT-5.4 handles the
+quality-critical compiler.
 
-## Evidence
+Agnes uses its documented OpenAI-compatible `/v1/chat/completions` interface.
+Responses are Pydantic-validated, use temperature zero, receive at most three
+repair attempts, and record provider/model/token/latency telemetry. Course
+Director plans are validated against the real graph before becoming proposals.
+Provider fallback cannot bypass review or publication. The split matches Agnes's recommendation of 2.5 Flash for
+reasoning and agent workflows ([catalog](https://github.com/AgnesAI-Labs/AgnesAI-Models/blob/main/MODEL_CATALOG.md)) and GPT-5.4's documented long-context structured-output capabilities ([model page](https://developers.openai.com/api/docs/models/gpt-5.4)).
 
-The repository includes a reproducible evaluation harness that runs tests, starts
-the production containers, measures warm endpoints, performs an optional
-disposable real-provider compilation, calculates token cost, evaluates quality
-gates, and deletes its benchmark course.
+PostgreSQL adjacency tables keep graphs transactionally consistent with
+revisions, attempts, and audits. Its durable queue also lets compilation survive
+navigation, retries, and service restarts.
 
-The recorded 2026-07-28 run passed 196 Python and 98 web/shared tests. Across 20
-warm localhost trials, p95 latency was 17.55 ms for the active Blueprint and
-29.43 ms for the new decision trace.
+## 3. Evidence
 
-Using a cloned local transcript-backed lecture, the configured pipeline reached
-the then-current review-ready private state in 213.91 seconds. It produced 5
-topics, 4 concepts, 5
-clips, and 5 questions with zero coverage gaps. Seventeen GPT-5.4 calls consumed
-44,163 input tokens, 16,896 cached input tokens, and 8,183 output tokens. At
-official GPT-5.4 rates, calculated token cost was $0.1951. These totals include a
-clip-boundary validation failure that was persisted, retried, and recovered on
-attempt two—evidence that durability is exercised, not decorative.
+The verified suite passes: 236 backend tests, 112 web tests, one shared test,
+Ruff, strict mypy, ESLint, TypeScript, and the production build. Twelve
+Agnes-specific contracts cover request shape, invalid-output rejection, schema
+repair, provider wiring, telemetry, graph validation, evidence filtering,
+allowlisted intents, and fallback isolation.
 
-The in-product “Trace decision” view connects eight persisted stages: source
-moment, concept, teaching clip, assessment, learner evidence, route event,
-dashboard signal, and signal-linked proposed revision. It shows missing stages
-explicitly rather than inventing causality. The current dataset exposes six of
-eight, making the clean demo dataset requirement measurable.
+A real no-fallback integration test exercised all three Agnes functions. Course
+Director returned the exact requested relationship removal while retaining the
+alternate placement; dashboard synthesis selected only saved evidence IDs; the
+Learning Assistant returned the allowlisted `why_next` intent; and all calls
+recorded Agnes 2.5 Flash telemetry. The public Render deployment then completed a
+real grounded dashboard request successfully with Agnes enabled.
 
-Articulate is a direct AI-authoring comparison; H5P is a manual interactive-video
-comparison; Area9 is a mature adaptive-platform comparison. Their official pages
-verify useful overlapping capabilities, but no vendor claim is treated as an
-independent speed baseline. ATD notes that traditional development time varies
-with content, interactivity, media, expertise, tools, and review cycles, so our
-next defensible comparison is a matched manual build using the same source.
+Our reproducible harness runs tests, production containers, warm benchmarks, an
+optional disposable provider-backed compilation, cost calculation, and quality
+gates. In the recorded compilation, GPT-5.4 produced 5 topics, 4
+concepts, 5 clips, and 5 questions with zero coverage gaps in 213.91 seconds.
+Seventeen calls consumed 44,163 input, 16,896 cached-input, and 8,183 output
+tokens, costing $0.1951 at the documented rates. A persisted clip-validation
+failure retried and recovered on attempt two, exercising durability rather than
+merely describing it.
 
-## Constraints
+The judge-facing `Trace decision` view now shows a complete eight-stage persisted
+chain: source moment → concept → teaching clip → assessment → labelled simulated
+learner evidence → deterministic route event → dashboard signal → signal-linked
+private proposed revision. Missing evidence is shown explicitly; causality is
+never inferred from proximity.
 
-The measured $0.1951 is model-token cost only. It excludes instructor labor,
-hosting, storage, video delivery, and ASR because the benchmark intentionally
-reused a cached transcript. Future reports must itemize those separately.
+## 4. Constraints
 
-Compilation is asynchronous; instructor review is the scarce synchronous
-resource. We measure pipeline and task wall time today but not active review time.
-The dashboard suppresses low-sample claims, and the learner assistant cannot
-generate new teaching content at runtime. It can act only through reviewed
-artifacts and allowlisted operations.
+The measured $0.1951 is GPT-5.4 token cost for one cached-transcript compilation,
+not total course cost. It excludes instructor labor, hosting, storage, video
+delivery, ASR, and Agnes interactions. Agnes's lower-cost operating model
+motivates the interactive boundary, but we do not claim a measured saving until
+the same workload has provider-returned usage and billing data.
 
-Reliability comes from leases, idempotency, retries, revision isolation, immutable
-attempts, and explicit missing-evidence states. The evaluation run itself found
-and drove a fix for a partial-index upsert defect before generation could begin.
+Agnes 1.5 Flash was considered for intent classification, but two real calls
+returned `503 model_not_found` for our account. We selected the available,
+no-fallback-tested 2.5 model instead of hiding the failure behind fallback.
+Render has cold starts; development login is not production authentication;
+model output can still be malformed; and pedagogical quality needs instructor
+judgment. Validation, retries, evidence allowlists, revision isolation, and
+publication gates reduce—not eliminate—these risks.
 
-## Honesty & Trajectory
+## 5. Honesty & Trajectory
 
-This is not yet evidence of improved learning outcomes. Current learner history
-is demonstration data, not a controlled cohort. The under-60-minute instructor
-target needs a timed review. Clip and graph quality still need human pedagogical
-judgment. Development identity is not production authentication. The current
-portfolio also contains stale untitled courses and is not suitable for a polished
-demo reset.
+This is evidence that the system compiles, validates, routes, traces, and proposes
+revisions—not evidence that it improves learning outcomes. The current learner
+history is explicitly labelled simulation data, not a controlled cohort. The
+under-60-minute active-instructor target still needs timing, and generated graph,
+clip, and assessment quality still needs structured human evaluation.
 
-Next we will curate one licensed, instructor-owned competition course with four to
-six concepts, a real prerequisite, misconception, alternate explanation, and
-remediation branch; seed a labelled deterministic learner history that yields one
-interpretable signal and signal-linked proposal; add a reversible reset command;
-time the instructor review; and run the same source through a matched H5P/manual
-workflow. After that, a small real-learner study can test adaptive versus linear
-delivery without overstating synthetic evidence.
+Next, we will compare the same licensed source in Manifold and a matched
+manual/H5P workflow; measure time, corrections, and itemized provider costs; and
+test substitutions only where quality gates hold. A real-learner study can then
+compare adaptive and linear delivery. Production authentication, security
+hardening, and concurrent Agnes availability testing precede institutional use.
