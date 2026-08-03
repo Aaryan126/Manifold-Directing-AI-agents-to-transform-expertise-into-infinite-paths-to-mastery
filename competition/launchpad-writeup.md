@@ -126,3 +126,77 @@ manual/H5P workflow; measure time, corrections, and itemized provider costs; and
 test substitutions only where quality gates hold. A real-learner study can then
 compare adaptive and linear delivery. Production authentication, security
 hardening, and concurrent Agnes availability testing precede institutional use.
+
+---
+
+## Appendix: Repository review guide
+
+This appendix sits outside the five-pillar, 1,000-word main write-up.
+
+- `competition/metrics.md` and `competition/metrics.json` contain the benchmark
+  method, recorded results, provider usage, calculated cost, retry evidence, and
+  machine-readable output supporting the performance claims above.
+- `scripts/launchpad_evaluation.py` is the reproducible evaluation harness. It
+  runs repository checks and can clone a transcript-backed lecture into a
+  disposable course, execute the real generation pipeline, evaluate its output,
+  and delete the temporary course.
+- `pipeline/app/course_os/worker.py` implements the durable source-to-course
+  pipeline, including persisted stages, leases, retries, validation, and usage
+  telemetry.
+- `pipeline/app/ai/agnes.py` is the Agnes OpenAI-compatible provider adapter. It
+  demonstrates deterministic request configuration, structured-response repair,
+  telemetry, and bounded retry behavior.
+- `pipeline/app/course_os/course_director.py`,
+  `pipeline/app/course_os/dashboard_assistant.py`, and
+  `pipeline/app/learning/guide.py` implement the three bounded Agnes agent
+  contracts: typed graph-edit planning, evidence-grounded dashboard synthesis,
+  and allowlisted learner-intent classification.
+- `pipeline/app/routing/service.py` and `pipeline/app/routing/policy.py` implement
+  deterministic learner routing and persist the evidence and reason for each
+  route event.
+- `pipeline/app/course_os/postgres_repository.py` demonstrates revision
+  isolation, audit records, publication boundaries, and the persisted eight-stage
+  decision trace.
+- `web/app/app/courses/[courseId]/course-studio.tsx` implements the instructor
+  Blueprint, Course Director proposal review, reversible changes, and the
+  judge-facing `Trace decision` interaction.
+- `pipeline/tests/test_agnes_provider.py`,
+  `pipeline/tests/test_agnes_agents.py`,
+  `pipeline/tests/test_routing_service.py`, and
+  `web/e2e/blueprint-learner.spec.ts` are representative automated tests for
+  provider safety, agent boundaries, adaptive routing, and the instructor-to-
+  learner workflow.
+
+### Run and verify
+
+Copy `.env.example` to `.env`, add the required provider keys, and run
+`docker compose up --build`. Open `http://localhost:3000/login`; the public demo
+identities are instructor `David` / `David1` and learner `Brian` / `Brian1`.
+Run `npm run ci` for the repository checks, `npm run test:agnes:contracts` for
+offline Agnes contracts, `npm run test:agnes:live` for real Agnes calls, and
+`npm run eval:launchpad` for the recorded evaluation workflow. Real generation,
+live Agnes tests, and external video services require their corresponding keys.
+`.env` is gitignored; `.env.example` contains placeholders only.
+
+### Simulated, cached, incomplete, and external
+
+The showcased learner evidence is explicitly labelled simulation data. The
+YAML-gated Business 101 recording rehearsal replays cached generated artifacts
+for one exact course and recording while preserving real source creation,
+durable progress, a private working revision, and explicit publication; disabling
+`competition-demo.yaml` restores real generation, and other courses are never
+affected. OpenAI and Agnes are external AI providers; the public deployment also
+depends on Render and Neon, while Mux is optional because local video delivery is
+implemented. Production authentication, multi-tenancy, billing, enterprise
+operations, a timed matched instructor study, concurrent Agnes availability
+testing, and a controlled learner-outcome study remain incomplete. The published
+demo credentials are synthetic demo identities, not passwords for real accounts
+or personal data.
+
+### Submission links
+
+- Public repository: [GitHub](https://github.com/Aaryan126/Manifold-Directing-AI-agents-to-transform-expertise-into-infinite-paths-to-mastery)
+- Live application: [Manifold on Render](https://manifold-aaryan126.onrender.com/login)
+- Main write-up: `competition/launchpad-writeup.md`
+- Benchmark evidence: `competition/metrics.md`
+- Demo video: add the final public video URL before submission.

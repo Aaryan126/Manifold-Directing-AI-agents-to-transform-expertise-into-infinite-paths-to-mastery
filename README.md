@@ -30,6 +30,14 @@ first request after an idle period can take roughly a minute while the services
 wake up. The published `Learn Anything in 20 Hours` course is enrolled for the
 learner account and includes the bundled lecture media.
 
+## Submission links
+
+- [Public repository](https://github.com/Aaryan126/Manifold-Directing-AI-agents-to-transform-expertise-into-infinite-paths-to-mastery)
+- [Live application](https://manifold-aaryan126.onrender.com/login)
+- [LaunchPad write-up](competition/launchpad-writeup.md)
+- [Benchmark evidence](competition/metrics.md)
+- Demo video: **add the final public video URL before submission**.
+
 ## Why it exists
 
 A lecture video is normally one path for every learner. Making it adaptive
@@ -151,6 +159,44 @@ published baseline.
 - [Phased implementation plan](plan.md)
 - [Live implementation status](implementation.md)
 
+## Repository review guide
+
+If you are reviewing the full repository, these paths provide the shortest route
+through the implementation and the evidence behind our claims:
+
+- [`competition/metrics.md`](competition/metrics.md) and
+  [`competition/metrics.json`](competition/metrics.json) — benchmark method,
+  recorded timings, provider-reported token usage, calculated cost, retry
+  evidence, and machine-readable results.
+- [`scripts/launchpad_evaluation.py`](scripts/launchpad_evaluation.py) — the
+  competition evaluation harness, including disposable real-provider generation
+  and cleanup.
+- [`pipeline/app/course_os/worker.py`](pipeline/app/course_os/worker.py) — the
+  durable lecture-to-course pipeline, persisted stages, leases, retries,
+  validation, and usage telemetry.
+- [`pipeline/app/ai/agnes.py`](pipeline/app/ai/agnes.py) — the Agnes provider
+  adapter, closed-schema response repair, retry policy, and telemetry.
+- [`pipeline/app/course_os/course_director.py`](pipeline/app/course_os/course_director.py),
+  [`pipeline/app/course_os/dashboard_assistant.py`](pipeline/app/course_os/dashboard_assistant.py),
+  and [`pipeline/app/learning/guide.py`](pipeline/app/learning/guide.py) — bounded
+  instructor editing, grounded dashboard synthesis, and allowlisted learner
+  intent classification.
+- [`pipeline/app/routing/service.py`](pipeline/app/routing/service.py) and
+  [`pipeline/app/routing/policy.py`](pipeline/app/routing/policy.py) — deterministic
+  evidence-aware routing and immutable route records.
+- [`pipeline/app/course_os/postgres_repository.py`](pipeline/app/course_os/postgres_repository.py)
+  — revisions, audits, publication boundaries, and the persisted eight-stage
+  decision trace.
+- [`web/app/app/courses/[courseId]/course-studio.tsx`](web/app/app/courses/%5BcourseId%5D/course-studio.tsx)
+  — the instructor Blueprint, Course Director review and undo, and `Trace
+  decision` UI.
+- [`pipeline/tests/test_agnes_provider.py`](pipeline/tests/test_agnes_provider.py),
+  [`pipeline/tests/test_agnes_agents.py`](pipeline/tests/test_agnes_agents.py),
+  [`pipeline/tests/test_routing_service.py`](pipeline/tests/test_routing_service.py),
+  and [`web/e2e/blueprint-learner.spec.ts`](web/e2e/blueprint-learner.spec.ts) —
+  representative tests for provider safety, agent boundaries, routing, and the
+  instructor-to-learner workflow.
+
 ## Architecture
 
 ```mermaid
@@ -271,16 +317,30 @@ checklist in `plan.md`.
 
 - Active instructor review time is not instrumented yet, so the under-60-minute
   product target is not claimed as achieved.
-- Current learner evidence is demonstration data, not a real outcome study.
-- The recorded portfolio contains stale untitled courses and is not yet the clean
-  competition reset dataset.
-- The current showcased course exposes six of eight persisted trace stages; the
-  clean competition dataset must add the signal-linked proposed revision.
+- Current learner evidence is explicitly labelled simulation data, not a real
+  outcome study. The judge-facing trace now exposes all eight persisted stages,
+  including the signal-linked private proposed revision.
+- The YAML-gated Business 101 recording rehearsal uses cached generated artifacts
+  for one exact course and recording. It still creates a real source, advances
+  durable progress, opens a private working revision, and requires explicit
+  publication. Disable [`competition-demo.yaml`](competition-demo.yaml) for real
+  provider generation; other courses are unaffected.
+- Real AI workflows depend on OpenAI and Agnes. The public deployment additionally
+  depends on Render and Neon; Mux is optional because local video delivery is
+  implemented.
 - Production authentication, multi-tenancy, billing, and enterprise operations
   are out of scope for the current system.
-- Real course-quality and learning-effect claims require instructor review and a
-  real learner cohort, respectively.
+- A timed matched instructor study, concurrent Agnes availability study, and
+  controlled learner-outcome study remain incomplete.
 
 That honesty is intentional: Manifold is designed to make uncertainty,
 provenance, review state, and missing evidence visible rather than laundering
 them into an autonomous-AI story.
+
+### Secrets and personal data
+
+`.env` and `.env.*` are gitignored, while `.env.example` contains placeholders
+only. Do not commit provider keys, database credentials, recordings containing
+personal data, or real user information. The documented `David` and `Brian`
+credentials are deliberately public synthetic demo identities, not real
+accounts.
