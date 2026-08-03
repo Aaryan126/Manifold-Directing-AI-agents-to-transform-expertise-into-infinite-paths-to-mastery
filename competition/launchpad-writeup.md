@@ -32,12 +32,20 @@ instructor can publish it. Later AI-authored changes use the stricter independen
 
 We deliberately use different intelligence for different kinds of authority:
 
-| Work | Implementation | Why |
-|---|---|---|
-| Source-to-course compilation | OpenAI GPT-5.4 | Segmentation, graph, clip, assessment, and enrichment tasks need long-context structured reasoning. GPT-5.4 supports a 1.05M-token context and structured outputs; errors here affect every learner. |
-| Interactive instructor agents | Agnes 2.5 Flash | Course Director returns closed-schema edit plans; the dashboard may synthesize only retrieved evidence. These frequent interactions are bounded, latency-sensitive, and cost-sensitive. |
-| Learning Assistant | Agnes 2.5 Flash | It returns one allowlisted intent. Visible replies use persisted evidence and reviewed artifacts, never generated teaching. |
-| Learner routing and publication | Deterministic code | Prerequisites, evidence transitions, and publication are policy boundaries, not prompts. |
+- **OpenAI GPT-5.4 compiles the source into a course.** Segmentation, graph,
+  clip, assessment, and enrichment tasks need long-context structured reasoning.
+  GPT-5.4 supports a 1.05M-token context and structured outputs; errors here
+  affect every learner's course.
+- **Agnes 2.5 Flash powers interactive instructor agents.** Course Director
+  returns closed-schema edit plans, while the dashboard may synthesize only
+  retrieved evidence. These frequent interactions are bounded, latency-sensitive,
+  and cost-sensitive.
+- **Agnes 2.5 Flash interprets Learning Assistant requests.** It returns one
+  allowlisted intent. Visible replies use persisted evidence and reviewed
+  artifacts, never newly generated teaching.
+- **Deterministic code owns routing and publication.** Prerequisites, correctness,
+  confidence, mastery transitions, and publication are policy and safety
+  boundaries, not prompts.
 
 This is not a cosmetic integration. All-GPT would spend frontier-model capacity
 on narrow interactions; moving the unbenchmarked compiler to Agnes would risk
@@ -49,8 +57,8 @@ Agnes uses its documented OpenAI-compatible `/v1/chat/completions` interface.
 Responses are Pydantic-validated, use temperature zero, receive at most three
 repair attempts, and record provider/model/token/latency telemetry. Course
 Director plans are validated against the real graph before becoming proposals.
-Provider fallback cannot bypass review or publication. The split matches Agnes's recommendation of 2.5 Flash for
-reasoning and agent workflows ([catalog](https://github.com/AgnesAI-Labs/AgnesAI-Models/blob/main/MODEL_CATALOG.md)) and GPT-5.4's documented long-context structured-output capabilities ([model page](https://developers.openai.com/api/docs/models/gpt-5.4)).
+Provider fallback cannot bypass review or publication. The split follows Agnes's
+2.5 Flash agent-workflow guidance ([catalog](https://github.com/AgnesAI-Labs/AgnesAI-Models/blob/main/MODEL_CATALOG.md)) and GPT-5.4's documented long-context structured outputs ([model page](https://developers.openai.com/api/docs/models/gpt-5.4)).
 
 PostgreSQL adjacency tables keep graphs transactionally consistent with
 revisions, attempts, and audits. Its durable queue also lets compilation survive
@@ -71,14 +79,17 @@ Learning Assistant returned the allowlisted `why_next` intent; and all calls
 recorded Agnes 2.5 Flash telemetry. The public Render deployment then completed a
 real grounded dashboard request successfully with Agnes enabled.
 
-Our reproducible harness runs tests, production containers, warm benchmarks, an
-optional disposable provider-backed compilation, cost calculation, and quality
-gates. In the recorded compilation, GPT-5.4 produced 5 topics, 4
-concepts, 5 clips, and 5 questions with zero coverage gaps in 213.91 seconds.
-Seventeen calls consumed 44,163 input, 16,896 cached-input, and 8,183 output
-tokens, costing $0.1951 at the documented rates. A persisted clip-validation
-failure retried and recovered on attempt two, exercising durability rather than
-merely describing it.
+For the recorded cost benchmark, our reproducible harness cloned one
+transcript-backed lecture
+into a disposable course, ran the complete GPT-5.4 generation pipeline, captured
+usage returned by the provider for every call, evaluated the output, and deleted
+the course. In 213.91 seconds, 17 GPT-5.4 calls produced 5 topics, 4 concepts, 5
+clips, and 5 questions with zero coverage gaps. Those calls reported 44,163 input
+tokens, including 16,896 cached input tokens, plus 8,183 output tokens. Applying
+OpenAI's documented GPT-5.4 rates of $2.50 per million input tokens, $0.25 per
+million cached-input tokens, and $15 per million output tokens gives $0.1951 in
+model-token cost. A persisted clip-validation failure retried and recovered on
+attempt two, exercising durability rather than merely describing it.
 
 The judge-facing `Trace decision` view now shows a complete eight-stage persisted
 chain: source moment → concept → teaching clip → assessment → labelled simulated
@@ -88,19 +99,19 @@ never inferred from proximity.
 
 ## 4. Constraints
 
-The measured $0.1951 is GPT-5.4 token cost for one cached-transcript compilation,
-not total course cost. It excludes instructor labor, hosting, storage, video
-delivery, ASR, and Agnes interactions. Agnes's lower-cost operating model
-motivates the interactive boundary, but we do not claim a measured saving until
-the same workload has provider-returned usage and billing data.
+The $0.1951 above measures only GPT-5.4 tokens used after loading an already
+available transcript. It is not the total cost of creating or operating a course:
+the benchmark excludes instructor labor, hosting, storage, video delivery, ASR,
+and Agnes interactions. Agnes's lower-cost operating model motivates the
+interactive boundary, but we do not claim a measured saving until equivalent
+work has provider-returned usage and billing data.
 
-Agnes 1.5 Flash was considered for intent classification, but two real calls
-returned `503 model_not_found` for our account. We selected the available,
-no-fallback-tested 2.5 model instead of hiding the failure behind fallback.
 Render has cold starts; development login is not production authentication;
-model output can still be malformed; and pedagogical quality needs instructor
-judgment. Validation, retries, evidence allowlists, revision isolation, and
-publication gates reduce—not eliminate—these risks.
+provider availability can vary; model output can still be malformed; and
+pedagogical quality needs instructor judgment. Validation, bounded retries,
+evidence allowlists, revision isolation, and publication gates reduce—not
+eliminate—these risks. Fallback never changes evidence, review, or publication
+authority.
 
 ## 5. Honesty & Trajectory
 
