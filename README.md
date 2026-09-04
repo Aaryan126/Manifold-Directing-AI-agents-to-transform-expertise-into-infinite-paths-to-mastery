@@ -1,278 +1,251 @@
 # Manifold
 
-**A human-governed adaptive course compiler for instructor-owned teaching.**
+**Turn an instructor's lecture recordings into adaptive, mastery-based courses—without giving up control of what learners see.**
 
-Manifold turns a lecture recording into a reviewable adaptive course system:
-topics, concepts, prerequisite relationships, reusable teaching clips,
-assessments, remediation, learner routes, dashboard signals, and private course
-revisions. AI prepares the system; the instructor remains the publishing
-authority.
+Manifold is a human-governed course compiler. It uses AI to turn a lecture into a
+private, editable course draft containing topics, concepts, prerequisite links,
+teaching clips, assessments, remediation rules, and learner routes. The
+instructor reviews that system and is the only person who can publish it.
 
-The core product claim is not “AI writes a course.” It is that one instructor can
-operate a closed teaching loop without surrendering pedagogical control:
+> AI prepares the course. The instructor directs it. Learner evidence improves it.
+
+## At a glance
+
+| | Manifold |
+|---|---|
+| **Input** | An instructor-owned lecture recording or media URL |
+| **Output** | A structured adaptive course, ready for instructor review |
+| **Instructor experience** | Edit the course Blueprint, publish revisions, and act on learner evidence |
+| **Learner experience** | Follow a route that adapts to prerequisites, answer correctness, confidence, and mastery |
+| **Safety boundary** | AI-generated work stays private until the instructor explicitly publishes it |
+
+## What outcome is Manifold aiming for?
+
+Manifold aims to let one expert operate a teaching loop that would normally
+require instructional design, video editing, assessment, and analytics support:
+
+- turn existing expertise into a reusable course instead of starting from a
+  blank authoring tool;
+- give different learners different paths through the same instructor-approved
+  material;
+- help learners spend time on missing prerequisites and uncertain concepts
+  instead of replaying an entire lecture;
+- show instructors where learners are struggling and prepare targeted course
+  improvements for review;
+- keep every published artifact, route decision, and proposed revision
+  traceable to its source and evidence.
+
+The long-term outcome is a closed improvement loop:
 
 ```text
-source → course model → reviewed teaching → learner evidence
-       → adaptive route → instructor signal → reviewed revision
+lecture → private course draft → instructor review → published course
+   ↑                                                ↓
+reviewed improvement ← instructor signal ← learner evidence and routing
 ```
 
-## Live demo
+This repository demonstrates the system and its safeguards. It does **not** yet
+claim proven improvements in learner outcomes or instructor authoring time; those
+require controlled studies with real instructors and learners.
 
-Open the public deployment at
-[manifold-aaryan126.onrender.com](https://manifold-aaryan126.onrender.com/login).
+## Try the hosted demo
+
+Open [the live Manifold demo](https://manifold-aaryan126.onrender.com/login) and
+sign in with either role:
+
+| Role | Username | Password |
+|---|---|---|
+| Instructor | `David` | `David1` |
+| Learner | `Brian` | `Brian1` |
+
+The learner account is already enrolled in the published **Learn Anything in 20
+Hours** course. The deployment uses Render's free tier, so the first request
+after a period of inactivity may take about a minute.
+
+These are public demonstration identities—not production authentication.
+
+## Run it locally
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) with Docker Compose
+- an OpenAI API key for transcription and real course generation
+- Git
+
+Node.js 22+ and Python 3.12+ are only required if you want to run checks directly
+on the host. Agnes and Mux credentials are optional.
+
+### 1. Clone and configure
+
+```bash
+git clone https://github.com/Aaryan126/Manifold-Directing-AI-agents-to-transform-expertise-into-infinite-paths-to-mastery.git
+cd Manifold-Directing-AI-agents-to-transform-expertise-into-infinite-paths-to-mastery
+cp .env.example .env
+```
+
+Open `.env` and set:
+
+```env
+OPENAI_API_KEY=your_openai_api_key
+```
+
+The remaining defaults are ready for local Docker development: PostgreSQL runs
+in a container and video clips are stored in a Docker volume.
+
+### 2. Start the stack
+
+```bash
+docker compose up --build
+```
+
+The first build downloads the images and installs dependencies, so it will take
+longer than later starts. Database migrations run automatically when the
+pipeline starts.
+
+### 3. Open and verify
+
+- App: <http://localhost:3000>
+- API health: <http://localhost:8000/health>
+- Web health: <http://localhost:3000/api/health>
+
+In another terminal, you can verify both services without installing project
+dependencies on the host:
+
+```bash
+curl http://localhost:8000/health
+curl http://localhost:3000/api/health
+```
+
+Use the same development credentials as the hosted demo:
 
 - Instructor: `David` / `David1`
 - Learner: `Brian` / `Brian1`
 
-These are fixed demonstration identities, not production authentication. The
-demo runs on Render's free service tier with an isolated Neon database, so the
-first request after an idle period can take roughly a minute while the services
-wake up. The published `Learn Anything in 20 Hours` course is enrolled for the
-learner account and includes the bundled lecture media.
+On a fresh database there is no completed course yet. Follow the workflow below
+as the instructor, then open the learner account after publishing.
 
-## Submission links
+### 4. Create your first adaptive course
 
-- [Public repository](https://github.com/Aaryan126/Manifold-Directing-AI-agents-to-transform-expertise-into-infinite-paths-to-mastery)
-- [Live application](https://manifold-aaryan126.onrender.com/login)
-- [LaunchPad write-up](competition/launchpad-writeup.md)
-- [Benchmark evidence](competition/metrics.md)
-- Demo video: **add the final public video URL before submission**.
+1. Sign in as **David** and choose **New course**.
+2. Give the course a title, open its Course Flow, and choose **New lecture**.
+3. Upload an audio/video lecture or provide a media URL.
+4. Wait while the durable pipeline transcribes and builds the private draft.
+   You can leave the page and return later.
+5. Review the generated Blueprint: topics, concept graph, clips, questions,
+   remediation, and routing policy.
+6. Edit anything that needs instructor judgment, preview it, and choose
+   **Publish course**.
+7. Sign out, sign in as **Brian**, enroll in the published course, and start a
+   learning session.
 
-## Why it exists
+As Brian answers questions and records confidence, Manifold persists the
+evidence and chooses the next reviewed step. Return as David to inspect the
+resulting dashboard signals and private improvement proposals.
 
-A lecture video is normally one path for every learner. Making it adaptive
-traditionally involves several separate jobs: instructional design, video
-editing, assessment writing, learning analytics, and ongoing course maintenance.
-Generic AI authoring can accelerate drafting, but speed alone does not answer:
+### Stop or reset
 
-- Which source moment supports this concept?
-- Why did a learner receive this route?
-- Which evidence produced an instructor alert?
-- What course change is proposed, and who approved it?
-- Will an AI-authored change reach learners before review?
-
-Manifold makes those questions part of the product contract.
-
-## What is working
-
-- asynchronous lecture ingestion and timestamped transcription;
-- semantic topic segmentation and editable course outlines;
-- concept extraction, sparse prerequisite graphs, and direct graph editing;
-- reusable clip extraction and local zero-based media materialization;
-- concept-grounded assessments, confidence prompts, and remediation rules;
-- deterministic prerequisite-, correctness-, confidence-, and mastery-aware routing;
-- immutable route events, attempts, mastery transitions, and audit records;
-- evidence-driven instructor signals and private specialist proposal packs;
-- versioned active/working course revisions with atomic publication;
-- a bounded learner assistant that can use only reviewed course artifacts;
-- Course Director coordination with independent `Accept / Edit / Dismiss` review;
-- a judge-facing **Trace decision** view that follows persisted lineage from the
-  source moment through learner evidence and a proposed revision.
-
-`implementation.md` is the live source of truth for exact phase status. Several
-late phases have automated verification but still await the user's human
-checklist confirmation; this README does not relabel them complete.
-
-## The non-negotiable publication boundary
-
-Initial generation is automatically assembled into an auditable, editable
-private draft. Instructors can inspect or change any artifact, but do not need to
-approve dozens of generated records. Nothing reaches learners until the
-instructor explicitly publishes.
-
-Later AI improvements proposed from learner evidence retain the consistent
-**Accept AI suggestion / Edit manually / Dismiss** checkpoint. Runtime routing
-may act automatically only over published artifacts and instructor-controlled
-policy, and it persists its evidence and rationale.
-
-## Measured evidence
-
-The repository includes a reproducible competition harness. On the recorded
-2026-07-28 run it:
-
-- passed **294 reported automated tests** (196 Python, 98 web/shared);
-- built and started the production containers;
-- measured warm p95 of **17.55 ms** for the active Blueprint and **29.43 ms**
-  for the decision trace on the local Docker environment;
-- compiled one disposable transcript-backed course to the then-current
-  `waiting_review` terminal state in
-  **213.91 seconds**;
-- generated **5 topics, 4 concepts, 5 clips, and 5 questions**;
-- captured **17 GPT-5.4 calls**, 44,163 input tokens, 16,896 cached input tokens,
-  and 8,183 output tokens, including a failed/retried attempt;
-- calculated **$0.1951 USD** in token cost using current official GPT-5.4 pricing;
-- recovered from one persisted clip-boundary validation failure on the second
-  durable attempt;
-  and
-- deleted the disposable benchmark course afterward.
-
-That recorded evaluation predates the automatic private-draft finalization
-change; a new run now terminates at `complete / draft_ready`. Read the generated
-[metrics report](competition/metrics.md) and
-[machine-readable evidence](competition/metrics.json). These figures measure
-asynchronous compilation wall time and model cost, not active instructor review
-time or learner outcomes.
-
-Run the same evaluation:
+Stop the containers while keeping local data:
 
 ```bash
-npm run eval:launchpad
+docker compose down
 ```
 
-Run a disposable real-provider compilation as well:
+To start again:
 
 ```bash
-npm run eval:launchpad:generation
+docker compose up
 ```
 
-The evaluator keeps measured values, calculated costs, vendor claims, and
-unmeasured gaps separate. It does not substitute a generic industry ratio for a
-matched manual-authoring study.
-
-### Business 101 recording rehearsal
-
-[`competition-demo.yaml`](competition-demo.yaml) enables a deterministic replay
-for the exact local Business 101 course. Uploading the prepared lecture still
-creates a real source record, advances through the normal six durable progress
-steps, opens the cached result as a private working Blueprint, and requires the
-instructor to publish. It does not call ASR or the LLM again. Set `enabled:
-false` and rebuild the pipeline container to restore real generation; every
-other course always uses real generation.
-
-Before each recording take:
+To completely reset the local database and stored video, remove the Docker
+volumes as well. **This permanently deletes local Manifold data:**
 
 ```bash
-pipeline/.venv/bin/python scripts/reset_business_101_generation_demo.py --apply
+docker compose down -v
 ```
 
-Without `--apply`, the command only reports readiness. The reset is narrowly
-scoped to the exact IDs in the YAML and returns Business 101 to its one-lecture
-published baseline.
+## How it works
 
-## Judge-facing materials
+### Course compilation
 
-- [LaunchPad five-pillar write-up](competition/launchpad-writeup.md)
-- [Three-minute demo outline](competition/demo-outline.md)
-- [Clean competition course/reset plan](competition/clean-course-plan.md)
-- [Measured evaluation report](competition/metrics.md)
-- [Product requirements](prd.md)
-- [Phased implementation plan](plan.md)
-- [Live implementation status](implementation.md)
+The pipeline performs six durable stages:
 
-## Repository review guide
+1. transcribe the lecture with timestamps;
+2. segment it into semantic topics;
+3. extract concepts and prerequisite relationships;
+4. select and materialize reusable teaching clips;
+5. generate concept-grounded assessments and remediation;
+6. assemble routing defaults and finalize an editable private revision.
 
-If you are reviewing the full repository, these paths provide the shortest route
-through the implementation and the evidence behind our claims:
+Each stage is persisted in PostgreSQL with retry and recovery state. A browser
+does not need to remain open while generation runs.
 
-- [`competition/metrics.md`](competition/metrics.md) and
-  [`competition/metrics.json`](competition/metrics.json) — benchmark method,
-  recorded timings, provider-reported token usage, calculated cost, retry
-  evidence, and machine-readable results.
-- [`scripts/launchpad_evaluation.py`](scripts/launchpad_evaluation.py) — the
-  competition evaluation harness, including disposable real-provider generation
-  and cleanup.
-- [`pipeline/app/course_os/worker.py`](pipeline/app/course_os/worker.py) — the
-  durable lecture-to-course pipeline, persisted stages, leases, retries,
-  validation, and usage telemetry.
-- [`pipeline/app/ai/agnes.py`](pipeline/app/ai/agnes.py) — the Agnes provider
-  adapter, closed-schema response repair, retry policy, and telemetry.
-- [`pipeline/app/course_os/course_director.py`](pipeline/app/course_os/course_director.py),
-  [`pipeline/app/course_os/dashboard_assistant.py`](pipeline/app/course_os/dashboard_assistant.py),
-  and [`pipeline/app/learning/guide.py`](pipeline/app/learning/guide.py) — bounded
-  instructor editing, grounded dashboard synthesis, and allowlisted learner
-  intent classification.
-- [`pipeline/app/routing/service.py`](pipeline/app/routing/service.py) and
-  [`pipeline/app/routing/policy.py`](pipeline/app/routing/policy.py) — deterministic
-  evidence-aware routing and immutable route records.
-- [`pipeline/app/course_os/postgres_repository.py`](pipeline/app/course_os/postgres_repository.py)
-  — revisions, audits, publication boundaries, and the persisted eight-stage
-  decision trace.
-- [`web/app/app/courses/[courseId]/course-studio.tsx`](web/app/app/courses/%5BcourseId%5D/course-studio.tsx)
-  — the instructor Blueprint, Course Director review and undo, and `Trace
-  decision` UI.
-- [`pipeline/tests/test_agnes_provider.py`](pipeline/tests/test_agnes_provider.py),
-  [`pipeline/tests/test_agnes_agents.py`](pipeline/tests/test_agnes_agents.py),
-  [`pipeline/tests/test_routing_service.py`](pipeline/tests/test_routing_service.py),
-  and [`web/e2e/blueprint-learner.spec.ts`](web/e2e/blueprint-learner.spec.ts) —
-  representative tests for provider safety, agent boundaries, routing, and the
-  instructor-to-learner workflow.
+### Instructor control
+
+Initial generation becomes a coherent private draft automatically, avoiding a
+clerical approval step for every generated record. The instructor can edit any
+artifact, but learners see nothing until explicit publication.
+
+Later AI-authored improvements based on learner evidence use the same visible
+checkpoint: **Accept AI suggestion / Edit manually / Dismiss**. Runtime routing
+can act automatically only over published artifacts and instructor-controlled
+policy.
+
+### Adaptive learning
+
+For each learner, Manifold combines published prerequisites with saved evidence:
+answer correctness, confidence, mastery state, and prior route events. The next
+step is selected by deterministic policy—for example, advance after a confident
+correct answer or revisit a prerequisite after an incorrect answer. Every route
+event stores its evidence and rationale.
+
+### Evidence-driven improvement
+
+Saved learner activity produces instructor-facing signals such as a struggling
+cohort or an underperforming question. Manifold can prepare a private targeted
+revision from that evidence, but it cannot publish the change by itself. The
+**Trace decision** view follows the lineage from source material through learner
+evidence to the proposed revision.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    subgraph OpenAI["OpenAI · source-to-course compilation"]
-        OAI["ASR + GPT-5.4<br/>transcription, segmentation, graph,<br/>clips, assessments, enrichment"]
-    end
-
-    subgraph Agnes["Agnes AI · bounded interactive inference"]
-        CD["Agnes 2.5 Flash<br/>Course Director planning"]
-        DA["Agnes 2.5 Flash<br/>grounded dashboard synthesis"]
-        LI["Agnes 2.5 Flash<br/>learner intent classification"]
-    end
-
-    S["Instructor-owned source"] --> OAI
-    OAI --> R["Private review gates"]
-    R --> B["Published Blueprint"]
-    B --> L["Learner session"]
-    L --> E["Attempt + confidence + mastery"]
-    E --> T["Deterministic route event"]
-    T --> D["Dashboard signal"]
-    D --> P["Private proposed revision"]
-    P --> R
-
-    B -. "bounded edit request" .-> CD
-    CD -. "typed private proposal" .-> P
-    D -. "retrieved saved evidence" .-> DA
-    L -. "free-text request" .-> LI
-
-    B <--> DB[("PostgreSQL system of record")]
-    OAI <--> DB
+    S[Instructor-owned lecture] --> P[Python / FastAPI pipeline]
+    P --> AI[OpenAI course compilation]
+    AI --> D[Private course revision]
+    D --> R[Instructor review]
+    R --> B[Published Blueprint]
+    B --> L[Learner session]
+    L --> E[Correctness, confidence, mastery]
+    E --> T[Deterministic route event]
+    T --> G[Instructor signal]
+    G --> Q[Private improvement proposal]
+    Q --> R
+    P <--> DB[(PostgreSQL)]
+    B <--> DB
     E <--> DB
-    T <--> DB
-    D <--> DB
 ```
 
-| Layer | Current implementation |
+| Layer | Implementation |
 |---|---|
-| Web | Next.js 15, React 19, TypeScript, React Flow, ELK, Motion |
+| Web application | Next.js 15, React 19, TypeScript, React Flow, ELK, Motion |
 | API and orchestration | Python 3.12, FastAPI, Pydantic |
 | Durable work | PostgreSQL-backed task queue with leases, retries, and recovery |
-| OpenAI AI | GPT-5.4 for source-to-course compilation, graph/content generation, and document enrichment |
-| Agnes AI | Verified Agnes 2.5 Flash for Course Director planning, grounded dashboard synthesis, and bounded learner-intent classification |
-| Deterministic safeguards | Pydantic validation, evidence-ID filtering, prerequisite/routing/grading policy, private proposal review, and atomic publication |
-| Transcription | OpenAI ASR adapter with ffmpeg extraction/chunking |
-| Data and graph | PostgreSQL 16 adjacency tables, recursive CTEs, revisioned artifacts |
-| Video | Mux adapter plus local development/CI provider |
+| Course compilation | OpenAI ASR and GPT-5.4 |
+| Optional interactive agents | Agnes 2.5 Flash for Course Director, dashboard synthesis, and learner-intent classification |
+| Video | Local ffmpeg-based delivery by default; optional Mux adapter |
+| Safeguards | Schema validation, evidence filtering, deterministic routing and grading, private revision review, atomic publication |
 | Verification | Pytest, Vitest, Playwright, axe, Ruff, mypy, ESLint, TypeScript |
 
-The Agnes integration follows the official
-[model catalog and OpenAI-compatible endpoint guidance](https://github.com/AgnesAI-Labs/AgnesAI-Models/blob/main/MODEL_CATALOG.md).
+## Optional integrations
 
-Generation task outputs persist wall time and provider-returned usage. The
-competition harness uses those records to calculate cost rather than estimating
-tokens from prompts.
+### Agnes interactive agents
 
-## Local setup
-
-Prerequisites:
-
-- Docker with Docker Compose;
-- Node.js 22+ and Python 3.12+ for host-side checks;
-- an OpenAI API key for real AI generation;
-- an Agnes API key for the three interactive Agnes agents;
-- optional Mux credentials for production-style video delivery.
-
-Create local configuration:
-
-```bash
-cp .env.example .env
-```
-
-Set `OPENAI_API_KEY` and `AGNES_API_KEY` in `.env`. To enable the verified
-hybrid routing, set:
+OpenAI remains the default and Agnes is not required to run Manifold. The codebase
+also contains an Agnes adapter for the three bounded interactive agents. Its
+deployment configuration is documented in `.env.example`:
 
 ```env
+AGNES_API_KEY=your_agnes_api_key
 COURSE_DIRECTOR_PROVIDER=agnes
 DASHBOARD_ASSISTANT_PROVIDER=agnes
 LEARNING_GUIDE_PROVIDER=agnes
@@ -280,67 +253,125 @@ AGNES_AGENT_MODEL=agnes-2.5-flash
 AGNES_FAST_MODEL=agnes-2.5-flash
 ```
 
-Then start:
+With the host development dependencies installed, verify its contracts or make
+a live provider call with:
 
 ```bash
-docker compose up --build
+npm run test:agnes:contracts
+npm run test:agnes:live
 ```
 
-Open:
+### Mux video delivery
 
-- app: <http://localhost:3000/login>
-- API health: <http://localhost:8000/health>
-- web health: <http://localhost:3000/api/health>
+Local video delivery works without additional credentials. For
+production-style Mux delivery, set `VIDEO_PROVIDER=mux`, `MUX_TOKEN_ID`, and
+`MUX_TOKEN_SECRET` in `.env`, then rebuild.
 
-Migrations apply at pipeline startup. Local development uses persisted
-instructor/learner identities and an `X-User-ID` context; this is deliberately
-not represented as production authentication.
+## Development and verification
 
-## Verification
+Install host dependencies only if you want to run the checks outside Docker:
+
+```bash
+npm install
+python3 -m pip install uv
+(cd pipeline && uv sync --extra dev)
+```
+
+Run the standard checks:
 
 ```bash
 npm run lint
 npm run typecheck
 npm test
 (cd pipeline && uv run pytest -q)
-npm run test:agnes:contracts
-npm run test:agnes:live
 npm run test:e2e
 ```
 
-Human quality checks remain essential for pedagogical correctness, clip
-boundaries, graph usefulness, assessment quality, and review time. Phase
-completion requires the automated suite and the corresponding user-confirmed
-checklist in `plan.md`.
+Keep the Docker stack running for the health and end-to-end checks. You can also
+run `npm run test:health` when Node.js is installed on the host.
 
-## Honest current limits
+Provider-specific checks:
 
-- Active instructor review time is not instrumented yet, so the under-60-minute
-  product target is not claimed as achieved.
-- Current learner evidence is explicitly labelled simulation data, not a real
-  outcome study. The judge-facing trace now exposes all eight persisted stages,
-  including the signal-linked private proposed revision.
-- The YAML-gated Business 101 recording rehearsal uses cached generated artifacts
-  for one exact course and recording. It still creates a real source, advances
-  durable progress, opens a private working revision, and requires explicit
-  publication. Disable [`competition-demo.yaml`](competition-demo.yaml) for real
-  provider generation; other courses are unaffected.
-- Real AI workflows depend on OpenAI and Agnes. The public deployment additionally
-  depends on Render and Neon; Mux is optional because local video delivery is
-  implemented.
-- Production authentication, multi-tenancy, billing, and enterprise operations
-  are out of scope for the current system.
-- A timed matched instructor study, concurrent Agnes availability study, and
-  controlled learner-outcome study remain incomplete.
+```bash
+npm run test:agnes:contracts
+npm run test:agnes:live
+```
 
-That honesty is intentional: Manifold is designed to make uncertainty,
-provenance, review state, and missing evidence visible rather than laundering
-them into an autonomous-AI story.
+Human review is still required for pedagogical correctness, useful prerequisite
+relationships, clip boundaries, assessment quality, and publication decisions.
 
-### Secrets and personal data
+## Repository map
 
-`.env` and `.env.*` are gitignored, while `.env.example` contains placeholders
-only. Do not commit provider keys, database credentials, recordings containing
-personal data, or real user information. The documented `David` and `Brian`
-credentials are deliberately public synthetic demo identities, not real
-accounts.
+```text
+web/                 Next.js instructor and learner interfaces
+pipeline/app/        FastAPI API, AI adapters, workers, routing, and persistence
+pipeline/migrations/ PostgreSQL schema migrations
+pipeline/tests/      Backend tests
+shared/              Shared TypeScript workspace
+scripts/             Health, evaluation, demo, and reset utilities
+competition/         Submission write-up, demo outline, and measured evidence
+```
+
+For deeper implementation context:
+
+- [`prd.md`](prd.md) — product requirements and intended behavior
+- [`implementation.md`](implementation.md) — live implementation status
+- [`plan.md`](plan.md) — phased plan and human verification checklists
+- [`competition/metrics.md`](competition/metrics.md) — benchmark method and results
+- [`scripts/launchpad_evaluation.py`](scripts/launchpad_evaluation.py) — reproducible evaluation harness
+- [`pipeline/app/course_os/worker.py`](pipeline/app/course_os/worker.py) — durable lecture-to-course pipeline
+- [`pipeline/app/routing/policy.py`](pipeline/app/routing/policy.py) — deterministic routing policy
+- [`pipeline/app/course_os/postgres_repository.py`](pipeline/app/course_os/postgres_repository.py) — revisions, publication, audit records, and decision trace
+
+## Measured evidence
+
+The recorded 2026-07-28 evaluation passed 294 automated tests, built and started
+the production containers, and compiled one disposable transcript-backed course
+in 213.91 seconds. That run produced 5 topics, 4 concepts, 5 clips, and 5
+questions at a calculated model cost of $0.1951. It also exercised persisted
+retry recovery and deleted the disposable course afterward.
+
+Those measurements describe system behavior and model cost—not active instructor
+review time or learner outcomes. See the full [metrics report](competition/metrics.md)
+and [machine-readable results](competition/metrics.json).
+
+Re-run the application benchmark:
+
+```bash
+npm run eval:launchpad
+```
+
+Include a disposable real-provider course compilation:
+
+```bash
+npm run eval:launchpad:generation
+```
+
+## Current limits
+
+- Development login is deliberately not production authentication.
+- Multi-tenancy, account administration, billing, and enterprise operations are
+  outside the current scope.
+- Real generation depends on OpenAI; Agnes, Render, Neon, and Mux are optional
+  deployment/provider integrations.
+- The bundled Business 101 competition rehearsal is a narrowly scoped cached
+  replay for recording the prepared demo. Disable it in
+  [`competition-demo.yaml`](competition-demo.yaml) to force real generation for
+  that course. Other courses always use the real pipeline.
+- A timed matched authoring study, concurrent provider-availability study, and
+  controlled learner-outcome study are still pending.
+
+## Competition materials
+
+- [LaunchPad write-up](competition/launchpad-writeup.md)
+- [Three-minute demo outline](competition/demo-outline.md)
+- [Clean course/reset plan](competition/clean-course-plan.md)
+- [Measured evaluation report](competition/metrics.md)
+- Demo video: **add the final public video URL before submission**
+
+## Security and data
+
+`.env` files are gitignored and `.env.example` contains placeholders only. Do
+not commit provider keys, database credentials, recordings containing personal
+data, or real user information. The documented David and Brian accounts are
+synthetic public demo identities.
